@@ -19,17 +19,17 @@ _Avoid_: trip, job, leg
 A Ride with no Driver and no Vehicle.
 
 **Assigned**:
-A Ride with both a Driver and a Vehicle, which that Driver has not accepted.
+A Ride with both a Driver and a Vehicle. When this assignment requires acceptance, the Driver has not accepted it yet.
 
 **Accepted**:
-A Ride that its Driver has accepted. Changing only the Vehicle, with the same Driver, leaves the Ride accepted.
+A Ride its Driver has accepted. Used only when that assignment requires acceptance. Changing only the Vehicle, with the same Driver, leaves the Ride accepted.
 
 **Done**:
 A finished Ride that was carried out.
 _Avoid_: complete, closed
 
 **No-show**:
-A finished Ride that the guest did not take. When it may be marked, and who is charged, are still open.
+A finished Ride the guest did not take, after the Tenant's wait. v1 records it and charges nothing.
 _Avoid_: cancellation
 
 **Cancelled**:
@@ -37,8 +37,8 @@ A finished Ride that will not run. It stays on record.
 _Avoid_: deleted
 
 **Driver**:
-The person assigned to drive a Ride. Their upcoming list is the unfinished Rides currently assigned to them. A Ride leaves that list as soon as it is no longer theirs.
-_Avoid_: operator
+The person assigned to drive a Ride. A Driver may be set to must-accept; otherwise assignment is enough. Their upcoming list is the unfinished Rides currently assigned to them. A Ride leaves that list as soon as it is no longer theirs.
+_Avoid_: operator, external collaborator
 
 **Vehicle**:
 The vehicle set on a Ride together with a Driver. A Ride has a Vehicle only when it has a Driver.
