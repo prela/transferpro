@@ -5,7 +5,7 @@ Instructions for Cursor agents working in the `transferpro` repo.
 ## Read first, in this order
 
 1. `CHARTER.md` — goal, scope, v1 slice, rules, WBS. Owner-locked.
-2. `CONTEXT.md` — glossary. Use its terms in code, tests, and tickets (Transfer vs Ride, Client vs Partner, Tenant).
+2. `GLOSSARY.md` — ubiquitous language. Use its terms in code, tests, and tickets (Transfer vs Ride, Client vs Partner, Tenant).
 3. `docs/adr/` — accepted decisions. Do not contradict an ADR; propose a new one.
 4. The GitHub issue for your WP.
 
@@ -27,7 +27,7 @@ Instructions for Cursor agents working in the `transferpro` repo.
 ## Skill workflow
 
 1. **Wayfinder** — project → WPs as GitHub issues (done once, refreshed when scope changes).
-2. **grill-with-docs** — per piece; update `CONTEXT.md` and write/update ADRs.
+2. **grill-with-docs** — per piece; update `GLOSSARY.md` and write/update ADRs.
 3. **architect** (pstack) — per WP: types, signatures, module structure. **Owner approves before code.**
 4. **tdd** — implement red–green–refactor; open one PR.
 5. **blast-radius** — before merging anything touching auth, RLS, migrations, jobs, or shared schemas.
@@ -51,5 +51,19 @@ docker compose up -d  # local Postgres
 
 - Tests written first and green; lint, typecheck, coverage pass in CI.
 - RLS tests for any new tenant table.
-- `CONTEXT.md` / ADR updated if a term or decision changed.
+- `GLOSSARY.md` / ADR updated if a term or decision changed.
 - PR description: WP id, what changed, what it could break, migration notes.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as GitHub issues in `prela/transferpro`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one root `GLOSSARY.md` and `docs/adr/`. See `docs/agents/domain.md`.

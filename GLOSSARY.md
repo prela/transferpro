@@ -1,4 +1,4 @@
-# CONTEXT.md — Transferpro glossary
+# GLOSSARY.md — Transferpro glossary
 
 Ubiquitous language for Transferpro. Seeded from `CHARTER.md`; every entry is **draft** until crystallized via grill-with-docs.
 

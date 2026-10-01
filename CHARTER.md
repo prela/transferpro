@@ -8,7 +8,7 @@ Owner-locked charter for **Transferpro**. Agents follow it. They do not edit thi
 2. The owner discusses and either rejects, amends, or approves.
 3. Only after explicit owner approval may this file be modified.
 
-Glossary lives in `CONTEXT.md`. Hard-to-reverse decisions live in `docs/adr/`. Those may be updated when a term or decision crystallizes (via grill-with-docs); this file may not.
+Glossary lives in `GLOSSARY.md`. Hard-to-reverse decisions live in `docs/adr/`. Those may be updated when a term or decision crystallizes (via grill-with-docs); this file may not.
 
 ## Goal
 
@@ -26,7 +26,7 @@ The owner's `enterprise-nuxt-starter` is **not** continued as a starter. Only pr
 
 ## Vocabulary
 
-Use `CONTEXT.md` as the glossary. Seed terms: **Tenant** (= Company = Better Auth organization), **Transfer** (the booking), **Ride** (execution; one Transfer may have several Rides/legs), **Driver**, **Vehicle**, **Partner** (subcontractor company a Ride is handed to), **Client** (agency, hotel, or individual who books), **BookingSource**, **ExternalRef** (source + external_id), **No-show**, **Dispatcher**. Also: **Work package (WP)**, **Charter** (this file).
+Use `GLOSSARY.md` as the glossary. Seed terms: **Tenant** (= Company = Better Auth organization), **Transfer** (the booking), **Ride** (execution; one Transfer may have several Rides/legs), **Driver**, **Vehicle**, **Partner** (subcontractor company a Ride is handed to), **Client** (agency, hotel, or individual who books), **BookingSource**, **ExternalRef** (source + external_id), **No-show**, **Dispatcher**. Also: **Work package (WP)**, **Charter** (this file).
 
 ## Users and roles
 
@@ -103,7 +103,7 @@ The solution MUST:
   modules/<module>/     # domain/ application/ infrastructure/ presentation/ + index.ts
   shared/               # Zod schemas and types shared client/server
   db/migrations/        # Drizzle migrations (owner-reviewed)
-  CHARTER.md  AGENTS.md  CONTEXT.md
+  CHARTER.md  AGENTS.md  GLOSSARY.md
   docs/adr/
 ```
 
@@ -137,7 +137,7 @@ Simplified GitFlow:
 ## Workflow (Cursor skills)
 
 1. **Wayfinder** — break the project into WPs as GitHub issues (first, once).
-2. **grill-with-docs** — per piece; produces/updates `CONTEXT.md` and ADRs.
+2. **grill-with-docs** — per piece; produces/updates `GLOSSARY.md` and ADRs.
 3. **architect** (pstack) — per WP: types, signatures, module structure first; owner approves.
 4. **tdd** — implement red–green–refactor; one PR per WP.
 5. **blast-radius** — before merging sensitive changes (auth, RLS, migrations, jobs).
@@ -170,7 +170,7 @@ Status: `todo` · `doing` · `review` · `done` · `blocked`. Phases **7+** are 
 | **0.2** | Scaffold Nuxt 4 + Nuxt UI, pnpm scripts `lint` `typecheck` `test` | 0.1 | todo |
 | **0.3** | Docker Compose (app + Postgres), Zod env schema, health/readiness | 0.2 | todo |
 | **0.4** | GitHub Actions on PRs (lint, typecheck, unit, e2e), coverage gates | 0.2 | todo |
-| **0.5** | Wayfinder run: issues for all v1 WPs; `CONTEXT.md` seeded | 0.1 | todo |
+| **0.5** | Wayfinder run: issues for all v1 WPs; `GLOSSARY.md` seeded | 0.1 | todo |
 | **1.1** | Tenancy + auth: Better Auth orgs, roles, invite (verify starter auth before copy) | 0.3 | todo |
 | **1.2** | RLS foundation: `tenant_id` convention, session tenant setting, policy tests | 1.1 | todo |
 | **1.3** | Audit log (append-only) | 1.2 | todo |
