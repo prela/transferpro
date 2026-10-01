@@ -20,6 +20,9 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0002 | PostgreSQL + Drizzle | accepted |
 | ADR-0003 | Booking sources as ports/adapters with idempotent import (`source` + `external_id`) | proposed |
 | ADR-0004 | Job queue: pg-boss on Postgres | accepted |
-| ADR-0005 | Ride states | accepted |
-| ADR-0006 | Driver acceptance | accepted |
+| ADR-0005 | Ride states | accepted; partially superseded by ADR-0008 |
+| ADR-0006 | Driver acceptance | accepted; partially superseded by ADR-0008 |
 | ADR-0007 | No-show | accepted |
+| ADR-0008 | Office acceptance, confirmed by phone | accepted |
+| ADR-0009 | Driver sees the price when payment is cash | accepted |
+| ADR-0010 | Re-acceptance after the pickup, the places, or the flight change | accepted |

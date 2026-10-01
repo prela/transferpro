@@ -1,6 +1,8 @@
 # Ride states
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0008
+
+ADR-0008 supersedes "Only the Driver may set `accepted`." ADR-0010 adds which edits move an accepted Ride back to `assigned`. The vehicle-only rule in this decision still stands. The rest of this decision stands, including the edge that ADR-0006 later closed.
 
 ## Context
 

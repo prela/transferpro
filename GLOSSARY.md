@@ -19,10 +19,12 @@ _Avoid_: trip, job, leg
 A Ride with no Driver and no Vehicle.
 
 **Assigned**:
-A Ride with both a Driver and a Vehicle. When this assignment requires acceptance, the Driver has not accepted it yet.
+A Ride with both a Driver and a Vehicle. When it requires acceptance, it is waiting on acceptance, including after an earlier acceptance was cleared.
+_Avoid_: pending
 
 **Accepted**:
-A Ride its Driver has accepted. Used only when that assignment requires acceptance. Changing only the Vehicle, with the same Driver, leaves the Ride accepted.
+A Ride that requires acceptance and has been accepted, by its Driver or by the office after confirming with that Driver by phone. Changing the pickup time, where it starts, where it ends, or the flight number returns it to assigned. Changing only the Vehicle does not.
+_Avoid_: confirmed (as a separate state)
 
 **Done**:
 A finished Ride that was carried out.

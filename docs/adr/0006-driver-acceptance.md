@@ -1,6 +1,8 @@
 # Driver acceptance
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0008
+
+ADR-0008 supersedes the assumption, in the context below, that only the Driver may set `accepted`. This decision still stands where it says Transferpro does not place the phone call and has no acceptance deadline. The office records the result of that call.
 
 Settles the edge ADR-0005 left open: whether `done` and `no-show` require `accepted`.
 
