@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Nuxt / Nitro build output
+.nuxt/
+.output/
+dist/
+
+# Env files
+.env*
+
+# Test coverage
+coverage/
+
+# OS
+.DS_Store
