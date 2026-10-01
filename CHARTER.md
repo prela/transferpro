@@ -68,7 +68,7 @@ Invoicing, fiscalization, price-list automation, platform APIs, Gmail/email impo
 - **Framework:** Nuxt 4 (Nitro), Nuxt UI, VueUse, Pinia (thin stores), Zod at every runtime boundary.
 - **Auth:** Better Auth with the organizations plugin (Tenant = organization), httpOnly session cookie.
 - **Data:** PostgreSQL + Drizzle ORM. `tenant_id` on every tenant table + Row Level Security. Every table has a primary key.
-- **Jobs:** background queue on Postgres (pg-boss or similar — ADR-0004). No Redis in v1.
+- **Jobs:** background queue on Postgres (pg-boss — ADR-0004). No Redis in v1.
 - **Driver client:** PWA (installable, offline-tolerant status updates later).
 - **i18n:** hr and en.
 - **Tooling:** pnpm, Antfu ESLint, Vitest, Playwright, Docker, GitHub Actions.
@@ -157,7 +157,7 @@ Cloud agents only after the local flow works end to end.
 - **ADR-0001** Multi-tenancy: Better Auth organizations + `tenant_id` + Postgres RLS.
 - **ADR-0002** PostgreSQL + Drizzle.
 - **ADR-0003** Booking sources as ports/adapters with idempotent import (`source` + `external_id`).
-- **ADR-0004** Job queue choice (pg-boss on Postgres vs. alternatives).
+- **ADR-0004** Job queue: pg-boss on Postgres. No Redis in v1.
 - Later: simplified GitFlow; repo layout and import-boundary enforcement; Ride status model.
 
 ## WBS
