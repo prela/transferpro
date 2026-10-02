@@ -2,6 +2,9 @@ import { sql } from 'drizzle-orm'
 import { check, text } from 'drizzle-orm/pg-core'
 import { tenantTable } from './tenant-table'
 
+export { account, invitation, member, organization, session, user, verification } from './auth-schema'
+export { tenantMember } from './tenant-member'
+
 /**
  * One row per Tenant. No settings HTTP route in this package.
  * `default_locale` is the Tenant default; a user's own locale lives on the auth user.
