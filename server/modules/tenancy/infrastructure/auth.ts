@@ -1,4 +1,5 @@
 import type { account, invitation, member, organization, session, user, verification } from '../../../../db/auth-schema'
+import type { AppEnv } from '../../../core/index'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { betterAuth } from 'better-auth'
 import { organization as organizationPlugin } from 'better-auth/plugins'
@@ -28,16 +29,12 @@ const schema = {
   invitation: typeof invitation
 }
 
-export function createAuth(input: {
-  databaseUrl: string
-  secret: string
-  baseURL: string
-}) {
-  const pool = new pg.Pool({ connectionString: input.databaseUrl })
+export function createAuth(env: AppEnv) {
+  const pool = new pg.Pool({ connectionString: env.AUTH_DATABASE_URL })
   const db = drizzle(pool, { schema })
   const auth = betterAuth({
-    secret: input.secret,
-    baseURL: input.baseURL,
+    secret: env.BETTER_AUTH_SECRET,
+    baseURL: env.BETTER_AUTH_URL,
     emailAndPassword: { enabled: true },
     advanced: {
       database: {

@@ -1,5 +1,6 @@
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { parseAppEnv } from '../../../core/index'
 import { createAuth } from './auth'
 
 /**
@@ -8,10 +9,21 @@ import { createAuth } from './auth'
  */
 const databaseUrl = process.env.DATABASE_URL
 const authDatabaseUrl = process.env.AUTH_DATABASE_URL
+const queueDatabaseUrl = process.env.QUEUE_DATABASE_URL
 if (!databaseUrl)
   throw new Error('DATABASE_URL is required (the transferpro_app role)')
 if (!authDatabaseUrl)
   throw new Error('AUTH_DATABASE_URL is required (the transferpro_auth role)')
+if (!queueDatabaseUrl)
+  throw new Error('QUEUE_DATABASE_URL is required (the transferpro_queue role)')
+
+const env = parseAppEnv({
+  DATABASE_URL: databaseUrl,
+  AUTH_DATABASE_URL: authDatabaseUrl,
+  QUEUE_DATABASE_URL: queueDatabaseUrl,
+  BETTER_AUTH_SECRET: 'transferpro-test-secret-32-characters',
+  BETTER_AUTH_URL: 'http://localhost:3000',
+})
 
 const appPool = new pg.Pool({ connectionString: databaseUrl })
 const authPool = new pg.Pool({ connectionString: authDatabaseUrl })
@@ -160,11 +172,7 @@ it('creating an organization makes that admin visible to the tenant session', as
     authClient.release()
   }
 
-  const { auth, close } = createAuth({
-    databaseUrl: authDatabaseUrl,
-    secret: 'transferpro-test-secret-32-characters',
-    baseURL: 'http://localhost:3000',
-  })
+  const { auth, close } = createAuth(env)
   try {
     const signedUp = await auth.api.signUpEmail({
       body: {

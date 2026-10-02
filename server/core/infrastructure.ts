@@ -1,5 +1,5 @@
 import type { DrizzleTransactionLike } from 'pg-boss'
-import type { JobHandlerScope, JobQueue, QueuedJob, TenantTransaction } from './index'
+import type { AppEnv, JobHandlerScope, JobQueue, QueuedJob, TenantTransaction } from './index'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
@@ -23,14 +23,11 @@ const envelopeSchema = z.object({
  * No queue is registered here.
  * Callers name a queue when they enqueue.
  */
-export async function createPgBossJobQueue(input: {
-  appDatabaseUrl: string
-  queueDatabaseUrl: string
-}): Promise<JobQueue> {
-  const appPool = new pg.Pool({ connectionString: input.appDatabaseUrl })
+export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
+  const appPool = new pg.Pool({ connectionString: env.DATABASE_URL })
   const appDb = drizzle(appPool)
   const boss = new PgBoss({
-    connectionString: input.queueDatabaseUrl,
+    connectionString: env.QUEUE_DATABASE_URL,
     schema: 'pgboss',
     createSchema: false,
     application_name: 'transferpro-queue',
@@ -110,4 +107,66 @@ export async function createPgBossJobQueue(input: {
 
 function asDrizzle(transaction: TenantTransaction): DrizzleTransactionLike {
   return transaction as DrizzleTransactionLike
+}
+
+/**
+ * One row of the catalog probe. Zod is the boundary: pg's row shape is not
+ * trusted, and a missing row means the connection has no role to judge.
+ */
+const roleProbeSchema = z.object({
+  role: z.string(),
+  rolsuper: z.boolean(),
+  rolbypassrls: z.boolean(),
+  owns_app_table: z.boolean(),
+})
+
+/**
+ * Boot refuses this connection when its role could skip tenant RLS or is
+ * the migrator. Superuser and BYPASSRLS ignore policies. Owning a table in
+ * schema `app` is the migrator's privilege, not a runtime role's.
+ * The connection string is not included in the error: it carries a password.
+ */
+export async function assertRuntimeRole(connectionString: string): Promise<void> {
+  const pool = new pg.Pool({ connectionString, max: 1 })
+  try {
+    const result = await pool.query(`
+      select
+        current_user as role,
+        rolsuper,
+        rolbypassrls,
+        exists (
+          select 1
+          from pg_class as c
+          join pg_namespace as n on n.oid = c.relnamespace
+          where n.nspname = 'app'
+            and c.relkind in ('r', 'p')
+            and c.relowner = pg_roles.oid
+        ) as owns_app_table
+      from pg_roles
+      where rolname = current_user
+    `)
+    const row = roleProbeSchema.parse(result.rows[0])
+    const reasons: string[] = []
+    if (row.rolsuper)
+      reasons.push('is superuser')
+    if (row.rolbypassrls)
+      reasons.push('has BYPASSRLS')
+    if (row.owns_app_table)
+      reasons.push('owns a table in schema app')
+    if (reasons.length > 0)
+      throw new Error(`refusing to start: ${row.role} ${reasons.join(', ')}`)
+  }
+  finally {
+    await pool.end()
+  }
+}
+
+/**
+ * The three runtime connections, in app, auth, queue order.
+ * The first over-privileged role stops boot; the migrator URL is not among them.
+ */
+export async function assertRuntimeRoles(env: AppEnv): Promise<void> {
+  await assertRuntimeRole(env.DATABASE_URL)
+  await assertRuntimeRole(env.AUTH_DATABASE_URL)
+  await assertRuntimeRole(env.QUEUE_DATABASE_URL)
 }

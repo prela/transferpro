@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
+import { parseAppEnv } from './index'
 import { createPgBossJobQueue } from './infrastructure'
 
 /**
@@ -13,11 +14,22 @@ import { createPgBossJobQueue } from './infrastructure'
  * by never storing anything.
  */
 const databaseUrl = process.env.DATABASE_URL
+const authDatabaseUrl = process.env.AUTH_DATABASE_URL
 const queueDatabaseUrl = process.env.QUEUE_DATABASE_URL
 if (!databaseUrl)
   throw new Error('DATABASE_URL is required (the transferpro_app role)')
+if (!authDatabaseUrl)
+  throw new Error('AUTH_DATABASE_URL is required (the transferpro_auth role)')
 if (!queueDatabaseUrl)
   throw new Error('QUEUE_DATABASE_URL is required (the transferpro_queue role)')
+
+const env = parseAppEnv({
+  DATABASE_URL: databaseUrl,
+  AUTH_DATABASE_URL: authDatabaseUrl,
+  QUEUE_DATABASE_URL: queueDatabaseUrl,
+  BETTER_AUTH_SECRET: 'transferpro-test-secret-32-characters',
+  BETTER_AUTH_URL: 'http://localhost:3000',
+})
 
 const tenantA = '33333333-3333-4333-8333-333333333333'
 const tenantB = '44444444-4444-4444-8444-444444444444'
@@ -37,10 +49,7 @@ const appDb = drizzle(appPool)
 let queue: JobQueue
 
 beforeAll(async () => {
-  queue = await createPgBossJobQueue({
-    appDatabaseUrl: databaseUrl,
-    queueDatabaseUrl,
-  })
+  queue = await createPgBossJobQueue(env)
 })
 
 afterAll(async () => {
