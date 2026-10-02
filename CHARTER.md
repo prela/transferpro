@@ -94,15 +94,20 @@ The solution MUST:
 - Testability: each Tier is testable with fakes at its ports.
 - Mobile-first, dark/light, WCAG 2.2 AA on shipped UI.
 
-### Repository layout (proposal — confirm in architect step)
+### Repository layout
 
 ```
 /
-  app/                  # Nuxt 4 app (pages, layouts, components)
-  server/               # Nitro API, jobs
-  modules/<module>/     # domain/ application/ infrastructure/ presentation/ + index.ts
-  shared/               # Zod schemas and types shared client/server
-  db/migrations/        # Drizzle migrations (owner-reviewed)
+  app/                         # Nuxt 4 UI. Does not import server/
+    components/<module>/
+  shared/<module>/             # Zod contracts shared by client and server. Imports zod only
+  server/
+    api/  middleware/  plugins/
+    core/                      # index.ts public and framework-free; infrastructure.ts lint-gated; testing.ts for tests
+    modules/<module>/          # domain/ application/ infrastructure/ and index.ts
+  db/
+    schema.ts                  # Drizzle schema entry for drizzle-kit
+    migrations/                # Drizzle migrations, owner-reviewed
   CHARTER.md  AGENTS.md  GLOSSARY.md
   docs/adr/
 ```

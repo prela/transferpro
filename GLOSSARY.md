@@ -38,9 +38,17 @@ _Avoid_: cancellation
 A finished Ride that will not run. It stays on record.
 _Avoid_: deleted
 
+**Member**:
+A person in one Tenant, with one role: admin, dispatcher, or driver.
+_Avoid_: user
+
 **Driver**:
-The person assigned to drive a Ride. A Driver may be set to must-accept; otherwise assignment is enough. Their upcoming list is the unfinished Rides currently assigned to them. A Ride leaves that list as soon as it is no longer theirs.
+A Tenant's record of a member whose role is driver. That member has at most one Driver. A Driver may be set to must-accept; otherwise assignment is enough. Their upcoming list is the unfinished Rides currently assigned to them. A Ride leaves that list as soon as it is no longer theirs.
 _Avoid_: operator, external collaborator
+
+**Locale**:
+The language a user works in, Croatian or English. Each Tenant has a default locale, used only when that user has not chosen one.
+_Avoid_: language
 
 **Vehicle**:
 The vehicle set on a Ride together with a Driver. A Ride has a Vehicle only when it has a Driver.
