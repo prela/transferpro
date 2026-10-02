@@ -1,0 +1,10 @@
+minimumReleaseAgeExcludePrune: true
+# Babel still depends on semver 6.3.1, which this policy flags as a trust downgrade.
+trustPolicy: no-downgrade
+trustPolicyExclude:
+  - semver
+
+shellEmulator: true
+
+allowBuilds:
+  esbuild: true

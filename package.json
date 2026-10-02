@@ -3,17 +3,28 @@
   "scripts": {
     "prepare": "husky",
     "lint": "eslint .",
+    "typecheck": "nuxi typecheck",
     "test": "vitest run",
-    "test:rls": "vitest run --config vitest.rls.config.ts"
+    "test:rls": "vitest run --config vitest.rls.config.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "node --env-file=.env.migrate ./node_modules/drizzle-kit/bin.cjs migrate"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.3",
+    "nuxt": "^4.5.2",
+    "vue": "^3.5.43",
+    "vue-router": "^5.3.1"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^9.5.1",
     "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
     "eslint": "^10.11.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
     "pg": "^8.23.1",
     "typescript": "^5.9.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "vue-tsc": "^3.3.11"
   }
 }
