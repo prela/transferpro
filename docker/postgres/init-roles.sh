@@ -1,0 +1,18 @@
+#!/bin/bash
+# Runs once, on the first start of a fresh Postgres data directory.
+# Passwords come from the environment written by scripts/setup-db-roles.sh.
+set -euo pipefail
+
+: "${TRANSFERPRO_OWNER_PASSWORD:?TRANSFERPRO_OWNER_PASSWORD is required}"
+: "${TRANSFERPRO_APP_PASSWORD:?TRANSFERPRO_APP_PASSWORD is required}"
+: "${TRANSFERPRO_AUTH_PASSWORD:?TRANSFERPRO_AUTH_PASSWORD is required}"
+: "${TRANSFERPRO_QUEUE_PASSWORD:?TRANSFERPRO_QUEUE_PASSWORD is required}"
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<SQL
+CREATE ROLE transferpro_owner LOGIN BYPASSRLS PASSWORD '${TRANSFERPRO_OWNER_PASSWORD}';
+CREATE ROLE transferpro_app   LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '${TRANSFERPRO_APP_PASSWORD}';
+CREATE ROLE transferpro_auth  LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '${TRANSFERPRO_AUTH_PASSWORD}';
+CREATE ROLE transferpro_queue LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '${TRANSFERPRO_QUEUE_PASSWORD}';
+
+GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO transferpro_owner, transferpro_app, transferpro_auth, transferpro_queue;
+SQL
