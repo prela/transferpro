@@ -16,5 +16,8 @@ CREATE ROLE transferpro_queue LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '${TRANSFER
 
 GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO transferpro_owner, transferpro_app, transferpro_auth, transferpro_queue;
 -- Migrations create schema app. CREATE on the database is not granted to PUBLIC.
+-- The queue role is not granted CREATE. It owns schema pgboss because the
+-- migrator is a member of that role and can AUTHORIZATION the schema to it.
 GRANT CREATE ON DATABASE ${POSTGRES_DB} TO transferpro_owner;
+GRANT transferpro_queue TO transferpro_owner;
 SQL

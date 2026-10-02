@@ -15,6 +15,13 @@
       "when": 1790931262308,
       "tag": "0001_auth_member_view",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790934101060,
+      "tag": "0002_pgboss_schema",
+      "breakpoints": true
     }
   ]
 }
