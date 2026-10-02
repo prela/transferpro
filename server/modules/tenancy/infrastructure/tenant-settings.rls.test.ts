@@ -11,9 +11,18 @@ if (!databaseUrl)
 
 const pool = new pg.Pool({ connectionString: databaseUrl })
 
+const tenantA = '11111111-1111-4111-8111-111111111111'
+const tenantB = '22222222-2222-4222-8222-222222222222'
+
 beforeAll(async () => {
   const client = await pool.connect()
   client.release()
+  // One settings row per tenant. Drop the fixtures so a second run can insert again.
+  for (const tenantId of [tenantA, tenantB]) {
+    await withTenant(tenantId, async (session) => {
+      await session.query('delete from app.tenant_settings')
+    })
+  }
 })
 
 afterAll(async () => {
@@ -42,9 +51,6 @@ async function withTenant<T>(
 }
 
 it('tenant B cannot read or write Tenant A settings', async () => {
-  const tenantA = '11111111-1111-4111-8111-111111111111'
-  const tenantB = '22222222-2222-4222-8222-222222222222'
-
   await withTenant(tenantA, async (client) => {
     await client.query(
       'insert into app.tenant_settings (default_locale, time_zone) values ($1, $2)',

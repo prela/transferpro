@@ -15,4 +15,6 @@ CREATE ROLE transferpro_auth  LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '${TRANSFER
 CREATE ROLE transferpro_queue LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '${TRANSFERPRO_QUEUE_PASSWORD}';
 
 GRANT CONNECT ON DATABASE ${POSTGRES_DB} TO transferpro_owner, transferpro_app, transferpro_auth, transferpro_queue;
+-- Migrations create schema app. CREATE on the database is not granted to PUBLIC.
+GRANT CREATE ON DATABASE ${POSTGRES_DB} TO transferpro_owner;
 SQL

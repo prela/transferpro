@@ -1,0 +1,67 @@
+{
+  "id": "ffae6746-1251-40c1-ae37-866379fb315f",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "app.tenant_settings": {
+      "name": "tenant_settings",
+      "schema": "app",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "app.current_tenant_id()"
+        },
+        "default_locale": {
+          "name": "default_locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "time_zone": {
+          "name": "time_zone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "transferpro_app"
+          ],
+          "using": "\"app\".\"tenant_settings\".\"tenant_id\" = app.current_tenant_id()",
+          "withCheck": "\"app\".\"tenant_settings\".\"tenant_id\" = app.current_tenant_id()"
+        }
+      },
+      "checkConstraints": {
+        "tenant_settings_default_locale": {
+          "name": "tenant_settings_default_locale",
+          "value": "\"app\".\"tenant_settings\".\"default_locale\" in ('hr', 'en')"
+        }
+      },
+      "isRLSEnabled": true
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
