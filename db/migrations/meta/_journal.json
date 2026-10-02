@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790929121140,
+      "tag": "0000_tenant_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790931262308,
+      "tag": "0001_auth_member_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790934101060,
+      "tag": "0002_pgboss_schema",
+      "breakpoints": true
+    }
+  ]
+}

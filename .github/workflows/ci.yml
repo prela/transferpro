@@ -1,0 +1,104 @@
+# Push and pull_request both run this workflow. A pull request from this
+# repo therefore starts two runs. That is intentional: a branch push is
+# checked even when it has no pull request yet.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: transferpro
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d transferpro"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level=high
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      # Roles are created here, not from a committed password. The SQL lives
+      # in docker/postgres/init-roles.sh. PGHOST makes that script talk to the
+      # service container over TCP; inside Docker it still uses the socket.
+      - name: Cross-tenant RLS suite
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: transferpro
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+          owner_password=$(openssl rand -hex 24)
+          app_password=$(openssl rand -hex 24)
+          auth_password=$(openssl rand -hex 24)
+          queue_password=$(openssl rand -hex 24)
+          better_auth_secret=$(openssl rand -hex 32)
+          echo "::add-mask::$owner_password"
+          echo "::add-mask::$app_password"
+          echo "::add-mask::$auth_password"
+          echo "::add-mask::$queue_password"
+          echo "::add-mask::$better_auth_secret"
+
+          export TRANSFERPRO_OWNER_PASSWORD="$owner_password"
+          export TRANSFERPRO_APP_PASSWORD="$app_password"
+          export TRANSFERPRO_AUTH_PASSWORD="$auth_password"
+          export TRANSFERPRO_QUEUE_PASSWORD="$queue_password"
+          bash docker/postgres/init-roles.sh
+
+          umask 077
+          cat > .env <<EOF
+          TRANSFERPRO_OWNER_PASSWORD=${owner_password}
+          TRANSFERPRO_APP_PASSWORD=${app_password}
+          TRANSFERPRO_AUTH_PASSWORD=${auth_password}
+          TRANSFERPRO_QUEUE_PASSWORD=${queue_password}
+          DATABASE_URL=postgres://transferpro_app:${app_password}@127.0.0.1:5432/transferpro
+          AUTH_DATABASE_URL=postgres://transferpro_auth:${auth_password}@127.0.0.1:5432/transferpro
+          QUEUE_DATABASE_URL=postgres://transferpro_queue:${queue_password}@127.0.0.1:5432/transferpro
+          BETTER_AUTH_SECRET=${better_auth_secret}
+          BETTER_AUTH_URL=http://127.0.0.1:3000
+          EOF
+          cat > .env.migrate <<EOF
+          DATABASE_MIGRATE_URL=postgres://transferpro_owner:${owner_password}@127.0.0.1:5432/transferpro
+          EOF
+
+          set -a
+          # shellcheck disable=SC1091
+          . ./.env
+          . ./.env.migrate
+          set +a
+
+          pnpm db:migrate:local
+          pnpm test:rls
