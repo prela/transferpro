@@ -1,8 +1,10 @@
 # Handoff: issue #9 foundation
 
-Next session continues ticket **#9** on branch `feature/9-foundation` in `/home/prela/projects/transfers/transferpro`. The branch tracks `origin/feature/9-foundation`. Worktree was clean at handoff.
+Status: #9 is complete.
 
-Last commit: `d4dddd07e07b96670923704301e53a149162607e` (`d4dddd0`).
+Ticket **#9** is finished on branch `feature/9-foundation` in `/home/prela/projects/transfers/transferpro`. The branch tracks `origin/feature/9-foundation`.
+
+Last commit on the branch before the CI slice: `c5850b3d1def72287b06759311a6a35e1e464f22` (`c5850b3`).
 
 ## Read first
 
@@ -50,19 +52,21 @@ pnpm db:migrate:local
 
 `.husky/pre-commit` is lint-staged, then `pnpm typecheck`, then `pnpm test`.
 
-## Remaining (do not start until asked)
+## Remaining
+
+Status: #9 is complete. Slices 2 (pg-boss), 3 (Zod app env and the boot check), and 4 (CI, plus the import lint gate) are done. CI is `.github/workflows/ci.yml`. The gate is `no-restricted-imports` in `eslint.config.mjs`, covered by `server/core/import-gate.test.ts`.
 
 Stop after each slice with a short summary so the owner can commit.
 
-### 2. pg-boss behind a port
+### 2. pg-boss behind a port (done)
 
 Enqueue uses the Drizzle transaction and pg-boss `fromDrizzle`, inside the tenant transaction. The job's Tenant comes from the context. Rollback removes the job. Application code reaches the queue through a port. This package registers no production job. `transferpro_queue` owns schema `pgboss` and has no grant on `app` or on Better Auth. `transferpro_app` has DML (not DDL) on `pgboss`.
 
-### 3. Zod env and the boot check
+### 3. Zod env and the boot check (done)
 
 Validate environment at startup. The migrator URL is not part of the app environment. Boot refuses to start if any runtime role (`transferpro_app`, `transferpro_auth`, `transferpro_queue`) is superuser or has `BYPASSRLS`.
 
-### 4. CI
+### 4. CI (done)
 
 GitHub Actions on a pull request: lint, typecheck, unit tests, and the cross-tenant RLS suite. CI mints ephemeral role passwords in the job. Do not reuse local passwords.
 
