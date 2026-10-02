@@ -8,3 +8,8 @@ shellEmulator: true
 
 allowBuilds:
   esbuild: true
+
+auditConfig:
+  # dev-only via listhen (dev-server self-signed cert), not in the production bundle, revisit when node-forge > 1.4.0 ships.
+  ignoreGhsas:
+    - GHSA-86w9-cpqp-85rv

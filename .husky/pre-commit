@@ -1,3 +1,15 @@
+# develop and main are protected. GitHub Pro would enforce this on the server.
+# Until then the hook is the gate. ALLOW_PROTECTED_BRANCH=1 is the owner override.
+branch=$(git rev-parse --abbrev-ref HEAD)
+case "$branch" in
+  develop|main)
+    if [ "${ALLOW_PROTECTED_BRANCH:-}" != "1" ]; then
+      echo "refusing commit on $branch. Set ALLOW_PROTECTED_BRANCH=1 to override." >&2
+      exit 1
+    fi
+    ;;
+esac
+
 pnpm exec lint-staged
 pnpm typecheck
 pnpm test

@@ -1,6 +1,6 @@
 # Handoff: issue #9 foundation
 
-Status: #9 is complete.
+Status: #9 is complete, including slice 5 (protected-branch hook, high audit, Dependabot, ASVS pull-request template).
 
 Ticket **#9** is finished on branch `feature/9-foundation` in `/home/prela/projects/transfers/transferpro`. The branch tracks `origin/feature/9-foundation`.
 
@@ -50,11 +50,13 @@ pnpm db:migrate:local
 
 `pnpm test:rls` needs `DATABASE_URL` (app role) and `AUTH_DATABASE_URL` from the gitignored `.env`. `pnpm db:migrate:local` reads gitignored `.env.migrate` (`DATABASE_MIGRATE_URL`, owner role) and applies to the local database only. Do not print those files, commit them, or copy them to GitHub. Do not run `pnpm test:rls` from the hook.
 
-`.husky/pre-commit` is lint-staged, then `pnpm typecheck`, then `pnpm test`.
+`.husky/pre-commit` refuses a commit on `develop` or `main` unless `ALLOW_PROTECTED_BRANCH=1`, then runs lint-staged, `pnpm typecheck`, and `pnpm test`.
+
+`auditConfig.ignoreGhsas` in `pnpm-workspace.yaml` ignores only GHSA-86w9-cpqp-85rv. node-forge is dev-only via listhen (dev-server self-signed cert), not in the production bundle. `pnpm exec nuxt build` then `rg -l node-forge .output` found nothing (454 files searched). Revisit when node-forge > 1.4.0 ships. The moderate esbuild advisory is not ignored.
 
 ## Remaining
 
-Status: #9 is complete. Slices 2 (pg-boss), 3 (Zod app env and the boot check), and 4 (CI, plus the import lint gate) are done. CI is `.github/workflows/ci.yml`. The gate is `no-restricted-imports` in `eslint.config.mjs`, covered by `server/core/import-gate.test.ts`.
+Status: #9 is complete. Slices 2–5 are done. CI is `.github/workflows/ci.yml` and runs `pnpm audit --audit-level=high` after install. The import gate is `no-restricted-imports` in `eslint.config.mjs`, covered by `server/core/import-gate.test.ts`.
 
 Stop after each slice with a short summary so the owner can commit.
 
