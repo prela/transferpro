@@ -1,10 +1,38 @@
 import type { DrizzleTransactionLike } from 'pg-boss'
-import type { AppEnv, JobHandlerScope, JobQueue, QueuedJob, TenantTransaction } from './index'
+import type { AppEnv, JobHandlerScope, JobQueue, QueuedJob, TenantContext, TenantTransaction } from './index'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { fromDrizzle, PgBoss } from 'pg-boss'
 import { z } from 'zod'
+import { acceptRequestId, currentRequestId, runWithRequestId, runWithTenantId } from './logger'
+
+/**
+ * Raw id, for the job path only. The envelope was stamped at enqueue.
+ * Application code uses `openTenantSession`, which takes a `TenantContext`.
+ */
+async function openTenantSessionById<T>(
+  transaction: TenantTransaction,
+  tenantId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const id = z.uuid().parse(tenantId)
+  // Third argument true: the setting dies with this transaction.
+  await transaction.execute(sql`select set_config('app.tenant_id', ${id}, true)`)
+  return runWithTenantId(id, run)
+}
+
+/**
+ * ADR-0011 tenant session. Callers pass the context the kernel minted.
+ * The log scope dies with `run`.
+ */
+export async function openTenantSession<T>(
+  transaction: TenantTransaction,
+  context: TenantContext,
+  run: () => Promise<T>,
+): Promise<T> {
+  return openTenantSessionById(transaction, context.tenantId, run)
+}
 
 /**
  * What `send` stores. The tenant is outside the caller's payload so a
@@ -12,6 +40,8 @@ import { z } from 'zod'
  */
 const envelopeSchema = z.object({
   tenantId: z.uuid(),
+  // Absent on jobs enqueued outside a request. Never invented on read.
+  requestId: z.string().optional(),
   data: z.unknown(),
 })
 
@@ -61,9 +91,15 @@ export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
       raiseIfBossFailed()
       const tenantId = z.uuid().parse(context.tenantId)
       await ensureQueue(name)
+      // The request id is not part of the caller's payload. It is whatever
+      // request is open now, so the worker can put it back on the log line.
+      const requestId = currentRequestId()
+      const stored = requestId === undefined
+        ? { tenantId, data }
+        : { tenantId, requestId, data }
       // fromDrizzle runs the insert on the caller's transaction, so a
       // rollback drops the job together with the rest of that unit of work.
-      const id = await boss.send(name, { tenantId, data }, {
+      const id = await boss.send(name, stored, {
         db: fromDrizzle(asDrizzle(transaction), sql),
       })
       if (!id)
@@ -83,8 +119,6 @@ export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
           return null
 
         const envelope = envelopeSchema.parse(job.data)
-        // Third argument true: the setting dies with this transaction.
-        await transaction.execute(sql`select set_config('app.tenant_id', ${envelope.tenantId}, true)`)
         const queued: QueuedJob = {
           id: job.id,
           name: job.name,
@@ -92,8 +126,19 @@ export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
           data: envelope.data,
         }
         const scope: JobHandlerScope = { transaction }
-        await handle(queued, scope)
-        await boss.complete(name, job.id, null, { db })
+        const handleJob = async () => {
+          await openTenantSessionById(transaction, envelope.tenantId, async () => {
+            await handle(queued, scope)
+            await boss.complete(name, job.id, null, { db })
+          })
+        }
+        // Request scope outside the tenant scope, so the tenant call keeps
+        // the restored request id. An unsafe or missing id is left unset.
+        const requestId = acceptRequestId(envelope.requestId)
+        if (requestId === undefined)
+          await handleJob()
+        else
+          await runWithRequestId(requestId, handleJob)
         return queued
       })
     },

@@ -4,8 +4,9 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
-import { parseAppEnv } from './index'
+import { openTenantSession, parseAppEnv, runWithRequestId } from './index'
 import { createPgBossJobQueue } from './infrastructure'
+import { captureLogs } from './testing'
 
 /**
  * Queue seam: the caller enqueues through the JobQueue port inside its
@@ -71,8 +72,7 @@ async function tenantTransaction(
   commit: boolean,
 ) {
   await appDb.transaction(async (transaction) => {
-    await transaction.execute(sql`select set_config('app.tenant_id', ${tenantId}, true)`)
-    await run(transaction)
+    await openTenantSession(transaction, { tenantId }, () => run(transaction))
     if (!commit)
       throw new RolledBack()
   })
@@ -128,6 +128,30 @@ it('handles the job inside the tenant session stamped at enqueue', async () => {
 
   expect(job).toMatchObject({ tenantId: tenantA, data: { tenantId: tenantB } })
   expect(seen).toEqual([{ default_locale: 'hr', tenant_id: tenantA }])
+})
+
+it('restores the request id stamped at enqueue inside the tenant session', async () => {
+  const logQueue = 'foundation_request'
+  while (await queue.handleNext(logQueue, async () => {})) {
+    // A failed earlier run may have left a job. Drop it before this case.
+  }
+
+  const logs = captureLogs()
+  const request = '6b1e0c3a-2222-4222-8222-222222222222'
+
+  await runWithRequestId(request, () =>
+    tenantTransaction(tenantA, transaction =>
+      queue.enqueue({ tenantId: tenantA }, transaction, logQueue, { n: 1 }), true))
+
+  await queue.handleNext(logQueue, async () => {
+    logs.logger.info({ event: 'job' })
+  })
+  logs.logger.info({ event: 'after' })
+
+  const lines = logs.lines()
+  expect(lines[0]).toMatchObject({ event: 'job', request_id: request, tenant_id: tenantA })
+  expect(lines[1]?.request_id).toBeUndefined()
+  expect(lines[1]?.tenant_id).toBeUndefined()
 })
 
 it('the queue role cannot read tenant or auth tables, and the app role cannot create queue objects', async () => {

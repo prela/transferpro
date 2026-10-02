@@ -128,4 +128,16 @@ export default antfu(
       'transferpro/no-dynamic-driver-import': 'off',
     },
   },
+  {
+    // One logger. A console call anywhere else would skip redaction.
+    rules: {
+      'no-console': 'error',
+    },
+  },
+  {
+    files: ['server/core/logger.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
 )
