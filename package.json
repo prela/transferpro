@@ -1,10 +1,19 @@
 {
+  "type": "module",
+  "scripts": {
+    "prepare": "husky",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:rls": "vitest run --config vitest.rls.config.ts"
+  },
   "devDependencies": {
+    "@antfu/eslint-config": "^9.5.1",
+    "@types/pg": "^8.23.1",
+    "eslint": "^10.11.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
-    "prettier": "^3.9.9"
-  },
-  "scripts": {
-    "prepare": "husky"
+    "pg": "^8.23.1",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
   }
 }
