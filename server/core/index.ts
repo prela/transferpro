@@ -3,8 +3,13 @@
  * Application code enqueues here. The adapter lives in infrastructure.ts.
  * Env is parsed here so boot can reject a bad config before that adapter loads.
  */
+import type { LogLevel } from './logger'
 import process from 'node:process'
 import { z } from 'zod'
+import { configureLogger, logLevels } from './logger'
+
+export { configureLogger, createLogger, currentRequestId, endRequestLog, getLogger, handleLoggedError, openRequestLog, resolveRequestId, runWithRequestId } from './logger'
+export type { Logger, LogLevel } from './logger'
 
 /**
  * Runtime configuration, parsed once at boot.
@@ -16,6 +21,8 @@ export interface AppEnv {
   readonly QUEUE_DATABASE_URL: string
   readonly BETTER_AUTH_SECRET: string
   readonly BETTER_AUTH_URL: string
+  /** Pino level. Production defaults to `info`; anywhere else, `debug`. */
+  readonly LOG_LEVEL: LogLevel
 }
 
 /**
@@ -30,15 +37,29 @@ const appEnvSchema = z.object({
   BETTER_AUTH_URL: z.url(),
 })
 
+/**
+ * Unset or blank means the caller did not choose. Production is `info`
+ * so a deployed process stays quiet. Local and test stay on `debug`.
+ */
+function parseLogLevel(source: NodeJS.ProcessEnv): LogLevel {
+  const raw = source.LOG_LEVEL
+  if (raw === undefined || raw === '')
+    return source.NODE_ENV === 'production' ? 'info' : 'debug'
+  return z.enum(logLevels).parse(raw)
+}
+
 /** Parse one source. Boot uses `loadAppEnv`, which caches this. */
 export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
-  return appEnvSchema.parse({
-    DATABASE_URL: source.DATABASE_URL,
-    AUTH_DATABASE_URL: source.AUTH_DATABASE_URL,
-    QUEUE_DATABASE_URL: source.QUEUE_DATABASE_URL,
-    BETTER_AUTH_SECRET: source.BETTER_AUTH_SECRET,
-    BETTER_AUTH_URL: source.BETTER_AUTH_URL,
-  })
+  return {
+    ...appEnvSchema.parse({
+      DATABASE_URL: source.DATABASE_URL,
+      AUTH_DATABASE_URL: source.AUTH_DATABASE_URL,
+      QUEUE_DATABASE_URL: source.QUEUE_DATABASE_URL,
+      BETTER_AUTH_SECRET: source.BETTER_AUTH_SECRET,
+      BETTER_AUTH_URL: source.BETTER_AUTH_URL,
+    }),
+    LOG_LEVEL: parseLogLevel(source),
+  }
 }
 
 let cached: AppEnv | undefined
@@ -59,6 +80,7 @@ export function loadAppEnv(): AppEnv {
  */
 export async function boot(): Promise<AppEnv> {
   const env = loadAppEnv()
+  configureLogger(env.LOG_LEVEL)
   const { assertRuntimeRoles } = await import('./infrastructure')
   await assertRuntimeRoles(env)
   return env
@@ -79,6 +101,20 @@ export interface TenantContext {
  */
 export interface TenantTransaction {
   execute: (query: any) => Promise<unknown>
+}
+
+/**
+ * One tenant session: `app.tenant_id` for this transaction, and `tenant_id`
+ * on log lines inside `run`. The caller passes the kernel's `TenantContext`,
+ * not a raw id. The SQL lives in the adapter.
+ */
+export async function openTenantSession<T>(
+  transaction: TenantTransaction,
+  context: TenantContext,
+  run: () => Promise<T>,
+): Promise<T> {
+  const { openTenantSession: open } = await import('./infrastructure')
+  return open(transaction, context, run)
 }
 
 /** A job as the worker hands it to the handler. `data` is the caller's payload. */

@@ -65,3 +65,22 @@ it('allows those imports from infrastructure files and tests', async () => {
     expect(messages, filePath).toEqual([])
   }
 })
+
+async function consoleUse(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? []).filter(message => message.ruleId === 'no-console')
+}
+
+it('blocks console outside the logger module', async () => {
+  const outside = await consoleUse(
+    'server/modules/tenancy/domain/leak.ts',
+    `console.log('ana@example.com')\n`,
+  )
+  expect(outside).not.toEqual([])
+
+  const inside = await consoleUse(
+    'server/core/logger.ts',
+    `console.log('line')\n`,
+  )
+  expect(inside).toEqual([])
+})
