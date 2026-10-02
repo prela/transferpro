@@ -123,13 +123,22 @@ The solution MUST:
 - Prioritize correctness, security, and a shipped v1 over extra features.
 - Do not assume; ask. Do not edit this Charter without owner approval.
 
+## Observability and security baseline
+
+- **Logging:** structured JSON logs (one logger in `server/core`). Every request gets a request id (from `x-request-id` or generated), returned in the response header. Every log line inside a tenant call carries `request_id` and `tenant_id`; `user_id` only as the opaque id. No personal data in logs: no names, emails, phone numbers, guest names, flight numbers, addresses, prices, tokens, cookies, or connection strings. A redaction list in the logger enforces this, and a test proves it.
+- **Error tracking:** from the first deployed environment, unhandled server and client errors go to an error tracker through the Sentry SDK (Sentry free tier or self-hosted GlitchTip on Coolify; the DSN is the only switch). Same no-personal-data rule; `sendDefaultPii` off.
+- **Dependencies:** `pnpm audit --audit-level=high` runs in CI and fails the build. Dependabot opens weekly PRs for npm and GitHub Actions.
+- **Security review:** every PR fills the OWASP ASVS 5.0 Level 1 checklist in the PR template (only the items the change touches; "n/a" is allowed with a reason).
+- **Agent guardrails in code, not only text:** a git hook refuses commits on `develop` and `main` (owner override: `ALLOW_PROTECTED_BRANCH=1`). Server-side branch protection needs GitHub Pro for a private repo; until then CI on PRs plus the hook are the gate.
+- **Telemetry** (product analytics, metrics, tracing) is out of scope until after the pilot.
+
 ## Git
 
 Simplified GitFlow:
 
 - **`develop`** — default branch, integration. Preview deploy.
 - **`feature/<wp>-<slug>`** — from `develop`, PR back to `develop`. One WP per branch. Agents never commit directly to `develop` or `main`.
-- **`main`** — protected. Receives a release PR from `develop`. Production deploy from a SemVer tag on `main`.
+- **`main`** — protected (server-side once on GitHub Pro; until then by the local hook and PR-only merges). Receives a release PR from `develop`. Production deploy from a SemVer tag on `main`.
 - **`hotfix/<slug>`** — from `main`; merge to `main` and back to `develop`.
 - Repo `transferpro` is **private**.
 
