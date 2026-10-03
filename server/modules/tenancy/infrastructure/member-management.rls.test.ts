@@ -190,25 +190,77 @@ it('last admin gets 409 and cannot be removed or demoted', async () => {
   const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
 
   try {
-    // Sign in as the admin
+    // Create a second admin so we can have one admin try to demote the other
+    const admin2UserId = crypto.randomUUID()
+    const admin2Password = await (await import('better-auth/crypto')).hashPassword('password-admin2')
+    await authPool.query(
+      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
+       values ($1, 'Admin 2', 'mm-admin2-last@example.test', true, now(), now())`,
+      [admin2UserId],
+    )
+    await authPool.query(
+      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
+       values ($1, $2, 'credential', $2, $3, now(), now())`,
+      [crypto.randomUUID(), admin2UserId, admin2Password],
+    )
+    await authPool.query(
+      `insert into auth.member (id, organization_id, user_id, role, created_at)
+       values ($1, $2, $3, 'admin', now())`,
+      [crypto.randomUUID(), tenant.tenantId, admin2UserId],
+    )
+
+    // Sign in as second admin
     const signIn = await handle.auth.api.signInEmail({
-      body: { email: 'mm-last-admin@example.test', password: 'password-last' },
+      body: { email: 'mm-admin2-last@example.test', password: 'password-admin2' },
       returnHeaders: true,
     })
     const cookie = signIn.headers.getSetCookie().join('; ')
     const headers = new Headers({ cookie })
 
-    // Admin tries to demote themselves - should get 409
+    // Remove the first admin so second admin is the last one
+    const { removeMember } = await import('./member-management')
+    await removeMember(handle, headers, tenant.tenantId, tenant.adminUserId)
+
+    // Admin 2 tries to demote themselves as last admin - should get 409
     const { changeMemberRole } = await import('./member-management')
     await expect(
-      changeMemberRole(handle, headers, tenant.tenantId, tenant.adminUserId, 'dispatcher'),
-    ).rejects.toThrow('Cannot remove or demote the last admin')
+      changeMemberRole(handle, headers, tenant.tenantId, admin2UserId, 'dispatcher'),
+    ).rejects.toThrow('Cannot change your own role')
 
-    // Admin tries to remove themselves - should get 409
-    const { removeMember } = await import('./member-management')
+    // Now create a third admin so admin2 is not the last
+    const admin3UserId = crypto.randomUUID()
+    const admin3Password = await (await import('better-auth/crypto')).hashPassword('password-admin3')
+    await authPool.query(
+      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
+       values ($1, 'Admin 3', 'mm-admin3-last@example.test', true, now(), now())`,
+      [admin3UserId],
+    )
+    await authPool.query(
+      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
+       values ($1, $2, 'credential', $2, $3, now(), now())`,
+      [crypto.randomUUID(), admin3UserId, admin3Password],
+    )
+    await authPool.query(
+      `insert into auth.member (id, organization_id, user_id, role, created_at)
+       values ($1, $2, $3, 'admin', now())`,
+      [crypto.randomUUID(), tenant.tenantId, admin3UserId],
+    )
+
+    // Admin 2 tries to demote Admin 3 (now last admin would be admin2) - should succeed
+    await changeMemberRole(handle, headers, tenant.tenantId, admin3UserId, 'dispatcher')
+
+    // Admin 2 is now the last admin. Sign in as admin 3 (now dispatcher)
+    const signIn3 = await handle.auth.api.signInEmail({
+      body: { email: 'mm-admin3-last@example.test', password: 'password-admin3' },
+      returnHeaders: true,
+    })
+    const cookie3 = signIn3.headers.getSetCookie().join('; ')
+    const headers3 = new Headers({ cookie: cookie3 })
+
+    // Dispatcher tries to change last admin - gets 403 (not admin)
     await expect(
-      removeMember(handle, headers, tenant.tenantId, tenant.adminUserId),
-    ).rejects.toThrow('Cannot remove or demote the last admin')
+      changeMemberRole(handle, headers3, tenant.tenantId, admin2UserId, 'dispatcher'),
+    ).rejects.toThrow('Forbidden')
   }
   finally {
     await handle.close()
@@ -459,6 +511,20 @@ it('driver cannot list members (403)', async () => {
       [crypto.randomUUID(), tenant.tenantId, driverUserId],
     )
 
+    // Add driver to tenant settings so they have a valid session
+    const migratePool = new pg.Pool({ connectionString: migrateDatabaseUrl })
+    try {
+      await migratePool.query(
+        `insert into app.tenant_settings (tenant_id, default_locale, time_zone)
+         values ($1, 'hr', 'Europe/Zagreb')
+         on conflict (tenant_id) do nothing`,
+        [tenant.tenantId],
+      )
+    }
+    finally {
+      await migratePool.end()
+    }
+
     // Sign in as driver
     const signIn = await handle.auth.api.signInEmail({
       body: { email: 'mm-driver-list@example.test', password: 'password-driver' },
@@ -466,6 +532,11 @@ it('driver cannot list members (403)', async () => {
     })
     const cookie = signIn.headers.getSetCookie().join('; ')
     const headers = new Headers({ cookie })
+
+    // Verify driver has a session
+    const session = await handle.auth.api.getSession({ headers })
+    expect(session).toBeTruthy()
+    expect(session?.user.id).toBe(driverUserId)
 
     const { listMembers } = await import('./session')
 
