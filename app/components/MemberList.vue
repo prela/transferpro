@@ -54,10 +54,11 @@ async function changeRole(userId: string, newRole: Member['role']) {
     if (selectElement) {
       selectElement.value = oldRole
     }
-    operationError.value = isLastAdminError(error)
-      ? 'members.lastAdmin'
-      : isSelfModificationError(error)
-        ? 'members.cannotModifySelf'
+    // Both are 409; the self check reads the message, so it must run first.
+    operationError.value = isSelfModificationError(error)
+      ? 'members.cannotModifySelf'
+      : isLastAdminError(error)
+        ? 'members.lastAdmin'
         : 'members.changeRoleFailed'
   }
   finally {
@@ -76,10 +77,10 @@ async function removeMember(userId: string) {
   }
   catch (error) {
     confirmingRemove.value = null
-    operationError.value = isLastAdminError(error)
-      ? 'members.lastAdmin'
-      : isSelfModificationError(error)
-        ? 'members.cannotModifySelf'
+    operationError.value = isSelfModificationError(error)
+      ? 'members.cannotModifySelf'
+      : isLastAdminError(error)
+        ? 'members.lastAdmin'
         : 'members.removeFailed'
   }
 }
