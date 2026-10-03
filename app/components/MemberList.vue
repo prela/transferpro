@@ -2,7 +2,7 @@
 import type { Member } from '../../shared'
 import { memberListSchema } from '../../shared'
 
-defineProps<{
+const props = defineProps<{
   isAdmin: boolean
   currentUserId: string
 }>()
@@ -54,12 +54,10 @@ async function changeRole(userId: string, newRole: Member['role']) {
     if (selectElement) {
       selectElement.value = oldRole
     }
-    // Both are 409; the self check reads the message, so it must run first.
-    operationError.value = isSelfModificationError(error)
-      ? 'members.cannotModifySelf'
-      : isLastAdminError(error)
-        ? 'members.lastAdmin'
-        : 'members.changeRoleFailed'
+    // Every 409 reads "Conflict", so the row tells self from last admin.
+    operationError.value = isConflict(error)
+      ? userId === props.currentUserId ? 'members.cannotModifySelf' : 'members.lastAdmin'
+      : 'members.changeRoleFailed'
   }
   finally {
     changingRole.value = null
@@ -77,31 +75,17 @@ async function removeMember(userId: string) {
   }
   catch (error) {
     confirmingRemove.value = null
-    operationError.value = isSelfModificationError(error)
-      ? 'members.cannotModifySelf'
-      : isLastAdminError(error)
-        ? 'members.lastAdmin'
-        : 'members.removeFailed'
+    operationError.value = isConflict(error)
+      ? userId === props.currentUserId ? 'members.cannotModifySelf' : 'members.lastAdmin'
+      : 'members.removeFailed'
   }
 }
 
-function isLastAdminError(error: unknown): boolean {
+function isConflict(error: unknown): boolean {
   if (typeof error !== 'object' || error === null)
     return false
   return ('statusCode' in error && error.statusCode === 409)
     || ('status' in error && error.status === 409)
-}
-
-function isSelfModificationError(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null)
-    return false
-  if (!('statusCode' in error || 'status' in error))
-    return false
-  const status = 'statusCode' in error ? error.statusCode : error.status
-  if (status !== 409)
-    return false
-  const message = 'statusMessage' in error ? String(error.statusMessage) : ''
-  return message.includes('your own') || message.includes('yourself')
 }
 
 function canModify(userId: string, currentUserId: string): boolean {
