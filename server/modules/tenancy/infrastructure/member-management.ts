@@ -175,7 +175,7 @@ async function selectMember(client: pg.PoolClient, organizationId: string, userI
   // A stored role outside the Tenant roles cannot be logged (ADR-0014), so nothing is written.
   const role = tenantRoleSchema.safeParse(row.data.role)
   if (!role.success)
-    throw new MemberAccessError(STATUS_CODE[500])
+    throw new MemberAccessError(STATUS_CODE[409], memberErrorMessage('member.roleNotTenant'))
   return { id: row.data.id, role: role.data }
 }
 

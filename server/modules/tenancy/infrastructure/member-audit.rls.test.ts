@@ -6,6 +6,9 @@ import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { changeMemberRole, closeTenantRuntime, inviteMember, readAuditLog, removeTenantMember } from '..'
+import { memberErrorMessage } from '../../../../shared'
+import { handleLoggedError } from '../../../core/index'
+import { captureLogs } from '../../../core/testing'
 import { createAuth } from './auth'
 import { createTenant } from './create-tenant'
 import { changeMemberRole as changeMemberRoleImpl, removeMember as removeMemberImpl } from './member-management'
@@ -202,20 +205,36 @@ it('a role change or removal whose entry the database refuses does not happen', 
   expect(await entryCount(created.tenantId)).toBe(0)
 })
 
-it('an action the log cannot record does not happen', async () => {
+it('an action the log cannot record is a 409, logged at warn without personal data, and does not happen', async () => {
   const created = await tenant('ma-atomic', 'Atena Admin')
   // A stored role outside the Tenant roles cannot be logged.
   const target = await addMember(created.tenantId, 'ma-atomic-target@example.test', 'Owen Owner', 'owner')
   await signIn('ma-atomic-target@example.test')
   const admin = await signIn('ma-atomic-admin@example.test')
+  const refused = { statusCode: 409, message: memberErrorMessage('member.roleNotTenant') }
 
-  await expect(changeMemberRole(admin, target, { role: 'driver' })).rejects.toMatchObject({ statusCode: 500 })
+  const changeError = await changeMemberRole(admin, target, { role: 'driver' }).catch(caught => caught)
+  expect(changeError).toMatchObject(refused)
   expect(await roleIn(created.tenantId, target)).toBe('owner')
 
-  await expect(removeTenantMember(admin, target)).rejects.toMatchObject({ statusCode: 500 })
+  const removeError = await removeTenantMember(admin, target).catch(caught => caught)
+  expect(removeError).toMatchObject(refused)
   expect(await roleIn(created.tenantId, target)).toBe('owner')
   const sessions = await authPool.query('select count(*)::int as count from auth.session where user_id = $1', [target])
   expect(sessions.rows[0].count).toBe(1)
+
+  const logs = captureLogs()
+  for (const error of [changeError, removeError]) {
+    expect(handleLoggedError(logs.logger, error, 'req-role-not-tenant')).toEqual({
+      statusCode: 409,
+      message: 'Request failed',
+      request_id: 'req-role-not-tenant',
+    })
+  }
+  expect(logs.lines().map(line => line.level)).toEqual([40, 40])
+  const logged = JSON.stringify(logs.lines())
+  for (const personal of [target, 'owner', 'Owen Owner', 'ma-atomic-target@example.test', created.adminUserId])
+    expect(logged).not.toContain(personal)
 
   // Better Auth's own insert is covered by the trigger: no entry, no invitation.
   await expect(authPool.query(

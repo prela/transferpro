@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { memberErrorMessage } from '../../../shared'
 import { MemberAccessError, TenantAccessError } from '../../modules/tenancy'
 import { memberHttpError, parseMemberUserId } from './http'
 
@@ -22,6 +23,11 @@ describe('memberHttpError', () => {
   it('keeps the last-admin 409 phrase', () => {
     const error = thrown(() => memberHttpError(new MemberAccessError(409)))
     expect(error).toMatchObject({ statusCode: 409, statusMessage: 'Cannot remove or demote the last admin.' })
+  })
+
+  it('keeps the fixed 409 phrase for a stored role the audit log cannot record', () => {
+    const error = thrown(() => memberHttpError(new MemberAccessError(409, memberErrorMessage('member.roleNotTenant'))))
+    expect(error).toMatchObject({ statusCode: 409, statusMessage: 'Member role is not a Tenant role.' })
   })
 
   it('answers a member 400 with "Bad request", not the thrown text', () => {

@@ -62,7 +62,7 @@ The charter lists the personal-data keys. Rationale for the logger shape is ADR-
 - Put personal data and secrets in fields the list can see. Message text and `Error.message` are not scanned for personal data. The invitation-id patterns in the previous bullet are the exception, and they are scrubbed inside a message (ADR-0013).
 - `server/plugins/boot.ts` configures the logger; `server/plugins/request-log.ts` echoes `x-request-id`. Nuxt runs plugins in alphabetical order, so those two names stay in that order.
 - `LOG_LEVEL` on `AppEnv`: blank means `info` when `NODE_ENV` is `production`, otherwise `debug`. An unknown level fails boot.
-- `server/error.ts` responds with `{ statusCode, message, request_id }`. `message` is a fixed phrase for that status.
+- `server/error.ts` responds with `{ statusCode, message, request_id }`. `message` is a fixed phrase for that status. `handleLoggedError` writes a 4xx at `warn` and anything else at `error`.
 
 ## Audit ignores
 

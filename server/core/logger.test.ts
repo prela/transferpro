@@ -198,6 +198,20 @@ it('logs a thrown error once and keeps its stack and message out of the response
   expect(error.stack).toContain('secret/handler.ts:12')
 })
 
+it('logs a refused request at warn and a failure at error, with the same body shape', () => {
+  const logs = captureLogs()
+  const refused = Object.assign(new Error('Member role is not a Tenant role.'), { statusCode: 409 })
+  expect(handleLoggedError(logs.logger, refused, requestId)).toEqual({
+    statusCode: 409,
+    message: 'Request failed',
+    request_id: requestId,
+  })
+  handleLoggedError(logs.logger, new Error('connection reset'), requestId)
+
+  // Pino's numeric levels: 40 is warn, 50 is error.
+  expect(logs.lines().map(line => line.level)).toEqual([40, 50])
+})
+
 it('returns the request id for the response header and keeps it on later async work', async () => {
   const logs = captureLogs()
   expect(openRequestLog(requestId)).toBe(requestId)
