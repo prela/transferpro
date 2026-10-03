@@ -4,6 +4,7 @@ import { memberListSchema } from '../../shared'
 
 defineProps<{
   isAdmin: boolean
+  currentUserId?: string
 }>()
 
 const { t } = useI18n()
@@ -13,6 +14,7 @@ const loading = ref(false)
 const loadError = ref(false)
 const operationError = ref<string | null>(null)
 const confirmingRemove = ref<string | null>(null)
+const changingRole = ref<{ userId: string, newRole: Member['role'] } | null>(null)
 
 async function loadMembers() {
   loading.value = true
@@ -31,7 +33,9 @@ async function loadMembers() {
 }
 
 async function changeRole(userId: string, newRole: Member['role']) {
+  const oldRole = members.value.find(m => m.userId === userId)?.role
   operationError.value = null
+  changingRole.value = { userId, newRole }
   try {
     await $fetch(`/api/members/${userId}/role`, {
       method: 'PATCH',
@@ -40,9 +44,17 @@ async function changeRole(userId: string, newRole: Member['role']) {
     await loadMembers()
   }
   catch (error) {
+    // Revert the select on failure
+    const member = members.value.find(m => m.userId === userId)
+    if (member && oldRole) {
+      member.role = oldRole
+    }
     operationError.value = isLastAdminError(error)
       ? 'members.lastAdmin'
       : 'members.changeRoleFailed'
+  }
+  finally {
+    changingRole.value = null
   }
 }
 
@@ -68,6 +80,11 @@ function isLastAdminError(error: unknown): boolean {
     return false
   return ('statusCode' in error && error.statusCode === 409)
     || ('status' in error && error.status === 409)
+}
+
+function canModify(userId: string, currentUserId?: string): boolean {
+  // An admin cannot remove themselves or change their own role
+  return userId !== currentUserId
 }
 
 onMounted(() => {
@@ -112,10 +129,17 @@ onMounted(() => {
             v-for="member in members"
             :key="member.userId"
           >
-            <td>{{ member.name }}</td>
-            <td v-if="isAdmin">
+            <td>
+              {{ member.name }}
+              <span
+                v-if="member.userId === currentUserId"
+                class="you-badge"
+              >({{ t('members.you') }})</span>
+            </td>
+            <td v-if="isAdmin && canModify(member.userId, currentUserId)">
               <select
                 :value="member.role"
+                :disabled="changingRole?.userId === member.userId"
                 @change="changeRole(member.userId, ($event.target as HTMLSelectElement).value as Member['role'])"
               >
                 <option value="admin">
@@ -132,7 +156,7 @@ onMounted(() => {
             <td v-else>
               {{ t(`invite.roles.${member.role}`) }}
             </td>
-            <td v-if="isAdmin">
+            <td v-if="isAdmin && canModify(member.userId, currentUserId)">
               <button
                 v-if="confirmingRemove !== member.userId"
                 type="button"
@@ -161,6 +185,7 @@ onMounted(() => {
                 </button>
               </div>
             </td>
+            <td v-else-if="isAdmin" />
           </tr>
         </tbody>
       </table>
@@ -179,20 +204,17 @@ th,
 td {
   padding: 0.75rem;
   text-align: left;
-  border-bottom: 1px solid var(--border-color, #ddd);
+  border-bottom: 1px solid var(--line);
 }
 
 th {
   font-weight: 600;
 }
 
-select {
-  font-size: 1rem;
-  padding: 0.5rem;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 4px;
-  background-color: var(--bg-color, white);
-  color: var(--text-color, black);
+.you-badge {
+  margin-left: 0.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
 }
 
 .confirm-remove {

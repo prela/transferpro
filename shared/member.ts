@@ -30,17 +30,6 @@ export const changeMemberRoleBodySchema = z.object({
 export type ChangeMemberRoleBody = z.infer<typeof changeMemberRoleBodySchema>
 
 /**
- * DELETE /api/members/:userId
- * Remove a member from the Tenant. Admin-only. Sessions tied to that member
- * and this Tenant are revoked immediately.
- */
-export const removeMemberResultSchema = z.object({
-  removed: z.boolean(),
-})
-
-export type RemoveMemberResult = z.infer<typeof removeMemberResultSchema>
-
-/**
  * Fixed error messages. No member email, session token, or user id in logs.
  */
 export const memberErrorKey = z.enum([

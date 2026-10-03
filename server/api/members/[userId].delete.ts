@@ -9,11 +9,12 @@ import { memberHttpError } from './http'
  * in this Tenant are revoked immediately.
  */
 export default defineEventHandler(async (event) => {
+  const userId = getRouterParam(event, 'userId')
+  const parsed = z.uuid().safeParse(userId)
+  if (!parsed.success)
+    memberHttpError(new Error('Invalid user ID.'), 400)
+
   try {
-    const userId = getRouterParam(event, 'userId')
-    const parsed = z.uuid().safeParse(userId)
-    if (!parsed.success)
-      memberHttpError(new Error('Invalid user ID.'), 400)
     await removeTenantMember(toWebRequest(event).headers, parsed.data)
     return { removed: true }
   }

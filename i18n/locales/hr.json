@@ -63,13 +63,13 @@
     "loadFailed": "Članovi se nisu mogli učitati. Pokušajte ponovno.",
     "name": "Ime",
     "role": "Uloga",
-    "changeRole": "Promijeni ulogu",
     "remove": "Ukloni člana",
     "confirmRemove": "Jeste li sigurni da želite ukloniti ovog člana? Odmah će izgubiti pristup.",
     "confirmRemoveButton": "Da, ukloni",
     "cancel": "Odustani",
     "changeRoleFailed": "Uloga nije promijenjena. Pokušajte ponovno.",
     "removeFailed": "Član nije uklonjen. Pokušajte ponovno.",
-    "lastAdmin": "Zadnji administrator se ne može ukloniti niti mu se može promijeniti uloga."
+    "lastAdmin": "Zadnji administrator se ne može ukloniti niti mu se može promijeniti uloga.",
+    "you": "vi"
   }
 }

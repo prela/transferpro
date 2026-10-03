@@ -351,12 +351,14 @@ export function createAuth(
     /**
      * Revoke all sessions for a user in a specific organization.
      * Called after removing a member to immediately invalidate their sessions.
+     * Real sessions have active_organization_id NULL, so we delete both NULL
+     * and matching organization_id.
      */
     async revokeOrganizationSessions(userId: string, organizationId: string): Promise<void> {
       await pool.query(
         `delete from auth.session
          where user_id = $1
-           and active_organization_id = $2`,
+           and (active_organization_id = $2 or active_organization_id is null)`,
         [userId, organizationId],
       )
     },

@@ -7,6 +7,7 @@ import { changeMemberRoleBodySchema, memberErrorMessage } from '../../../../shar
  * No member email, session token, or user id in logs or error messages.
  */
 const STATUS_CODE: Record<MemberStatusCode, MemberStatusCode> = {
+  400: 400,
   401: 401,
   403: 403,
   404: 404,
@@ -14,7 +15,7 @@ const STATUS_CODE: Record<MemberStatusCode, MemberStatusCode> = {
   500: 500,
 }
 
-type MemberStatusCode = 401 | 403 | 404 | 409 | 500
+type MemberStatusCode = 400 | 401 | 403 | 404 | 409 | 500
 
 export class MemberAccessError extends Error {
   readonly statusCode: MemberStatusCode
@@ -28,6 +29,8 @@ export class MemberAccessError extends Error {
 
 function statusCodeMessage(statusCode: MemberStatusCode): string {
   switch (statusCode) {
+    case 400:
+      return memberErrorMessage('member.failed')
     case 401:
       return memberErrorMessage('member.unauthorized')
     case 403:
@@ -44,7 +47,7 @@ function statusCodeMessage(statusCode: MemberStatusCode): string {
 export function parseChangeMemberRole(raw: unknown): { role: TenantRole } {
   const parsed = changeMemberRoleBodySchema.safeParse(raw)
   if (!parsed.success)
-    throw new MemberAccessError(400 as MemberStatusCode)
+    throw new MemberAccessError(STATUS_CODE[400])
   return parsed.data
 }
 
@@ -117,11 +120,16 @@ export async function removeMember(
       throw new MemberAccessError(STATUS_CODE[409], memberErrorMessage('member.lastAdmin'))
   }
 
+  // Get the member id (Better Auth needs it, not the user id)
+  const memberId = await getMemberId(handle, organizationId, targetUserId)
+  if (!memberId)
+    throw new MemberAccessError(STATUS_CODE[404])
+
   try {
     // Server API, not auth.handler, to avoid hitting the HTTP rate limiter
     await handle.auth.api.removeMember({
       body: {
-        memberIdOrEmail: targetUserId,
+        memberIdOrEmail: memberId,
         organizationId,
       },
       headers,

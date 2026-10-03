@@ -8,11 +8,12 @@ import { memberHttpError } from '../http'
  * Change a member's role. Admin-only. Body: { role: 'admin' | 'dispatcher' | 'driver' }
  */
 export default defineEventHandler(async (event) => {
+  const userId = getRouterParam(event, 'userId')
+  const parsed = z.uuid().safeParse(userId)
+  if (!parsed.success)
+    memberHttpError(new Error('Invalid user ID.'), 400)
+
   try {
-    const userId = getRouterParam(event, 'userId')
-    const parsed = z.uuid().safeParse(userId)
-    if (!parsed.success)
-      memberHttpError(new Error('Invalid user ID.'), 400)
     await changeMemberRole(toWebRequest(event).headers, parsed.data, await readBody(event))
     return { changed: true }
   }

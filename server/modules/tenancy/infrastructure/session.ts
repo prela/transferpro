@@ -10,6 +10,7 @@ import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { createAuth } from './auth'
 import { acceptInvitation, parseInviteInput, previewInvitation, sendInvitation } from './invitation'
 import { createResendMailer } from './mailer'
+import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, removeMember as removeMemberImpl } from './member-management'
 
 /**
  * A session with no user is 401. A user with no single membership, or with
@@ -104,6 +105,7 @@ export async function withTenantFromSession<T>(
  * The signed-in shell. One tenant session, via `withTenantFromSession`.
  * The user's locale is read from auth.user; a null locale becomes
  * the Tenant `default_locale`. The time zone is display only.
+ * userId is included so the UI can mark "you" in the member list.
  */
 export async function readSessionShell(headers: Headers): Promise<SessionShell> {
   const { handle } = tenantRuntime()
@@ -132,6 +134,7 @@ export async function readSessionShell(headers: Headers): Promise<SessionShell> 
     return sessionShellSchema.parse({
       tenantId: context.tenantId,
       tenantName: await handle.organizationName(context.tenantId),
+      userId: parsed.data.user.id,
       locale: resolveDisplayLocale(userLocale, settings.default_locale),
       timeZone: settings.time_zone,
       role: role.data,
@@ -214,10 +217,9 @@ export async function changeMemberRole(
   raw: unknown,
 ) {
   const { handle } = tenantRuntime()
-  const { role } = parseMemberRole(raw)
+  const { role } = parseChangeMemberRole(raw)
   return withTenantFromSession(headers, async ({ context }) => {
-    const { changeMemberRole: change } = await import('./member-management')
-    await change(handle, headers, context.tenantId, targetUserId, role)
+    await changeMemberRoleImpl(handle, headers, context.tenantId, targetUserId, role)
   })
 }
 
@@ -232,15 +234,8 @@ export async function removeTenantMember(
 ) {
   const { handle } = tenantRuntime()
   return withTenantFromSession(headers, async ({ context }) => {
-    const { removeMember } = await import('./member-management')
-    await removeMember(handle, headers, context.tenantId, targetUserId)
+    await removeMemberImpl(handle, headers, context.tenantId, targetUserId)
   })
-}
-
-function parseMemberRole(raw: unknown) {
-  // eslint-disable-next-line ts/no-require-imports
-  const { parseChangeMemberRole } = require('./member-management')
-  return parseChangeMemberRole(raw)
 }
 
 /**

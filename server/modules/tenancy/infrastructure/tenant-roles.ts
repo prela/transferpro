@@ -10,11 +10,12 @@ export const invitationExpiresInSeconds = INVITATION_EXPIRES_DAYS * 24 * 60 * 60
 /**
  * Only admin may invite. Dispatcher and driver are real roles with no
  * invitation permission, so Better Auth's own check returns 403.
- * Slice 2 adds member update and delete on admin.
+ * Slice 2: admin gets member update and delete.
  */
 export const organizationRoles = {
   admin: defaultAc.newRole({
     invitation: ['create'],
+    member: ['update', 'delete'],
   }),
   dispatcher: defaultAc.newRole({
     invitation: [],
