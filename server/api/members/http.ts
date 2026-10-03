@@ -1,4 +1,5 @@
 import { createError } from 'h3'
+import { z } from 'zod'
 import { MemberAccessError, TenantAccessError } from '../../modules/tenancy'
 
 /**
@@ -20,8 +21,17 @@ export function memberHttpError(error: unknown, defaultStatus = 500): never {
       statusMessage: error.message,
     })
   }
+  // An unknown error's text can carry a role name, a URL, or a row value.
   throw createError({
     statusCode: defaultStatus,
-    statusMessage: 'Internal server error',
+    statusMessage: defaultStatus === 400 ? 'Bad request' : 'Internal server error',
   })
+}
+
+/** The `:userId` route param. Anything but a uuid is 400 before the session is read. */
+export function parseMemberUserId(raw: unknown): string {
+  const parsed = z.uuid().safeParse(raw)
+  if (!parsed.success)
+    throw createError({ statusCode: 400, statusMessage: 'Bad request' })
+  return parsed.data
 }
