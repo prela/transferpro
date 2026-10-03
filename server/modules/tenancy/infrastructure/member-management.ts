@@ -54,6 +54,7 @@ export function parseChangeMemberRole(raw: unknown): { role: TenantRole } {
 /**
  * Change a member's role. Admin-only (enforced by Better Auth role check).
  * The last admin cannot be demoted to dispatcher or driver.
+ * Authorization is checked first, before any existence or last-admin checks.
  */
 export async function changeMemberRole(
   handle: AuthHandle,
@@ -62,6 +63,16 @@ export async function changeMemberRole(
   targetUserId: string,
   newRole: TenantRole,
 ): Promise<void> {
+  // Verify caller is admin by attempting to get their session and checking membership
+  const session = await handle.auth.api.getSession({ headers })
+  if (!session)
+    throw new MemberAccessError(STATUS_CODE[401])
+
+  const memberships = await handle.memberships(session.user.id)
+  const callerMembership = memberships.find(m => m.organizationId === organizationId)
+  if (!callerMembership || callerMembership.role !== 'admin')
+    throw new MemberAccessError(STATUS_CODE[403])
+
   // Check if this would demote the last admin
   if (newRole !== 'admin') {
     const remainingAdmins = await countAdminsExcept(handle, organizationId, targetUserId)
@@ -101,6 +112,7 @@ export async function changeMemberRole(
  * Remove a member from the organization. Admin-only (enforced by Better Auth).
  * The last admin cannot be removed. All sessions for that user in this
  * organization are revoked immediately.
+ * Authorization is checked first, before any existence or last-admin checks.
  */
 export async function removeMember(
   handle: AuthHandle,
@@ -108,9 +120,19 @@ export async function removeMember(
   organizationId: string,
   targetUserId: string,
 ): Promise<void> {
+  // Verify caller is admin by attempting to get their session and checking membership
+  const session = await handle.auth.api.getSession({ headers })
+  if (!session)
+    throw new MemberAccessError(STATUS_CODE[401])
+
+  const memberships = await handle.memberships(session.user.id)
+  const callerMembership = memberships.find(m => m.organizationId === organizationId)
+  if (!callerMembership || callerMembership.role !== 'admin')
+    throw new MemberAccessError(STATUS_CODE[403])
+
   // Check if this would remove the last admin
-  const memberships = await handle.memberships(targetUserId)
-  const membership = memberships.find(m => m.organizationId === organizationId)
+  const targetMemberships = await handle.memberships(targetUserId)
+  const membership = targetMemberships.find(m => m.organizationId === organizationId)
   if (!membership)
     throw new MemberAccessError(STATUS_CODE[404])
 
