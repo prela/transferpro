@@ -111,8 +111,11 @@ it('dispatcher and driver get 403 when trying to change roles or remove members'
   const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
 
   try {
-    // Create a dispatcher account
+    // Create a dispatcher account with properly hashed password
     const dispatcherUserId = crypto.randomUUID()
+    const { hashPassword } = await import('better-auth/crypto')
+    const hashedPassword = await hashPassword('password-dispatcher')
+
     await authPool.query(
       `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
        values ($1, 'Dispatcher', 'mm-dispatcher@example.test', true, now(), now())`,
@@ -120,8 +123,8 @@ it('dispatcher and driver get 403 when trying to change roles or remove members'
     )
     await authPool.query(
       `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
-       values ($1, $2, 'credential', $2, 'hashed', now(), now())`,
-      [crypto.randomUUID(), dispatcherUserId],
+       values ($1, $2, 'credential', $2, $3, now(), now())`,
+      [crypto.randomUUID(), dispatcherUserId, hashedPassword],
     )
     await authPool.query(
       `insert into auth.member (id, organization_id, user_id, role, created_at)
@@ -131,7 +134,7 @@ it('dispatcher and driver get 403 when trying to change roles or remove members'
 
     // Sign in as dispatcher
     const signIn = await handle.auth.api.signInEmail({
-      body: { email: 'mm-dispatcher@example.test', password: 'password-admin' },
+      body: { email: 'mm-dispatcher@example.test', password: 'password-dispatcher' },
       returnHeaders: true,
     })
     const cookie = signIn.headers.getSetCookie().join('; ')
