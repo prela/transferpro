@@ -1,8 +1,11 @@
+import type { DisplayLocale, SessionShell } from '../../../../shared'
 import type { TenantContext, TenantTransaction } from '../../../core/index'
 import type { Membership } from './auth'
+import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
+import { resolveDisplayLocale, sessionShellSchema } from '../../../../shared'
 import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { createAuth } from './auth'
 
@@ -30,6 +33,13 @@ const sessionSchema = z.object({
   session: z.object({
     activeOrganizationId: z.string().nullish(),
   }),
+})
+
+const settingsRows = z.object({
+  rows: z.array(z.object({
+    default_locale: z.string(),
+    time_zone: z.string().min(1),
+  })),
 })
 
 const ROLES = new Set(['admin', 'dispatcher', 'driver'])
@@ -85,6 +95,52 @@ export async function withTenantFromSession<T>(
   return db.transaction(async (transaction) => {
     return openTenantSession(transaction, context, () => run({ context, transaction }))
   })
+}
+
+/**
+ * The signed-in shell. One tenant session, via `withTenantFromSession`.
+ * The user's locale is read from auth.user; a null locale becomes
+ * the Tenant `default_locale`. The time zone is display only.
+ */
+export async function readSessionShell(headers: Headers): Promise<SessionShell> {
+  const { handle } = tenantRuntime()
+  const result = await handle.auth.api.getSession({ headers })
+  const parsed = sessionSchema.safeParse(result)
+  if (!parsed.success)
+    throw new TenantAccessError(401)
+
+  // Auth role. The app role cannot read auth.user, and a null locale means the tenant default.
+  const userLocale = await handle.userLocale(parsed.data.user.id)
+
+  return withTenantFromSession(headers, async ({ context, transaction }) => {
+    const selected = settingsRows.parse(await transaction.execute(sql`
+      select default_locale, time_zone from app.tenant_settings
+    `))
+    const settings = selected.rows.length === 1 ? selected.rows[0] : undefined
+    if (!settings)
+      throw new Error('Tenant settings are missing.')
+
+    return sessionShellSchema.parse({
+      tenantId: context.tenantId,
+      tenantName: await handle.organizationName(context.tenantId),
+      locale: resolveDisplayLocale(userLocale, settings.default_locale),
+      timeZone: settings.time_zone,
+    })
+  })
+}
+
+/**
+ * Persists the user's locale on the auth user. Callers check the membership
+ * first. This does not open a second tenant session. The public update-user
+ * route cannot set this field (`input: false`).
+ */
+export async function updateUserLocale(headers: Headers, locale: DisplayLocale): Promise<void> {
+  const { handle } = tenantRuntime()
+  const result = await handle.auth.api.getSession({ headers })
+  const parsed = sessionSchema.safeParse(result)
+  if (!parsed.success)
+    throw new TenantAccessError(401)
+  await handle.setUserLocale(parsed.data.user.id, locale)
 }
 
 async function contextFromSession(

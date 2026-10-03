@@ -1,15 +1,14 @@
 import { createError, defineEventHandler, toWebRequest } from 'h3'
-import { TenantAccessError, withTenantFromSession } from '../modules/tenancy'
+import { readSessionShell, TenantAccessError } from '../modules/tenancy'
 
 /**
- * Proves the session. Slice 2 replaces this with the signed-in shell.
- * The body is the tenant id only.
+ * The signed-in shell reads this. Same cookie path as sign-in:
+ * `readSessionShell` opens one tenant session through `withTenantFromSession`.
+ * The body includes `tenantId`.
  */
 export default defineEventHandler(async (event) => {
   try {
-    return await withTenantFromSession(toWebRequest(event).headers, async ({ context }) => {
-      return { tenantId: context.tenantId }
-    })
+    return await readSessionShell(toWebRequest(event).headers)
   }
   catch (error) {
     if (error instanceof TenantAccessError)

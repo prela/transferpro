@@ -1,0 +1,170 @@
+/*
+ * Light tokens are the default. Dark follows the system unless data-theme is set.
+ * 1rem inputs stay at least 16px so a phone browser does not zoom the field on focus.
+ */
+
+:root {
+  color-scheme: light;
+  --bg: #f4f1ea;
+  --card: #fff;
+  --text: #1c1915;
+  --muted: #5c564c;
+  --line: #d9d2c5;
+  --focus: #0b4f8a;
+  --danger: #8c1d18;
+  --button: #1c1915;
+  --button-text: #f7f4ee;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #161513;
+  --card: #221f1b;
+  --text: #f4f1ea;
+  --muted: #c8c0b4;
+  --line: #3d3832;
+  --focus: #9ec5ff;
+  --danger: #ffb4ab;
+  --button: #f4f1ea;
+  --button-text: #161513;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #161513;
+    --card: #221f1b;
+    --text: #f4f1ea;
+    --muted: #c8c0b4;
+    --line: #3d3832;
+    --focus: #9ec5ff;
+    --danger: #ffb4ab;
+    --button: #f4f1ea;
+    --button-text: #161513;
+  }
+}
+
+.when-dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .when-light {
+    display: none;
+  }
+
+  :root:not([data-theme='light']) .when-dark {
+    display: inline;
+  }
+}
+
+:root[data-theme='dark'] .when-light {
+  display: none;
+}
+
+:root[data-theme='dark'] .when-dark {
+  display: inline;
+}
+
+:root[data-theme='light'] .when-light {
+  display: inline;
+}
+
+:root[data-theme='light'] .when-dark {
+  display: none;
+}
+
+/* Keyboard focus has to stay visible on the email, password, and buttons. */
+button:focus,
+input:focus {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+main {
+  box-sizing: border-box;
+  width: min(100%, 28rem);
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-size: 1.5rem;
+}
+
+.label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.field {
+  margin: 0 0 1rem;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+}
+
+button {
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--button);
+  color: var(--button-text);
+  font: inherit;
+  font-size: 1rem;
+}
+
+button.secondary {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.actions button {
+  flex: 1 1 8rem;
+}
+
+.error {
+  margin: 0 0 1rem;
+  color: var(--danger);
+}
+
+time {
+  display: block;
+  margin-top: 0.25rem;
+}

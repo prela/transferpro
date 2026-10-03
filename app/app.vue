@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Shell so `nuxi typecheck` has a Nuxt 4 app. Signup UI is the next ticket.
+// The page is the sign-in screen or the signed-in shell.
 </script>
 
 <template>
-  <p>Transferpro</p>
+  <NuxtPage />
 </template>

@@ -1,8 +1,8 @@
 # Handoff: issue #10 tenant session
 
-Status: slice 1 is implemented on `feature/10-tenant-session`. Not committed. The owner said not to commit in this chat.
+Status: slice 2 is implemented on `feature/10-tenant-session`. Not committed. The owner said not to commit in this chat.
 
-HEAD before this slice: `ceb8d1b` (develop, including the #33 logging merge and later dependency bumps).
+HEAD before slice 2: `98cb95e` (`feat(#10): operator tenant provisioning and session-based tenant context`).
 
 ## Read first
 
@@ -23,7 +23,29 @@ No public signup in v1 (3.10.2026). An operator provisions the one pilot Tenant.
 - Sign-in and sign-out go through Better Auth at `/api/auth/*`. The session cookie is `httpOnly`, `SameSite=Lax`, and `Secure` (with the `__Secure-` name prefix) only when `NODE_ENV` is `production`.
 - `emailAndPassword.disableSignUp` is on. `POST /api/auth/sign-up/email` returns 400 `EMAIL_PASSWORD_SIGN_UP_DISABLED`.
 - `withTenantFromSession` (from `server/modules/tenancy`) reads the session, mints a `TenantContext`, and runs the callback inside `openTenantSession`. Log lines inside that callback have `request_id` and `tenant_id`. No session is 401. A session with no single membership, or a role other than `admin`, `dispatcher`, or `driver`, is 403. Both go through `handleLoggedError` / `server/error.ts`. A missing active organization still resolves when the user has exactly one membership.
-- `GET /api/session` returns `{ tenantId }` for a signed-in member. No UI in this slice.
+- `GET /api/session` returns `{ tenantId }` for a signed-in member. Slice 2's shell reads the same route and adds `tenantName`, `locale`, and `timeZone`.
+
+## Done (slice 2)
+
+Sign-in screen and signed-in shell on `/`. No component library: the screen is one form and a shell, so it is semantic HTML and `app/assets/shell.css`. The one added dependency is `@nuxtjs/i18n`.
+
+- Email and password form. No signup link. A failed sign-in shows one message (`signIn.failed`) for every status except 429 (`signIn.limited`). The Better Auth body is not shown. A wrong password and an unknown email both return `401` `INVALID_EMAIL_OR_PASSWORD`.
+- Signed-in shell shows the tenant name, one example timestamp, a sign-out button, a locale switch, and a theme toggle.
+- Croatian is the default. `@nuxtjs/i18n`, `strategy: 'no_prefix'`, `detectBrowserLanguage: false`. Strings are in `i18n/locales/hr.json` and `en.json`. A null user locale follows the tenant default (`hr`). The switch `POST /api/locale` writes `hr` or `en` on the auth user. Anything else is 400.
+- Light and dark follow the system. A stored `transferpro-theme` of `light` or `dark` overrides it. Inputs are labeled, 16px, and the form submits with Enter.
+- `formatInstant` in `shared/format-instant.ts` turns a UTC `Date` into wall time. The shell shows `2026-01-15T23:30:00.000Z`, which is `16. 01. 2026. 00:30` in `Europe/Zagreb` for `hr` and `16/01/2026, 00:30` for `en` (en-GB).
+- Production sign-in rate limit is explicit in `signInRateLimit`: enabled when `NODE_ENV` is `production`, and `/sign-in/email` is 3 requests per 10 seconds. Development leaves the limiter off.
+- `allowUserToCreateOrganization` was not changed.
+
+Proved against a local dev server (`pnpm exec nuxi dev --port 3000`; there is no `pnpm dev` script) after `pnpm tenant:create --name Pilot --slug slice2-pilot --admin-email slice2-ada@example.com --admin-name Ada` (password on stdin):
+
+- `POST /api/auth/sign-in/email` 200
+- `GET /api/session` 200 `{"tenantId":"0d3944bc-ba32-4342-a568-b9a825748f46","tenantName":"Pilot","locale":"hr","timeZone":"Europe/Zagreb"}`
+- Signed-in HTML: `Organizacija Pilot Primjer vremena 16. 01. 2026. 00:30 Odjava`
+- `POST /api/locale` `{"locale":"en"}` 200, then the shell was `Tenant Pilot Example time 01/16/2026, 00:30 Sign out` and `GET /api/session` had `"locale":"en"`. English is now en-GB (`16/01/2026, 00:30`).
+- `POST /api/auth/sign-out` 200
+- `GET /api/session` 401
+- The signed-out HTML was the Croatian sign-in form again
 
 ## Slice 2
 
@@ -52,7 +74,7 @@ The script is `node --import ./scripts/register-ts.mjs`, because Node does not r
 
 - The settings row is written before the login. If the login insert fails, that row is deleted. If the process dies between the two, an unused settings row remains and a retry still creates the Tenant with `Europe/Zagreb`.
 - If someone passes `--password`, the script refuses it and does not write the value. pnpm's own failure line repeats the command, so the value appears there. Do not pass it.
-- `GET /api/session` was typechecked and the helper behind it was tested. It was not requested through a running Nitro server. There is no screen to open.
+- `GET /api/session` was requested through a running Nitro server in slice 2, including after sign-out.
 
 ## Rules
 

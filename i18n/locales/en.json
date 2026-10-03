@@ -1,0 +1,28 @@
+{
+  "signIn": {
+    "title": "Sign in",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in",
+    "failed": "Sign-in failed. Check the email and password, then try again.",
+    "limited": "Too many attempts. Wait and try again."
+  },
+  "shell": {
+    "tenant": "Tenant",
+    "signOut": "Sign out",
+    "signingOut": "Signing out",
+    "signOutFailed": "Sign-out failed. Try again.",
+    "exampleTime": "Example time",
+    "unavailable": "The screen could not be loaded. Try again.",
+    "saveFailed": "The locale was not saved. Try again."
+  },
+  "locale": {
+    "hr": "Hrvatski",
+    "en": "English"
+  },
+  "theme": {
+    "useLight": "Light theme",
+    "useDark": "Dark theme"
+  }
+}
