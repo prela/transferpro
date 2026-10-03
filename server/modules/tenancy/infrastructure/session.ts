@@ -55,7 +55,7 @@ interface Runtime {
 
 let runtime: Runtime | undefined
 
-function tenantRuntime(): Runtime {
+export function tenantRuntime(): Runtime {
   if (runtime)
     return runtime
   const env = loadAppEnv()
@@ -191,13 +191,11 @@ export async function listMembers(headers: Headers) {
   if (!session)
     throw new TenantAccessError(401)
 
-  // Get the first membership to check the role
-  // withTenantFromSession will validate the membership belongs to a valid tenant
   const memberships = await handle.memberships(session.user.id)
   if (memberships.length === 0)
     throw new TenantAccessError(401)
 
-  // Check if any membership is driver-only (all memberships would have same role in single-tenant context)
+  // Drivers cannot list members
   const hasDriverOnlyRole = memberships.every(m => m.role === 'driver')
   if (hasDriverOnlyRole)
     throw new TenantAccessError(403)
