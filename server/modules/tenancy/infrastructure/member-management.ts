@@ -88,12 +88,11 @@ export async function changeMemberRole(
     if (target.role === 'admin' && newRole !== 'admin')
       await assertAnotherAdmin(client, organizationId, targetUserId)
     await client.query('update auth.member set role = $1 where id = $2', [newRole, target.id])
-    // A stored role outside the Tenant roles cannot be logged, so the change rolls back.
     await appendAuditEntry(transaction, {
       action: 'member.role_changed',
       actorUserId: actor.userId,
       subjectUserId: targetUserId,
-      data: { from: tenantRoleSchema.parse(target.role), to: newRole },
+      data: { from: target.role, to: newRole },
     })
   })
 }
@@ -134,7 +133,7 @@ export async function removeMember(
       action: 'member.removed',
       actorUserId: actor.userId,
       subjectUserId: targetUserId,
-      data: { role: tenantRoleSchema.parse(target.role) },
+      data: { role: target.role },
     })
   })
 }
@@ -165,7 +164,7 @@ function assertAdminOf(actor: Actor, organizationId: string): void {
     throw new MemberAccessError(STATUS_CODE[403])
 }
 
-async function selectMember(client: pg.PoolClient, organizationId: string, userId: string) {
+async function selectMember(client: pg.PoolClient, organizationId: string, userId: string): Promise<{ id: string, role: TenantRole }> {
   const result = await client.query(
     'select id, role from auth.member where organization_id = $1 and user_id = $2',
     [organizationId, userId],
@@ -173,7 +172,11 @@ async function selectMember(client: pg.PoolClient, organizationId: string, userI
   const row = memberRow.safeParse(result.rows[0])
   if (!row.success)
     throw new MemberAccessError(STATUS_CODE[404])
-  return row.data
+  // A stored role outside the Tenant roles cannot be logged (ADR-0014), so nothing is written.
+  const role = tenantRoleSchema.safeParse(row.data.role)
+  if (!role.success)
+    throw new MemberAccessError(STATUS_CODE[500])
+  return { id: row.data.id, role: role.data }
 }
 
 /**
@@ -186,7 +189,7 @@ async function selectMember(client: pg.PoolClient, organizationId: string, userI
  * The tenant session is opened on this auth connection, not on the app pool:
  * `audit.append_entry` reads the Tenant from `app.tenant_id`, and only one
  * connection can make the member write and its entry atomic (ADR-0014).
- * The caller's context names `organizationId`; `assertAdminOf` checked that.
+ * `actor.context` must name `organizationId`, so call `assertAdminOf` first.
  */
 async function inLockedAdminTransaction(
   handle: AuthHandle,

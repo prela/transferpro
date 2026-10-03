@@ -113,7 +113,9 @@ async function roleIn(tenantId: string, userId: string): Promise<string | undefi
 
 it('inviting, changing a role, and removing a member each append exactly one entry naming the acting admin', async () => {
   const created = await tenant('ma-actions', 'Ana Admin')
-  const admin = await signIn('ma-actions-admin@example.test')
+  // Two admins, so the entry has to name the one who acted, not any admin.
+  const actingAdmin = await addMember(created.tenantId, 'ma-actions-acting@example.test', 'Ben Admin', 'admin')
+  const admin = await signIn('ma-actions-acting@example.test')
   const target = await addMember(created.tenantId, 'ma-actions-target@example.test', 'Tara Target', 'driver')
 
   await inviteMember(admin, { email: 'ma-actions-invitee@example.test', role: 'driver' })
@@ -124,7 +126,7 @@ it('inviting, changing a role, and removing a member each append exactly one ent
 
   await removeTenantMember(admin, target)
   const { entries } = await readAuditLog(admin)
-  const byAdmin = { actorUserId: created.adminUserId, actorName: 'Ana Admin' }
+  const byAdmin = { actorUserId: actingAdmin, actorName: 'Ben Admin' }
   expect(entries).toMatchObject([
     { ...byAdmin, action: 'member.removed', subjectUserId: target, subjectName: null, data: { role: 'dispatcher' } },
     { ...byAdmin, action: 'member.role_changed', subjectUserId: target, subjectName: null, data: { from: 'driver', to: 'dispatcher' } },
@@ -175,9 +177,34 @@ it('a refused invite, role change, or removal appends nothing', async () => {
   expect(await roleIn(created.tenantId, dispatcher)).toBe('dispatcher')
 })
 
-it('an action whose entry cannot be written does not happen', async () => {
+it('a role change or removal whose entry the database refuses does not happen', async () => {
+  const created = await tenant('ma-append-refused', 'Iva Admin')
+  const target = await addMember(created.tenantId, 'ma-append-refused-target@example.test', 'Tea Target', 'driver')
+  await signIn('ma-append-refused-target@example.test')
+  const admin = await signIn('ma-append-refused-admin@example.test')
+
+  // Refuses this test's entries only, so files running alongside are untouched.
+  // `target` is a uuid this file generated, so it is safe inside the statement.
+  const trigger = `refuse_${target.replaceAll('-', '_')}`
+  await ownerPool.query(`create trigger ${trigger} before insert on app.audit_entry for each row
+    when (new.subject_user_id = '${target}') execute function app.refuse_audit_change()`)
+  try {
+    await expect(changeMemberRole(admin, target, { role: 'dispatcher' })).rejects.toMatchObject({ statusCode: 500 })
+    await expect(removeTenantMember(admin, target)).rejects.toMatchObject({ statusCode: 500 })
+  }
+  finally {
+    await ownerPool.query(`drop trigger ${trigger} on app.audit_entry`)
+  }
+
+  expect(await roleIn(created.tenantId, target)).toBe('driver')
+  const sessions = await authPool.query('select count(*)::int as count from auth.session where user_id = $1', [target])
+  expect(sessions.rows[0].count).toBe(1)
+  expect(await entryCount(created.tenantId)).toBe(0)
+})
+
+it('an action the log cannot record does not happen', async () => {
   const created = await tenant('ma-atomic', 'Atena Admin')
-  // A role the log cannot show makes the append fail after the member write.
+  // A stored role outside the Tenant roles cannot be logged.
   const target = await addMember(created.tenantId, 'ma-atomic-target@example.test', 'Owen Owner', 'owner')
   await signIn('ma-atomic-target@example.test')
   const admin = await signIn('ma-atomic-admin@example.test')
