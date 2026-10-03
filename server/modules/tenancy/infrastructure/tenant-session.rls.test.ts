@@ -133,9 +133,6 @@ it('the sign-up endpoint is disabled', async () => {
 })
 
 it('a signed-in admin cannot create an organization', async () => {
-  // allowUserToCreateOrganization: false blocks the Better Auth endpoint.
-  // The operator script continues to work because it uses direct SQL inserts
-  // (verified by existing test at line 134: 'the provisioning script creates...').
   await createTenant({
     name: 'Cannot Create Org',
     slug: 'slice10-no-create-org',
@@ -147,9 +144,14 @@ it('a signed-in admin cannot create an organization', async () => {
   })
   const signedIn = await signIn('slice10-no-create-org@example.com')
 
-  // Count organizations before the attempt
-  const before = await authPool.query('select count(*) from auth.organization')
-  const beforeCount = Number.parseInt(String(before.rows[0]?.count ?? '0'), 10)
+  // Positive control: the session is valid and authenticated
+  const sessionCheck = await currentAuth().auth.handler(new Request(`${baseUrl}/api/auth/get-session`, {
+    headers: {
+      origin: baseUrl,
+      cookie: signedIn.token,
+    },
+  }))
+  expect(sessionCheck.status).toBe(200)
 
   // Try to create an organization through the Better Auth endpoint
   const response = await currentAuth().auth.handler(new Request(`${baseUrl}/api/auth/organization/create`, {
@@ -165,15 +167,12 @@ it('a signed-in admin cannot create an organization', async () => {
     }),
   }))
 
-  // The request must be refused
-  expect(response.status).toBeGreaterThanOrEqual(400)
+  // Better Auth returns 403 with a specific error when allowUserToCreateOrganization: false
+  expect(response.status).toBe(403)
+  const body = await response.text()
+  expect(body).toContain('You are not allowed to create a new organization')
 
-  // No new organization row was added
-  const after = await authPool.query('select count(*) from auth.organization')
-  const afterCount = Number.parseInt(String(after.rows[0]?.count ?? '0'), 10)
-  expect(afterCount).toBe(beforeCount)
-
-  // Verify the specific slug was not created
+  // Verify the slug was not created
   const check = await authPool.query('select 1 from auth.organization where slug = $1', ['slice10-unauthorized'])
   expect(check.rowCount).toBe(0)
 })
