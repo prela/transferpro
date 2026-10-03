@@ -5,6 +5,8 @@ export { acceptErrorKey, invitationAcceptBodySchema, invitationPreviewBodySchema
 export type { InvitationPreview, InviteResult } from './invitation'
 export { inviteLink } from './invite-link'
 export { LocaleChoiceError, saveDisplayLocale } from './locale-update'
+export { changeMemberRoleBodySchema, memberErrorKey, memberErrorMessage, memberListSchema, memberSchema, removeMemberResultSchema } from './member'
+export type { ChangeMemberRoleBody, Member, MemberErrorKey, MemberList, RemoveMemberResult } from './member'
 export { sessionShellSchema } from './session-shell'
 export type { SessionShell } from './session-shell'
 export { signInErrorKey } from './sign-in-error'

@@ -133,6 +133,7 @@ function httpStatus(error: unknown): number | undefined {
         {{ formatInstant(exampleInstant, session.timeZone, session.locale) }}
       </time>
       <MemberInvite v-if="session.role === 'admin'" />
+      <MemberList :is-admin="session.role === 'admin'" />
       <p
         v-if="shellError"
         class="error"

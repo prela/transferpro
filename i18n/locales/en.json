@@ -56,5 +56,20 @@
     "failed": "The invite could not be accepted.",
     "passwordRules": "The password does not meet the rules.",
     "limited": "Too many attempts. Wait and try again."
+  },
+  "members": {
+    "title": "Members",
+    "loading": "Loading members",
+    "loadFailed": "Members could not be loaded. Try again.",
+    "name": "Name",
+    "role": "Role",
+    "changeRole": "Change role",
+    "remove": "Remove member",
+    "confirmRemove": "Are you sure you want to remove this member? They will lose access immediately.",
+    "confirmRemoveButton": "Yes, remove",
+    "cancel": "Cancel",
+    "changeRoleFailed": "The role was not changed. Try again.",
+    "removeFailed": "The member was not removed. Try again.",
+    "lastAdmin": "Cannot remove or demote the last admin."
   }
 }

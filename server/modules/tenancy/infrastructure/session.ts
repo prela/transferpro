@@ -178,6 +178,72 @@ export async function acceptMemberInvitation(raw: unknown, headers: Headers, key
 }
 
 /**
+ * List all members of the current Tenant. Visible to any authenticated member.
+ * The email is not returned (it stays on auth.user).
+ */
+export async function listMembers(headers: Headers) {
+  return withTenantFromSession(headers, async ({ transaction }) => {
+    const memberRows = z.object({
+      rows: z.array(z.object({
+        user_id: z.string(),
+        name: z.string(),
+        role: tenantRoleSchema,
+      })),
+    })
+    const selected = memberRows.parse(await transaction.execute(sql`
+      select user_id, name, role from app.tenant_member
+      order by name
+    `))
+    return {
+      members: selected.rows.map(row => ({
+        userId: row.user_id,
+        name: row.name,
+        role: row.role,
+      })),
+    }
+  })
+}
+
+/**
+ * Change a member's role. Admin-only (Better Auth enforces this).
+ * The last admin cannot be demoted.
+ */
+export async function changeMemberRole(
+  headers: Headers,
+  targetUserId: string,
+  raw: unknown,
+) {
+  const { handle } = tenantRuntime()
+  const { role } = parseMemberRole(raw)
+  return withTenantFromSession(headers, async ({ context }) => {
+    const { changeMemberRole: change } = await import('./member-management')
+    await change(handle, headers, context.tenantId, targetUserId, role)
+  })
+}
+
+/**
+ * Remove a member from the Tenant. Admin-only (Better Auth enforces this).
+ * The last admin cannot be removed. Sessions tied to that member and this
+ * Tenant are revoked immediately.
+ */
+export async function removeTenantMember(
+  headers: Headers,
+  targetUserId: string,
+) {
+  const { handle } = tenantRuntime()
+  return withTenantFromSession(headers, async ({ context }) => {
+    const { removeMember } = await import('./member-management')
+    await removeMember(handle, headers, context.tenantId, targetUserId)
+  })
+}
+
+function parseMemberRole(raw: unknown) {
+  // eslint-disable-next-line ts/no-require-imports
+  const { parseChangeMemberRole } = require('./member-management')
+  return parseChangeMemberRole(raw)
+}
+
+/**
  * Persists the user's locale on the auth user. Callers check the membership
  * first. This does not open a second tenant session. The public update-user
  * route cannot set this field (`input: false`).
