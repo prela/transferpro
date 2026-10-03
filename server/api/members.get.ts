@@ -4,7 +4,7 @@ import { memberHttpError } from './members/http'
 
 /**
  * GET /api/members
- * List all members of the current Tenant. Visible to any authenticated member.
+ * List all members of the current Tenant. Admin and dispatcher only; drivers get 403.
  */
 export default defineEventHandler(async (event) => {
   try {
