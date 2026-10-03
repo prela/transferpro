@@ -5,7 +5,7 @@ import { loadEnvFile } from 'node:process'
 import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { changeMemberRole, closeTenantRuntime, listMembers, removeTenantMember } from '..'
+import { changeMemberRole, closeTenantRuntime, handleAuthRequest, listMembers, removeTenantMember } from '..'
 import { createAuth } from './auth'
 import { createTenant } from './create-tenant'
 import { assertAnotherAdmin, changeMemberRole as changeMemberRoleImpl, removeMember as removeMemberImpl } from './member-management'
@@ -29,12 +29,13 @@ function required(name: string): string {
 
 const authDatabaseUrl = required('AUTH_DATABASE_URL')
 const migrateDatabaseUrl = required('DATABASE_MIGRATE_URL')
+const baseUrl = required('BETTER_AUTH_URL')
 
 const authPool = new pg.Pool({ connectionString: authDatabaseUrl })
 const handle: AuthHandle = createAuth({
   AUTH_DATABASE_URL: authDatabaseUrl,
   BETTER_AUTH_SECRET: required('BETTER_AUTH_SECRET'),
-  BETTER_AUTH_URL: required('BETTER_AUTH_URL'),
+  BETTER_AUTH_URL: baseUrl,
 })
 
 beforeAll(async () => {
@@ -507,6 +508,67 @@ it('an admin demoted after their actor was read gets 403 under the lock and noth
       removeMemberImpl(handle, stale, tenant.tenantId, dispatcherUserId),
     ).rejects.toMatchObject({ statusCode: 403 })
     expect(await roleIn(tenant.tenantId, dispatcherUserId)).toBe('dispatcher')
+  }
+  finally {
+    await closeTenantRuntime()
+  }
+})
+
+it('better Auth\'s own member routes under /api/auth are off, so the lock, the checks above, and the driver 403 cannot be skipped', async () => {
+  const tenant = await createTenant({
+    name: 'Tenant Auth Endpoints',
+    slug: 'mm-tenant-auth-endpoints',
+    adminEmail: 'mm-admin-endpoints@example.test',
+    adminName: 'Admin',
+    password: 'password-admin',
+    authDatabaseUrl,
+    migrateDatabaseUrl,
+  })
+  // A second admin, so Better Auth's own "last owner" rule does not answer first.
+  const admin2UserId = await addMember(tenant.tenantId, { email: 'mm-admin2-endpoints@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
+  const driverUserId = await addMember(tenant.tenantId, { email: 'mm-driver-endpoints@example.test', name: 'Driver', password: 'password-driver', role: 'driver' })
+  const memberIds = await authPool.query<{ id: string, user_id: string }>(
+    'select id, user_id from auth.member where organization_id = $1',
+    [tenant.tenantId],
+  )
+  const memberId = (userId: string) => memberIds.rows.find(row => row.user_id === userId)?.id
+
+  function call(headers: Headers, path: string, body?: unknown): Promise<Response> {
+    const url = new URL(`/api/auth/organization/${path}`, baseUrl)
+    if (body === undefined)
+      url.searchParams.set('organizationId', tenant.tenantId)
+    return handleAuthRequest(new Request(url, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { 'content-type': 'application/json', 'origin': baseUrl, 'cookie': headers.get('cookie') ?? '' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }))
+  }
+
+  try {
+    const adminHeaders = await signIn('mm-admin-endpoints@example.test', 'password-admin')
+    const driverHeaders = await signIn('mm-driver-endpoints@example.test', 'password-driver')
+    const statuses = {
+      demoteOther: (await call(adminHeaders, 'update-member-role', { memberId: memberId(driverUserId), role: 'dispatcher', organizationId: tenant.tenantId })).status,
+      demoteSelf: (await call(adminHeaders, 'update-member-role', { memberId: memberId(tenant.adminUserId), role: 'driver', organizationId: tenant.tenantId })).status,
+      remove: (await call(adminHeaders, 'remove-member', { memberIdOrEmail: memberId(driverUserId), organizationId: tenant.tenantId })).status,
+      leave: (await call(adminHeaders, 'leave', { organizationId: tenant.tenantId })).status,
+      driverListMembers: (await call(driverHeaders, 'list-members')).status,
+      driverFullOrganization: (await call(driverHeaders, 'get-full-organization')).status,
+      driverListInvitations: (await call(driverHeaders, 'list-invitations')).status,
+    }
+
+    expect(statuses).toEqual({
+      demoteOther: 404,
+      demoteSelf: 404,
+      remove: 404,
+      leave: 404,
+      driverListMembers: 404,
+      driverFullOrganization: 404,
+      driverListInvitations: 404,
+    })
+    expect(await roleIn(tenant.tenantId, tenant.adminUserId)).toBe('admin')
+    expect(await roleIn(tenant.tenantId, admin2UserId)).toBe('admin')
+    expect(await roleIn(tenant.tenantId, driverUserId)).toBe('driver')
   }
   finally {
     await closeTenantRuntime()
