@@ -11,6 +11,7 @@ const base = {
   QUEUE_DATABASE_URL: 'postgres://queue@127.0.0.1:5432/transferpro',
   BETTER_AUTH_SECRET: 'transferpro-test-secret-32-characters',
   BETTER_AUTH_URL: 'http://localhost:3000',
+  RESEND_API_KEY: 'test-resend-key',
 }
 
 it('defaults the log level to info in production and debug locally', () => {
@@ -25,4 +26,12 @@ it('uses an explicit log level from the environment', () => {
 
 it('rejects an unknown log level', () => {
   expect(() => parseAppEnv({ ...base, LOG_LEVEL: 'verbose' })).toThrow()
+})
+
+it('requires RESEND_API_KEY except in test', () => {
+  const { RESEND_API_KEY: _removed, ...withoutKey } = base
+  expect(parseAppEnv({ ...withoutKey, NODE_ENV: 'test' }).RESEND_API_KEY).toBeUndefined()
+  expect(parseAppEnv({ ...base, NODE_ENV: 'test' }).RESEND_API_KEY).toBe('test-resend-key')
+  expect(() => parseAppEnv({ ...withoutKey, NODE_ENV: 'production' })).toThrow()
+  expect(() => parseAppEnv(withoutKey)).toThrow()
 })

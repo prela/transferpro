@@ -243,6 +243,24 @@ it('better Auth tables are not tenant tables, and every app table is', async () 
       can_update: false,
       can_delete: false,
     }])
+
+    const invitationView = await client.query<{
+      can_select: boolean
+      can_insert: boolean
+      can_update: boolean
+      can_delete: boolean
+    }>(
+      `select has_table_privilege('transferpro_app', 'app.tenant_invitation'::regclass, 'SELECT') as can_select,
+              has_table_privilege('transferpro_app', 'app.tenant_invitation'::regclass, 'INSERT') as can_insert,
+              has_table_privilege('transferpro_app', 'app.tenant_invitation'::regclass, 'UPDATE') as can_update,
+              has_table_privilege('transferpro_app', 'app.tenant_invitation'::regclass, 'DELETE') as can_delete`,
+    )
+    expect(invitationView.rows).toEqual([{
+      can_select: true,
+      can_insert: false,
+      can_update: false,
+      can_delete: false,
+    }])
   }
   finally {
     client.release()

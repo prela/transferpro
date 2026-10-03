@@ -43,6 +43,7 @@ const env = parseAppEnv({
   QUEUE_DATABASE_URL: queueDatabaseUrl,
   BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
   BETTER_AUTH_URL: baseUrl,
+  NODE_ENV: 'test',
 })
 
 const password = 'slice10-session-password'

@@ -76,7 +76,8 @@
 
 /* Keyboard focus has to stay visible on the email, password, and buttons. */
 button:focus,
-input:focus {
+input:focus,
+select:focus {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
@@ -102,6 +103,11 @@ h1 {
   font-size: 1.5rem;
 }
 
+h2 {
+  margin: 1.5rem 0 1rem;
+  font-size: 1.25rem;
+}
+
 .label {
   margin: 0;
   color: var(--muted);
@@ -118,7 +124,8 @@ label {
   font-weight: 600;
 }
 
-input {
+input,
+select {
   box-sizing: border-box;
   width: 100%;
   min-height: 2.75rem;

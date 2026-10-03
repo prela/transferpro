@@ -30,6 +30,7 @@ const env = parseAppEnv({
   QUEUE_DATABASE_URL: queueDatabaseUrl,
   BETTER_AUTH_SECRET: 'transferpro-test-secret-32-characters',
   BETTER_AUTH_URL: 'http://localhost:3000',
+  NODE_ENV: 'test',
 })
 
 const tenantA = '33333333-3333-4333-8333-333333333333'

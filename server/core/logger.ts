@@ -57,13 +57,32 @@ const PERSONAL_KEYS = new Set([
  */
 const SECRET_PARTS = ['secret', 'token', 'password', 'cookie', 'authorization', 'apikey', 'databaseurl']
 
+/**
+ * An invitation id is a bearer secret (ADR-0013). The link keeps it in the
+ * hash, and these keys are redacted whole. A URL in any other string is
+ * scrubbed below, including a log message: ADR-0012 does not scan messages
+ * for personal data, and this pattern is the exception.
+ */
+const INVITE_BEARER_KEYS = new Set(['invitationid', 'inviteurl'])
+
+function scrubInviteBearer(value: string): string {
+  // A fresh regex each call: a shared /g pattern would keep lastIndex.
+  return value.replace(
+    /(invitationId=|accept-invite[#/])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+    '$1[Redacted]',
+  )
+}
+
 function normalizeKey(key: string): string {
   return key.toLowerCase().replaceAll('_', '').replaceAll('-', '')
 }
 
-function isRedactedKey(key: string): boolean {
+function isRedactedKey(key: string, parentKey?: string): boolean {
   const normalized = normalizeKey(key)
-  if (PERSONAL_KEYS.has(normalized))
+  if (PERSONAL_KEYS.has(normalized) || INVITE_BEARER_KEYS.has(normalized))
+    return true
+  // `{ invitation: { id } }` is the bearer, not a user id.
+  if (parentKey !== undefined && normalizeKey(parentKey) === 'invitation' && normalized === 'id')
     return true
   return SECRET_PARTS.some(part => normalized.includes(part))
 }
@@ -72,7 +91,7 @@ function isRedactedKey(key: string): boolean {
  * Walks the payload. Pino's path redaction matches one level, and a
  * passenger name sits under `passenger.name`.
  */
-function redact(value: unknown): unknown {
+function redact(value: unknown, parentKey?: string): unknown {
   // `name` is a person's name. An Error's name is its type, so the log
   // field is `type`. Enumerable extras (Postgres `detail`) stay on the
   // object and go through the same key list. `message` and `stack` are
@@ -85,18 +104,21 @@ function redact(value: unknown): unknown {
     fields.type = value.name
     fields.message = value.message
     fields.stack = value.stack
-    return redact(fields)
+    return redact(fields, parentKey)
   }
 
   if (Array.isArray(value))
-    return value.map(item => redact(item))
+    return value.map(item => redact(item, parentKey))
 
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {}
     for (const [key, child] of Object.entries(value))
-      out[key] = isRedactedKey(key) ? REDACTED : redact(child)
+      out[key] = isRedactedKey(key, parentKey) ? REDACTED : redact(child, key)
     return out
   }
+
+  if (typeof value === 'string')
+    return scrubInviteBearer(value)
 
   return value
 }
@@ -219,7 +241,7 @@ export function createLogger(options: { level: LogLevel, destination?: Writable 
     if (msg === undefined)
       logger[level](payload)
     else
-      logger[level](payload, msg)
+      logger[level](payload, scrubInviteBearer(msg))
   }
 
   return {
