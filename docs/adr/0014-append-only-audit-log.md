@@ -43,6 +43,6 @@ The database does not check the actor. `append_entry` stores the user id the ser
 
 A new action also needs a branch in `audit_entry_shape`, so the migration that adds the enum value replaces the check too.
 
-A person who has left the Tenant appears as a former member, because their name is no longer in `app.tenant_member`. Erasing a user leaves only an id in the log, so an append-only table does not block erasure. A member whose stored role is not a Tenant role can no longer have their role changed or be removed, because that change cannot be logged.
+A person who has left the Tenant appears as a former member, because their name is no longer in `app.tenant_member`. Erasing a user leaves only an id in the log, so an append-only table does not block erasure. A member whose stored role is not a Tenant role can no longer have their role changed or be removed, because that change cannot be logged. The request is refused with 409 before any write.
 
 Paging, retention, and superadmin access entries are left for later. A superadmin entry can use the same function: the actor is a user id, not a membership.

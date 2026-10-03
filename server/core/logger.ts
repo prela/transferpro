@@ -285,7 +285,7 @@ function genericMessage(statusCode: number): string {
  * One log line with type and stack, then a body of three fields.
  * The thrown message is not copied: Nitro's default handler would send
  * it, and in development the stack as well. A 4xx is a refused request,
- * so it is a warn line; anything else is an error line.
+ * not a fault.
  */
 export function handleLoggedError(logger: Logger, error: unknown, requestId: string | undefined): ClientErrorBody {
   const err = error instanceof Error ? error : new Error('Non-error rejection')

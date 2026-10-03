@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { memberErrorMessage } from '../../../shared'
+import { handleLoggedError } from '../../core/index'
+import { captureLogs } from '../../core/testing'
 import { MemberAccessError, TenantAccessError } from '../../modules/tenancy'
 import { memberHttpError, parseMemberUserId } from './http'
 
@@ -25,9 +27,17 @@ describe('memberHttpError', () => {
     expect(error).toMatchObject({ statusCode: 409, statusMessage: 'Cannot remove or demote the last admin.' })
   })
 
-  it('keeps the fixed 409 phrase for a stored role the audit log cannot record', () => {
+  it('keeps the fixed 409 phrase for a stored role the audit log cannot record, and the error handler warns', () => {
     const error = thrown(() => memberHttpError(new MemberAccessError(409, memberErrorMessage('member.roleNotTenant'))))
     expect(error).toMatchObject({ statusCode: 409, statusMessage: 'Member role is not a Tenant role.' })
+
+    const logs = captureLogs()
+    expect(handleLoggedError(logs.logger, error, 'req-role-not-tenant')).toEqual({
+      statusCode: 409,
+      message: 'Request failed',
+      request_id: 'req-role-not-tenant',
+    })
+    expect(logs.lines().map(line => line.level)).toEqual([40])
   })
 
   it('answers a member 400 with "Bad request", not the thrown text', () => {
