@@ -1,4 +1,5 @@
 import { defineEventHandler, getRouterParam, readBody, toWebRequest } from 'h3'
+import { z } from 'zod'
 import { changeMemberRole } from '../../../modules/tenancy'
 import { memberHttpError } from '../http'
 
@@ -9,9 +10,10 @@ import { memberHttpError } from '../http'
 export default defineEventHandler(async (event) => {
   try {
     const userId = getRouterParam(event, 'userId')
-    if (!userId)
-      memberHttpError(new Error('User ID is required.'), 400)
-    await changeMemberRole(toWebRequest(event).headers, userId, await readBody(event))
+    const parsed = z.uuid().safeParse(userId)
+    if (!parsed.success)
+      memberHttpError(new Error('Invalid user ID.'), 400)
+    await changeMemberRole(toWebRequest(event).headers, parsed.data, await readBody(event))
     return { changed: true }
   }
   catch (error) {
