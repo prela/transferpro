@@ -63,63 +63,44 @@ it('refuses an entry with an extra data key, no actor, or a missing member befor
 })
 
 it('lists rows newest first as the API shape, keeping a former member\'s name null', async () => {
-  const { transaction } = fakeTransaction([
+  const entries = [
     {
       id: '8d3a2e5c-4444-4444-8444-444444444444',
-      occurred_at: '2026-10-03T18:43:00.000Z',
+      occurredAt: '2026-10-03T18:43:00.000Z',
       action: 'member.removed',
-      actor_user_id: adminId,
-      actor_name: 'Ana Admin',
-      subject_user_id: memberId,
-      subject_name: null,
+      actorUserId: adminId,
+      actorName: 'Ana Admin',
+      subjectUserId: memberId,
+      subjectName: null,
       data: { role: 'driver' },
     },
     {
       id: '9e4b3f6d-5555-4555-8555-555555555555',
-      occurred_at: '2026-10-03T18:42:00.000Z',
+      occurredAt: '2026-10-03T18:42:00.000Z',
       action: 'member.invited',
-      actor_user_id: adminId,
-      actor_name: 'Ana Admin',
-      subject_user_id: null,
-      subject_name: null,
+      actorUserId: adminId,
+      actorName: 'Ana Admin',
+      subjectUserId: null,
+      subjectName: null,
       data: { role: 'dispatcher' },
     },
-  ])
-  expect(await listAuditEntries(transaction)).toEqual({
-    entries: [
-      {
-        id: '8d3a2e5c-4444-4444-8444-444444444444',
-        occurredAt: '2026-10-03T18:43:00.000Z',
-        action: 'member.removed',
-        actorUserId: adminId,
-        actorName: 'Ana Admin',
-        subjectUserId: memberId,
-        subjectName: null,
-        data: { role: 'driver' },
-      },
-      {
-        id: '9e4b3f6d-5555-4555-8555-555555555555',
-        occurredAt: '2026-10-03T18:42:00.000Z',
-        action: 'member.invited',
-        actorUserId: adminId,
-        actorName: 'Ana Admin',
-        subjectUserId: null,
-        subjectName: null,
-        data: { role: 'dispatcher' },
-      },
-    ],
-  })
+  ]
+  const { transaction, queries } = fakeTransaction(entries)
+  expect(await listAuditEntries(transaction)).toEqual({ entries })
+  // The columns are aliased to the API's field names, so the rows parse as they come.
+  expect(queries[0]?.sql).toContain('as "occurredAt"')
+  expect(queries[0]?.sql).toContain('order by e.occurred_at desc, e.id desc')
 })
 
 it('fails the read on a row whose data does not match its action', async () => {
   const { transaction } = fakeTransaction([{
     id: '8d3a2e5c-4444-4444-8444-444444444444',
-    occurred_at: '2026-10-03T18:43:00.000Z',
+    occurredAt: '2026-10-03T18:43:00.000Z',
     action: 'member.role_changed',
-    actor_user_id: adminId,
-    actor_name: 'Ana Admin',
-    subject_user_id: memberId,
-    subject_name: 'Dora Driver',
+    actorUserId: adminId,
+    actorName: 'Ana Admin',
+    subjectUserId: memberId,
+    subjectName: 'Dora Driver',
     data: { role: 'driver' },
   }])
   await expect(listAuditEntries(transaction)).rejects.toThrow()
