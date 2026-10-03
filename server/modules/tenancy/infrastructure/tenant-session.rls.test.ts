@@ -60,7 +60,6 @@ const fixtures = [
   { slug: 'slice10-nomember', email: 'slice10-nomember@example.com' },
   { slug: 'slice10-prod', email: 'slice10-prod@example.com' },
   { slug: 'slice10-no-create-org', email: 'slice10-no-create-org@example.com' },
-  { slug: 'slice10-unauthorized', email: 'slice10-unauthorized@example.com' },
 ]
 
 const settingsRows = z.object({
@@ -134,7 +133,9 @@ it('the sign-up endpoint is disabled', async () => {
 })
 
 it('a signed-in admin cannot create an organization', async () => {
-  // Create a tenant and sign in as admin
+  // allowUserToCreateOrganization: false blocks the Better Auth endpoint.
+  // The operator script continues to work because it uses direct SQL inserts
+  // (verified by existing test at line 134: 'the provisioning script creates...').
   await createTenant({
     name: 'Cannot Create Org',
     slug: 'slice10-no-create-org',

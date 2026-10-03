@@ -105,7 +105,10 @@ export function createAuth(env: Pick<AppEnv, 'AUTH_DATABASE_URL' | 'BETTER_AUTH_
         // The person who opens a Tenant is its admin, not an owner.
         creatorRole: 'admin',
         // Decision 3.10.2026: no public signup or self-service tenant creation.
-        // The operator script creates Tenants directly through SQL inserts.
+        // Only the operator script `pnpm tenant:create` creates Tenants.
+        // Investigation: the script uses direct SQL INSERT statements to auth
+        // schema tables (create-tenant.ts:119-168), bypassing Better Auth's
+        // API endpoints entirely, so this flag does not affect it.
         allowUserToCreateOrganization: false,
       }),
     ],
