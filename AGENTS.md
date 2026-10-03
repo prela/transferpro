@@ -51,7 +51,7 @@ Rationale is ADR-0014. Working rules:
 - A new action needs four things: a value in `auditActions` with a strict data shape (`shared/audit-entry.ts`), a matching branch in the `audit_entry_shape` check (`db/audit-entry.ts`), a migration that adds the enum value and replaces the check, and `audit.actions.*` copy in both locales. Without the branch, the table refuses the action's rows.
 - Entry data holds ids and roles only. Display names come from `app.tenant_member` when the log is read.
 - The invite entry comes from the `auth.invitation` insert trigger, so invite code appends nothing.
-- ADR-0014 is proposed. It amends ADR-0011: besides Better Auth's tables, the auth role may use schema `audit` and execute `audit.append_entry`, and nothing else outside `auth`.
+- ADR-0014 amends ADR-0011: besides Better Auth's tables, the auth role may use schema `audit` and execute `audit.append_entry`, and nothing else outside `auth`.
 
 ## Logging and errors
 

@@ -1,6 +1,8 @@
 # Tenant session, grant-walled roles, and the member read
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0014
+
+ADR-0014 amends "`transferpro_auth` can touch Better Auth's tables only." The auth role may also use schema `audit` and execute `audit.append_entry`, and it still has no grant on schema `app`. The rest of this decision stands.
 
 ## Context
 

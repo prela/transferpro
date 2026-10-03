@@ -1,6 +1,6 @@
 # Append-only audit log
 
-Status: proposed
+Status: accepted
 
 ## Context
 
@@ -24,7 +24,7 @@ A change needs a reviewed migration that drops or disables the trigger.
 
 Two functions in schema `audit` write rows. Both are `SECURITY DEFINER`, owned by `transferpro_owner`, with `search_path` set to `pg_catalog, pg_temp`, so a caller's temporary objects cannot stand in for a name.
 
-- `audit.append_entry(action, actor_user_id, subject_user_id, data)` is the one path for application code. It takes the Tenant from `app.current_tenant_id()` and refuses when that is unset. The app role and the auth role may execute it. Schema `audit` keeps it apart, so the auth role still has no grant on schema `app`. Once this ADR is accepted, it amends one sentence of ADR-0011: besides Better Auth's tables, the auth role may execute this one function.
+- `audit.append_entry(action, actor_user_id, subject_user_id, data)` is the one path for application code. It takes the Tenant from `app.current_tenant_id()` and refuses when that is unset. The app role and the auth role may execute it. Schema `audit` keeps it apart, so the auth role still has no grant on schema `app`. This ADR amends one sentence of ADR-0011: besides Better Auth's tables, the auth role may execute this one function.
 - `audit.record_invitation()` is an `AFTER INSERT` trigger on `auth.invitation`, because Better Auth inserts the invitation on its own connection without a tenant session. It writes `member.invited` with the inviter as the actor, in the same transaction. No role can call it directly.
 
 Role change and removal open the kernel's tenant session on the locked auth-role connection and append before commit.
