@@ -1,5 +1,5 @@
 {
-  "id": "9cad4cb8-2688-45c8-8840-f3a738b2e6d1",
+  "id": "e3279de1-4b01-4a14-9fd0-e5322dc93aeb",
   "prevId": "3a16e751-1233-4585-8adc-90c2e8e5b6cc",
   "version": "7",
   "dialect": "postgresql",
@@ -158,8 +158,7 @@
           "name": "data",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
+          "notNull": true
         }
       },
       "indexes": {
@@ -208,6 +207,10 @@
         "audit_entry_data": {
           "name": "audit_entry_data",
           "value": "jsonb_typeof(\"app\".\"audit_entry\".\"data\") = 'object'"
+        },
+        "audit_entry_shape": {
+          "name": "audit_entry_shape",
+          "value": "(case \"app\".\"audit_entry\".\"action\"\n    when 'member.invited' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{role}'::text[] = '{}'::jsonb and \"app\".\"audit_entry\".\"data\" ->> 'role' in ('admin', 'dispatcher', 'driver')\n    when 'member.role_changed' then \"app\".\"audit_entry\".\"subject_user_id\" <> '' and \"app\".\"audit_entry\".\"data\" - '{from,to}'::text[] = '{}'::jsonb and \"app\".\"audit_entry\".\"data\" ->> 'from' in ('admin', 'dispatcher', 'driver') and \"app\".\"audit_entry\".\"data\" ->> 'to' in ('admin', 'dispatcher', 'driver')\n    when 'member.removed' then \"app\".\"audit_entry\".\"subject_user_id\" <> '' and \"app\".\"audit_entry\".\"data\" - '{role}'::text[] = '{}'::jsonb and \"app\".\"audit_entry\".\"data\" ->> 'role' in ('admin', 'dispatcher', 'driver')\n    else false end) is true"
         }
       },
       "isRLSEnabled": true

@@ -48,10 +48,10 @@ Roles, grants, and the tenant session are ADR-0011. Working rules on top of that
 Rationale is ADR-0014. Working rules:
 
 - Append with `appendAuditEntry` from `server/modules/audit` on the action's own transaction, after its writes and before commit. That transaction needs a tenant session; on the auth pool, open `openTenantSession` on the same client, as `member-management.ts` does.
-- A new action needs three things: a value in `auditActions` with a strict data shape (`shared/audit-entry.ts`), an `ALTER TYPE app.audit_action ADD VALUE` migration, and `audit.actions.*` copy in both locales.
+- A new action needs four things: a value in `auditActions` with a strict data shape (`shared/audit-entry.ts`), a matching branch in the `audit_entry_shape` check (`db/audit-entry.ts`), a migration that adds the enum value and replaces the check, and `audit.actions.*` copy in both locales. Without the branch, the table refuses the action's rows.
 - Entry data holds ids and roles only. Display names come from `app.tenant_member` when the log is read.
 - The invite entry comes from the `auth.invitation` insert trigger, so invite code appends nothing.
-- Schema `audit` is the auth role's only grant outside `auth`.
+- ADR-0014 is proposed. It amends ADR-0011: besides Better Auth's tables, the auth role may use schema `audit` and execute `audit.append_entry`, and nothing else outside `auth`.
 
 ## Logging and errors
 

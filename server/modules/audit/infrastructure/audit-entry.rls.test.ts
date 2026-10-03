@@ -126,6 +126,31 @@ it('append_entry writes into the caller\'s session Tenant for the app and auth r
   expect(await entriesOf(tenantA)).toHaveLength(1)
 })
 
+it('the table refuses data that does not match its action, for every writer', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const subject = crypto.randomUUID()
+  const append = `select audit.append_entry($1, $2, $3, $4::jsonb)`
+  const mismatches: Array<[string, string | null, string]> = [
+    ['member.removed', subject, '{"role":"driver","email":"ana@example.test"}'],
+    ['member.removed', subject, '{"role":"owner"}'],
+    ['member.removed', subject, '{}'],
+    ['member.removed', null, '{"role":"driver"}'],
+    ['member.invited', subject, '{"role":"driver"}'],
+    ['member.invited', null, '{"role":null}'],
+    ['member.role_changed', subject, '{"from":"driver"}'],
+    ['member.role_changed', subject, '{"from":"driver","to":"dispatcher","name":"Ana"}'],
+  ]
+  for (const values of mismatches) {
+    expect(await refusal(appPool, tenant, append, [values[0], actor, ...values.slice(1)]), values.join(' ')).toMatchObject({ code: '23514' })
+    expect(await refusal(authPool, tenant, append, [values[0], actor, ...values.slice(1)]), values.join(' ')).toMatchObject({ code: '23514' })
+  }
+  // The owner bypasses RLS and the function, as the invitation trigger does.
+  expect(await refusal(ownerPool, null, `insert into app.audit_entry (tenant_id, action, actor_user_id, data)
+    values ($1, 'member.invited', $2, '{"role":"driver","email":"ana@example.test"}')`, [tenant, actor])).toMatchObject({ code: '23514' })
+  expect(await entriesOf(tenant)).toEqual([])
+})
+
 it('the app role cannot insert, update, delete, or truncate an entry, even in its own Tenant, and the auth role cannot touch the table', async () => {
   const tenant = crypto.randomUUID()
   const actor = crypto.randomUUID()
