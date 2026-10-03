@@ -42,6 +42,24 @@ const membershipRow = z.object({
   role: z.string(),
 })
 
+/**
+ * Better Auth's own member routes, refused over HTTP (404). Role changes and
+ * removals go through /api/members, which holds the Tenant lock, refuses
+ * self and last-admin changes, and deletes sessions. update-member-role lets
+ * the creator role (admin) past its permission check, and leave skips the
+ * lock. The reads return every member's or invitee's email to any member,
+ * a driver too; the app reads app.tenant_member and app.tenant_invitation.
+ * Server-side `auth.api` calls are not affected.
+ */
+const disabledPaths = [
+  '/organization/update-member-role',
+  '/organization/remove-member',
+  '/organization/leave',
+  '/organization/list-members',
+  '/organization/get-full-organization',
+  '/organization/list-invitations',
+]
+
 export interface Membership {
   readonly organizationId: string
   readonly role: string
@@ -130,6 +148,7 @@ export function createAuth(
   const auth = betterAuth({
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
+    disabledPaths,
     emailAndPassword: {
       enabled: true,
       // Decision 3.10.2026: no public signup. The operator script creates the admin.
@@ -207,6 +226,7 @@ export function createAuth(
   })
   return {
     auth,
+    authPool: pool,
     baseURL: env.BETTER_AUTH_URL,
     close: () => pool.end(),
     async invitationById(id: string): Promise<InvitationRecord | null> {

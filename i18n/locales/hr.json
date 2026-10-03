@@ -56,5 +56,21 @@
     "failed": "Pozivnicu nije moguće prihvatiti.",
     "passwordRules": "Lozinka ne zadovoljava pravila.",
     "limited": "Previše pokušaja. Pričekajte i pokušajte ponovno."
+  },
+  "members": {
+    "title": "Članovi",
+    "loading": "Učitavanje članova",
+    "loadFailed": "Članovi se nisu mogli učitati. Pokušajte ponovno.",
+    "name": "Ime",
+    "role": "Uloga",
+    "remove": "Ukloni člana",
+    "confirmRemove": "Jeste li sigurni da želite ukloniti ovog člana? Odmah će izgubiti pristup.",
+    "confirmRemoveButton": "Da, ukloni",
+    "cancel": "Odustani",
+    "changeRoleFailed": "Uloga nije promijenjena. Pokušajte ponovno.",
+    "removeFailed": "Član nije uklonjen. Pokušajte ponovno.",
+    "lastAdmin": "Zadnji administrator se ne može ukloniti niti mu se može promijeniti uloga.",
+    "cannotModifySelf": "Ne možete promijeniti svoju ulogu ili se ukloniti. Drugi administrator to može učiniti.",
+    "you": "vi"
   }
 }

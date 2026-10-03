@@ -2,6 +2,7 @@
   "type": "module",
   "scripts": {
     "prepare": "husky",
+    "dev": "nuxi dev --port 3000",
     "lint": "eslint .",
     "typecheck": "nuxi typecheck",
     "test": "vitest run",
@@ -15,6 +16,7 @@
     "@nuxtjs/i18n": "^10.6.0",
     "better-auth": "^1.7.7",
     "drizzle-orm": "^0.45.3",
+    "h3": "^1.15.11",
     "nuxt": "^4.5.2",
     "pg-boss": "^12.35.1",
     "pino": "^10.3.1",
