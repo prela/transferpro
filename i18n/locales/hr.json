@@ -1,0 +1,28 @@
+{
+  "signIn": {
+    "title": "Prijava",
+    "email": "E-pošta",
+    "password": "Lozinka",
+    "submit": "Prijavi se",
+    "submitting": "Prijava u tijeku",
+    "failed": "Prijava nije uspjela. Provjerite e-poštu i lozinku pa pokušajte ponovno.",
+    "limited": "Previše pokušaja. Pričekajte i pokušajte ponovno."
+  },
+  "shell": {
+    "tenant": "Organizacija",
+    "signOut": "Odjava",
+    "signingOut": "Odjava u tijeku",
+    "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno.",
+    "exampleTime": "Primjer vremena",
+    "unavailable": "Zaslon se nije mogao učitati. Pokušajte ponovno.",
+    "saveFailed": "Promjena jezika nije spremljena. Pokušajte ponovno."
+  },
+  "locale": {
+    "hr": "Hrvatski",
+    "en": "English"
+  },
+  "theme": {
+    "useLight": "Svijetla tema",
+    "useDark": "Tamna tema"
+  }
+}

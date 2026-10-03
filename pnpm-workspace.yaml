@@ -11,5 +11,7 @@ allowBuilds:
 
 auditConfig:
   # dev-only via listhen (dev-server self-signed cert), not in the production bundle, revisit when node-forge > 1.4.0 ships.
+  # build-time only via micromatch (nitropack globby, @nuxtjs/i18n fast-glob) on our own glob patterns, never user input, not in .output; no patched release yet, revisit when braces > 3.0.3 ships.
   ignoreGhsas:
     - GHSA-86w9-cpqp-85rv
+    - GHSA-vfj7-8cjw-p6xm
