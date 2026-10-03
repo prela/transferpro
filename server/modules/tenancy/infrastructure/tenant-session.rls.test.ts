@@ -59,6 +59,8 @@ const fixtures = [
   { slug: 'slice10-tenant-b', email: 'slice10-b@example.com' },
   { slug: 'slice10-nomember', email: 'slice10-nomember@example.com' },
   { slug: 'slice10-prod', email: 'slice10-prod@example.com' },
+  { slug: 'slice10-no-create-org', email: 'slice10-no-create-org@example.com' },
+  { slug: 'slice10-unauthorized', email: 'slice10-unauthorized@example.com' },
 ]
 
 const settingsRows = z.object({
@@ -129,6 +131,50 @@ it('the sign-up endpoint is disabled', async () => {
   }))
   expect(response.status).toBe(400)
   expect(await response.text()).toContain('EMAIL_PASSWORD_SIGN_UP_DISABLED')
+})
+
+it('a signed-in admin cannot create an organization', async () => {
+  // Create a tenant and sign in as admin
+  await createTenant({
+    name: 'Cannot Create Org',
+    slug: 'slice10-no-create-org',
+    adminEmail: 'slice10-no-create-org@example.com',
+    adminName: 'Ada',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  const signedIn = await signIn('slice10-no-create-org@example.com')
+
+  // Count organizations before the attempt
+  const before = await authPool.query('select count(*) from auth.organization')
+  const beforeCount = Number.parseInt(String(before.rows[0]?.count ?? '0'), 10)
+
+  // Try to create an organization through the Better Auth endpoint
+  const response = await currentAuth().auth.handler(new Request(`${baseUrl}/api/auth/organization/create`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'origin': baseUrl,
+      'cookie': signedIn.token,
+    },
+    body: JSON.stringify({
+      name: 'Unauthorized Tenant',
+      slug: 'slice10-unauthorized',
+    }),
+  }))
+
+  // The request must be refused
+  expect(response.status).toBeGreaterThanOrEqual(400)
+
+  // No new organization row was added
+  const after = await authPool.query('select count(*) from auth.organization')
+  const afterCount = Number.parseInt(String(after.rows[0]?.count ?? '0'), 10)
+  expect(afterCount).toBe(beforeCount)
+
+  // Verify the specific slug was not created
+  const check = await authPool.query('select 1 from auth.organization where slug = $1', ['slice10-unauthorized'])
+  expect(check.rowCount).toBe(0)
 })
 
 it('the provisioning script creates a tenant and an admin who can sign in and sign out', async () => {
