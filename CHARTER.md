@@ -74,6 +74,7 @@ Invoicing, fiscalization, price-list automation, platform APIs, Gmail/email impo
 - **Tooling:** pnpm, Antfu ESLint, Vitest, Playwright, Docker, GitHub Actions.
 - **Hosting:** Coolify on Hetzner (existing server first — do not rescale it, rescale triggers new pricing). Postgres backups (Coolify pg_dump) to S3-compatible storage at a **different** provider; restore is tested, not assumed.
 - Provider-neutral code: no provider-specific APIs; config via env; files on S3 API, not local disk.
+- Transactional email: Resend (EU region), from `noreply@transfers.prela.net`, behind a mailer interface so the provider can be swapped. Invites also show a copyable link as a fallback.
 
 ## Patterns
 

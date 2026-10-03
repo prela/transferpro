@@ -71,6 +71,32 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
   expect(text).not.toContain('allergic to nuts')
 })
 
+it('redacts an invitation id and an invite link', () => {
+  const logs = captureLogs()
+  const invitationId = '6b1e0c3a-2222-4222-8222-222222222222'
+  logs.logger.info({
+    invitationId,
+    inviteUrl: `http://localhost:3000/accept-invite#${invitationId}`,
+    path: `http://localhost:3000/accept-invite#${invitationId}`,
+    slash: `http://localhost:3000/accept-invite/${invitationId}`,
+    query: `invitationId=${invitationId}`,
+    invitation: { id: invitationId, status: 'pending' },
+  }, `opened accept-invite#${invitationId} accept-invite/${invitationId} invitationId=${invitationId}`)
+
+  const [line] = logs.lines()
+  expect(line).toMatchObject({
+    invitationId: '[Redacted]',
+    inviteUrl: '[Redacted]',
+    invitation: { id: '[Redacted]', status: 'pending' },
+  })
+  const text = JSON.stringify(line)
+  expect(text).not.toContain(invitationId)
+  expect(text).toContain('accept-invite#[Redacted]')
+  expect(text).toContain('accept-invite/[Redacted]')
+  expect(text).toContain('invitationId=[Redacted]')
+  expect(text).toContain('pending')
+})
+
 it('redacts secret-like keys by substring and a postgres detail field', () => {
   const logs = captureLogs()
   const duplicate = new Error('duplicate key')

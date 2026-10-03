@@ -24,5 +24,37 @@
   "theme": {
     "useLight": "Svijetla tema",
     "useDark": "Tamna tema"
+  },
+  "invite": {
+    "title": "Pozovi člana",
+    "email": "E-pošta",
+    "role": "Uloga",
+    "chooseRole": "Odaberite ulogu",
+    "roles": {
+      "admin": "Administrator",
+      "dispatcher": "Dispečer",
+      "driver": "Vozač"
+    },
+    "submit": "Pošalji pozivnicu",
+    "submitting": "Slanje pozivnice",
+    "failed": "Pozivnica nije poslana. Pokušajte ponovno.",
+    "emailFailed": "E-pošta nije poslana. Kopirajte poveznicu i pošaljite je sami.",
+    "link": "Poveznica pozivnice",
+    "copy": "Kopiraj poveznicu",
+    "copied": "Poveznica je kopirana"
+  },
+  "acceptInvite": {
+    "title": "Prihvati pozivnicu",
+    "loading": "Učitavanje pozivnice",
+    "name": "Ime",
+    "password": "Lozinka",
+    "submit": "Otvori račun",
+    "submitting": "Otvaranje računa",
+    "signInTitle": "Već imate račun. Prijavite se da biste prihvatili pozivnicu.",
+    "signInSubmit": "Prijavi se i prihvati",
+    "invalid": "Ova pozivnica nije valjana.",
+    "failed": "Pozivnicu nije moguće prihvatiti.",
+    "passwordRules": "Lozinka ne zadovoljava pravila.",
+    "limited": "Previše pokušaja. Pričekajte i pokušajte ponovno."
   }
 }

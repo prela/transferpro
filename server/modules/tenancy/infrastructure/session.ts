@@ -5,9 +5,11 @@ import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
-import { resolveDisplayLocale, sessionShellSchema } from '../../../../shared'
+import { resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
 import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { createAuth } from './auth'
+import { acceptInvitation, parseInviteInput, previewInvitation, sendInvitation } from './invitation'
+import { createResendMailer } from './mailer'
 
 /**
  * A session with no user is 401. A user with no single membership, or with
@@ -58,8 +60,9 @@ function tenantRuntime(): Runtime {
   const env = loadAppEnv()
   // App role. The tenant session sets app.tenant_id on this pool only.
   const appPool = new pg.Pool({ connectionString: env.DATABASE_URL })
+  const mailer = env.RESEND_API_KEY === undefined ? undefined : createResendMailer(env.RESEND_API_KEY)
   runtime = {
-    handle: createAuth(env),
+    handle: createAuth(env, { mailer }),
     appPool,
     db: drizzle(appPool),
   }
@@ -111,6 +114,7 @@ export async function readSessionShell(headers: Headers): Promise<SessionShell> 
 
   // Auth role. The app role cannot read auth.user, and a null locale means the tenant default.
   const userLocale = await handle.userLocale(parsed.data.user.id)
+  const memberships = await handle.memberships(parsed.data.user.id)
 
   return withTenantFromSession(headers, async ({ context, transaction }) => {
     const selected = settingsRows.parse(await transaction.execute(sql`
@@ -120,13 +124,57 @@ export async function readSessionShell(headers: Headers): Promise<SessionShell> 
     if (!settings)
       throw new Error('Tenant settings are missing.')
 
+    const membership = memberships.find(item => item.organizationId === context.tenantId)
+    const role = tenantRoleSchema.safeParse(membership?.role)
+    if (!role.success)
+      throw new TenantAccessError(403)
+
     return sessionShellSchema.parse({
       tenantId: context.tenantId,
       tenantName: await handle.organizationName(context.tenantId),
       locale: resolveDisplayLocale(userLocale, settings.default_locale),
       timeZone: settings.time_zone,
+      role: role.data,
     })
   })
+}
+
+const localeRows = z.object({
+  rows: z.array(z.object({
+    default_locale: z.enum(['hr', 'en']),
+  })),
+})
+
+/**
+ * Admin invite. The organization id comes from the tenant session, not the body.
+ * The email uses the Tenant default locale.
+ */
+export async function inviteMember(headers: Headers, raw: unknown) {
+  const input = parseInviteInput(raw)
+  const { handle } = tenantRuntime()
+  return withTenantFromSession(headers, async ({ context, transaction }) => {
+    const selected = localeRows.parse(await transaction.execute(sql`
+      select default_locale from app.tenant_settings
+    `))
+    const settings = selected.rows.length === 1 ? selected.rows[0] : undefined
+    if (!settings)
+      throw new Error('Tenant settings are missing.')
+    return sendInvitation(handle, headers, {
+      email: input.email,
+      role: input.role,
+      organizationId: context.tenantId,
+      locale: settings.default_locale,
+    })
+  })
+}
+
+export async function previewMemberInvitation(raw: unknown) {
+  return previewInvitation(tenantRuntime().handle, raw)
+}
+
+/** `key` is the client address. The limiter is the sign-in rule. */
+export async function acceptMemberInvitation(raw: unknown, headers: Headers, key: string) {
+  return acceptInvitation(tenantRuntime().handle, raw, headers, { key })
 }
 
 /**

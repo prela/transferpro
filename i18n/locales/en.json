@@ -24,5 +24,37 @@
   "theme": {
     "useLight": "Light theme",
     "useDark": "Dark theme"
+  },
+  "invite": {
+    "title": "Invite a member",
+    "email": "Email",
+    "role": "Role",
+    "chooseRole": "Choose a role",
+    "roles": {
+      "admin": "Admin",
+      "dispatcher": "Dispatcher",
+      "driver": "Driver"
+    },
+    "submit": "Send invite",
+    "submitting": "Sending invite",
+    "failed": "The invite was not sent. Try again.",
+    "emailFailed": "The email was not sent. Copy the link and send it yourself.",
+    "link": "Invite link",
+    "copy": "Copy link",
+    "copied": "Link copied"
+  },
+  "acceptInvite": {
+    "title": "Accept invite",
+    "loading": "Loading invite",
+    "name": "Name",
+    "password": "Password",
+    "submit": "Create account",
+    "submitting": "Creating account",
+    "signInTitle": "You already have an account. Sign in to accept.",
+    "signInSubmit": "Sign in and accept",
+    "invalid": "This invite is not valid.",
+    "failed": "The invite could not be accepted.",
+    "passwordRules": "The password does not meet the rules.",
+    "limited": "Too many attempts. Wait and try again."
   }
 }

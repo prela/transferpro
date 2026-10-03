@@ -48,8 +48,8 @@ Roles, grants, and the tenant session are ADR-0011. Working rules on top of that
 The charter lists the personal-data keys. Rationale for the logger shape is ADR-0012 (proposed). Also:
 
 - Import the logger from `server/core/index.ts`. `no-console` is an error except in `server/core/logger.ts`, and that file still does not call `console`. `server/error.ts` does not call `console.error`. A `console` call skips redaction.
-- Personal-data keys match exactly, plus `notes`. `user_id` is kept. A normalized name containing `secret`, `token`, `password`, `cookie`, `authorization`, `apikey`, or `databaseurl` is redacted (`BETTER_AUTH_SECRET`, `AUTH_DATABASE_URL`). `detail` is exact. Comparison ignores case and `_` / `-`.
-- Put personal data and secrets in fields the list can see. Message text and `Error.message` are not scanned.
+- Personal-data keys match exactly, plus `notes`. `user_id` is kept. A normalized name containing `secret`, `token`, `password`, `cookie`, `authorization`, `apikey`, or `databaseurl` is redacted (`BETTER_AUTH_SECRET`, `AUTH_DATABASE_URL`, `RESEND_API_KEY`). `detail` is exact. Comparison ignores case and `_` / `-`. `invitationId` and `inviteUrl` are redacted whole. A string containing `accept-invite#<id>`, `accept-invite/<id>`, or `invitationId=<id>` is scrubbed, including in a message, because the id is a bearer secret (ADR-0013). Other personal data in a message stays unscanned.
+- Put personal data and secrets in fields the list can see. Message text and `Error.message` are not scanned for personal data. The invitation-id patterns in the previous bullet are the exception, and they are scrubbed inside a message (ADR-0013).
 - `server/plugins/boot.ts` configures the logger; `server/plugins/request-log.ts` echoes `x-request-id`. Nuxt runs plugins in alphabetical order, so those two names stay in that order.
 - `LOG_LEVEL` on `AppEnv`: blank means `info` when `NODE_ENV` is `production`, otherwise `debug`. An unknown level fails boot.
 - `server/error.ts` responds with `{ statusCode, message, request_id }`. `message` is a fixed phrase for that status.
@@ -65,6 +65,10 @@ The charter lists the personal-data keys. Rationale for the logger shape is ADR-
 The auth URL is `transferpro_auth` (no grant on schema `app`). The migrate URL is `transferpro_owner`, which sets `tenant_id` on `app.tenant_settings` explicitly because that role bypasses RLS. A wrong role exits before any insert. The script sets time zone `Europe/Zagreb` and `default_locale` `hr`. The settings row is written before the login and removed if the login insert fails. A crash between the two can leave an unused settings row; a retry still creates the Tenant.
 
 It runs as `node --import ./scripts/register-ts.mjs`. `scripts/ts-loader.mjs` exists for that command. Passing `--password` is refused; pnpm then reprints the command line, so the value would appear there.
+
+## Invitations
+
+`disableSignUp` stays on. The operator script and `POST /api/invitations/accept` are the only account-creation paths (ADR-0013). Accepting creates an account only for a pending, unexpired, unused invitation, and the email is copied from that row. An email that already has an account signs in and then accepts; the route does not change that password. An invitation lasts 7 days. The link keeps the id in the URL hash. Only an admin may invite. `POST /api/invitations/accept` uses the same production limit as email sign-in. Resend sends from `noreply@transfers.prela.net` through the mailer port. `RESEND_API_KEY` is required in the env schema and optional when `NODE_ENV` is `test`. The domain region is `eu-west-1`; Resend stores account logs in the US. Invitations are read in a tenant session through `app.tenant_invitation`, which does not return the email.
 
 ## i18n and theme
 

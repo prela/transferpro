@@ -23,6 +23,11 @@ export interface AppEnv {
   readonly BETTER_AUTH_URL: string
   /** Pino level. Production defaults to `info`; anywhere else, `debug`. */
   readonly LOG_LEVEL: LogLevel
+  /**
+   * Resend API key. Absent only when `NODE_ENV` is `test`.
+   * The name is redacted (`apikey`). ADR-0013.
+   */
+  readonly RESEND_API_KEY: string | undefined
 }
 
 /**
@@ -41,6 +46,22 @@ const appEnvSchema = z.object({
  * Unset or blank means the caller did not choose. Production is `info`
  * so a deployed process stays quiet. Local and test stay on `debug`.
  */
+const resendKeySchema = z.string().min(1)
+
+/**
+ * Required outside test so a deployed process cannot boot without mail.
+ * Test runs omit it. A blank value counts as missing.
+ */
+function parseResendApiKey(source: NodeJS.ProcessEnv): string | undefined {
+  const key = source.RESEND_API_KEY
+  if (key === undefined || key === '') {
+    if (source.NODE_ENV === 'test')
+      return undefined
+    return resendKeySchema.parse(key)
+  }
+  return resendKeySchema.parse(key)
+}
+
 function parseLogLevel(source: NodeJS.ProcessEnv): LogLevel {
   const raw = source.LOG_LEVEL
   if (raw === undefined || raw === '')
@@ -59,6 +80,7 @@ export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
       BETTER_AUTH_URL: source.BETTER_AUTH_URL,
     }),
     LOG_LEVEL: parseLogLevel(source),
+    RESEND_API_KEY: parseResendApiKey(source),
   }
 }
 

@@ -3,6 +3,7 @@ import { check, text } from 'drizzle-orm/pg-core'
 import { tenantTable } from './tenant-table'
 
 export { account, invitation, member, organization, session, user, verification } from './auth-schema'
+export { tenantInvitation } from './tenant-invitation'
 export { tenantMember } from './tenant-member'
 
 /**
