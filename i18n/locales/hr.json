@@ -74,9 +74,9 @@
     "you": "vi"
   },
   "audit": {
-    "title": "Dnevnik aktivnosti",
-    "loading": "Učitavanje dnevnika aktivnosti",
-    "loadFailed": "Dnevnik aktivnosti nije se mogao učitati. Pokušajte ponovno.",
+    "title": "Revizijski zapisnik",
+    "loading": "Učitavanje revizijskog zapisnika",
+    "loadFailed": "Revizijski zapisnik nije se mogao učitati. Pokušajte ponovno.",
     "empty": "Još nema zapisa.",
     "when": "Vrijeme",
     "who": "Tko",

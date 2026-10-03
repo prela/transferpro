@@ -32,7 +32,7 @@ function roleLabel(role: TenantRole): string {
 }
 
 /** The role the entry kept: one role, or the change from one to the other. */
-function roles(entry: AuditEntry): string {
+function roleText(entry: AuditEntry): string {
   return entry.action === 'member.role_changed'
     ? `${roleLabel(entry.data.from)} → ${roleLabel(entry.data.to)}`
     : roleLabel(entry.data.role)
@@ -84,7 +84,7 @@ onMounted(loadEntries)
           <td>{{ t(`audit.actions.${entry.action}`) }}</td>
           <!-- An invite names no member: the invitee has no account yet. -->
           <td>{{ entry.subjectUserId === null ? '' : entry.subjectName ?? t('audit.formerMember') }}</td>
-          <td>{{ roles(entry) }}</td>
+          <td>{{ roleText(entry) }}</td>
         </tr>
       </tbody>
     </table>
@@ -98,22 +98,3 @@ onMounted(loadEntries)
     </button>
   </section>
 </template>
-
-<style scoped>
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 1rem 0;
-}
-
-th,
-td {
-  padding: 0.75rem;
-  text-align: left;
-  border-bottom: 1px solid var(--line);
-}
-
-th {
-  font-weight: 600;
-}
-</style>
