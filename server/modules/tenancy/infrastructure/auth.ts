@@ -104,6 +104,8 @@ export function createAuth(env: Pick<AppEnv, 'AUTH_DATABASE_URL' | 'BETTER_AUTH_
       organizationPlugin({
         // The person who opens a Tenant is its admin, not an owner.
         creatorRole: 'admin',
+        // Only the operator script creates Tenants (via SQL, so unaffected).
+        allowUserToCreateOrganization: false,
       }),
     ],
   })

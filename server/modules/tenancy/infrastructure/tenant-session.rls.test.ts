@@ -59,6 +59,7 @@ const fixtures = [
   { slug: 'slice10-tenant-b', email: 'slice10-b@example.com' },
   { slug: 'slice10-nomember', email: 'slice10-nomember@example.com' },
   { slug: 'slice10-prod', email: 'slice10-prod@example.com' },
+  { slug: 'slice10-no-create-org', email: 'slice10-no-create-org@example.com' },
 ]
 
 const settingsRows = z.object({
@@ -129,6 +130,51 @@ it('the sign-up endpoint is disabled', async () => {
   }))
   expect(response.status).toBe(400)
   expect(await response.text()).toContain('EMAIL_PASSWORD_SIGN_UP_DISABLED')
+})
+
+it('a signed-in admin cannot create an organization', async () => {
+  await createTenant({
+    name: 'Cannot Create Org',
+    slug: 'slice10-no-create-org',
+    adminEmail: 'slice10-no-create-org@example.com',
+    adminName: 'Ada',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  const signedIn = await signIn('slice10-no-create-org@example.com')
+
+  // Positive control: the session is valid and authenticated
+  const sessionCheck = await currentAuth().auth.handler(new Request(`${baseUrl}/api/auth/get-session`, {
+    headers: {
+      origin: baseUrl,
+      cookie: signedIn.token,
+    },
+  }))
+  expect(sessionCheck.status).toBe(200)
+
+  // Try to create an organization through the Better Auth endpoint
+  const response = await currentAuth().auth.handler(new Request(`${baseUrl}/api/auth/organization/create`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'origin': baseUrl,
+      'cookie': signedIn.token,
+    },
+    body: JSON.stringify({
+      name: 'Unauthorized Tenant',
+      slug: 'slice10-unauthorized',
+    }),
+  }))
+
+  // Better Auth returns 403 with a specific error when allowUserToCreateOrganization: false
+  expect(response.status).toBe(403)
+  const body = await response.text()
+  expect(body).toContain('You are not allowed to create a new organization')
+
+  // Verify the slug was not created
+  const check = await authPool.query('select 1 from auth.organization where slug = $1', ['slice10-unauthorized'])
+  expect(check.rowCount).toBe(0)
 })
 
 it('the provisioning script creates a tenant and an admin who can sign in and sign out', async () => {
