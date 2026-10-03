@@ -1,0 +1,163 @@
+import { loadEnvFile } from 'node:process'
+import pg from 'pg'
+import { afterAll, expect, it } from 'vitest'
+
+/**
+ * The audit table on its own (ADR-0014): which session reads which rows, the
+ * one write path, and that no role changes or removes a row. Rows and
+ * Postgres error codes are the observation, not the policy text. Tenant and
+ * user ids are fresh uuids, because an entry has no foreign key.
+ */
+loadEnvFile('.env')
+loadEnvFile('.env.migrate')
+
+function required(name: string): string {
+  const value = process.env[name]
+  if (!value)
+    throw new Error(`${name} is required`)
+  return value
+}
+
+const appPool = new pg.Pool({ connectionString: required('DATABASE_URL') })
+const authPool = new pg.Pool({ connectionString: required('AUTH_DATABASE_URL') })
+const ownerPool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL') })
+
+afterAll(async () => {
+  await appPool.end()
+  await authPool.end()
+  await ownerPool.end()
+})
+
+const insufficientPrivilege = { code: '42501' }
+
+/** One transaction with `app.tenant_id` set, as a tenant session does. Null leaves it unset. */
+async function inSession<T>(pool: pg.Pool, tenantId: string | null, run: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect()
+  try {
+    await client.query('begin')
+    if (tenantId !== null)
+      await client.query(`select set_config('app.tenant_id', $1, true)`, [tenantId])
+    const result = await run(client)
+    await client.query('commit')
+    return result
+  }
+  catch (error) {
+    await client.query('rollback')
+    throw error
+  }
+  finally {
+    client.release()
+  }
+}
+
+/** The statement's error. The transaction always rolls back, so a missed refusal changes nothing. */
+async function refusal(pool: pg.Pool, tenantId: string | null, text: string, values: unknown[] = []): Promise<unknown> {
+  const client = await pool.connect()
+  try {
+    await client.query('begin')
+    if (tenantId !== null)
+      await client.query(`select set_config('app.tenant_id', $1, true)`, [tenantId])
+    return await client.query(text, values).then(() => undefined, (error: unknown) => error)
+  }
+  finally {
+    await client.query('rollback')
+    client.release()
+  }
+}
+
+async function appendRemoval(pool: pg.Pool, tenantId: string, actorUserId: string, subjectUserId: string): Promise<void> {
+  await inSession(pool, tenantId, client => client.query(
+    `select audit.append_entry('member.removed', $1, $2, '{"role":"driver"}'::jsonb)`,
+    [actorUserId, subjectUserId],
+  ))
+}
+
+async function entriesOf(tenantId: string) {
+  const result = await ownerPool.query(
+    `select tenant_id, action, actor_user_id, subject_user_id, data
+     from app.audit_entry where tenant_id = $1`,
+    [tenantId],
+  )
+  return result.rows
+}
+
+it('a session reads its own Tenant\'s entries only, and no session reads none', async () => {
+  const tenantA = crypto.randomUUID()
+  const tenantB = crypto.randomUUID()
+  const actorA = crypto.randomUUID()
+  const actorB = crypto.randomUUID()
+  await appendRemoval(appPool, tenantA, actorA, crypto.randomUUID())
+  await appendRemoval(appPool, tenantB, actorB, crypto.randomUUID())
+
+  const seenByB = await inSession(appPool, tenantB, async client =>
+    (await client.query('select tenant_id, actor_user_id from app.audit_entry')).rows)
+  expect(seenByB).toEqual([{ tenant_id: tenantB, actor_user_id: actorB }])
+
+  const aFromB = await inSession(appPool, tenantB, async client =>
+    (await client.query('select id from app.audit_entry where tenant_id = $1', [tenantA])).rows)
+  expect(aFromB).toEqual([])
+
+  const noSession = await inSession(appPool, null, async client =>
+    (await client.query('select id from app.audit_entry')).rows)
+  expect(noSession).toEqual([])
+
+  expect(await entriesOf(tenantA)).toHaveLength(1)
+})
+
+it('append_entry writes into the caller\'s session Tenant for the app and auth roles, and refuses without one', async () => {
+  const tenantA = crypto.randomUUID()
+  const tenantB = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const subject = crypto.randomUUID()
+
+  await appendRemoval(appPool, tenantA, actor, subject)
+  await appendRemoval(authPool, tenantB, actor, subject)
+  const expected = { action: 'member.removed', actor_user_id: actor, subject_user_id: subject, data: { role: 'driver' } }
+  expect(await entriesOf(tenantA)).toEqual([{ tenant_id: tenantA, ...expected }])
+  expect(await entriesOf(tenantB)).toEqual([{ tenant_id: tenantB, ...expected }])
+
+  const append = `select audit.append_entry($1, $2, $3, $4::jsonb)`
+  expect(await refusal(appPool, null, append, ['member.removed', actor, subject, '{}'])).toMatchObject(insufficientPrivilege)
+  expect(await refusal(authPool, null, append, ['member.removed', actor, subject, '{}'])).toMatchObject(insufficientPrivilege)
+  // Not an action, no actor, data that is not an object.
+  expect(await refusal(appPool, tenantA, append, ['member.left', actor, subject, '{}'])).toMatchObject({ code: '22P02' })
+  expect(await refusal(appPool, tenantA, append, ['member.removed', '', subject, '{}'])).toMatchObject({ code: '23514' })
+  expect(await refusal(appPool, tenantA, append, ['member.removed', actor, subject, '[]'])).toMatchObject({ code: '23514' })
+  expect(await entriesOf(tenantA)).toHaveLength(1)
+})
+
+it('the app role cannot insert, update, delete, or truncate an entry, even in its own Tenant, and the auth role cannot touch the table', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  await appendRemoval(appPool, tenant, actor, crypto.randomUUID())
+  const before = await entriesOf(tenant)
+
+  const statements = [
+    `insert into app.audit_entry (action, actor_user_id, data) values ('member.removed', 'forged', '{}')`,
+    `update app.audit_entry set actor_user_id = 'forged'`,
+    'delete from app.audit_entry',
+    'truncate app.audit_entry',
+  ]
+  for (const statement of statements) {
+    expect(await refusal(appPool, tenant, statement), statement).toMatchObject(insufficientPrivilege)
+    expect(await refusal(authPool, tenant, statement), statement).toMatchObject(insufficientPrivilege)
+  }
+  expect(await refusal(authPool, tenant, 'select id from app.audit_entry')).toMatchObject(insufficientPrivilege)
+  expect(await entriesOf(tenant)).toEqual(before)
+})
+
+it('the owner cannot update, delete, or truncate an entry either', async () => {
+  const tenant = crypto.randomUUID()
+  await appendRemoval(appPool, tenant, crypto.randomUUID(), crypto.randomUUID())
+  const before = await entriesOf(tenant)
+
+  for (const statement of [
+    `update app.audit_entry set actor_user_id = 'forged' where tenant_id = $1`,
+    'delete from app.audit_entry where tenant_id = $1',
+  ]) {
+    const error = await refusal(ownerPool, null, statement, [tenant])
+    expect(error, statement).toMatchObject({ ...insufficientPrivilege, message: 'app.audit_entry is append-only' })
+  }
+  expect(await refusal(ownerPool, null, 'truncate app.audit_entry')).toMatchObject({ ...insufficientPrivilege, message: 'app.audit_entry is append-only' })
+  expect(await entriesOf(tenant)).toEqual(before)
+})

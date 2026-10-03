@@ -24,6 +24,8 @@ type TenantTableColumns<TColumns extends TenantColumns> = TColumns & {
  * transaction never called set_config, so an insert without a tenant fails closed.
  * One policy, for the app role: the row's tenant is the transaction's tenant.
  * drizzle-kit can ENABLE RLS but cannot FORCE it; the migration SQL does.
+ * `tenant_id` is the primary key unless `oneRowPerTenant` is false; a table
+ * with many rows per Tenant declares its own key.
  */
 export function tenantTable<TName extends string, TColumns extends TenantColumns>(
   name: TName,
@@ -31,9 +33,11 @@ export function tenantTable<TName extends string, TColumns extends TenantColumns
   extra?: (
     table: BuildExtraConfigColumns<TName, TenantTableColumns<TColumns>, 'pg'>,
   ) => PgTableExtraConfigValue[],
+  options: { oneRowPerTenant?: boolean } = {},
 ) {
+  const tenantId = uuid('tenant_id').notNull().default(sql`app.current_tenant_id()`)
   return appSchema.table(name, {
-    tenantId: uuid('tenant_id').primaryKey().default(sql`app.current_tenant_id()`),
+    tenantId: options.oneRowPerTenant === false ? tenantId : tenantId.primaryKey(),
     ...columns,
   }, (table) => {
     const policy = pgPolicy('tenant_isolation', {
