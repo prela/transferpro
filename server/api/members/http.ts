@@ -8,9 +8,10 @@ import { MemberAccessError, TenantAccessError } from '../../modules/tenancy'
  */
 export function memberHttpError(error: unknown, defaultStatus = 500): never {
   if (error instanceof MemberAccessError) {
+    const message = error.statusCode === 400 ? 'Bad request' : error.message
     throw createError({
       statusCode: error.statusCode,
-      statusMessage: error.message,
+      statusMessage: message,
     })
   }
   if (error instanceof TenantAccessError) {

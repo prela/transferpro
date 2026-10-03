@@ -111,45 +111,64 @@ it('dispatcher and driver get 403 when trying to change roles or remove members'
   const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
 
   try {
-    // Create a dispatcher account with properly hashed password
+    // Create dispatcher and driver accounts
     const dispatcherUserId = crypto.randomUUID()
+    const driverUserId = crypto.randomUUID()
     const { hashPassword } = await import('better-auth/crypto')
-    const hashedPassword = await hashPassword('password-dispatcher')
+    const dispatcherPassword = await hashPassword('password-dispatcher')
+    const driverPassword = await hashPassword('password-driver')
 
     await authPool.query(
       `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, 'Dispatcher', 'mm-dispatcher@example.test', true, now(), now())`,
-      [dispatcherUserId],
+       values ($1, 'Dispatcher', 'mm-dispatcher@example.test', true, now(), now()),
+              ($2, 'Driver', 'mm-driver@example.test', true, now(), now())`,
+      [dispatcherUserId, driverUserId],
     )
     await authPool.query(
       `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
-       values ($1, $2, 'credential', $2, $3, now(), now())`,
-      [crypto.randomUUID(), dispatcherUserId, hashedPassword],
+       values ($1, $2, 'credential', $2, $3, now(), now()),
+              ($4, $5, 'credential', $5, $6, now(), now())`,
+      [crypto.randomUUID(), dispatcherUserId, dispatcherPassword, crypto.randomUUID(), driverUserId, driverPassword],
     )
     await authPool.query(
       `insert into auth.member (id, organization_id, user_id, role, created_at)
-       values ($1, $2, $3, 'dispatcher', now())`,
-      [crypto.randomUUID(), tenant.tenantId, dispatcherUserId],
+       values ($1, $2, $3, 'dispatcher', now()),
+              ($4, $2, $5, 'driver', now())`,
+      [crypto.randomUUID(), tenant.tenantId, dispatcherUserId, crypto.randomUUID(), driverUserId],
     )
 
-    // Sign in as dispatcher
-    const signIn = await handle.auth.api.signInEmail({
+    const { changeMemberRole, removeMember } = await import('./member-management')
+
+    // Dispatcher tries to change admin's role - should get 403
+    const signInDisp = await handle.auth.api.signInEmail({
       body: { email: 'mm-dispatcher@example.test', password: 'password-dispatcher' },
       returnHeaders: true,
     })
-    const cookie = signIn.headers.getSetCookie().join('; ')
-    const headers = new Headers({ cookie })
+    const cookieDisp = signInDisp.headers.getSetCookie().join('; ')
+    const headersDisp = new Headers({ cookie: cookieDisp })
 
-    // Dispatcher tries to change admin's role - should get 403
-    const { changeMemberRole } = await import('./member-management')
     await expect(
-      changeMemberRole(handle, headers, tenant.tenantId, tenant.adminUserId, 'driver'),
+      changeMemberRole(handle, headersDisp, tenant.tenantId, tenant.adminUserId, 'driver'),
     ).rejects.toThrow('Forbidden')
 
-    // Dispatcher tries to remove admin - should get 403
-    const { removeMember } = await import('./member-management')
     await expect(
-      removeMember(handle, headers, tenant.tenantId, tenant.adminUserId),
+      removeMember(handle, headersDisp, tenant.tenantId, tenant.adminUserId),
+    ).rejects.toThrow('Forbidden')
+
+    // Driver tries to change admin's role - should get 403
+    const signInDriver = await handle.auth.api.signInEmail({
+      body: { email: 'mm-driver@example.test', password: 'password-driver' },
+      returnHeaders: true,
+    })
+    const cookieDriver = signInDriver.headers.getSetCookie().join('; ')
+    const headersDriver = new Headers({ cookie: cookieDriver })
+
+    await expect(
+      changeMemberRole(handle, headersDriver, tenant.tenantId, tenant.adminUserId, 'dispatcher'),
+    ).rejects.toThrow('Forbidden')
+
+    await expect(
+      removeMember(handle, headersDriver, tenant.tenantId, tenant.adminUserId),
     ).rejects.toThrow('Forbidden')
   }
   finally {
@@ -262,6 +281,196 @@ it('after removal the user\'s NULL-org session is gone and a tenant call returns
     const membershipsAfter = await handle.memberships(dispatcherUserId)
     const membershipAfter = membershipsAfter.find(m => m.organizationId === tenant.tenantId)
     expect(membershipAfter).toBeUndefined()
+  }
+  finally {
+    await handle.close()
+  }
+})
+
+it('concurrent role changes with advisory lock ensure at least one admin remains', async () => {
+  const tenant = await createTenant({
+    name: 'Tenant Concurrent',
+    slug: 'mm-tenant-concurrent',
+    adminEmail: 'mm-admin1-concurrent@example.test',
+    adminName: 'Admin 1',
+    password: 'password-admin1',
+    authDatabaseUrl,
+    migrateDatabaseUrl,
+  })
+
+  const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
+
+  try {
+    // Create a second admin
+    const admin2UserId = crypto.randomUUID()
+    const admin2Password = await (await import('better-auth/crypto')).hashPassword('password-admin2')
+    await authPool.query(
+      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
+       values ($1, 'Admin 2', 'mm-admin2-concurrent@example.test', true, now(), now())`,
+      [admin2UserId],
+    )
+    await authPool.query(
+      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
+       values ($1, $2, 'credential', $2, $3, now(), now())`,
+      [crypto.randomUUID(), admin2UserId, admin2Password],
+    )
+    await authPool.query(
+      `insert into auth.member (id, organization_id, user_id, role, created_at)
+       values ($1, $2, $3, 'admin', now())`,
+      [crypto.randomUUID(), tenant.tenantId, admin2UserId],
+    )
+
+    // Sign in as both admins
+    const signIn1 = await handle.auth.api.signInEmail({
+      body: { email: 'mm-admin1-concurrent@example.test', password: 'password-admin1' },
+      returnHeaders: true,
+    })
+    const cookie1 = signIn1.headers.getSetCookie().join('; ')
+    const headers1 = new Headers({ cookie: cookie1 })
+
+    const signIn2 = await handle.auth.api.signInEmail({
+      body: { email: 'mm-admin2-concurrent@example.test', password: 'password-admin2' },
+      returnHeaders: true,
+    })
+    const cookie2 = signIn2.headers.getSetCookie().join('; ')
+    const headers2 = new Headers({ cookie: cookie2 })
+
+    const { changeMemberRole } = await import('./member-management')
+
+    // Try to demote both admins concurrently - one should succeed, one should fail
+    const results = await Promise.allSettled([
+      changeMemberRole(handle, headers1, tenant.tenantId, admin2UserId, 'dispatcher'),
+      changeMemberRole(handle, headers2, tenant.tenantId, tenant.adminUserId, 'dispatcher'),
+    ])
+
+    // Exactly one should succeed and one should fail with 409
+    const succeeded = results.filter(r => r.status === 'fulfilled')
+    const failed = results.filter(r => r.status === 'rejected')
+
+    expect(succeeded.length).toBe(1)
+    expect(failed.length).toBe(1)
+    const rejectedResult = failed[0]
+    if (rejectedResult?.status === 'rejected') {
+      expect(rejectedResult.reason.message).toContain('last admin')
+    }
+
+    // Verify exactly one admin remains
+    const membersResult = await authPool.query(
+      `select count(*) as admin_count from auth.member
+       where organization_id = $1 and role = 'admin'`,
+      [tenant.tenantId],
+    )
+    const adminCount = Number.parseInt(membersResult.rows[0].admin_count as string, 10)
+    expect(adminCount).toBe(1)
+  }
+  finally {
+    await handle.close()
+  }
+})
+
+it('admin cannot change their own role or remove themselves (self-protection)', async () => {
+  const tenant = await createTenant({
+    name: 'Tenant Self Protect',
+    slug: 'mm-tenant-self',
+    adminEmail: 'mm-admin-self@example.test',
+    adminName: 'Admin Self',
+    password: 'password-self',
+    authDatabaseUrl,
+    migrateDatabaseUrl,
+  })
+
+  const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
+
+  try {
+    // Create a second admin so we're not testing last-admin protection
+    const admin2UserId = crypto.randomUUID()
+    const admin2Password = await (await import('better-auth/crypto')).hashPassword('password-admin2')
+    await authPool.query(
+      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
+       values ($1, 'Admin 2', 'mm-admin2-self@example.test', true, now(), now())`,
+      [admin2UserId],
+    )
+    await authPool.query(
+      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
+       values ($1, $2, 'credential', $2, $3, now(), now())`,
+      [crypto.randomUUID(), admin2UserId, admin2Password],
+    )
+    await authPool.query(
+      `insert into auth.member (id, organization_id, user_id, role, created_at)
+       values ($1, $2, $3, 'admin', now())`,
+      [crypto.randomUUID(), tenant.tenantId, admin2UserId],
+    )
+
+    // Sign in as first admin
+    const signIn = await handle.auth.api.signInEmail({
+      body: { email: 'mm-admin-self@example.test', password: 'password-self' },
+      returnHeaders: true,
+    })
+    const cookie = signIn.headers.getSetCookie().join('; ')
+    const headers = new Headers({ cookie })
+
+    const { changeMemberRole, removeMember } = await import('./member-management')
+
+    // Admin tries to change their own role - should get 409
+    await expect(
+      changeMemberRole(handle, headers, tenant.tenantId, tenant.adminUserId, 'dispatcher'),
+    ).rejects.toThrow('your own role')
+
+    // Admin tries to remove themselves - should get 409
+    await expect(
+      removeMember(handle, headers, tenant.tenantId, tenant.adminUserId),
+    ).rejects.toThrow('yourself')
+  }
+  finally {
+    await handle.close()
+  }
+})
+
+it('driver cannot list members (403)', async () => {
+  const tenant = await createTenant({
+    name: 'Tenant Driver List',
+    slug: 'mm-tenant-driver-list',
+    adminEmail: 'mm-admin-driver-list@example.test',
+    adminName: 'Admin',
+    password: 'password-admin',
+    authDatabaseUrl,
+    migrateDatabaseUrl,
+  })
+
+  const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
+
+  try {
+    // Create a driver account
+    const driverUserId = crypto.randomUUID()
+    const driverPassword = await (await import('better-auth/crypto')).hashPassword('password-driver')
+    await authPool.query(
+      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
+       values ($1, 'Driver', 'mm-driver-list@example.test', true, now(), now())`,
+      [driverUserId],
+    )
+    await authPool.query(
+      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
+       values ($1, $2, 'credential', $2, $3, now(), now())`,
+      [crypto.randomUUID(), driverUserId, driverPassword],
+    )
+    await authPool.query(
+      `insert into auth.member (id, organization_id, user_id, role, created_at)
+       values ($1, $2, $3, 'driver', now())`,
+      [crypto.randomUUID(), tenant.tenantId, driverUserId],
+    )
+
+    // Sign in as driver
+    const signIn = await handle.auth.api.signInEmail({
+      body: { email: 'mm-driver-list@example.test', password: 'password-driver' },
+      returnHeaders: true,
+    })
+    const cookie = signIn.headers.getSetCookie().join('; ')
+    const headers = new Headers({ cookie })
+
+    const { listMembers } = await import('./session')
+
+    // Driver tries to list members - should get 403
+    await expect(listMembers(headers)).rejects.toThrow('Forbidden')
   }
   finally {
     await handle.close()

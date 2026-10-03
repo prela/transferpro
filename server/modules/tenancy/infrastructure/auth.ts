@@ -207,6 +207,7 @@ export function createAuth(
   })
   return {
     auth,
+    authPool: pool,
     baseURL: env.BETTER_AUTH_URL,
     close: () => pool.end(),
     async invitationById(id: string): Promise<InvitationRecord | null> {

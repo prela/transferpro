@@ -4,7 +4,7 @@ import { memberListSchema } from '../../shared'
 
 defineProps<{
   isAdmin: boolean
-  currentUserId?: string
+  currentUserId: string
 }>()
 
 const { t } = useI18n()
@@ -14,7 +14,7 @@ const loading = ref(false)
 const loadError = ref(false)
 const operationError = ref<string | null>(null)
 const confirmingRemove = ref<string | null>(null)
-const changingRole = ref<{ userId: string, newRole: Member['role'] } | null>(null)
+const changingRole = ref<{ userId: string, oldRole: Member['role'], newRole: Member['role'] } | null>(null)
 
 async function loadMembers() {
   loading.value = true
@@ -33,9 +33,14 @@ async function loadMembers() {
 }
 
 async function changeRole(userId: string, newRole: Member['role']) {
-  const oldRole = members.value.find(m => m.userId === userId)?.role
+  const member = members.value.find(m => m.userId === userId)
+  if (!member)
+    return
+
+  const oldRole = member.role
   operationError.value = null
-  changingRole.value = { userId, newRole }
+  changingRole.value = { userId, oldRole, newRole }
+
   try {
     await $fetch(`/api/members/${userId}/role`, {
       method: 'PATCH',
@@ -44,14 +49,16 @@ async function changeRole(userId: string, newRole: Member['role']) {
     await loadMembers()
   }
   catch (error) {
-    // Revert the select on failure
-    const member = members.value.find(m => m.userId === userId)
-    if (member && oldRole) {
-      member.role = oldRole
+    // Revert the select element to the old role
+    const selectElement = document.querySelector(`select[data-user-id="${userId}"]`) as HTMLSelectElement | null
+    if (selectElement) {
+      selectElement.value = oldRole
     }
     operationError.value = isLastAdminError(error)
       ? 'members.lastAdmin'
-      : 'members.changeRoleFailed'
+      : isSelfModificationError(error)
+        ? 'members.cannotModifySelf'
+        : 'members.changeRoleFailed'
   }
   finally {
     changingRole.value = null
@@ -71,7 +78,9 @@ async function removeMember(userId: string) {
     confirmingRemove.value = null
     operationError.value = isLastAdminError(error)
       ? 'members.lastAdmin'
-      : 'members.removeFailed'
+      : isSelfModificationError(error)
+        ? 'members.cannotModifySelf'
+        : 'members.removeFailed'
   }
 }
 
@@ -82,7 +91,19 @@ function isLastAdminError(error: unknown): boolean {
     || ('status' in error && error.status === 409)
 }
 
-function canModify(userId: string, currentUserId?: string): boolean {
+function isSelfModificationError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null)
+    return false
+  if (!('statusCode' in error || 'status' in error))
+    return false
+  const status = 'statusCode' in error ? error.statusCode : error.status
+  if (status !== 409)
+    return false
+  const message = 'statusMessage' in error ? String(error.statusMessage) : ''
+  return message.includes('your own') || message.includes('yourself')
+}
+
+function canModify(userId: string, currentUserId: string): boolean {
   // An admin cannot remove themselves or change their own role
   return userId !== currentUserId
 }
@@ -139,6 +160,7 @@ onMounted(() => {
             <td v-if="isAdmin && canModify(member.userId, currentUserId)">
               <select
                 :value="member.role"
+                :data-user-id="member.userId"
                 :disabled="changingRole?.userId === member.userId"
                 @change="changeRole(member.userId, ($event.target as HTMLSelectElement).value as Member['role'])"
               >

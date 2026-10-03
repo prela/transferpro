@@ -181,11 +181,22 @@ export async function acceptMemberInvitation(raw: unknown, headers: Headers, key
 }
 
 /**
- * List all members of the current Tenant. Visible to any authenticated member.
- * The email is not returned (it stays on auth.user).
+ * List all members of the current Tenant. Visible to admin and dispatcher only.
+ * Drivers get 403. The email is not returned (it stays on auth.user).
  */
 export async function listMembers(headers: Headers) {
-  return withTenantFromSession(headers, async ({ transaction }) => {
+  return withTenantFromSession(headers, async ({ context, transaction }) => {
+    // Check that caller is admin or dispatcher
+    const { handle } = tenantRuntime()
+    const session = await handle.auth.api.getSession({ headers })
+    if (!session)
+      throw new TenantAccessError(401)
+
+    const memberships = await handle.memberships(session.user.id)
+    const membership = memberships.find(m => m.organizationId === context.tenantId)
+    if (!membership || membership.role === 'driver')
+      throw new TenantAccessError(403)
+
     const memberRows = z.object({
       rows: z.array(z.object({
         user_id: z.string(),

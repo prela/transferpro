@@ -55,6 +55,7 @@ export function parseChangeMemberRole(raw: unknown): { role: TenantRole } {
  * Change a member's role. Admin-only (enforced by Better Auth role check).
  * The last admin cannot be demoted to dispatcher or driver.
  * Authorization is checked first, before any existence or last-admin checks.
+ * Uses pg_advisory_xact_lock to prevent race conditions in concurrent role changes.
  */
 export async function changeMemberRole(
   handle: AuthHandle,
@@ -73,38 +74,61 @@ export async function changeMemberRole(
   if (!callerMembership || callerMembership.role !== 'admin')
     throw new MemberAccessError(STATUS_CODE[403])
 
-  // Check if this would demote the last admin
-  if (newRole !== 'admin') {
-    const remainingAdmins = await countAdminsExcept(handle, organizationId, targetUserId)
-    if (remainingAdmins === 0)
-      throw new MemberAccessError(STATUS_CODE[409], memberErrorMessage('member.lastAdmin'))
-  }
+  // Self-protection: admin cannot change their own role
+  if (targetUserId === session.user.id)
+    throw new MemberAccessError(STATUS_CODE[409], 'Cannot change your own role.')
 
+  // Use advisory lock and SQL transaction to prevent race conditions
+  const client = await handle.authPool.connect()
   try {
-    // Find the member id for this user in this organization
-    const memberId = await getMemberId(handle, organizationId, targetUserId)
-    if (!memberId)
-      throw new MemberAccessError(STATUS_CODE[404])
+    await client.query('begin')
 
-    // Server API, not auth.handler, to avoid hitting the HTTP rate limiter
-    await handle.auth.api.updateMemberRole({
-      body: {
-        memberId,
-        role: newRole,
-        organizationId,
-      },
-      headers,
-    })
+    // Lock on organization to serialize role changes
+    await client.query('select pg_advisory_xact_lock(hashtext($1))', [organizationId])
+
+    // Find the member id and current role
+    const memberResult = await client.query(
+      `select id, role from auth.member where organization_id = $1 and user_id = $2`,
+      [organizationId, targetUserId],
+    )
+    if (memberResult.rows.length === 0) {
+      await client.query('rollback')
+      throw new MemberAccessError(STATUS_CODE[404])
+    }
+
+    const memberId = memberResult.rows[0].id as string
+    const currentRole = memberResult.rows[0].role as string
+
+    // If demoting an admin, recount and ensure at least one remains
+    if (currentRole === 'admin' && newRole !== 'admin') {
+      const countResult = await client.query(
+        `select count(*) as admin_count from auth.member
+         where organization_id = $1 and role = 'admin' and user_id != $2`,
+        [organizationId, targetUserId],
+      )
+      const remainingAdmins = Number.parseInt(countResult.rows[0].admin_count as string, 10)
+      if (remainingAdmins === 0) {
+        await client.query('rollback')
+        throw new MemberAccessError(STATUS_CODE[409], memberErrorMessage('member.lastAdmin'))
+      }
+    }
+
+    // Update the role
+    await client.query(
+      `update auth.member set role = $1 where id = $2`,
+      [newRole, memberId],
+    )
+
+    await client.query('commit')
   }
   catch (error) {
+    await client.query('rollback')
     if (error instanceof MemberAccessError)
       throw error
-    const status = getStatusCode(error)
-    if (status === 403)
-      throw new MemberAccessError(STATUS_CODE[403])
-    if (status === 401)
-      throw new MemberAccessError(STATUS_CODE[401])
     throw new MemberAccessError(STATUS_CODE[500])
+  }
+  finally {
+    client.release()
   }
 }
 
@@ -113,6 +137,7 @@ export async function changeMemberRole(
  * The last admin cannot be removed. All sessions for that user in this
  * organization are revoked immediately.
  * Authorization is checked first, before any existence or last-admin checks.
+ * Uses pg_advisory_xact_lock to prevent race conditions in concurrent removals.
  */
 export async function removeMember(
   handle: AuthHandle,
@@ -130,78 +155,63 @@ export async function removeMember(
   if (!callerMembership || callerMembership.role !== 'admin')
     throw new MemberAccessError(STATUS_CODE[403])
 
-  // Check if this would remove the last admin
-  const targetMemberships = await handle.memberships(targetUserId)
-  const membership = targetMemberships.find(m => m.organizationId === organizationId)
-  if (!membership)
-    throw new MemberAccessError(STATUS_CODE[404])
+  // Self-protection: admin cannot remove themselves
+  if (targetUserId === session.user.id)
+    throw new MemberAccessError(STATUS_CODE[409], 'Cannot remove yourself.')
 
-  if (membership.role === 'admin') {
-    const remainingAdmins = await countAdminsExcept(handle, organizationId, targetUserId)
-    if (remainingAdmins === 0)
-      throw new MemberAccessError(STATUS_CODE[409], memberErrorMessage('member.lastAdmin'))
-  }
-
-  // Get the member id (Better Auth needs it, not the user id)
-  const memberId = await getMemberId(handle, organizationId, targetUserId)
-  if (!memberId)
-    throw new MemberAccessError(STATUS_CODE[404])
-
+  // Use advisory lock and SQL transaction to prevent race conditions
+  const client = await handle.authPool.connect()
   try {
-    // Server API, not auth.handler, to avoid hitting the HTTP rate limiter
-    await handle.auth.api.removeMember({
-      body: {
-        memberIdOrEmail: memberId,
-        organizationId,
-      },
-      headers,
-    })
+    await client.query('begin')
 
-    // Revoke all sessions for this user in this organization
+    // Lock on organization to serialize member removals
+    await client.query('select pg_advisory_xact_lock(hashtext($1))', [organizationId])
+
+    // Find the member and check role
+    const memberResult = await client.query(
+      `select id, role from auth.member where organization_id = $1 and user_id = $2`,
+      [organizationId, targetUserId],
+    )
+    if (memberResult.rows.length === 0) {
+      await client.query('rollback')
+      throw new MemberAccessError(STATUS_CODE[404])
+    }
+
+    const memberId = memberResult.rows[0].id as string
+    const role = memberResult.rows[0].role as string
+
+    // If removing an admin, recount and ensure at least one remains
+    if (role === 'admin') {
+      const countResult = await client.query(
+        `select count(*) as admin_count from auth.member
+         where organization_id = $1 and role = 'admin' and user_id != $2`,
+        [organizationId, targetUserId],
+      )
+      const remainingAdmins = Number.parseInt(countResult.rows[0].admin_count as string, 10)
+      if (remainingAdmins === 0) {
+        await client.query('rollback')
+        throw new MemberAccessError(STATUS_CODE[409], memberErrorMessage('member.lastAdmin'))
+      }
+    }
+
+    // Delete the member
+    await client.query(
+      `delete from auth.member where id = $1`,
+      [memberId],
+    )
+
+    await client.query('commit')
+
+    // Revoke sessions after successful commit
     await handle.revokeOrganizationSessions(targetUserId, organizationId)
   }
   catch (error) {
+    await client.query('rollback')
     if (error instanceof MemberAccessError)
       throw error
-    const status = getStatusCode(error)
-    if (status === 403)
-      throw new MemberAccessError(STATUS_CODE[403])
-    if (status === 401)
-      throw new MemberAccessError(STATUS_CODE[401])
     throw new MemberAccessError(STATUS_CODE[500])
   }
-}
-
-/**
- * Count how many admins remain in an organization, excluding one specific user.
- * Used to prevent removing or demoting the last admin.
- */
-async function countAdminsExcept(
-  handle: AuthHandle,
-  organizationId: string,
-  excludeUserId: string,
-): Promise<number> {
-  return handle.countAdminsExcept(organizationId, excludeUserId)
-}
-
-/**
- * Find the member id for a user in an organization.
- * Better Auth's updateMemberRole needs the member id, not the user id.
- */
-async function getMemberId(
-  handle: AuthHandle,
-  organizationId: string,
-  userId: string,
-): Promise<string | null> {
-  const result = await handle.getMemberId(organizationId, userId)
-  return result
-}
-
-function getStatusCode(error: unknown): number | undefined {
-  if (typeof error === 'object' && error !== null && 'statusCode' in error) {
-    const code = error.statusCode
-    if (typeof code === 'number')
-      return code
+  finally {
+    client.release()
   }
-  return undefined
 }

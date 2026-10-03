@@ -70,6 +70,7 @@
     "changeRoleFailed": "Uloga nije promijenjena. Pokušajte ponovno.",
     "removeFailed": "Član nije uklonjen. Pokušajte ponovno.",
     "lastAdmin": "Zadnji administrator se ne može ukloniti niti mu se može promijeniti uloga.",
+    "cannotModifySelf": "Ne možete promijeniti svoju ulogu ili se ukloniti. Drugi administrator to može učiniti.",
     "you": "vi"
   }
 }

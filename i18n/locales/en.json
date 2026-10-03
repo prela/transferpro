@@ -70,6 +70,7 @@
     "changeRoleFailed": "The role was not changed. Try again.",
     "removeFailed": "The member was not removed. Try again.",
     "lastAdmin": "Cannot remove or demote the last admin.",
+    "cannotModifySelf": "Cannot change your own role or remove yourself. Another admin can do this.",
     "you": "you"
   }
 }

@@ -134,6 +134,7 @@ function httpStatus(error: unknown): number | undefined {
       </time>
       <MemberInvite v-if="session.role === 'admin'" />
       <MemberList
+        v-if="session.role !== 'driver'"
         :is-admin="session.role === 'admin'"
         :current-user-id="session.userId"
       />
