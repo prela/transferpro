@@ -1,3 +1,5 @@
+export { auditActions, auditActionSchema, auditEntryListSchema, auditEntrySchema, auditFactSchema } from './audit-entry'
+export type { AuditAction, AuditEntry, AuditEntryList, AuditFact } from './audit-entry'
 export { displayLocaleSchema, resolveDisplayLocale } from './display-locale'
 export type { DisplayLocale } from './display-locale'
 export { formatInstant } from './format-instant'

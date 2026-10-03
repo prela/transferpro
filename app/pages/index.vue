@@ -138,6 +138,11 @@ function httpStatus(error: unknown): number | undefined {
         :is-admin="session.role === 'admin'"
         :current-user-id="session.userId"
       />
+      <AuditLog
+        v-if="session.role === 'admin'"
+        :time-zone="session.timeZone"
+        :locale="session.locale"
+      />
       <p
         v-if="shellError"
         class="error"

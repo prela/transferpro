@@ -1,4 +1,4 @@
-import type { DisplayLocale, SessionShell, TenantRole } from '../../../../shared'
+import type { AuditEntryList, DisplayLocale, SessionShell, TenantRole } from '../../../../shared'
 import type { TenantContext, TenantTransaction } from '../../../core/index'
 import type { Membership } from './auth'
 import { sql } from 'drizzle-orm'
@@ -7,6 +7,7 @@ import pg from 'pg'
 import { z } from 'zod'
 import { resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
 import { loadAppEnv, openTenantSession } from '../../../core/index'
+import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
 import { acceptInvitation, parseInviteInput, previewInvitation, sendInvitation } from './invitation'
 import { createResendMailer } from './mailer'
@@ -220,10 +221,22 @@ export async function listMembers(headers: Headers) {
 }
 
 /**
+ * This Tenant's audit entries, newest first. Admin only: a dispatcher or a
+ * driver is 403. RLS limits the rows to the session's Tenant.
+ */
+export async function readAuditLog(headers: Headers): Promise<AuditEntryList> {
+  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+    if (actor.role !== 'admin')
+      throw new TenantAccessError(403)
+    return listAuditEntries(transaction)
+  })
+}
+
+/**
  * Change a member's role. Admin of the session's Tenant only; member-management
  * checks the actor and re-reads the caller's role under the Tenant lock.
- * The last admin cannot be demoted. Only auth tables change, so no app-role
- * transaction is opened.
+ * The last admin cannot be demoted. The change and its audit entry commit in
+ * one auth-pool transaction, so no app-role transaction is opened.
  */
 export async function changeMemberRole(
   headers: Headers,

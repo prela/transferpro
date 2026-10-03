@@ -1,9 +1,13 @@
 import type pg from 'pg'
 import type { TenantRole } from '../../../../shared'
+import type { TenantTransaction } from '../../../core/index'
 import type { AuthHandle } from './auth'
 import type { Actor } from './session'
+import { drizzle } from 'drizzle-orm/node-postgres'
 import { z } from 'zod'
-import { changeMemberRoleBodySchema, memberErrorMessage } from '../../../../shared'
+import { changeMemberRoleBodySchema, memberErrorMessage, tenantRoleSchema } from '../../../../shared'
+import { openTenantSession } from '../../../core/index'
+import { appendAuditEntry } from '../../audit'
 
 /**
  * Fixed error phrases for member operations.
@@ -64,6 +68,7 @@ const adminCountRow = z.object({ admin_count: z.coerce.number().int() })
  * The last admin cannot be demoted to dispatcher or driver.
  * Authorization is checked first, before any existence or last-admin checks.
  * Uses pg_advisory_xact_lock to prevent race conditions in concurrent role changes.
+ * The audit entry commits with the change, or neither does.
  */
 export async function changeMemberRole(
   handle: AuthHandle,
@@ -77,12 +82,18 @@ export async function changeMemberRole(
   if (targetUserId === actor.userId)
     throw new MemberAccessError(STATUS_CODE[409], 'Cannot change your own role.')
 
-  await inLockedAdminTransaction(handle, actor, organizationId, async (client) => {
+  await inLockedAdminTransaction(handle, actor, organizationId, async (client, transaction) => {
     const target = await selectMember(client, organizationId, targetUserId)
     // If demoting an admin, recount and ensure at least one remains
     if (target.role === 'admin' && newRole !== 'admin')
       await assertAnotherAdmin(client, organizationId, targetUserId)
     await client.query('update auth.member set role = $1 where id = $2', [newRole, target.id])
+    await appendAuditEntry(transaction, {
+      action: 'member.role_changed',
+      actorUserId: actor.userId,
+      subjectUserId: targetUserId,
+      data: { from: target.role, to: newRole },
+    })
   })
 }
 
@@ -93,6 +104,7 @@ export async function changeMemberRole(
  * transaction, so a committed removal has no live session left behind.
  * Authorization is checked first, before any existence or last-admin checks.
  * Uses pg_advisory_xact_lock to prevent race conditions in concurrent removals.
+ * The audit entry commits with the removal, or neither does.
  */
 export async function removeMember(
   handle: AuthHandle,
@@ -105,7 +117,7 @@ export async function removeMember(
   if (targetUserId === actor.userId)
     throw new MemberAccessError(STATUS_CODE[409], 'Cannot remove yourself.')
 
-  await inLockedAdminTransaction(handle, actor, organizationId, async (client) => {
+  await inLockedAdminTransaction(handle, actor, organizationId, async (client, transaction) => {
     const target = await selectMember(client, organizationId, targetUserId)
     // If removing an admin, recount and ensure at least one remains
     if (target.role === 'admin')
@@ -117,6 +129,12 @@ export async function removeMember(
        where user_id = $1 and (active_organization_id = $2 or active_organization_id is null)`,
       [targetUserId, organizationId],
     )
+    await appendAuditEntry(transaction, {
+      action: 'member.removed',
+      actorUserId: actor.userId,
+      subjectUserId: targetUserId,
+      data: { role: target.role },
+    })
   })
 }
 
@@ -146,7 +164,7 @@ function assertAdminOf(actor: Actor, organizationId: string): void {
     throw new MemberAccessError(STATUS_CODE[403])
 }
 
-async function selectMember(client: pg.PoolClient, organizationId: string, userId: string) {
+async function selectMember(client: pg.PoolClient, organizationId: string, userId: string): Promise<{ id: string, role: TenantRole }> {
   const result = await client.query(
     'select id, role from auth.member where organization_id = $1 and user_id = $2',
     [organizationId, userId],
@@ -154,34 +172,47 @@ async function selectMember(client: pg.PoolClient, organizationId: string, userI
   const row = memberRow.safeParse(result.rows[0])
   if (!row.success)
     throw new MemberAccessError(STATUS_CODE[404])
-  return row.data
+  // A stored role outside the Tenant roles cannot be logged (ADR-0014), so nothing is written.
+  const role = tenantRoleSchema.safeParse(row.data.role)
+  if (!role.success)
+    throw new MemberAccessError(STATUS_CODE[409], memberErrorMessage('member.roleNotTenant'))
+  return { id: row.data.id, role: role.data }
 }
 
 /**
  * One auth-pool transaction: lock the organization, re-read the caller's
  * role, run `work`, commit. The actor was read before the lock, so an admin
  * demoted or removed since then is 403 here. Every write the change needs,
- * session deletes included, belongs in `work`: nothing may run after commit.
+ * session deletes and the audit entry included, belongs in `work`: nothing
+ * may run after commit.
+ *
+ * The tenant session is opened on this auth connection, not on the app pool:
+ * `audit.append_entry` reads the Tenant from `app.tenant_id`, and only one
+ * connection can make the member write and its entry atomic (ADR-0014).
+ * `actor.context` must name `organizationId`, so call `assertAdminOf` first.
  */
 async function inLockedAdminTransaction(
   handle: AuthHandle,
   actor: Actor,
   organizationId: string,
-  work: (client: pg.PoolClient) => Promise<void>,
+  work: (client: pg.PoolClient, transaction: TenantTransaction) => Promise<void>,
 ): Promise<void> {
   const client = await handle.authPool.connect()
   try {
     await client.query('begin')
     try {
-      // Lock on organization to serialize role changes and removals
-      await client.query('select pg_advisory_xact_lock(hashtext($1))', [organizationId])
-      const caller = callerRow.safeParse((await client.query(
-        'select role from auth.member where organization_id = $1 and user_id = $2',
-        [organizationId, actor.userId],
-      )).rows[0])
-      if (!caller.success || caller.data.role !== 'admin')
-        throw new MemberAccessError(STATUS_CODE[403])
-      await work(client)
+      const transaction = drizzle(client)
+      await openTenantSession(transaction, actor.context, async () => {
+        // Lock on organization to serialize role changes and removals
+        await client.query('select pg_advisory_xact_lock(hashtext($1))', [organizationId])
+        const caller = callerRow.safeParse((await client.query(
+          'select role from auth.member where organization_id = $1 and user_id = $2',
+          [organizationId, actor.userId],
+        )).rows[0])
+        if (!caller.success || caller.data.role !== 'admin')
+          throw new MemberAccessError(STATUS_CODE[403])
+        await work(client, transaction)
+      })
     }
     catch (error) {
       await client.query('rollback')

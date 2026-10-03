@@ -46,6 +46,10 @@ _Avoid_: user
 A pending offer for one email to join a Tenant as admin, dispatcher, or driver. It expires and can be used once.
 _Avoid_: signup link
 
+**Audit entry**:
+One record in a Tenant's audit log: when, which member acted, the action, and the member it was done to. It is written with the action and never changed or removed.
+_Avoid_: history, event, activity
+
 **Driver**:
 A Tenant's record of a member whose role is driver. That member has at most one Driver. A Driver may be set to must-accept; otherwise assignment is enough. Their upcoming list is the unfinished Rides currently assigned to them. A Ride leaves that list as soon as it is no longer theirs.
 _Avoid_: operator, external collaborator

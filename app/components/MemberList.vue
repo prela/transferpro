@@ -54,10 +54,7 @@ async function changeRole(userId: string, newRole: Member['role']) {
     if (selectElement) {
       selectElement.value = oldRole
     }
-    // Every 409 reads "Conflict", so the row tells self from last admin.
-    operationError.value = isConflict(error)
-      ? userId === props.currentUserId ? 'members.cannotModifySelf' : 'members.lastAdmin'
-      : 'members.changeRoleFailed'
+    operationError.value = conflictKey(error, userId) ?? 'members.changeRoleFailed'
   }
   finally {
     changingRole.value = null
@@ -75,10 +72,20 @@ async function removeMember(userId: string) {
   }
   catch (error) {
     confirmingRemove.value = null
-    operationError.value = isConflict(error)
-      ? userId === props.currentUserId ? 'members.cannotModifySelf' : 'members.lastAdmin'
-      : 'members.removeFailed'
+    operationError.value = conflictKey(error, userId) ?? 'members.removeFailed'
   }
+}
+
+/**
+ * Every 409 reads "Conflict", so the row tells the reason: the caller's own
+ * row, or an admin who may be the last one. Any other 409 is a plain failure.
+ */
+function conflictKey(error: unknown, userId: string): string | null {
+  if (!isConflict(error))
+    return null
+  if (userId === props.currentUserId)
+    return 'members.cannotModifySelf'
+  return members.value.find(m => m.userId === userId)?.role === 'admin' ? 'members.lastAdmin' : null
 }
 
 function isConflict(error: unknown): boolean {
@@ -201,23 +208,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
-}
-
-th,
-td {
-  padding: 0.75rem;
-  text-align: left;
-  border-bottom: 1px solid var(--line);
-}
-
-th {
-  font-weight: 600;
-}
-
 .you-badge {
   margin-left: 0.5rem;
   color: var(--muted);

@@ -37,6 +37,7 @@ export const memberErrorKey = z.enum([
   'member.forbidden',
   'member.notFound',
   'member.lastAdmin',
+  'member.roleNotTenant',
   'member.failed',
 ])
 
@@ -52,6 +53,8 @@ export function memberErrorMessage(key: MemberErrorKey): string {
       return 'Member not found.'
     case 'member.lastAdmin':
       return 'Cannot remove or demote the last admin.'
+    case 'member.roleNotTenant':
+      return 'Member role is not a Tenant role.'
     case 'member.failed':
       return 'Operation failed.'
   }

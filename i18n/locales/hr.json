@@ -72,5 +72,25 @@
     "lastAdmin": "Zadnji administrator se ne može ukloniti niti mu se može promijeniti uloga.",
     "cannotModifySelf": "Ne možete promijeniti svoju ulogu ili se ukloniti. Drugi administrator to može učiniti.",
     "you": "vi"
+  },
+  "audit": {
+    "title": "Revizijski zapisnik",
+    "loading": "Učitavanje revizijskog zapisnika",
+    "loadFailed": "Revizijski zapisnik nije se mogao učitati. Pokušajte ponovno.",
+    "empty": "Još nema zapisa.",
+    "when": "Vrijeme",
+    "who": "Tko",
+    "action": "Radnja",
+    "member": "Član",
+    "role": "Uloga",
+    "formerMember": "Bivši član",
+    "refresh": "Osvježi",
+    "actions": {
+      "member": {
+        "invited": "Član pozvan",
+        "role_changed": "Uloga promijenjena",
+        "removed": "Član uklonjen"
+      }
+    }
   }
 }

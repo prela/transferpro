@@ -72,5 +72,25 @@
     "lastAdmin": "Cannot remove or demote the last admin.",
     "cannotModifySelf": "Cannot change your own role or remove yourself. Another admin can do this.",
     "you": "you"
+  },
+  "audit": {
+    "title": "Audit log",
+    "loading": "Loading the audit log",
+    "loadFailed": "The audit log could not be loaded. Try again.",
+    "empty": "No entries yet.",
+    "when": "When",
+    "who": "Who",
+    "action": "Action",
+    "member": "Member",
+    "role": "Role",
+    "formerMember": "Former member",
+    "refresh": "Refresh",
+    "actions": {
+      "member": {
+        "invited": "Member invited",
+        "role_changed": "Role changed",
+        "removed": "Member removed"
+      }
+    }
   }
 }
