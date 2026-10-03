@@ -52,7 +52,7 @@ Cross-cutting from day one: tenant isolation, audit log, i18n hr/en. GDPR export
 
 ## v1 thin slice
 
-- Tenant signup and login (Better Auth, organization = Tenant), invite users with a role.
+- Tenant provisioned by an operator script (no public signup), login (Better Auth, organization = Tenant), invite users with a role.
 - Dispatcher creates a Transfer manually (client, pickup time, flight no. as free text, from/to, pax, guest name, price as free number, payment cash/card).
 - Dispatcher assigns Driver + Vehicle to the Ride.
 - Driver sees own upcoming Rides on the phone and marks **accepted**, **done**, or **no-show**.

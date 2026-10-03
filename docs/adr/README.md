@@ -27,3 +27,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0009 | Driver sees the price when payment is cash | accepted |
 | ADR-0010 | Re-acceptance after the pickup, the places, or the flight change | accepted |
 | ADR-0011 | Tenant session, grant-walled roles, and the member read | accepted |
+| ADR-0012 | Logging, redaction, and error responses | accepted |
