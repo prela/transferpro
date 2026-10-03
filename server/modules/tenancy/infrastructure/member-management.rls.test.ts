@@ -1,28 +1,41 @@
+import type { TenantRole } from '../../../../shared'
+import type { AuthHandle } from './auth'
+import type { Actor } from './session'
 import { loadEnvFile } from 'node:process'
+import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { changeMemberRole, closeTenantRuntime, listMembers, removeTenantMember } from '..'
 import { createAuth } from './auth'
 import { createTenant } from './create-tenant'
+import { assertAnotherAdmin, changeMemberRole as changeMemberRoleImpl, removeMember as removeMemberImpl } from './member-management'
 
 /**
- * Member management RLS tests: changing roles and removing members across tenants.
- * Uses real functions (changeMemberRole, removeMember) through auth handle, not raw SQL.
+ * Member management RLS tests: listing, changing roles, and removing members.
+ * Calls go through the module's session functions, so the actor is resolved
+ * from a real cookie by the same runtime the routes use. That runtime reads
+ * BETTER_AUTH_SECRET from .env, so the test handle signs in with it too.
  * Unique emails per test to avoid cross-test pollution.
  */
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
 
-const databaseUrl = process.env.DATABASE_URL
-const authDatabaseUrl = process.env.AUTH_DATABASE_URL
-const migrateDatabaseUrl = process.env.DATABASE_MIGRATE_URL
-if (!databaseUrl)
-  throw new Error('DATABASE_URL is required (the transferpro_app role)')
-if (!authDatabaseUrl)
-  throw new Error('AUTH_DATABASE_URL is required (the transferpro_auth role)')
-if (!migrateDatabaseUrl)
-  throw new Error('DATABASE_MIGRATE_URL is required (the transferpro_owner role)')
+function required(name: string): string {
+  const value = process.env[name]
+  if (!value)
+    throw new Error(`${name} is required`)
+  return value
+}
+
+const authDatabaseUrl = required('AUTH_DATABASE_URL')
+const migrateDatabaseUrl = required('DATABASE_MIGRATE_URL')
 
 const authPool = new pg.Pool({ connectionString: authDatabaseUrl })
+const handle: AuthHandle = createAuth({
+  AUTH_DATABASE_URL: authDatabaseUrl,
+  BETTER_AUTH_SECRET: required('BETTER_AUTH_SECRET'),
+  BETTER_AUTH_URL: required('BETTER_AUTH_URL'),
+})
 
 beforeAll(async () => {
   const auth = await authPool.connect()
@@ -45,10 +58,65 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  await closeTenantRuntime()
+  await handle.close()
   await authPool.end()
 })
 
-it('admin of tenant A targeting a member of tenant B gets 404 and nothing changes', async () => {
+/** A credential user with one membership, the same rows the operator script writes. */
+async function addMember(tenantId: string, input: { email: string, name: string, password: string, role: TenantRole }): Promise<string> {
+  const userId = crypto.randomUUID()
+  await authPool.query(
+    `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
+     values ($1, $2, $3, true, now(), now())`,
+    [userId, input.name, input.email],
+  )
+  await authPool.query(
+    `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
+     values ($1, $2, 'credential', $2, $3, now(), now())`,
+    [crypto.randomUUID(), userId, await hashPassword(input.password)],
+  )
+  await join(tenantId, userId, input.role)
+  return userId
+}
+
+async function join(tenantId: string, userId: string, role: TenantRole): Promise<void> {
+  await authPool.query(
+    `insert into auth.member (id, organization_id, user_id, role, created_at)
+     values ($1, $2, $3, $4, now())`,
+    [crypto.randomUUID(), tenantId, userId, role],
+  )
+}
+
+/** A fresh session. Better Auth leaves its active organization unset. */
+async function signIn(email: string, password: string): Promise<Headers> {
+  const signedIn = await handle.auth.api.signInEmail({ body: { email, password }, returnHeaders: true })
+  const cookie = signedIn.headers.getSetCookie().map(part => part.split(';')[0]).join('; ')
+  return new Headers({ cookie })
+}
+
+async function setActiveTenant(headers: Headers, tenantId: string): Promise<void> {
+  await handle.auth.api.setActiveOrganization({ headers, body: { organizationId: tenantId } })
+}
+
+async function roleIn(tenantId: string, userId: string): Promise<string | undefined> {
+  const memberships = await handle.memberships(userId)
+  return memberships.find(m => m.organizationId === tenantId)?.role
+}
+
+async function inAuthTransaction(run: (client: pg.PoolClient) => Promise<void>): Promise<void> {
+  const client = await authPool.connect()
+  try {
+    await client.query('begin')
+    await run(client)
+  }
+  finally {
+    await client.query('rollback')
+    client.release()
+  }
+}
+
+it('admin of tenant A targeting a member of tenant B gets 404, naming tenant B gets 403, and nothing changes', async () => {
   // Create two tenants with admins
   const tenantA = await createTenant({
     name: 'Tenant A MM',
@@ -70,30 +138,31 @@ it('admin of tenant A targeting a member of tenant B gets 404 and nothing change
     migrateDatabaseUrl,
   })
 
-  const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
-
   try {
-    // Sign in as admin A
-    const signInA = await handle.auth.api.signInEmail({
-      body: { email: 'mm-admin-a@example.test', password: 'password-a' },
-      returnHeaders: true,
-    })
-    const cookieA = signInA.headers.getSetCookie().join('; ')
-    const headersA = new Headers({ cookie: cookieA })
+    const headersA = await signIn('mm-admin-a@example.test', 'password-a')
 
-    // Admin A tries to change Admin B's role - should get 404 (member not in their org)
-    const { changeMemberRole } = await import('./member-management')
+    // Admin A's session is tenant A, so Admin B is not a member there: 404.
     await expect(
-      changeMemberRole(handle, headersA, tenantA.tenantId, tenantB.adminUserId, 'dispatcher'),
+      changeMemberRole(headersA, tenantB.adminUserId, { role: 'dispatcher' }),
     ).rejects.toThrow('Member not found')
+    await expect(
+      removeTenantMember(headersA, tenantB.adminUserId),
+    ).rejects.toMatchObject({ statusCode: 404 })
+
+    // An admin actor of tenant A that names tenant B is refused before the lock.
+    const actorA: Actor = { context: { tenantId: tenantA.tenantId }, userId: tenantA.adminUserId, role: 'admin' }
+    await expect(
+      changeMemberRoleImpl(handle, actorA, tenantB.tenantId, tenantB.adminUserId, 'dispatcher'),
+    ).rejects.toMatchObject({ statusCode: 403 })
+    await expect(
+      removeMemberImpl(handle, actorA, tenantB.tenantId, tenantB.adminUserId),
+    ).rejects.toMatchObject({ statusCode: 403 })
 
     // Verify Admin B's role is still admin
-    const membershipsB = await handle.memberships(tenantB.adminUserId)
-    const membershipB = membershipsB.find(m => m.organizationId === tenantB.tenantId)
-    expect(membershipB?.role).toBe('admin')
+    expect(await roleIn(tenantB.tenantId, tenantB.adminUserId)).toBe('admin')
   }
   finally {
-    await handle.close()
+    await closeTenantRuntime()
   }
 })
 
@@ -107,76 +176,36 @@ it('dispatcher and driver get 403 when trying to change roles or remove members'
     authDatabaseUrl,
     migrateDatabaseUrl,
   })
-
-  const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
+  await addMember(tenant.tenantId, { email: 'mm-dispatcher@example.test', name: 'Dispatcher', password: 'password-dispatcher', role: 'dispatcher' })
+  await addMember(tenant.tenantId, { email: 'mm-driver@example.test', name: 'Driver', password: 'password-driver', role: 'driver' })
 
   try {
-    // Create dispatcher and driver accounts
-    const dispatcherUserId = crypto.randomUUID()
-    const driverUserId = crypto.randomUUID()
-    const { hashPassword } = await import('better-auth/crypto')
-    const dispatcherPassword = await hashPassword('password-dispatcher')
-    const driverPassword = await hashPassword('password-driver')
-
-    await authPool.query(
-      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, 'Dispatcher', 'mm-dispatcher@example.test', true, now(), now()),
-              ($2, 'Driver', 'mm-driver@example.test', true, now(), now())`,
-      [dispatcherUserId, driverUserId],
-    )
-    await authPool.query(
-      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
-       values ($1, $2, 'credential', $2, $3, now(), now()),
-              ($4, $5, 'credential', $5, $6, now(), now())`,
-      [crypto.randomUUID(), dispatcherUserId, dispatcherPassword, crypto.randomUUID(), driverUserId, driverPassword],
-    )
-    await authPool.query(
-      `insert into auth.member (id, organization_id, user_id, role, created_at)
-       values ($1, $2, $3, 'dispatcher', now()),
-              ($4, $2, $5, 'driver', now())`,
-      [crypto.randomUUID(), tenant.tenantId, dispatcherUserId, crypto.randomUUID(), driverUserId],
-    )
-
-    const { changeMemberRole, removeMember } = await import('./member-management')
-
     // Dispatcher tries to change admin's role - should get 403
-    const signInDisp = await handle.auth.api.signInEmail({
-      body: { email: 'mm-dispatcher@example.test', password: 'password-dispatcher' },
-      returnHeaders: true,
-    })
-    const cookieDisp = signInDisp.headers.getSetCookie().join('; ')
-    const headersDisp = new Headers({ cookie: cookieDisp })
-
+    const headersDisp = await signIn('mm-dispatcher@example.test', 'password-dispatcher')
     await expect(
-      changeMemberRole(handle, headersDisp, tenant.tenantId, tenant.adminUserId, 'driver'),
+      changeMemberRole(headersDisp, tenant.adminUserId, { role: 'driver' }),
     ).rejects.toThrow('Forbidden')
-
     await expect(
-      removeMember(handle, headersDisp, tenant.tenantId, tenant.adminUserId),
+      removeTenantMember(headersDisp, tenant.adminUserId),
     ).rejects.toThrow('Forbidden')
 
     // Driver tries to change admin's role - should get 403
-    const signInDriver = await handle.auth.api.signInEmail({
-      body: { email: 'mm-driver@example.test', password: 'password-driver' },
-      returnHeaders: true,
-    })
-    const cookieDriver = signInDriver.headers.getSetCookie().join('; ')
-    const headersDriver = new Headers({ cookie: cookieDriver })
-
+    const headersDriver = await signIn('mm-driver@example.test', 'password-driver')
     await expect(
-      changeMemberRole(handle, headersDriver, tenant.tenantId, tenant.adminUserId, 'dispatcher'),
+      changeMemberRole(headersDriver, tenant.adminUserId, { role: 'dispatcher' }),
+    ).rejects.toThrow('Forbidden')
+    await expect(
+      removeTenantMember(headersDriver, tenant.adminUserId),
     ).rejects.toThrow('Forbidden')
 
-    await expect(
-      removeMember(handle, headersDriver, tenant.tenantId, tenant.adminUserId),
-    ).rejects.toThrow('Forbidden')
+    expect(await roleIn(tenant.tenantId, tenant.adminUserId)).toBe('admin')
   }
   finally {
-    await handle.close()
+    await closeTenantRuntime()
   }
 })
 
-it('last admin gets 409 and cannot be removed or demoted', async () => {
+it('the last admin is refused by the admin recount (409), and only another admin can act', async () => {
   const tenant = await createTenant({
     name: 'Tenant Last Admin',
     slug: 'mm-tenant-last-admin',
@@ -186,88 +215,59 @@ it('last admin gets 409 and cannot be removed or demoted', async () => {
     authDatabaseUrl,
     migrateDatabaseUrl,
   })
-
-  const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
+  // Create a second admin so we can have one admin try to demote the other
+  const admin2UserId = await addMember(tenant.tenantId, { email: 'mm-admin2-last@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
 
   try {
-    // Create a second admin so we can have one admin try to demote the other
-    const admin2UserId = crypto.randomUUID()
-    const admin2Password = await (await import('better-auth/crypto')).hashPassword('password-admin2')
-    await authPool.query(
-      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, 'Admin 2', 'mm-admin2-last@example.test', true, now(), now())`,
-      [admin2UserId],
-    )
-    await authPool.query(
-      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
-       values ($1, $2, 'credential', $2, $3, now(), now())`,
-      [crypto.randomUUID(), admin2UserId, admin2Password],
-    )
-    await authPool.query(
-      `insert into auth.member (id, organization_id, user_id, role, created_at)
-       values ($1, $2, $3, 'admin', now())`,
-      [crypto.randomUUID(), tenant.tenantId, admin2UserId],
-    )
-
-    // Sign in as second admin
-    const signIn = await handle.auth.api.signInEmail({
-      body: { email: 'mm-admin2-last@example.test', password: 'password-admin2' },
-      returnHeaders: true,
-    })
-    const cookie = signIn.headers.getSetCookie().join('; ')
-    const headers = new Headers({ cookie })
+    const headers = await signIn('mm-admin2-last@example.test', 'password-admin2')
 
     // Remove the first admin so second admin is the last one
-    const { removeMember } = await import('./member-management')
-    await removeMember(handle, headers, tenant.tenantId, tenant.adminUserId)
+    await removeTenantMember(headers, tenant.adminUserId)
+    expect(await roleIn(tenant.tenantId, tenant.adminUserId)).toBeUndefined()
 
-    // Admin 2 tries to demote themselves as last admin - should get 409
-    const { changeMemberRole } = await import('./member-management')
+    // changeMemberRole and removeMember re-read the caller as an admin under
+    // the lock, and the caller is never the target, so their recount always
+    // finds the caller. The recount itself is what refuses the last admin.
+    await inAuthTransaction(async (client) => {
+      await expect(
+        assertAnotherAdmin(client, tenant.tenantId, admin2UserId),
+      ).rejects.toMatchObject({ statusCode: 409, message: 'Cannot remove or demote the last admin.' })
+    })
+
+    // Admin 2 tries to demote or remove themselves as last admin - the self check answers 409 first
     await expect(
-      changeMemberRole(handle, headers, tenant.tenantId, admin2UserId, 'dispatcher'),
+      changeMemberRole(headers, admin2UserId, { role: 'dispatcher' }),
     ).rejects.toThrow('Cannot change your own role')
+    await expect(
+      removeTenantMember(headers, admin2UserId),
+    ).rejects.toThrow('Cannot remove yourself')
+    expect(await roleIn(tenant.tenantId, admin2UserId)).toBe('admin')
 
     // Now create a third admin so admin2 is not the last
-    const admin3UserId = crypto.randomUUID()
-    const admin3Password = await (await import('better-auth/crypto')).hashPassword('password-admin3')
-    await authPool.query(
-      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, 'Admin 3', 'mm-admin3-last@example.test', true, now(), now())`,
-      [admin3UserId],
-    )
-    await authPool.query(
-      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
-       values ($1, $2, 'credential', $2, $3, now(), now())`,
-      [crypto.randomUUID(), admin3UserId, admin3Password],
-    )
-    await authPool.query(
-      `insert into auth.member (id, organization_id, user_id, role, created_at)
-       values ($1, $2, $3, 'admin', now())`,
-      [crypto.randomUUID(), tenant.tenantId, admin3UserId],
-    )
+    const admin3UserId = await addMember(tenant.tenantId, { email: 'mm-admin3-last@example.test', name: 'Admin 3', password: 'password-admin3', role: 'admin' })
+    await inAuthTransaction(async (client) => {
+      await expect(assertAnotherAdmin(client, tenant.tenantId, admin2UserId)).resolves.toBeUndefined()
+    })
 
-    // Admin 2 tries to demote Admin 3 (now last admin would be admin2) - should succeed
-    await changeMemberRole(handle, headers, tenant.tenantId, admin3UserId, 'dispatcher')
+    // Admin 2 demotes Admin 3 (admin 2 stays) - should succeed
+    await changeMemberRole(headers, admin3UserId, { role: 'dispatcher' })
+    expect(await roleIn(tenant.tenantId, admin3UserId)).toBe('dispatcher')
 
     // Admin 2 is now the last admin. Sign in as admin 3 (now dispatcher)
-    const signIn3 = await handle.auth.api.signInEmail({
-      body: { email: 'mm-admin3-last@example.test', password: 'password-admin3' },
-      returnHeaders: true,
-    })
-    const cookie3 = signIn3.headers.getSetCookie().join('; ')
-    const headers3 = new Headers({ cookie: cookie3 })
+    const headers3 = await signIn('mm-admin3-last@example.test', 'password-admin3')
 
     // Dispatcher tries to change last admin - gets 403 (not admin)
     await expect(
-      changeMemberRole(handle, headers3, tenant.tenantId, admin2UserId, 'dispatcher'),
+      changeMemberRole(headers3, admin2UserId, { role: 'dispatcher' }),
     ).rejects.toThrow('Forbidden')
+    expect(await roleIn(tenant.tenantId, admin2UserId)).toBe('admin')
   }
   finally {
-    await handle.close()
+    await closeTenantRuntime()
   }
 })
 
-it('after removal the user\'s NULL-org session is gone and a tenant call returns 403', async () => {
+it('removal deletes the member\'s sessions for this Tenant and with no Tenant, keeps another Tenant\'s, and a tenant call is then 401', async () => {
   const tenant = await createTenant({
     name: 'Tenant Session Revoke',
     slug: 'mm-tenant-revoke',
@@ -277,65 +277,49 @@ it('after removal the user\'s NULL-org session is gone and a tenant call returns
     authDatabaseUrl,
     migrateDatabaseUrl,
   })
-
-  const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
+  const other = await createTenant({
+    name: 'Tenant Session Keep',
+    slug: 'mm-tenant-revoke-other',
+    adminEmail: 'mm-admin-revoke-other@example.test',
+    adminName: 'Admin Other',
+    password: 'password-other',
+    authDatabaseUrl,
+    migrateDatabaseUrl,
+  })
+  const dispatcherUserId = await addMember(tenant.tenantId, { email: 'mm-disp-revoke@example.test', name: 'Dispatcher Rev', password: 'password-disp', role: 'dispatcher' })
+  await join(other.tenantId, dispatcherUserId, 'dispatcher')
 
   try {
-    // Create a dispatcher account
-    const dispatcherUserId = crypto.randomUUID()
-    const dispatcherPassword = await (await import('better-auth/crypto')).hashPassword('password-disp')
-    await authPool.query(
-      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, 'Dispatcher Rev', 'mm-disp-revoke@example.test', true, now(), now())`,
-      [dispatcherUserId],
-    )
-    await authPool.query(
-      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
-       values ($1, $2, 'credential', $2, $3, now(), now())`,
-      [crypto.randomUUID(), dispatcherUserId, dispatcherPassword],
-    )
-    await authPool.query(
-      `insert into auth.member (id, organization_id, user_id, role, created_at)
-       values ($1, $2, $3, 'dispatcher', now())`,
-      [crypto.randomUUID(), tenant.tenantId, dispatcherUserId],
-    )
-
-    // Sign in as dispatcher (creates a session with active_organization_id = NULL)
-    const signInDisp = await handle.auth.api.signInEmail({
-      body: { email: 'mm-disp-revoke@example.test', password: 'password-disp' },
-      returnHeaders: true,
-    })
-    const cookieDisp = signInDisp.headers.getSetCookie().join('; ')
-    const headersDisp = new Headers({ cookie: cookieDisp })
+    // Three sessions: no active organization, this Tenant, and the other Tenant.
+    const unset = await signIn('mm-disp-revoke@example.test', 'password-disp')
+    const active = await signIn('mm-disp-revoke@example.test', 'password-disp')
+    await setActiveTenant(active, tenant.tenantId)
+    const elsewhere = await signIn('mm-disp-revoke@example.test', 'password-disp')
+    await setActiveTenant(elsewhere, other.tenantId)
 
     // Verify dispatcher can access tenant before removal
-    const sessionBefore = await handle.auth.api.getSession({ headers: headersDisp })
-    expect(sessionBefore).toBeTruthy()
-    expect(sessionBefore?.user.id).toBe(dispatcherUserId)
-
-    // Sign in as admin
-    const signInAdmin = await handle.auth.api.signInEmail({
-      body: { email: 'mm-admin-revoke@example.test', password: 'password-revoke' },
-      returnHeaders: true,
+    await expect(listMembers(active)).resolves.toMatchObject({
+      members: expect.arrayContaining([{ userId: dispatcherUserId, name: 'Dispatcher Rev', role: 'dispatcher' }]),
     })
-    const cookieAdmin = signInAdmin.headers.getSetCookie().join('; ')
-    const headersAdmin = new Headers({ cookie: cookieAdmin })
 
     // Admin removes the dispatcher
-    const { removeMember } = await import('./member-management')
-    await removeMember(handle, headersAdmin, tenant.tenantId, dispatcherUserId)
+    const headersAdmin = await signIn('mm-admin-revoke@example.test', 'password-revoke')
+    await removeTenantMember(headersAdmin, dispatcherUserId)
 
-    // Verify dispatcher's session is gone
-    const sessionAfter = await handle.auth.api.getSession({ headers: headersDisp })
-    expect(sessionAfter).toBeNull()
+    // Verify dispatcher's sessions for this Tenant and for no Tenant are gone
+    expect(await handle.auth.api.getSession({ headers: unset })).toBeNull()
+    expect(await handle.auth.api.getSession({ headers: active })).toBeNull()
+    await expect(listMembers(active)).rejects.toMatchObject({ statusCode: 401 })
 
-    // Verify dispatcher's membership is gone
-    const membershipsAfter = await handle.memberships(dispatcherUserId)
-    const membershipAfter = membershipsAfter.find(m => m.organizationId === tenant.tenantId)
-    expect(membershipAfter).toBeUndefined()
+    // The session in the other Tenant is not this Tenant's to revoke
+    expect(await handle.auth.api.getSession({ headers: elsewhere })).toMatchObject({ user: { id: dispatcherUserId } })
+
+    // Verify dispatcher's membership is gone here and kept in the other Tenant
+    expect(await roleIn(tenant.tenantId, dispatcherUserId)).toBeUndefined()
+    expect(await roleIn(other.tenantId, dispatcherUserId)).toBe('dispatcher')
   }
   finally {
-    await handle.close()
+    await closeTenantRuntime()
   }
 })
 
@@ -349,50 +333,18 @@ it('concurrent role changes with advisory lock ensure at least one admin remains
     authDatabaseUrl,
     migrateDatabaseUrl,
   })
-
-  const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
+  // Create a second admin
+  const admin2UserId = await addMember(tenant.tenantId, { email: 'mm-admin2-concurrent@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
 
   try {
-    // Create a second admin
-    const admin2UserId = crypto.randomUUID()
-    const admin2Password = await (await import('better-auth/crypto')).hashPassword('password-admin2')
-    await authPool.query(
-      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, 'Admin 2', 'mm-admin2-concurrent@example.test', true, now(), now())`,
-      [admin2UserId],
-    )
-    await authPool.query(
-      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
-       values ($1, $2, 'credential', $2, $3, now(), now())`,
-      [crypto.randomUUID(), admin2UserId, admin2Password],
-    )
-    await authPool.query(
-      `insert into auth.member (id, organization_id, user_id, role, created_at)
-       values ($1, $2, $3, 'admin', now())`,
-      [crypto.randomUUID(), tenant.tenantId, admin2UserId],
-    )
-
     // Sign in as both admins
-    const signIn1 = await handle.auth.api.signInEmail({
-      body: { email: 'mm-admin1-concurrent@example.test', password: 'password-admin1' },
-      returnHeaders: true,
-    })
-    const cookie1 = signIn1.headers.getSetCookie().join('; ')
-    const headers1 = new Headers({ cookie: cookie1 })
-
-    const signIn2 = await handle.auth.api.signInEmail({
-      body: { email: 'mm-admin2-concurrent@example.test', password: 'password-admin2' },
-      returnHeaders: true,
-    })
-    const cookie2 = signIn2.headers.getSetCookie().join('; ')
-    const headers2 = new Headers({ cookie: cookie2 })
-
-    const { changeMemberRole } = await import('./member-management')
+    const headers1 = await signIn('mm-admin1-concurrent@example.test', 'password-admin1')
+    const headers2 = await signIn('mm-admin2-concurrent@example.test', 'password-admin2')
 
     // Try to demote both admins concurrently - one should succeed, one should fail
     const results = await Promise.allSettled([
-      changeMemberRole(handle, headers1, tenant.tenantId, admin2UserId, 'dispatcher'),
-      changeMemberRole(handle, headers2, tenant.tenantId, tenant.adminUserId, 'dispatcher'),
+      changeMemberRole(headers1, admin2UserId, { role: 'dispatcher' }),
+      changeMemberRole(headers2, tenant.adminUserId, { role: 'dispatcher' }),
     ])
 
     // Exactly one should succeed and one should fail with 409
@@ -419,7 +371,7 @@ it('concurrent role changes with advisory lock ensure at least one admin remains
     expect(adminCount).toBe(1)
   }
   finally {
-    await handle.close()
+    await closeTenantRuntime()
   }
 })
 
@@ -433,55 +385,31 @@ it('admin cannot change their own role or remove themselves (self-protection)', 
     authDatabaseUrl,
     migrateDatabaseUrl,
   })
-
-  const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
+  // Create a second admin so we're not testing last-admin protection
+  await addMember(tenant.tenantId, { email: 'mm-admin2-self@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
 
   try {
-    // Create a second admin so we're not testing last-admin protection
-    const admin2UserId = crypto.randomUUID()
-    const admin2Password = await (await import('better-auth/crypto')).hashPassword('password-admin2')
-    await authPool.query(
-      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, 'Admin 2', 'mm-admin2-self@example.test', true, now(), now())`,
-      [admin2UserId],
-    )
-    await authPool.query(
-      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
-       values ($1, $2, 'credential', $2, $3, now(), now())`,
-      [crypto.randomUUID(), admin2UserId, admin2Password],
-    )
-    await authPool.query(
-      `insert into auth.member (id, organization_id, user_id, role, created_at)
-       values ($1, $2, $3, 'admin', now())`,
-      [crypto.randomUUID(), tenant.tenantId, admin2UserId],
-    )
-
     // Sign in as first admin
-    const signIn = await handle.auth.api.signInEmail({
-      body: { email: 'mm-admin-self@example.test', password: 'password-self' },
-      returnHeaders: true,
-    })
-    const cookie = signIn.headers.getSetCookie().join('; ')
-    const headers = new Headers({ cookie })
-
-    const { changeMemberRole, removeMember } = await import('./member-management')
+    const headers = await signIn('mm-admin-self@example.test', 'password-self')
 
     // Admin tries to change their own role - should get 409
     await expect(
-      changeMemberRole(handle, headers, tenant.tenantId, tenant.adminUserId, 'dispatcher'),
+      changeMemberRole(headers, tenant.adminUserId, { role: 'dispatcher' }),
     ).rejects.toThrow('your own role')
 
     // Admin tries to remove themselves - should get 409
     await expect(
-      removeMember(handle, headers, tenant.tenantId, tenant.adminUserId),
+      removeTenantMember(headers, tenant.adminUserId),
     ).rejects.toThrow('yourself')
+
+    expect(await roleIn(tenant.tenantId, tenant.adminUserId)).toBe('admin')
   }
   finally {
-    await handle.close()
+    await closeTenantRuntime()
   }
 })
 
-it('driver cannot list members (403)', async () => {
+it('a driver gets 403 from listMembers and a dispatcher of the same Tenant gets the members', async () => {
   const tenant = await createTenant({
     name: 'Tenant Driver List',
     slug: 'mm-tenant-driver-list',
@@ -491,44 +419,96 @@ it('driver cannot list members (403)', async () => {
     authDatabaseUrl,
     migrateDatabaseUrl,
   })
-
-  const handle = createAuth({ AUTH_DATABASE_URL: authDatabaseUrl, BETTER_AUTH_SECRET: 'test-secret', BETTER_AUTH_URL: 'http://localhost:3000' })
+  const driverUserId = await addMember(tenant.tenantId, { email: 'mm-driver-list@example.test', name: 'Driver', password: 'password-driver', role: 'driver' })
+  const dispatcherUserId = await addMember(tenant.tenantId, { email: 'mm-dispatcher-list@example.test', name: 'Dispatcher', password: 'password-dispatcher', role: 'dispatcher' })
 
   try {
-    // Create a driver account
-    const driverUserId = crypto.randomUUID()
-    const driverPassword = await (await import('better-auth/crypto')).hashPassword('password-driver')
-    await authPool.query(
-      `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
-       values ($1, 'Driver', 'mm-driver-list@example.test', true, now(), now())`,
-      [driverUserId],
-    )
-    await authPool.query(
-      `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
-       values ($1, $2, 'credential', $2, $3, now(), now())`,
-      [crypto.randomUUID(), driverUserId, driverPassword],
-    )
-    await authPool.query(
-      `insert into auth.member (id, organization_id, user_id, role, created_at)
-       values ($1, $2, $3, 'driver', now())`,
-      [crypto.randomUUID(), tenant.tenantId, driverUserId],
-    )
+    const driverHeaders = await signIn('mm-driver-list@example.test', 'password-driver')
+    const dispatcherHeaders = await signIn('mm-dispatcher-list@example.test', 'password-dispatcher')
 
-    // Verify driver has membership
-    const memberships = await handle.memberships(driverUserId)
-    const membership = memberships.find(m => m.organizationId === tenant.tenantId)
-    expect(membership).toBeTruthy()
-    expect(membership?.role).toBe('driver')
-
-    // Check that driver-only users have the right role check
-    const hasDriverOnlyRole = memberships.every(m => m.role === 'driver')
-    expect(hasDriverOnlyRole).toBe(true)
-
-    // The 403 check is enforced at the listMembers function level,
-    // but we can't test it in RLS environment since tenantRuntime isn't initialized.
-    // The role check logic is verified above, and will work in production.
+    await expect(listMembers(driverHeaders)).rejects.toMatchObject({ statusCode: 403 })
+    await expect(listMembers(dispatcherHeaders)).resolves.toEqual({
+      members: [
+        { userId: tenant.adminUserId, name: 'Admin', role: 'admin' },
+        { userId: dispatcherUserId, name: 'Dispatcher', role: 'dispatcher' },
+        { userId: driverUserId, name: 'Driver', role: 'driver' },
+      ],
+    })
   }
   finally {
-    await handle.close()
+    await closeTenantRuntime()
+  }
+})
+
+it('a driver in tenant A who is a dispatcher in tenant B gets 403 from listMembers while A is active', async () => {
+  const tenantA = await createTenant({
+    name: 'Tenant Role A',
+    slug: 'mm-tenant-role-a',
+    adminEmail: 'mm-admin-role-a@example.test',
+    adminName: 'Admin A',
+    password: 'password-a',
+    authDatabaseUrl,
+    migrateDatabaseUrl,
+  })
+  const tenantB = await createTenant({
+    name: 'Tenant Role B',
+    slug: 'mm-tenant-role-b',
+    adminEmail: 'mm-admin-role-b@example.test',
+    adminName: 'Admin B',
+    password: 'password-b',
+    authDatabaseUrl,
+    migrateDatabaseUrl,
+  })
+  const userId = await addMember(tenantA.tenantId, { email: 'mm-two-roles@example.test', name: 'Two Roles', password: 'password-two', role: 'driver' })
+  await join(tenantB.tenantId, userId, 'dispatcher')
+
+  try {
+    const headers = await signIn('mm-two-roles@example.test', 'password-two')
+    await setActiveTenant(headers, tenantA.tenantId)
+    await expect(listMembers(headers)).rejects.toMatchObject({ statusCode: 403 })
+
+    // The same session with tenant B active is a dispatcher there, and sees only B.
+    await setActiveTenant(headers, tenantB.tenantId)
+    await expect(listMembers(headers)).resolves.toEqual({
+      members: [
+        { userId: tenantB.adminUserId, name: 'Admin B', role: 'admin' },
+        { userId, name: 'Two Roles', role: 'dispatcher' },
+      ],
+    })
+  }
+  finally {
+    await closeTenantRuntime()
+  }
+})
+
+it('an admin demoted after their actor was read gets 403 under the lock and nothing changes', async () => {
+  const tenant = await createTenant({
+    name: 'Tenant Stale Admin',
+    slug: 'mm-tenant-stale',
+    adminEmail: 'mm-admin1-stale@example.test',
+    adminName: 'Admin 1',
+    password: 'password-admin1',
+    authDatabaseUrl,
+    migrateDatabaseUrl,
+  })
+  const admin2UserId = await addMember(tenant.tenantId, { email: 'mm-admin2-stale@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
+  const dispatcherUserId = await addMember(tenant.tenantId, { email: 'mm-disp-stale@example.test', name: 'Dispatcher', password: 'password-disp', role: 'dispatcher' })
+
+  try {
+    // Admin 2's actor as the session read it, before Admin 1 demotes them.
+    const stale: Actor = { context: { tenantId: tenant.tenantId }, userId: admin2UserId, role: 'admin' }
+    const headers1 = await signIn('mm-admin1-stale@example.test', 'password-admin1')
+    await changeMemberRole(headers1, admin2UserId, { role: 'dispatcher' })
+
+    await expect(
+      changeMemberRoleImpl(handle, stale, tenant.tenantId, dispatcherUserId, 'driver'),
+    ).rejects.toMatchObject({ statusCode: 403 })
+    await expect(
+      removeMemberImpl(handle, stale, tenant.tenantId, dispatcherUserId),
+    ).rejects.toMatchObject({ statusCode: 403 })
+    expect(await roleIn(tenant.tenantId, dispatcherUserId)).toBe('dispatcher')
+  }
+  finally {
+    await closeTenantRuntime()
   }
 })

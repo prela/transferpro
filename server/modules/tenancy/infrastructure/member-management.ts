@@ -1,5 +1,8 @@
+import type pg from 'pg'
 import type { TenantRole } from '../../../../shared'
 import type { AuthHandle } from './auth'
+import type { Actor } from './session'
+import { z } from 'zod'
 import { changeMemberRoleBodySchema, memberErrorMessage } from '../../../../shared'
 
 /**
@@ -51,162 +54,142 @@ export function parseChangeMemberRole(raw: unknown): { role: TenantRole } {
   return parsed.data
 }
 
+const memberRow = z.object({ id: z.string(), role: z.string() })
+const callerRow = z.object({ role: z.string() })
+const adminCountRow = z.object({ admin_count: z.coerce.number().int() })
+
 /**
- * Change a member's role. Admin-only (enforced by Better Auth role check).
+ * Change a member's role. Admin of `organizationId` only.
+ * An admin cannot change their own role; another admin must do it.
  * The last admin cannot be demoted to dispatcher or driver.
  * Authorization is checked first, before any existence or last-admin checks.
  * Uses pg_advisory_xact_lock to prevent race conditions in concurrent role changes.
  */
 export async function changeMemberRole(
   handle: AuthHandle,
-  headers: Headers,
+  actor: Actor,
   organizationId: string,
   targetUserId: string,
   newRole: TenantRole,
 ): Promise<void> {
-  // Verify caller is admin by attempting to get their session and checking membership
-  const session = await handle.auth.api.getSession({ headers })
-  if (!session)
-    throw new MemberAccessError(STATUS_CODE[401])
-
-  const memberships = await handle.memberships(session.user.id)
-  const callerMembership = memberships.find(m => m.organizationId === organizationId)
-  if (!callerMembership || callerMembership.role !== 'admin')
-    throw new MemberAccessError(STATUS_CODE[403])
-
+  assertAdminOf(actor, organizationId)
   // Self-protection: admin cannot change their own role
-  if (targetUserId === session.user.id)
+  if (targetUserId === actor.userId)
     throw new MemberAccessError(STATUS_CODE[409], 'Cannot change your own role.')
 
-  // Use advisory lock and SQL transaction to prevent race conditions
-  const client = await handle.authPool.connect()
-  try {
-    await client.query('begin')
-
-    // Lock on organization to serialize role changes
-    await client.query('select pg_advisory_xact_lock(hashtext($1))', [organizationId])
-
-    // Find the member id and current role
-    const memberResult = await client.query(
-      `select id, role from auth.member where organization_id = $1 and user_id = $2`,
-      [organizationId, targetUserId],
-    )
-    if (memberResult.rows.length === 0) {
-      await client.query('rollback')
-      throw new MemberAccessError(STATUS_CODE[404])
-    }
-
-    const memberId = memberResult.rows[0].id as string
-    const currentRole = memberResult.rows[0].role as string
-
+  await inLockedAdminTransaction(handle, actor, organizationId, async (client) => {
+    const target = await selectMember(client, organizationId, targetUserId)
     // If demoting an admin, recount and ensure at least one remains
-    if (currentRole === 'admin' && newRole !== 'admin') {
-      const countResult = await client.query(
-        `select count(*) as admin_count from auth.member
-         where organization_id = $1 and role = 'admin' and user_id != $2`,
-        [organizationId, targetUserId],
-      )
-      const remainingAdmins = Number.parseInt(countResult.rows[0].admin_count as string, 10)
-      if (remainingAdmins === 0) {
-        await client.query('rollback')
-        throw new MemberAccessError(STATUS_CODE[409], memberErrorMessage('member.lastAdmin'))
-      }
-    }
-
-    // Update the role
-    await client.query(
-      `update auth.member set role = $1 where id = $2`,
-      [newRole, memberId],
-    )
-
-    await client.query('commit')
-  }
-  catch (error) {
-    await client.query('rollback')
-    if (error instanceof MemberAccessError)
-      throw error
-    throw new MemberAccessError(STATUS_CODE[500])
-  }
-  finally {
-    client.release()
-  }
+    if (target.role === 'admin' && newRole !== 'admin')
+      await assertAnotherAdmin(client, organizationId, targetUserId)
+    await client.query('update auth.member set role = $1 where id = $2', [newRole, target.id])
+  })
 }
 
 /**
- * Remove a member from the organization. Admin-only (enforced by Better Auth).
- * The last admin cannot be removed. All sessions for that user in this
- * organization are revoked immediately.
+ * Remove a member from the organization. Admin of `organizationId` only.
+ * An admin cannot remove themselves. The last admin cannot be removed.
+ * The member row and that user's sessions for this organization go in one
+ * transaction, so a committed removal has no live session left behind.
  * Authorization is checked first, before any existence or last-admin checks.
  * Uses pg_advisory_xact_lock to prevent race conditions in concurrent removals.
  */
 export async function removeMember(
   handle: AuthHandle,
-  headers: Headers,
+  actor: Actor,
   organizationId: string,
   targetUserId: string,
 ): Promise<void> {
-  // Verify caller is admin by attempting to get their session and checking membership
-  const session = await handle.auth.api.getSession({ headers })
-  if (!session)
-    throw new MemberAccessError(STATUS_CODE[401])
-
-  const memberships = await handle.memberships(session.user.id)
-  const callerMembership = memberships.find(m => m.organizationId === organizationId)
-  if (!callerMembership || callerMembership.role !== 'admin')
-    throw new MemberAccessError(STATUS_CODE[403])
-
+  assertAdminOf(actor, organizationId)
   // Self-protection: admin cannot remove themselves
-  if (targetUserId === session.user.id)
+  if (targetUserId === actor.userId)
     throw new MemberAccessError(STATUS_CODE[409], 'Cannot remove yourself.')
 
-  // Use advisory lock and SQL transaction to prevent race conditions
+  await inLockedAdminTransaction(handle, actor, organizationId, async (client) => {
+    const target = await selectMember(client, organizationId, targetUserId)
+    // If removing an admin, recount and ensure at least one remains
+    if (target.role === 'admin')
+      await assertAnotherAdmin(client, organizationId, targetUserId)
+    await client.query('delete from auth.member where id = $1', [target.id])
+    // A fresh sign-in has no active organization, so a null one is this Tenant's too.
+    await client.query(
+      `delete from auth.session
+       where user_id = $1 and (active_organization_id = $2 or active_organization_id is null)`,
+      [targetUserId, organizationId],
+    )
+  })
+}
+
+/**
+ * 409 unless an admin other than `targetUserId` remains in the organization.
+ * Run it under the advisory lock. Through changeMemberRole and removeMember
+ * the caller was just re-read as such an admin, so this refuses only when a
+ * writer has skipped that check.
+ */
+export async function assertAnotherAdmin(
+  client: pg.PoolClient,
+  organizationId: string,
+  targetUserId: string,
+): Promise<void> {
+  const result = await client.query(
+    `select count(*) as admin_count from auth.member
+     where organization_id = $1 and role = 'admin' and user_id != $2`,
+    [organizationId, targetUserId],
+  )
+  if (adminCountRow.parse(result.rows[0]).admin_count === 0)
+    throw new MemberAccessError(STATUS_CODE[409], memberErrorMessage('member.lastAdmin'))
+}
+
+/** The actor is an admin of this organization, not of another Tenant. */
+function assertAdminOf(actor: Actor, organizationId: string): void {
+  if (actor.context.tenantId !== organizationId || actor.role !== 'admin')
+    throw new MemberAccessError(STATUS_CODE[403])
+}
+
+async function selectMember(client: pg.PoolClient, organizationId: string, userId: string) {
+  const result = await client.query(
+    'select id, role from auth.member where organization_id = $1 and user_id = $2',
+    [organizationId, userId],
+  )
+  const row = memberRow.safeParse(result.rows[0])
+  if (!row.success)
+    throw new MemberAccessError(STATUS_CODE[404])
+  return row.data
+}
+
+/**
+ * One auth-pool transaction: lock the organization, re-read the caller's
+ * role, run `work`, commit. The actor was read before the lock, so an admin
+ * demoted or removed since then is 403 here. Every write the change needs,
+ * session deletes included, belongs in `work`: nothing may run after commit.
+ */
+async function inLockedAdminTransaction(
+  handle: AuthHandle,
+  actor: Actor,
+  organizationId: string,
+  work: (client: pg.PoolClient) => Promise<void>,
+): Promise<void> {
   const client = await handle.authPool.connect()
   try {
     await client.query('begin')
-
-    // Lock on organization to serialize member removals
-    await client.query('select pg_advisory_xact_lock(hashtext($1))', [organizationId])
-
-    // Find the member and check role
-    const memberResult = await client.query(
-      `select id, role from auth.member where organization_id = $1 and user_id = $2`,
-      [organizationId, targetUserId],
-    )
-    if (memberResult.rows.length === 0) {
+    try {
+      // Lock on organization to serialize role changes and removals
+      await client.query('select pg_advisory_xact_lock(hashtext($1))', [organizationId])
+      const caller = callerRow.safeParse((await client.query(
+        'select role from auth.member where organization_id = $1 and user_id = $2',
+        [organizationId, actor.userId],
+      )).rows[0])
+      if (!caller.success || caller.data.role !== 'admin')
+        throw new MemberAccessError(STATUS_CODE[403])
+      await work(client)
+    }
+    catch (error) {
       await client.query('rollback')
-      throw new MemberAccessError(STATUS_CODE[404])
+      throw error
     }
-
-    const memberId = memberResult.rows[0].id as string
-    const role = memberResult.rows[0].role as string
-
-    // If removing an admin, recount and ensure at least one remains
-    if (role === 'admin') {
-      const countResult = await client.query(
-        `select count(*) as admin_count from auth.member
-         where organization_id = $1 and role = 'admin' and user_id != $2`,
-        [organizationId, targetUserId],
-      )
-      const remainingAdmins = Number.parseInt(countResult.rows[0].admin_count as string, 10)
-      if (remainingAdmins === 0) {
-        await client.query('rollback')
-        throw new MemberAccessError(STATUS_CODE[409], memberErrorMessage('member.lastAdmin'))
-      }
-    }
-
-    // Delete the member
-    await client.query(
-      `delete from auth.member where id = $1`,
-      [memberId],
-    )
-
     await client.query('commit')
-
-    // Revoke sessions after successful commit
-    await handle.revokeOrganizationSessions(targetUserId, organizationId)
   }
   catch (error) {
-    await client.query('rollback')
     if (error instanceof MemberAccessError)
       throw error
     throw new MemberAccessError(STATUS_CODE[500])

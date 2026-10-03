@@ -318,51 +318,6 @@ export function createAuth(
         role: row.role,
       }))
     },
-    /**
-     * Count admins in an organization, excluding one specific user.
-     * Used to prevent removing or demoting the last admin.
-     */
-    async countAdminsExcept(organizationId: string, excludeUserId: string): Promise<number> {
-      const result = await pool.query(
-        `select count(*) as count
-         from auth.member
-         where organization_id = $1
-           and user_id != $2
-           and role = 'admin'`,
-        [organizationId, excludeUserId],
-      )
-      const row = z.object({ count: z.string() }).safeParse(result.rows[0])
-      if (!row.success)
-        return 0
-      return Number.parseInt(row.data.count, 10)
-    },
-    /**
-     * Get the member id for a user in an organization.
-     * Better Auth's updateMemberRole needs the member id, not the user id.
-     */
-    async getMemberId(organizationId: string, userId: string): Promise<string | null> {
-      const result = await pool.query(
-        `select id from auth.member
-         where organization_id = $1 and user_id = $2`,
-        [organizationId, userId],
-      )
-      const row = z.object({ id: z.string() }).safeParse(result.rows[0])
-      return row.success ? row.data.id : null
-    },
-    /**
-     * Revoke all sessions for a user in a specific organization.
-     * Called after removing a member to immediately invalidate their sessions.
-     * Real sessions have active_organization_id NULL, so we delete both NULL
-     * and matching organization_id.
-     */
-    async revokeOrganizationSessions(userId: string, organizationId: string): Promise<void> {
-      await pool.query(
-        `delete from auth.session
-         where user_id = $1
-           and (active_organization_id = $2 or active_organization_id is null)`,
-        [userId, organizationId],
-      )
-    },
   }
 }
 

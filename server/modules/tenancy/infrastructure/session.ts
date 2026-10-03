@@ -1,4 +1,4 @@
-import type { DisplayLocale, SessionShell } from '../../../../shared'
+import type { DisplayLocale, SessionShell, TenantRole } from '../../../../shared'
 import type { TenantContext, TenantTransaction } from '../../../core/index'
 import type { Membership } from './auth'
 import { sql } from 'drizzle-orm'
@@ -45,17 +45,25 @@ const settingsRows = z.object({
   })),
 })
 
-const ROLES = new Set(['admin', 'dispatcher', 'driver'])
-
 interface Runtime {
   handle: ReturnType<typeof createAuth>
   db: ReturnType<typeof drizzle>
   appPool: pg.Pool
 }
 
+/**
+ * The signed-in user in the session's active Tenant. `role` is that Tenant's
+ * member row only; a role in another Tenant never applies here.
+ */
+export interface Actor {
+  readonly context: TenantContext
+  readonly userId: string
+  readonly role: TenantRole
+}
+
 let runtime: Runtime | undefined
 
-export function tenantRuntime(): Runtime {
+function tenantRuntime(): Runtime {
   if (runtime)
     return runtime
   const env = loadAppEnv()
@@ -92,12 +100,12 @@ export function handleAuthRequest(request: Request): Promise<Response> {
  */
 export async function withTenantFromSession<T>(
   headers: Headers,
-  run: (scope: { context: TenantContext, transaction: TenantTransaction }) => Promise<T>,
+  run: (scope: { context: TenantContext, transaction: TenantTransaction, actor: Actor }) => Promise<T>,
 ): Promise<T> {
   const { handle, db } = tenantRuntime()
-  const context = await contextFromSession(handle, headers)
+  const actor = await actorFromSession(handle, headers)
   return db.transaction(async (transaction) => {
-    return openTenantSession(transaction, context, () => run({ context, transaction }))
+    return openTenantSession(transaction, actor.context, () => run({ context: actor.context, transaction, actor }))
   })
 }
 
@@ -182,25 +190,14 @@ export async function acceptMemberInvitation(raw: unknown, headers: Headers, key
 
 /**
  * List all members of the current Tenant. Visible to admin and dispatcher only.
- * Drivers get 403. The email is not returned (it stays on auth.user).
+ * Drivers get 403. The role is the one in the session's active Tenant, so a
+ * driver there is refused even when another Tenant made them a dispatcher.
+ * The email is not returned (it stays on auth.user).
  */
 export async function listMembers(headers: Headers) {
-  // Check role before opening tenant session
-  const { handle } = tenantRuntime()
-  const session = await handle.auth.api.getSession({ headers })
-  if (!session)
-    throw new TenantAccessError(401)
-
-  const memberships = await handle.memberships(session.user.id)
-  if (memberships.length === 0)
-    throw new TenantAccessError(401)
-
-  // Drivers cannot list members
-  const hasDriverOnlyRole = memberships.every(m => m.role === 'driver')
-  if (hasDriverOnlyRole)
-    throw new TenantAccessError(403)
-
-  return withTenantFromSession(headers, async ({ transaction }) => {
+  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+    if (actor.role === 'driver')
+      throw new TenantAccessError(403)
     const memberRows = z.object({
       rows: z.array(z.object({
         user_id: z.string(),
@@ -223,34 +220,34 @@ export async function listMembers(headers: Headers) {
 }
 
 /**
- * Change a member's role. Admin-only (Better Auth enforces this).
- * The last admin cannot be demoted.
+ * Change a member's role. Admin of the session's Tenant only; member-management
+ * checks the actor and re-reads the caller's role under the Tenant lock.
+ * The last admin cannot be demoted. Only auth tables change, so no app-role
+ * transaction is opened.
  */
 export async function changeMemberRole(
   headers: Headers,
   targetUserId: string,
   raw: unknown,
-) {
+): Promise<void> {
   const { handle } = tenantRuntime()
   const { role } = parseChangeMemberRole(raw)
-  return withTenantFromSession(headers, async ({ context }) => {
-    await changeMemberRoleImpl(handle, headers, context.tenantId, targetUserId, role)
-  })
+  const actor = await actorFromSession(handle, headers)
+  await changeMemberRoleImpl(handle, actor, actor.context.tenantId, targetUserId, role)
 }
 
 /**
- * Remove a member from the Tenant. Admin-only (Better Auth enforces this).
+ * Remove a member from the Tenant. Admin of the session's Tenant only.
  * The last admin cannot be removed. Sessions tied to that member and this
- * Tenant are revoked immediately.
+ * Tenant are deleted in the same transaction as the membership.
  */
 export async function removeTenantMember(
   headers: Headers,
   targetUserId: string,
-) {
+): Promise<void> {
   const { handle } = tenantRuntime()
-  return withTenantFromSession(headers, async ({ context }) => {
-    await removeMemberImpl(handle, headers, context.tenantId, targetUserId)
-  })
+  const actor = await actorFromSession(handle, headers)
+  await removeMemberImpl(handle, actor, actor.context.tenantId, targetUserId)
 }
 
 /**
@@ -267,26 +264,24 @@ export async function updateUserLocale(headers: Headers, locale: DisplayLocale):
   await handle.setUserLocale(parsed.data.user.id, locale)
 }
 
-async function contextFromSession(
-  handle: ReturnType<typeof createAuth>,
-  headers: Headers,
-): Promise<TenantContext> {
+/**
+ * One getSession and one memberships read per call. The context and the
+ * role both come from the membership `chooseMembership` picks.
+ */
+async function actorFromSession(handle: Runtime['handle'], headers: Headers): Promise<Actor> {
   const result = await handle.auth.api.getSession({ headers })
-  if (!result)
-    throw new TenantAccessError(401)
   const parsed = sessionSchema.safeParse(result)
   if (!parsed.success)
     throw new TenantAccessError(401)
 
-  const memberships = await handle.memberships(parsed.data.user.id)
-  const membership = chooseMembership(memberships, parsed.data.session.activeOrganizationId)
-  return { tenantId: membership.organizationId }
+  const membership = chooseMembership(await handle.memberships(parsed.data.user.id), parsed.data.session.activeOrganizationId)
+  return { context: { tenantId: membership.organizationId }, userId: parsed.data.user.id, role: membership.role }
 }
 
 function chooseMembership(
   memberships: readonly Membership[],
   activeOrganizationId: string | null | undefined,
-): Membership {
+): { organizationId: string, role: TenantRole } {
   if (memberships.length === 0)
     throw new TenantAccessError(403)
 
@@ -299,10 +294,10 @@ function chooseMembership(
     throw new TenantAccessError(403)
 
   const parts = membership.role.split(',').map(part => part.trim()).filter(part => part !== '')
-  const role = parts[0]
-  if (parts.length !== 1 || role === undefined || !ROLES.has(role))
+  const role = tenantRoleSchema.safeParse(parts[0])
+  if (parts.length !== 1 || !role.success)
     throw new TenantAccessError(403)
   if (!z.uuid().safeParse(membership.organizationId).success)
     throw new TenantAccessError(403)
-  return membership
+  return { organizationId: membership.organizationId, role: role.data }
 }
