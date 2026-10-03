@@ -342,25 +342,18 @@ it('concurrent role changes with advisory lock ensure at least one admin remains
     const headers1 = await signIn('mm-admin1-concurrent@example.test', 'password-admin1')
     const headers2 = await signIn('mm-admin2-concurrent@example.test', 'password-admin2')
 
-    // Try to demote both admins concurrently - one should succeed, one should fail
     const results = await Promise.allSettled([
       changeMemberRole(headers1, admin2UserId, { role: 'dispatcher' }),
       changeMemberRole(headers2, tenant.adminUserId, { role: 'dispatcher' }),
     ])
 
-    // Exactly one should succeed and one should fail with 409
+    // The loser re-reads its own role under the lock and finds itself demoted.
     const succeeded = results.filter(r => r.status === 'fulfilled')
     const failed = results.filter(r => r.status === 'rejected')
 
     expect(succeeded.length).toBe(1)
     expect(failed.length).toBe(1)
-
-    // The failed one gets either "last admin" (409) or "Forbidden" (403 if already demoted by the other)
-    const rejectedResult = failed[0]
-    if (rejectedResult?.status === 'rejected') {
-      const message = rejectedResult.reason.message
-      expect(message === 'Cannot remove or demote the last admin.' || message === 'Forbidden').toBe(true)
-    }
+    expect(failed[0]?.reason).toMatchObject({ statusCode: 403, message: 'Forbidden' })
 
     // Verify exactly one admin remains
     const membersResult = await authPool.query(
