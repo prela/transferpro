@@ -4,15 +4,20 @@ import { boolean, check, pgSchema, text, timestamp } from 'drizzle-orm/pg-core'
 /**
  * Better Auth tables. Not tenant tables: no tenant_id, no row-level security.
  * The app role has no grant here. The auth role does.
+ * Instants are `timestamptz` UTC. A Tenant's time zone is for display only.
  */
 export const authSchema = pgSchema('auth')
 
+function instant(name: string) {
+  return timestamp(name, { withTimezone: true, mode: 'date' })
+}
+
 function createdAt() {
-  return timestamp('created_at').notNull()
+  return instant('created_at').notNull()
 }
 
 function updatedAt() {
-  return timestamp('updated_at').notNull()
+  return instant('updated_at').notNull()
 }
 
 export const user = authSchema.table('user', {
@@ -31,7 +36,7 @@ export const user = authSchema.table('user', {
 
 export const session = authSchema.table('session', {
   id: text('id').primaryKey(),
-  expiresAt: timestamp('expires_at').notNull(),
+  expiresAt: instant('expires_at').notNull(),
   token: text('token').notNull().unique(),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
@@ -49,8 +54,8 @@ export const account = authSchema.table('account', {
   accessToken: text('access_token'),
   refreshToken: text('refresh_token'),
   idToken: text('id_token'),
-  accessTokenExpiresAt: timestamp('access_token_expires_at'),
-  refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
+  accessTokenExpiresAt: instant('access_token_expires_at'),
+  refreshTokenExpiresAt: instant('refresh_token_expires_at'),
   scope: text('scope'),
   password: text('password'),
   createdAt: createdAt(),
@@ -61,7 +66,7 @@ export const verification = authSchema.table('verification', {
   id: text('id').primaryKey(),
   identifier: text('identifier').notNull(),
   value: text('value').notNull(),
-  expiresAt: timestamp('expires_at').notNull(),
+  expiresAt: instant('expires_at').notNull(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 })
@@ -89,7 +94,7 @@ export const invitation = authSchema.table('invitation', {
   email: text('email').notNull(),
   role: text('role'),
   status: text('status').notNull(),
-  expiresAt: timestamp('expires_at').notNull(),
+  expiresAt: instant('expires_at').notNull(),
   createdAt: createdAt(),
   inviterId: text('inviter_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
 })

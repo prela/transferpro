@@ -1,29 +1,24 @@
+import { loadEnvFile } from 'node:process'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { parseAppEnv } from '../../../core/index'
-import { createAuth } from './auth'
+import { createTenant } from './create-tenant'
 
 /**
  * Member seam: the app role reads app.tenant_member, not auth.user.
  * The rows are the observation. Policy text and grants are not.
  */
+loadEnvFile('.env')
+loadEnvFile('.env.migrate')
+
 const databaseUrl = process.env.DATABASE_URL
 const authDatabaseUrl = process.env.AUTH_DATABASE_URL
-const queueDatabaseUrl = process.env.QUEUE_DATABASE_URL
+const migrateDatabaseUrl = process.env.DATABASE_MIGRATE_URL
 if (!databaseUrl)
   throw new Error('DATABASE_URL is required (the transferpro_app role)')
 if (!authDatabaseUrl)
   throw new Error('AUTH_DATABASE_URL is required (the transferpro_auth role)')
-if (!queueDatabaseUrl)
-  throw new Error('QUEUE_DATABASE_URL is required (the transferpro_queue role)')
-
-const env = parseAppEnv({
-  DATABASE_URL: databaseUrl,
-  AUTH_DATABASE_URL: authDatabaseUrl,
-  QUEUE_DATABASE_URL: queueDatabaseUrl,
-  BETTER_AUTH_SECRET: 'transferpro-test-secret-32-characters',
-  BETTER_AUTH_URL: 'http://localhost:3000',
-})
+if (!migrateDatabaseUrl)
+  throw new Error('DATABASE_MIGRATE_URL is required (the transferpro_owner role)')
 
 const appPool = new pg.Pool({ connectionString: databaseUrl })
 const authPool = new pg.Pool({ connectionString: authDatabaseUrl })
@@ -172,34 +167,24 @@ it('creating an organization makes that admin visible to the tenant session', as
     authClient.release()
   }
 
-  const { auth, close } = createAuth(env)
-  try {
-    const signedUp = await auth.api.signUpEmail({
-      body: {
-        name: 'Cora',
-        email: 'cora@example.com',
-        password: 'super-secret-password',
-      },
-      returnHeaders: true,
-    })
-    // The sign-up response sets the session cookie. The next call has to send it back.
-    const cookie = signedUp.headers.getSetCookie().map(part => part.split(';')[0]).join('; ')
-    const created = await auth.api.createOrganization({
-      body: { name: 'Tenant Cora', slug: 'tenant-cora' },
-      headers: { cookie },
-    })
+  // Public sign-up is off. The operator command is what makes the admin.
+  const created = await createTenant({
+    name: 'Tenant Cora',
+    slug: 'tenant-cora',
+    adminEmail: 'cora@example.com',
+    adminName: 'Cora',
+    password: 'super-secret-password',
+    authDatabaseUrl,
+    migrateDatabaseUrl,
+  })
 
-    const seen = await withApp(created.id, async (client) => {
-      const selected = await client.query('select user_id, name, role from app.tenant_member')
-      return selected.rows
-    })
+  const seen = await withApp(created.tenantId, async (client) => {
+    const selected = await client.query('select user_id, name, role from app.tenant_member')
+    return selected.rows
+  })
 
-    expect(seen).toEqual([{ user_id: signedUp.response.user.id, name: 'Cora', role: 'admin' }])
-    expect(JSON.stringify(seen)).not.toContain('cora@example.com')
-  }
-  finally {
-    await close()
-  }
+  expect(seen).toEqual([{ user_id: created.adminUserId, name: 'Cora', role: 'admin' }])
+  expect(JSON.stringify(seen)).not.toContain('cora@example.com')
 })
 
 it('better Auth tables are not tenant tables, and every app table is', async () => {
