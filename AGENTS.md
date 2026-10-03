@@ -43,6 +43,16 @@ Roles, grants, and the tenant session are ADR-0011. Working rules on top of that
 - No session is 401. No single membership, or a role other than `admin`, `dispatcher`, or `driver`, is 403. Both go through `handleLoggedError`. One membership still resolves when the active organization is missing.
 - Enqueue stores the current `request_id` on the job envelope beside `tenantId`, outside `data`. The handler restores it with `runWithRequestId` before `openTenantSession`. A job enqueued outside a request carries no invented id. `runWithTenantId` stays off `server/core/index.ts`.
 
+## Audit log
+
+Rationale is ADR-0014. Working rules:
+
+- Append with `appendAuditEntry` from `server/modules/audit` on the action's own transaction, after its writes and before commit. That transaction needs a tenant session; on the auth pool, open `openTenantSession` on the same client, as `member-management.ts` does.
+- A new action needs three things: a value in `auditActions` with a strict data shape (`shared/audit-entry.ts`), an `ALTER TYPE app.audit_action ADD VALUE` migration, and `audit.actions.*` copy in both locales.
+- Entry data holds ids and roles only. Display names come from `app.tenant_member` when the log is read.
+- The invite entry comes from the `auth.invitation` insert trigger, so invite code appends nothing.
+- Schema `audit` is the auth role's only grant outside `auth`.
+
 ## Logging and errors
 
 The charter lists the personal-data keys. Rationale for the logger shape is ADR-0012 (proposed). Also:
