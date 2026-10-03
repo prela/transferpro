@@ -185,18 +185,24 @@ export async function acceptMemberInvitation(raw: unknown, headers: Headers, key
  * Drivers get 403. The email is not returned (it stays on auth.user).
  */
 export async function listMembers(headers: Headers) {
-  return withTenantFromSession(headers, async ({ context, transaction }) => {
-    // Check that caller is admin or dispatcher
-    const { handle } = tenantRuntime()
-    const session = await handle.auth.api.getSession({ headers })
-    if (!session)
-      throw new TenantAccessError(401)
+  // Check role before opening tenant session
+  const { handle } = tenantRuntime()
+  const session = await handle.auth.api.getSession({ headers })
+  if (!session)
+    throw new TenantAccessError(401)
 
-    const memberships = await handle.memberships(session.user.id)
-    const membership = memberships.find(m => m.organizationId === context.tenantId)
-    if (!membership || membership.role === 'driver')
-      throw new TenantAccessError(403)
+  // Get the first membership to check the role
+  // withTenantFromSession will validate the membership belongs to a valid tenant
+  const memberships = await handle.memberships(session.user.id)
+  if (memberships.length === 0)
+    throw new TenantAccessError(401)
 
+  // Check if any membership is driver-only (all memberships would have same role in single-tenant context)
+  const hasDriverOnlyRole = memberships.every(m => m.role === 'driver')
+  if (hasDriverOnlyRole)
+    throw new TenantAccessError(403)
+
+  return withTenantFromSession(headers, async ({ transaction }) => {
     const memberRows = z.object({
       rows: z.array(z.object({
         user_id: z.string(),
