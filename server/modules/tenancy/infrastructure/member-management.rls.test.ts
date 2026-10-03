@@ -401,9 +401,12 @@ it('concurrent role changes with advisory lock ensure at least one admin remains
 
     expect(succeeded.length).toBe(1)
     expect(failed.length).toBe(1)
+
+    // The failed one gets either "last admin" (409) or "Forbidden" (403 if already demoted by the other)
     const rejectedResult = failed[0]
     if (rejectedResult?.status === 'rejected') {
-      expect(rejectedResult.reason.message).toContain('last admin')
+      const message = rejectedResult.reason.message
+      expect(message === 'Cannot remove or demote the last admin.' || message === 'Forbidden').toBe(true)
     }
 
     // Verify exactly one admin remains
@@ -479,6 +482,7 @@ it('admin cannot change their own role or remove themselves (self-protection)', 
 })
 
 it('driver cannot list members (403)', async () => {
+  // Use createTenant which already sets up tenant_settings
   const tenant = await createTenant({
     name: 'Tenant Driver List',
     slug: 'mm-tenant-driver-list',
@@ -511,20 +515,6 @@ it('driver cannot list members (403)', async () => {
       [crypto.randomUUID(), tenant.tenantId, driverUserId],
     )
 
-    // Add driver to tenant settings so they have a valid session
-    const migratePool = new pg.Pool({ connectionString: migrateDatabaseUrl })
-    try {
-      await migratePool.query(
-        `insert into app.tenant_settings (tenant_id, default_locale, time_zone)
-         values ($1, 'hr', 'Europe/Zagreb')
-         on conflict (tenant_id) do nothing`,
-        [tenant.tenantId],
-      )
-    }
-    finally {
-      await migratePool.end()
-    }
-
     // Sign in as driver
     const signIn = await handle.auth.api.signInEmail({
       body: { email: 'mm-driver-list@example.test', password: 'password-driver' },
@@ -537,6 +527,12 @@ it('driver cannot list members (403)', async () => {
     const session = await handle.auth.api.getSession({ headers })
     expect(session).toBeTruthy()
     expect(session?.user.id).toBe(driverUserId)
+
+    // Verify driver has membership
+    const memberships = await handle.memberships(driverUserId)
+    const membership = memberships.find(m => m.organizationId === tenant.tenantId)
+    expect(membership).toBeTruthy()
+    expect(membership?.role).toBe('driver')
 
     const { listMembers } = await import('./session')
 
