@@ -8,6 +8,7 @@ defineProps<{
 }>()
 
 const { t } = useI18n()
+const titleId = useId()
 
 const entries = ref<AuditEntry[]>([])
 const loading = ref(false)
@@ -43,7 +44,9 @@ onMounted(loadEntries)
 
 <template>
   <section>
-    <h2>{{ t('audit.title') }}</h2>
+    <h2 :id="titleId">
+      {{ t('audit.title') }}
+    </h2>
     <p
       v-if="loadError"
       class="error"
@@ -60,34 +63,43 @@ onMounted(loadEntries)
     <p v-else-if="entries.length === 0">
       {{ t('audit.empty') }}
     </p>
-    <table v-else>
-      <thead>
-        <tr>
-          <th>{{ t('audit.when') }}</th>
-          <th>{{ t('audit.who') }}</th>
-          <th>{{ t('audit.action') }}</th>
-          <th>{{ t('audit.member') }}</th>
-          <th>{{ t('audit.role') }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="entry in entries"
-          :key="entry.id"
-        >
-          <td>
-            <time :datetime="entry.occurredAt">
-              {{ formatInstant(new Date(entry.occurredAt), timeZone, locale) }}
-            </time>
-          </td>
-          <td>{{ entry.actorName ?? t('audit.formerMember') }}</td>
-          <td>{{ t(`audit.actions.${entry.action}`) }}</td>
-          <!-- An invite names no member: the invitee has no account yet. -->
-          <td>{{ entry.subjectUserId === null ? '' : entry.subjectName ?? t('audit.formerMember') }}</td>
-          <td>{{ roleText(entry) }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <!-- Focusable, so a keyboard can scroll the columns a phone cannot fit. -->
+    <div
+      v-else
+      class="table-scroll"
+      role="region"
+      :aria-labelledby="titleId"
+      tabindex="0"
+    >
+      <table>
+        <thead>
+          <tr>
+            <th>{{ t('audit.when') }}</th>
+            <th>{{ t('audit.who') }}</th>
+            <th>{{ t('audit.action') }}</th>
+            <th>{{ t('audit.member') }}</th>
+            <th>{{ t('audit.role') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="entry in entries"
+            :key="entry.id"
+          >
+            <td>
+              <time :datetime="entry.occurredAt">
+                {{ formatInstant(new Date(entry.occurredAt), timeZone, locale) }}
+              </time>
+            </td>
+            <td>{{ entry.actorName ?? t('audit.formerMember') }}</td>
+            <td>{{ t(`audit.actions.${entry.action}`) }}</td>
+            <!-- An invite names no member: the invitee has no account yet. -->
+            <td>{{ entry.subjectUserId === null ? '' : entry.subjectName ?? t('audit.formerMember') }}</td>
+            <td>{{ roleText(entry) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     <button
       type="button"
       class="secondary"
@@ -98,3 +110,19 @@ onMounted(loadEntries)
     </button>
   </section>
 </template>
+
+<style scoped>
+.table-scroll {
+  overflow-x: auto;
+}
+
+.table-scroll:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+th,
+td {
+  white-space: nowrap;
+}
+</style>
