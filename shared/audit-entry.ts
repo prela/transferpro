@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { tenantRoleSchema } from './tenant-role'
-import { ianaTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
+import { ianaTimeZoneSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
 
 /**
  * Every action the audit log records (ADR-0014). The database enum
@@ -48,6 +48,9 @@ const memberRemoved = z.object({
 /*
  * A settings change names no member. `from` and `to` are the only values,
  * so a name or an email cannot be stored on a row that is never deleted.
+ * The previous zone is the stored text. The next zone has to be on the
+ * current list, so a name that has left the list can still be recorded
+ * as what the row used to say.
  */
 const settingsAirportWaitChanged = z.object({
   action: z.literal('settings.airport_wait_changed'),
@@ -64,7 +67,7 @@ const settingsElsewhereWaitChanged = z.object({
 const settingsTimeZoneChanged = z.object({
   action: z.literal('settings.time_zone_changed'),
   subjectUserId: z.null(),
-  data: z.strictObject({ from: ianaTimeZoneSchema, to: ianaTimeZoneSchema }),
+  data: z.strictObject({ from: storedTimeZoneSchema, to: ianaTimeZoneSchema }),
 })
 
 /** What happened: the action, the member it was done to, and its data. */

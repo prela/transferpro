@@ -6,8 +6,11 @@ import {
   parseTenantSettingsPatch,
   TENANT_TIME_ZONE_DEFAULT,
   TenantSettingsError,
+  tenantSettingsGetSchema,
   tenantSettingsPatchSchema,
+  tenantSettingsResponseSchema,
   tenantSettingsSchema,
+  tenantTimeZoneIds,
   TIME_ZONE_MAX_LENGTH,
 } from './tenant-settings'
 
@@ -48,6 +51,31 @@ it('accepts every IANA zone Intl knows and refuses a name that is not one', () =
   expect(ianaTimeZoneSchema.safeParse('Not/AZone').success).toBe(false)
   expect(ianaTimeZoneSchema.safeParse('europe/zagreb').success).toBe(false)
   expect(ianaTimeZoneSchema.safeParse('').success).toBe(false)
+})
+
+it('a reply accepts a stored zone that is no longer on the list, and a write of that zone does not', () => {
+  const stored = {
+    airportWaitMinutes: 90,
+    elsewhereWaitMinutes: 25,
+    timeZone: 'US/Eastern',
+  }
+  expect(tenantSettingsResponseSchema.parse(stored)).toEqual(stored)
+  expect(tenantSettingsSchema.safeParse(stored).success).toBe(false)
+  expect(tenantSettingsResponseSchema.safeParse({ ...stored, timeZone: '' }).success).toBe(false)
+  expect(tenantSettingsResponseSchema.safeParse({ ...stored, timeZone: 'a'.repeat(65) }).success).toBe(false)
+  const reply = tenantSettingsGetSchema.parse({ ...stored, timeZones: ['Europe/Zagreb', 'UTC'] })
+  expect(reply.timeZones).toEqual(['Europe/Zagreb', 'UTC'])
+  expect(reply.timeZone).toBe('US/Eastern')
+})
+
+it('the zone list is the official IANA ids plus UTC and Etc/UTC, and an alias is absent', () => {
+  expect(tenantTimeZoneIds).toContain('Europe/Zagreb')
+  expect(tenantTimeZoneIds).toContain('UTC')
+  expect(tenantTimeZoneIds).toContain('Etc/UTC')
+  expect(tenantTimeZoneIds).not.toContain('US/Eastern')
+  expect(tenantTimeZoneIds).not.toContain('GMT')
+  expect(ianaTimeZoneSchema.safeParse('US/Eastern').success).toBe(false)
+  expect(ianaTimeZoneSchema.safeParse('GMT').success).toBe(false)
 })
 
 it('refuses an unknown key, so a name or an email cannot ride along in the body', () => {

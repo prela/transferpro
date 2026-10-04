@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, readBody, toWebRequest } from 'h3'
-import { TenantSettingsError } from '../../shared'
+import { TenantSettingsError, tenantSettingsResponseSchema } from '../../shared'
 import { TenantAccessError, updateTenantSettings } from '../modules/tenancy'
 
 /**
@@ -10,7 +10,7 @@ import { TenantAccessError, updateTenantSettings } from '../modules/tenancy'
  */
 export default defineEventHandler(async (event) => {
   try {
-    return await updateTenantSettings(toWebRequest(event).headers, await readBody(event))
+    return tenantSettingsResponseSchema.parse(await updateTenantSettings(toWebRequest(event).headers, await readBody(event)))
   }
   catch (error) {
     if (error instanceof TenantSettingsError)

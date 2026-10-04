@@ -1,4 +1,5 @@
 import { createError, defineEventHandler, toWebRequest } from 'h3'
+import { tenantSettingsGetSchema, tenantTimeZoneIds } from '../../shared'
 import { readTenantSettings, TenantAccessError } from '../modules/tenancy'
 
 /**
@@ -8,7 +9,9 @@ import { readTenantSettings, TenantAccessError } from '../modules/tenancy'
  */
 export default defineEventHandler(async (event) => {
   try {
-    return await readTenantSettings(toWebRequest(event).headers)
+    const settings = await readTenantSettings(toWebRequest(event).headers)
+    // The list is this process's, so the browser cannot offer a zone the write refuses.
+    return tenantSettingsGetSchema.parse({ ...settings, timeZones: tenantTimeZoneIds })
   }
   catch (error) {
     if (error instanceof TenantAccessError)

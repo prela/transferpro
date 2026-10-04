@@ -18,20 +18,34 @@ export const TENANT_TIME_ZONE_DEFAULT = 'Europe/Zagreb'
 /**
  * The longest name `Intl.supportedValuesOf('timeZone')` returns today is 30
  * characters. 64 leaves room for a longer name in a later ICU without a
- * migration. Postgres checks the length. Whether Intl can format the name
- * is checked here, because Postgres has no time-zone catalog.
+ * migration. Postgres checks the length. Membership of the IANA list is
+ * checked here, because Postgres has no time-zone catalog.
  */
 export const TIME_ZONE_MAX_LENGTH = 64
 
-const ianaTimeZones = new Set(Intl.supportedValuesOf('timeZone'))
+/**
+ * Canonical ids from `supportedValuesOf` (the IANA zones this runtime
+ * ships), plus `UTC` and `Etc/UTC`, which Intl can format and that list
+ * omits. An alias such as `US/Eastern` or `GMT` is not in the list, and
+ * neither is `europe/zagreb`. GET /api/tenant-settings sends this array.
+ * The screen builds its dropdown from that reply, not from the browser.
+ */
+const supportedTimeZones = Intl.supportedValuesOf('timeZone')
+const extraTimeZones = ['UTC', 'Etc/UTC'].filter(zone => !supportedTimeZones.includes(zone))
+
+export const tenantTimeZoneIds: readonly string[] = [...supportedTimeZones, ...extraTimeZones]
+
+const ianaTimeZones = new Set<string>(tenantTimeZoneIds)
 
 /**
- * Canonical ids from `supportedValuesOf`, plus `UTC` and `Etc/UTC`, which
- * Intl can format and that list omits. `europe/zagreb` is not the id
- * `Europe/Zagreb`.
+ * A zone already stored. A later runtime may drop a name from
+ * `tenantTimeZoneIds`; reading the row, and recording it as `from`, still
+ * has to succeed. A new zone goes through `isIanaTimeZone`.
  */
+export const storedTimeZoneSchema = z.string().min(1).max(TIME_ZONE_MAX_LENGTH)
+
 function isIanaTimeZone(zone: string): boolean {
-  if (!ianaTimeZones.has(zone) && zone !== 'UTC' && zone !== 'Etc/UTC')
+  if (!ianaTimeZones.has(zone))
     return false
   try {
     // format() is what the shell will do with the stored zone.
@@ -53,6 +67,25 @@ export const tenantSettingsSchema = z.object({
 })
 
 export type TenantSettings = z.infer<typeof tenantSettingsSchema>
+
+/**
+ * A reply. The zone is whatever is stored, bounded like the column, and is
+ * not checked against the current list. A write still uses `tenantSettingsSchema`.
+ */
+export const tenantSettingsResponseSchema = z.object({
+  airportWaitMinutes: waitMinutesSchema,
+  elsewhereWaitMinutes: waitMinutesSchema,
+  timeZone: storedTimeZoneSchema,
+})
+
+export type TenantSettingsResponse = z.infer<typeof tenantSettingsResponseSchema>
+
+/** GET adds the zones this server will accept on a write. */
+export const tenantSettingsGetSchema = tenantSettingsResponseSchema.extend({
+  timeZones: z.array(z.string().min(1).max(TIME_ZONE_MAX_LENGTH)),
+})
+
+export type TenantSettingsGet = z.infer<typeof tenantSettingsGetSchema>
 
 /** A field that is absent stays as it is. An unknown key is refused. */
 export const tenantSettingsPatchSchema = z.strictObject({

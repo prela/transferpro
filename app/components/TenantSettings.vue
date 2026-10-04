@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { TenantSettings } from '../../shared'
-import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, TENANT_TIME_ZONE_DEFAULT, tenantSettingsSchema, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../../shared'
+import type { TenantSettingsResponse } from '../../shared'
+import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, TENANT_TIME_ZONE_DEFAULT, tenantSettingsGetSchema, tenantSettingsResponseSchema, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../../shared'
 
 defineProps<{
   isAdmin: boolean
@@ -11,9 +11,10 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const timeZones = Intl.supportedValuesOf('timeZone')
+// Zones the server will accept. GET sends them; the browser's Intl list is not used.
+const allowedZones = ref<string[]>([])
 
-const settings = ref<TenantSettings | null>(null)
+const settings = ref<TenantSettingsResponse | null>(null)
 const airportWaitMinutes = ref(AIRPORT_WAIT_DEFAULT_MINUTES)
 const elsewhereWaitMinutes = ref(ELSEWHERE_WAIT_DEFAULT_MINUTES)
 const timeZone = ref(TENANT_TIME_ZONE_DEFAULT)
@@ -23,6 +24,14 @@ const loadError = ref(false)
 const saveError = ref(false)
 const saved = ref(false)
 
+/** The stored zone when this server's list no longer contains it. */
+const unsupportedZone = computed(() => {
+  const zone = settings.value?.timeZone
+  if (!zone || allowedZones.value.includes(zone))
+    return null
+  return zone
+})
+
 const airportId = useId()
 const elsewhereId = useId()
 const timeZoneId = useId()
@@ -31,7 +40,9 @@ async function loadSettings() {
   loading.value = true
   loadError.value = false
   try {
-    apply(tenantSettingsSchema.parse(await $fetch('/api/tenant-settings')))
+    const body = tenantSettingsGetSchema.parse(await $fetch('/api/tenant-settings'))
+    allowedZones.value = body.timeZones
+    apply(body)
   }
   catch {
     loadError.value = true
@@ -41,7 +52,7 @@ async function loadSettings() {
   }
 }
 
-function apply(next: TenantSettings) {
+function apply(next: TenantSettingsResponse) {
   settings.value = next
   airportWaitMinutes.value = next.airportWaitMinutes
   elsewhereWaitMinutes.value = next.elsewhereWaitMinutes
@@ -53,13 +64,16 @@ async function save() {
   saved.value = false
   pending.value = true
   try {
-    apply(tenantSettingsSchema.parse(await $fetch('/api/tenant-settings', {
+    const body: { airportWaitMinutes: number, elsewhereWaitMinutes: number, timeZone?: string } = {
+      airportWaitMinutes: airportWaitMinutes.value,
+      elsewhereWaitMinutes: elsewhereWaitMinutes.value,
+    }
+    // An unchanged zone stays off the body, including one the list has dropped.
+    if (settings.value && timeZone.value !== settings.value.timeZone)
+      body.timeZone = timeZone.value
+    apply(tenantSettingsResponseSchema.parse(await $fetch('/api/tenant-settings', {
       method: 'PATCH',
-      body: {
-        airportWaitMinutes: airportWaitMinutes.value,
-        elsewhereWaitMinutes: elsewhereWaitMinutes.value,
-        timeZone: timeZone.value,
-      },
+      body,
     })))
     saved.value = true
     emit('saved')
@@ -143,7 +157,13 @@ onMounted(loadSettings)
           required
         >
           <option
-            v-for="zone in timeZones"
+            v-if="unsupportedZone"
+            :value="unsupportedZone"
+          >
+            {{ t('settings.timeZoneUnsupported', { zone: unsupportedZone }) }}
+          </option>
+          <option
+            v-for="zone in allowedZones"
             :key="zone"
             :value="zone"
           >

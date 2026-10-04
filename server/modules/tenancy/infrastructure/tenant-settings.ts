@@ -2,7 +2,7 @@ import type { AuditFact, TenantSettings, TenantSettingsPatch } from '../../../..
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { tenantSettingsSchema } from '../../../../shared'
+import { ianaTimeZoneSchema, storedTimeZoneSchema, waitMinutesSchema } from '../../../../shared'
 import { appendAuditEntry } from '../../audit'
 
 const settingsRows = z.object({
@@ -34,11 +34,14 @@ export async function changeTenantSettings(
   if (facts.length === 0)
     return current
 
-  const next = tenantSettingsSchema.parse({
-    airportWaitMinutes: patch.airportWaitMinutes ?? current.airportWaitMinutes,
-    elsewhereWaitMinutes: patch.elsewhereWaitMinutes ?? current.elsewhereWaitMinutes,
-    timeZone: patch.timeZone ?? current.timeZone,
-  })
+  // Waits are checked on every write. The zone is checked only when this
+  // patch sets one, so a stored name that has left the runtime list does
+  // not block a change to another field.
+  const next: TenantSettings = {
+    airportWaitMinutes: waitMinutesSchema.parse(patch.airportWaitMinutes ?? current.airportWaitMinutes),
+    elsewhereWaitMinutes: waitMinutesSchema.parse(patch.elsewhereWaitMinutes ?? current.elsewhereWaitMinutes),
+    timeZone: patch.timeZone === undefined ? current.timeZone : ianaTimeZoneSchema.parse(patch.timeZone),
+  }
   await transaction.execute(sql`
     update app.tenant_settings
     set airport_wait_minutes = ${next.airportWaitMinutes},
@@ -91,9 +94,11 @@ async function readRow(transaction: TenantTransaction, lock: boolean): Promise<T
   const row = selected.rows.length === 1 ? selected.rows[0] : undefined
   if (!row)
     throw new Error('Tenant settings are missing.')
-  return tenantSettingsSchema.parse({
-    airportWaitMinutes: row.airport_wait_minutes,
-    elsewhereWaitMinutes: row.elsewhere_wait_minutes,
-    timeZone: row.time_zone,
-  })
+  return {
+    airportWaitMinutes: waitMinutesSchema.parse(row.airport_wait_minutes),
+    elsewhereWaitMinutes: waitMinutesSchema.parse(row.elsewhere_wait_minutes),
+    // Do not run the IANA check here. The name was valid when it was
+    // stored; a later runtime list must not make the row unreadable.
+    timeZone: storedTimeZoneSchema.parse(row.time_zone),
+  }
 }

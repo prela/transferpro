@@ -105,6 +105,7 @@
     "airportWait": "Airport wait (minutes)",
     "elsewhereWait": "Wait elsewhere (minutes)",
     "timeZone": "Time zone",
+    "timeZoneUnsupported": "{zone} (no longer supported)",
     "loading": "Loading settings",
     "loadFailed": "The settings could not be loaded. Try again.",
     "save": "Save",

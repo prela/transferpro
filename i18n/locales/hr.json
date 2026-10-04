@@ -105,6 +105,7 @@
     "airportWait": "Čekanje na aerodromu (minute)",
     "elsewhereWait": "Čekanje izvan aerodroma (minute)",
     "timeZone": "Vremenska zona",
+    "timeZoneUnsupported": "{zone} (više nije podržano)",
     "loading": "Učitavanje postavki",
     "loadFailed": "Postavke se nisu mogle učitati. Pokušajte ponovno.",
     "save": "Spremi",
