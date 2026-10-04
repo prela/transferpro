@@ -82,7 +82,8 @@
     "who": "Tko",
     "action": "Radnja",
     "member": "Član",
-    "role": "Uloga",
+    "detail": "Detalj",
+    "minutesChange": "{from} → {to} min",
     "formerMember": "Bivši član",
     "refresh": "Osvježi",
     "actions": {
@@ -90,7 +91,27 @@
         "invited": "Član pozvan",
         "role_changed": "Uloga promijenjena",
         "removed": "Član uklonjen"
+      },
+      "settings": {
+        "airport_wait_changed": "Promijenjeno čekanje na aerodromu",
+        "elsewhere_wait_changed": "Promijenjeno čekanje izvan aerodroma",
+        "time_zone_changed": "Promijenjena vremenska zona"
       }
     }
+  },
+  "settings": {
+    "title": "Postavke",
+    "intro": "Ovo su čekanja prije nedolaska. Vrijeme na zaslonu prikazuje se u ovoj vremenskoj zoni.",
+    "airportWait": "Čekanje na aerodromu (minute)",
+    "elsewhereWait": "Čekanje izvan aerodroma (minute)",
+    "timeZone": "Vremenska zona",
+    "timeZoneUnsupported": "{zone} (više nije podržano)",
+    "loading": "Učitavanje postavki",
+    "loadFailed": "Postavke se nisu mogle učitati. Pokušajte ponovno.",
+    "save": "Spremi",
+    "saving": "Spremanje",
+    "saved": "Spremljeno.",
+    "saveFailed": "Postavke se nisu mogle spremiti. Pokušajte ponovno.",
+    "adminOnly": "Samo administrator može ovo promijeniti."
   }
 }

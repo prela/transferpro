@@ -6,6 +6,6 @@ export { createTenant, TenantProvisionError } from './infrastructure/create-tena
 export type { CreatedTenant, CreateTenantInput } from './infrastructure/create-tenant'
 export { InvitationAccessError } from './infrastructure/invitation'
 export { MemberAccessError } from './infrastructure/member-management'
-export { acceptMemberInvitation, changeMemberRole, closeTenantRuntime, handleAuthRequest, inviteMember, listMembers, previewMemberInvitation, readAuditLog, readSessionShell, removeTenantMember, TenantAccessError, updateUserLocale, withTenantFromSession } from './infrastructure/session'
+export { acceptMemberInvitation, changeMemberRole, closeTenantRuntime, handleAuthRequest, inviteMember, listMembers, previewMemberInvitation, readAuditLog, readSessionShell, readTenantSettings, removeTenantMember, TenantAccessError, updateTenantSettings, updateUserLocale, withTenantFromSession } from './infrastructure/session'
 export { parseTenantCreateArgs, TenantCreateArgsError } from './infrastructure/tenant-create-args'
 export type { TenantCreateArgs } from './infrastructure/tenant-create-args'

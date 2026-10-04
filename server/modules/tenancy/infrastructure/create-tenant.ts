@@ -1,6 +1,7 @@
 import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { z } from 'zod'
+import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, TENANT_TIME_ZONE_DEFAULT } from '../../../../shared'
 
 /**
  * Creates one Tenant and its admin.
@@ -15,6 +16,7 @@ import { z } from 'zod'
  *
  * Times are `timestamptz` UTC (`now()`). `Europe/Zagreb` is the display
  * zone only. The default locale is `hr` until the user chooses one.
+ * A new Tenant waits 90 minutes at an airport and 25 minutes elsewhere.
  */
 export interface CreateTenantInput {
   readonly name: string
@@ -50,7 +52,6 @@ const inputSchema = z.object({
 
 const roleRow = z.object({ role: z.string() })
 
-const TENANT_TIME_ZONE = 'Europe/Zagreb'
 const TENANT_DEFAULT_LOCALE = 'hr'
 
 export async function createTenant(input: CreateTenantInput): Promise<CreatedTenant> {
@@ -189,9 +190,11 @@ async function insertSettings(connectionString: string, tenantId: string): Promi
   const pool = new pg.Pool({ connectionString, max: 1 })
   try {
     await pool.query(
-      `insert into app.tenant_settings (tenant_id, default_locale, time_zone)
-       values ($1, $2, $3)`,
-      [tenantId, TENANT_DEFAULT_LOCALE, TENANT_TIME_ZONE],
+      `insert into app.tenant_settings (
+         tenant_id, default_locale, time_zone, airport_wait_minutes, elsewhere_wait_minutes
+       )
+       values ($1, $2, $3, $4, $5)`,
+      [tenantId, TENANT_DEFAULT_LOCALE, TENANT_TIME_ZONE_DEFAULT, AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES],
     )
   }
   finally {

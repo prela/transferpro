@@ -34,6 +34,14 @@ _Avoid_: complete, closed
 A finished Ride the guest did not take, after the Tenant's wait. v1 records it and charges nothing.
 _Avoid_: cancellation
 
+**Airport wait**:
+The minutes a Driver waits at an airport pickup before a No-show. A new Tenant starts at 90. An admin can change it. The length is read when a No-show is attempted and is not stored on the Ride.
+_Avoid_: grace period
+
+**Elsewhere wait**:
+The minutes a Driver waits at a pickup that is not an airport before a No-show. A new Tenant starts at 25. An admin can change it. The length is read when a No-show is attempted and is not stored on the Ride.
+_Avoid_: grace period
+
 **Cancelled**:
 A finished Ride that will not run. It stays on record.
 _Avoid_: deleted
@@ -47,7 +55,7 @@ A pending offer for one email to join a Tenant as admin, dispatcher, or driver. 
 _Avoid_: signup link
 
 **Audit entry**:
-One record in a Tenant's audit log: when, which member acted, the action, and the member it was done to. It is written with the action and never changed or removed.
+One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to or the setting value that changed. It is written with the action and never changed or removed.
 _Avoid_: history, event, activity
 
 **Driver**:

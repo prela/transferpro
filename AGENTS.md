@@ -49,7 +49,7 @@ Rationale is ADR-0014. Working rules:
 
 - Append with `appendAuditEntry` from `server/modules/audit` on the action's own transaction, after its writes and before commit. That transaction needs a tenant session; on the auth pool, open `openTenantSession` on the same client, as `member-management.ts` does.
 - A new action needs four things: a value in `auditActions` with a strict data shape (`shared/audit-entry.ts`), a matching branch in the `audit_entry_shape` check (`db/audit-entry.ts`), a migration that adds the enum value and replaces the check, and `audit.actions.*` copy in both locales. Without the branch, the table refuses the action's rows.
-- Entry data holds ids and roles only. Display names come from `app.tenant_member` when the log is read.
+- Entry data holds ids, roles, and, for a settings change, the from/to values (ADR-0015). It does not hold names, emails, or invitation ids. Display names come from `app.tenant_member` when the log is read.
 - The invite entry comes from the `auth.invitation` insert trigger, so invite code appends nothing.
 - ADR-0014 amends ADR-0011: besides Better Auth's tables, the auth role may use schema `audit` and execute `audit.append_entry`, and nothing else outside `auth`.
 
@@ -72,13 +72,21 @@ The charter lists the personal-data keys. Rationale for the logger shape is ADR-
 
 `pnpm tenant:create --name --slug --admin-email --admin-name` creates the pilot Tenant. Email sign-up stays disabled (`disableSignUp`). The password comes from the terminal, or from the first line of stdin when there is no terminal. It stays off the argument list and off disk. A duplicate slug or email exits 1 with a fixed sentence that omits the email.
 
-The auth URL is `transferpro_auth` (no grant on schema `app`). The migrate URL is `transferpro_owner`, which sets `tenant_id` on `app.tenant_settings` explicitly because that role bypasses RLS. A wrong role exits before any insert. The script sets time zone `Europe/Zagreb` and `default_locale` `hr`. The settings row is written before the login and removed if the login insert fails. A crash between the two can leave an unused settings row; a retry still creates the Tenant.
+The auth URL is `transferpro_auth` (no grant on schema `app`). The migrate URL is `transferpro_owner`, which sets `tenant_id` on `app.tenant_settings` explicitly because that role bypasses RLS. A wrong role exits before any insert. The script sets time zone `Europe/Zagreb`, `default_locale` `hr`, an airport wait of 90 minutes, and a wait of 25 minutes elsewhere. The settings row is written before the login and removed if the login insert fails. A crash between the two can leave an unused settings row; a retry still creates the Tenant.
 
 It runs as `node --import ./scripts/register-ts.mjs`. `scripts/ts-loader.mjs` exists for that command. Passing `--password` is refused; pnpm then reprints the command line, so the value would appear there.
 
 ## Invitations
 
 `disableSignUp` stays on. The operator script and `POST /api/invitations/accept` are the only account-creation paths (ADR-0013). Accepting creates an account only for a pending, unexpired, unused invitation, and the email is copied from that row. An email that already has an account signs in and then accepts; the route does not change that password. An invitation lasts 7 days. The link keeps the id in the URL hash. Only an admin may invite. `POST /api/invitations/accept` uses the same production limit as email sign-in. Resend sends from `noreply@transfers.prela.net` through the mailer port. `RESEND_API_KEY` is required in the env schema and optional when `NODE_ENV` is `test`. The domain region is `eu-west-1`; Resend stores account logs in the US. Invitations are read in a tenant session through `app.tenant_invitation`, which does not return the email.
+
+## Tenant settings
+
+`app.tenant_settings` already has FORCE RLS, so another Tenant cannot read or write the row. The waits and the time zone are columns on that row.
+
+A new Tenant starts at a 90-minute airport wait, a 25-minute wait elsewhere, and `Europe/Zagreb`. The migration's column defaults are the same, so an existing row gains them. Bounds are 1 to 1440 minutes: one minute is still a wait, and a day is as long as a No-show wait can be before the Ride is forgotten. The time zone is an IANA name from `Intl.supportedValuesOf('timeZone')`.
+
+An admin changes them with `PATCH /api/tenant-settings`. A dispatcher and a driver may `GET` them and receive 403 on a change: ADR-0007 has the Driver wait them out and the Dispatcher close a No-show early. A no-op or a refused change appends no audit entry. A real change appends one entry per field, in the same transaction, with `{ from, to }` only.
 
 ## i18n and theme
 

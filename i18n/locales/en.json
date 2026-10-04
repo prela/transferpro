@@ -82,7 +82,8 @@
     "who": "Who",
     "action": "Action",
     "member": "Member",
-    "role": "Role",
+    "detail": "Detail",
+    "minutesChange": "{from} → {to} min",
     "formerMember": "Former member",
     "refresh": "Refresh",
     "actions": {
@@ -90,7 +91,27 @@
         "invited": "Member invited",
         "role_changed": "Role changed",
         "removed": "Member removed"
+      },
+      "settings": {
+        "airport_wait_changed": "Airport wait changed",
+        "elsewhere_wait_changed": "Wait elsewhere changed",
+        "time_zone_changed": "Time zone changed"
       }
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "intro": "These are the No-show waits. Times on the screen use the time zone.",
+    "airportWait": "Airport wait (minutes)",
+    "elsewhereWait": "Wait elsewhere (minutes)",
+    "timeZone": "Time zone",
+    "timeZoneUnsupported": "{zone} (no longer supported)",
+    "loading": "Loading settings",
+    "loadFailed": "The settings could not be loaded. Try again.",
+    "save": "Save",
+    "saving": "Saving",
+    "saved": "Saved.",
+    "saveFailed": "The settings could not be saved. Try again.",
+    "adminOnly": "Only an administrator can change these."
   }
 }

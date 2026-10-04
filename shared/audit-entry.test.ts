@@ -25,6 +25,36 @@ it('names no member on an invite and names the member on a removal', () => {
   expect(auditFactSchema.safeParse({ action: 'member.left', subjectUserId: memberId, data: {} }).success).toBe(false)
 })
 
+it('records a wait or a time zone as from and to, and refuses a member, a name, or an email', () => {
+  const wait = { action: 'settings.airport_wait_changed' as const, subjectUserId: null, data: { from: 90, to: 120 } }
+  expect(auditFactSchema.parse(wait)).toEqual(wait)
+  expect(auditFactSchema.safeParse({ ...wait, subjectUserId: memberId }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...wait, data: { from: 90, to: 120, email: 'ana@example.com' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...wait, data: { from: 0, to: 90 } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    action: 'settings.elsewhere_wait_changed',
+    subjectUserId: null,
+    data: { from: 25, to: 30 },
+  }).success).toBe(true)
+  const zone = {
+    action: 'settings.time_zone_changed' as const,
+    subjectUserId: null,
+    data: { from: 'Europe/Zagreb', to: 'Europe/Berlin' },
+  }
+  expect(auditFactSchema.parse(zone)).toEqual(zone)
+  expect(auditFactSchema.safeParse({ ...zone, data: { from: 'Europe/Zagreb', to: 'Not/AZone' } }).success).toBe(false)
+  expect(auditEntryListSchema.safeParse({
+    entries: [{
+      id: '8d3a2e5c-4444-4444-8444-444444444444',
+      occurredAt: '2026-10-03T18:42:00.000Z',
+      actorUserId: adminId,
+      actorName: 'Ana Admin',
+      subjectName: null,
+      ...wait,
+    }],
+  }).success).toBe(true)
+})
+
 it('lists an entry whose people are no longer members with null names', () => {
   const listed = auditEntryListSchema.parse({
     entries: [{
