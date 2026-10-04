@@ -43,6 +43,13 @@
       "when": 1791055032623,
       "tag": "0005_audit_entry",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791070967790,
+      "tag": "0006_tenant_no_show_waits",
+      "breakpoints": true
     }
   ]
 }

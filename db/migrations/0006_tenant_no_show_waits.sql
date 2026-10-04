@@ -1,0 +1,20 @@
+-- Existing rows gain the pilot waits from the column defaults (90 and 25).
+-- The shape check compares action::text. drizzle runs every pending migration
+-- in one transaction, and Postgres will not use an enum value added there.
+ALTER TYPE "app"."audit_action" ADD VALUE 'settings.airport_wait_changed';--> statement-breakpoint
+ALTER TYPE "app"."audit_action" ADD VALUE 'settings.elsewhere_wait_changed';--> statement-breakpoint
+ALTER TYPE "app"."audit_action" ADD VALUE 'settings.time_zone_changed';--> statement-breakpoint
+ALTER TABLE "app"."audit_entry" DROP CONSTRAINT "audit_entry_shape";--> statement-breakpoint
+ALTER TABLE "app"."tenant_settings" ADD COLUMN "airport_wait_minutes" integer DEFAULT 90 NOT NULL;--> statement-breakpoint
+ALTER TABLE "app"."tenant_settings" ADD COLUMN "elsewhere_wait_minutes" integer DEFAULT 25 NOT NULL;--> statement-breakpoint
+ALTER TABLE "app"."audit_entry" ADD CONSTRAINT "audit_entry_shape" CHECK ((case "app"."audit_entry"."action"::text
+    when 'member.invited' then "app"."audit_entry"."subject_user_id" is null and "app"."audit_entry"."data" - '{role}'::text[] = '{}'::jsonb and "app"."audit_entry"."data" ->> 'role' in ('admin', 'dispatcher', 'driver')
+    when 'member.role_changed' then "app"."audit_entry"."subject_user_id" <> '' and "app"."audit_entry"."data" - '{from,to}'::text[] = '{}'::jsonb and "app"."audit_entry"."data" ->> 'from' in ('admin', 'dispatcher', 'driver') and "app"."audit_entry"."data" ->> 'to' in ('admin', 'dispatcher', 'driver')
+    when 'member.removed' then "app"."audit_entry"."subject_user_id" <> '' and "app"."audit_entry"."data" - '{role}'::text[] = '{}'::jsonb and "app"."audit_entry"."data" ->> 'role' in ('admin', 'dispatcher', 'driver')
+    when 'settings.airport_wait_changed' then "app"."audit_entry"."subject_user_id" is null and "app"."audit_entry"."data" - '{from,to}'::text[] = '{}'::jsonb and (case when jsonb_typeof("app"."audit_entry"."data" -> 'from') = 'number' and ("app"."audit_entry"."data" ->> 'from') ~ '^[0-9]+$' then ("app"."audit_entry"."data" ->> 'from')::integer between 1 and 1440 else false end) and (case when jsonb_typeof("app"."audit_entry"."data" -> 'to') = 'number' and ("app"."audit_entry"."data" ->> 'to') ~ '^[0-9]+$' then ("app"."audit_entry"."data" ->> 'to')::integer between 1 and 1440 else false end)
+    when 'settings.elsewhere_wait_changed' then "app"."audit_entry"."subject_user_id" is null and "app"."audit_entry"."data" - '{from,to}'::text[] = '{}'::jsonb and (case when jsonb_typeof("app"."audit_entry"."data" -> 'from') = 'number' and ("app"."audit_entry"."data" ->> 'from') ~ '^[0-9]+$' then ("app"."audit_entry"."data" ->> 'from')::integer between 1 and 1440 else false end) and (case when jsonb_typeof("app"."audit_entry"."data" -> 'to') = 'number' and ("app"."audit_entry"."data" ->> 'to') ~ '^[0-9]+$' then ("app"."audit_entry"."data" ->> 'to')::integer between 1 and 1440 else false end)
+    when 'settings.time_zone_changed' then "app"."audit_entry"."subject_user_id" is null and "app"."audit_entry"."data" - '{from,to}'::text[] = '{}'::jsonb and jsonb_typeof("app"."audit_entry"."data" -> 'from') = 'string' and length("app"."audit_entry"."data" ->> 'from') between 1 and 64 and jsonb_typeof("app"."audit_entry"."data" -> 'to') = 'string' and length("app"."audit_entry"."data" ->> 'to') between 1 and 64
+    else false end) is true);--> statement-breakpoint
+ALTER TABLE "app"."tenant_settings" ADD CONSTRAINT "tenant_settings_airport_wait_minutes" CHECK ("app"."tenant_settings"."airport_wait_minutes" between 1 and 1440);--> statement-breakpoint
+ALTER TABLE "app"."tenant_settings" ADD CONSTRAINT "tenant_settings_elsewhere_wait_minutes" CHECK ("app"."tenant_settings"."elsewhere_wait_minutes" between 1 and 1440);--> statement-breakpoint
+ALTER TABLE "app"."tenant_settings" ADD CONSTRAINT "tenant_settings_time_zone" CHECK (length("app"."tenant_settings"."time_zone") between 1 and 64);

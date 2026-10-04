@@ -140,6 +140,15 @@ it('the table refuses data that does not match its action, for every writer', as
     ['member.invited', null, '{"role":null}'],
     ['member.role_changed', subject, '{"from":"driver"}'],
     ['member.role_changed', subject, '{"from":"driver","to":"dispatcher","name":"Ana"}'],
+    ['settings.airport_wait_changed', null, '{"from":90,"to":120,"email":"ana@example.test"}'],
+    ['settings.airport_wait_changed', subject, '{"from":90,"to":120}'],
+    ['settings.airport_wait_changed', null, '{"from":0,"to":90}'],
+    ['settings.airport_wait_changed', null, '{"from":90.5,"to":120}'],
+    ['settings.airport_wait_changed', null, '{"from":1441,"to":90}'],
+    ['settings.elsewhere_wait_changed', null, '{"from":"25","to":30}'],
+    ['settings.time_zone_changed', null, '{"from":"Europe/Zagreb","to":"Europe/Berlin","name":"Ana"}'],
+    ['settings.time_zone_changed', null, '{"from":"","to":"Europe/Zagreb"}'],
+    ['settings.time_zone_changed', subject, '{"from":"Europe/Zagreb","to":"Europe/Berlin"}'],
   ]
   for (const values of mismatches) {
     expect(await refusal(appPool, tenant, append, [values[0], actor, ...values.slice(1)]), values.join(' ')).toMatchObject({ code: '23514' })

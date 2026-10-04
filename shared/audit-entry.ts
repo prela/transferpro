@@ -1,12 +1,20 @@
 import { z } from 'zod'
 import { tenantRoleSchema } from './tenant-role'
+import { ianaTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
 
 /**
  * Every action the audit log records (ADR-0014). The database enum
  * `app.audit_action` is declared from this list, so a new action also needs
  * a migration that adds the value.
  */
-export const auditActions = ['member.invited', 'member.role_changed', 'member.removed'] as const
+export const auditActions = [
+  'member.invited',
+  'member.role_changed',
+  'member.removed',
+  'settings.airport_wait_changed',
+  'settings.elsewhere_wait_changed',
+  'settings.time_zone_changed',
+] as const
 
 export const auditActionSchema = z.enum(auditActions)
 
@@ -37,8 +45,37 @@ const memberRemoved = z.object({
   data: z.strictObject({ role: tenantRoleSchema }),
 })
 
+/*
+ * A settings change names no member. `from` and `to` are the only values,
+ * so a name or an email cannot be stored on a row that is never deleted.
+ */
+const settingsAirportWaitChanged = z.object({
+  action: z.literal('settings.airport_wait_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({ from: waitMinutesSchema, to: waitMinutesSchema }),
+})
+
+const settingsElsewhereWaitChanged = z.object({
+  action: z.literal('settings.elsewhere_wait_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({ from: waitMinutesSchema, to: waitMinutesSchema }),
+})
+
+const settingsTimeZoneChanged = z.object({
+  action: z.literal('settings.time_zone_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({ from: ianaTimeZoneSchema, to: ianaTimeZoneSchema }),
+})
+
 /** What happened: the action, the member it was done to, and its data. */
-export const auditFactSchema = z.discriminatedUnion('action', [memberInvited, memberRoleChanged, memberRemoved])
+export const auditFactSchema = z.discriminatedUnion('action', [
+  memberInvited,
+  memberRoleChanged,
+  memberRemoved,
+  settingsAirportWaitChanged,
+  settingsElsewhereWaitChanged,
+  settingsTimeZoneChanged,
+])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
 
@@ -58,6 +95,9 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   memberInvited.extend(listed),
   memberRoleChanged.extend(listed),
   memberRemoved.extend(listed),
+  settingsAirportWaitChanged.extend(listed),
+  settingsElsewhereWaitChanged.extend(listed),
+  settingsTimeZoneChanged.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

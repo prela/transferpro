@@ -32,11 +32,20 @@ function roleLabel(role: TenantRole): string {
   return t(`invite.roles.${role}`)
 }
 
-/** The role the entry kept: one role, or the change from one to the other. */
-function roleText(entry: AuditEntry): string {
-  return entry.action === 'member.role_changed'
-    ? `${roleLabel(entry.data.from)} → ${roleLabel(entry.data.to)}`
-    : roleLabel(entry.data.role)
+/** The role the entry kept, or the wait or time zone it changed from and to. */
+function detailText(entry: AuditEntry): string {
+  switch (entry.action) {
+    case 'member.role_changed':
+      return `${roleLabel(entry.data.from)} → ${roleLabel(entry.data.to)}`
+    case 'member.invited':
+    case 'member.removed':
+      return roleLabel(entry.data.role)
+    case 'settings.time_zone_changed':
+      return `${entry.data.from} → ${entry.data.to}`
+    case 'settings.airport_wait_changed':
+    case 'settings.elsewhere_wait_changed':
+      return t('audit.minutesChange', { from: entry.data.from, to: entry.data.to })
+  }
 }
 
 onMounted(loadEntries)
@@ -78,7 +87,7 @@ onMounted(loadEntries)
             <th>{{ t('audit.who') }}</th>
             <th>{{ t('audit.action') }}</th>
             <th>{{ t('audit.member') }}</th>
-            <th>{{ t('audit.role') }}</th>
+            <th>{{ t('audit.detail') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -95,7 +104,7 @@ onMounted(loadEntries)
             <td>{{ t(`audit.actions.${entry.action}`) }}</td>
             <!-- An invite names no member: the invitee has no account yet. -->
             <td>{{ entry.subjectUserId === null ? '' : entry.subjectName ?? t('audit.formerMember') }}</td>
-            <td>{{ roleText(entry) }}</td>
+            <td>{{ detailText(entry) }}</td>
           </tr>
         </tbody>
       </table>

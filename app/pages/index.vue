@@ -132,6 +132,10 @@ function httpStatus(error: unknown): number | undefined {
       <time :datetime="exampleInstant.toISOString()">
         {{ formatInstant(exampleInstant, session.timeZone, session.locale) }}
       </time>
+      <TenantSettings
+        :is-admin="session.role === 'admin'"
+        @saved="refresh()"
+      />
       <MemberInvite v-if="session.role === 'admin'" />
       <MemberList
         v-if="session.role !== 'driver'"

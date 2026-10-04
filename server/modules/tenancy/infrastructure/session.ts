@@ -1,17 +1,18 @@
-import type { AuditEntryList, DisplayLocale, SessionShell, TenantRole } from '../../../../shared'
+import type { AuditEntryList, DisplayLocale, SessionShell, TenantRole, TenantSettings } from '../../../../shared'
 import type { TenantContext, TenantTransaction } from '../../../core/index'
 import type { Membership } from './auth'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
-import { resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
+import { parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
 import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
 import { acceptInvitation, parseInviteInput, previewInvitation, sendInvitation } from './invitation'
 import { createResendMailer } from './mailer'
 import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, removeMember as removeMemberImpl } from './member-management'
+import { changeTenantSettings, loadTenantSettings } from './tenant-settings'
 
 /**
  * A session with no user is 401. A user with no single membership, or with
@@ -217,6 +218,31 @@ export async function listMembers(headers: Headers) {
         role: row.role,
       })),
     }
+  })
+}
+
+/**
+ * This Tenant's waits and time zone. Every Tenant role may read them.
+ * ADR-0007: the Driver waits them out, and the Dispatcher may close a
+ * No-show early. The values are Tenant policy, not another person's data.
+ * Another Tenant sees nothing: `app.tenant_settings` has FORCE RLS.
+ */
+export async function readTenantSettings(headers: Headers): Promise<TenantSettings> {
+  return withTenantFromSession(headers, async ({ transaction }) => loadTenantSettings(transaction))
+}
+
+/**
+ * Change the waits or the time zone. Admin only; a dispatcher or a driver
+ * is 403 before any update. The body is parsed first, so an invalid change
+ * never opens a session. A patch that matches the row writes nothing.
+ * Each field that does change appends one audit entry in this transaction.
+ */
+export async function updateTenantSettings(headers: Headers, raw: unknown): Promise<TenantSettings> {
+  const patch = parseTenantSettingsPatch(raw)
+  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+    if (actor.role !== 'admin')
+      throw new TenantAccessError(403)
+    return changeTenantSettings(transaction, actor.userId, patch)
   })
 }
 

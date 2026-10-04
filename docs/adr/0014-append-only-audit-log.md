@@ -1,6 +1,8 @@
 # Append-only audit log
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0015
+
+ADR-0015 amends "An entry stores user ids and roles." A settings change also stores the previous and next value. Names, emails, and invitation ids stay out of the row.
 
 ## Context
 
