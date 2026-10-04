@@ -1,0 +1,18 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+/* System face. ui.fonts is off, so this name is not fetched as a webfont. */
+@theme {
+  --font-sans: system-ui, sans-serif;
+}
+
+/*
+ * Tailwind v4 preflight sets cursor: default on buttons.
+ * The previous shell left the browser's pointer in place.
+ */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}

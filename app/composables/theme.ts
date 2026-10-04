@@ -1,28 +1,14 @@
-const storageKey = 'transferpro-theme'
-
 /**
- * System preference until the user toggles. The choice is stored on this device.
- * An inline script in the document head applies a stored choice before paint.
+ * System preference until the user toggles. The choice is stored on this device
+ * under `transferpro-theme`. `@nuxtjs/color-mode` reads that key and applies it
+ * before paint (ADR-0016). A toggle stores only light or dark, never system.
  */
 export function useThemeToggle() {
-  function current(): 'light' | 'dark' {
-    const set = document.documentElement.dataset.theme
-    if (set === 'light' || set === 'dark')
-      return set
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  }
+  const colorMode = useColorMode()
 
   function toggle() {
-    const next = current() === 'dark' ? 'light' : 'dark'
-    document.documentElement.dataset.theme = next
-    localStorage.setItem(storageKey, next)
+    colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
   }
-
-  onMounted(() => {
-    const stored = localStorage.getItem(storageKey)
-    if (stored === 'light' || stored === 'dark')
-      document.documentElement.dataset.theme = stored
-  })
 
   return { toggle }
 }

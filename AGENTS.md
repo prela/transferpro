@@ -94,7 +94,7 @@ An admin changes them with `PATCH /api/tenant-settings`. A dispatcher and a driv
 
 `formatInstant` (`shared/format-instant.ts`) renders a UTC instant in the Tenant time zone: Croatian wall time for `hr`, en-GB for `en`.
 
-Theme follows the system unless `transferpro-theme` is `light` or `dark`. The shell is semantic HTML in `app/assets/shell.css`. Inputs are labeled, 16px, and submit with Enter.
+Theme follows the system unless `transferpro-theme` is `light` or `dark`. `@nuxtjs/color-mode`, registered by Nuxt UI, reads that key and applies the choice before paint (ADR-0016). Screens are Nuxt UI components. Nuxt UI is the only UI library. When it lacks a component, build it from the Reka UI primitives Nuxt UI already uses, and style it with Nuxt UI theme tokens. Do not add shadcn-vue or another kit. Icons come from the installed `@iconify-json/lucide` set. `icon.fallbackToApi` stays false, so an icon is not fetched from a CDN at runtime. Inputs are labeled, 16px, and submit with Enter.
 
 Sign-in and sign-out are Better Auth at `/api/auth/*`. The session cookie is `httpOnly` and `SameSite=Lax`, and `Secure` with the `__Secure-` prefix only when `NODE_ENV` is `production`. A failed sign-in shows one message for every status except 429. Production limits `/sign-in/email` to 3 requests per 10 seconds (`signInRateLimit`). Development leaves the limiter off.
 

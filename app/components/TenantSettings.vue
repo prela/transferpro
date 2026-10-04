@@ -11,6 +11,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { notifyAuditChanged } = useAuditRefresh()
 // Zones the server will accept. GET sends them; the browser's Intl list is not used.
 const allowedZones = ref<string[]>([])
 
@@ -30,6 +31,17 @@ const unsupportedZone = computed(() => {
   if (!zone || allowedZones.value.includes(zone))
     return null
   return zone
+})
+
+const zoneItems = computed(() => {
+  const items = allowedZones.value.map(zone => ({ label: zone, value: zone }))
+  if (unsupportedZone.value) {
+    items.unshift({
+      label: t('settings.timeZoneUnsupported', { zone: unsupportedZone.value }),
+      value: unsupportedZone.value,
+    })
+  }
+  return items
 })
 
 const airportId = useId()
@@ -77,6 +89,7 @@ async function save() {
     })))
     saved.value = true
     emit('saved')
+    notifyAuditChanged()
   }
   catch {
     saveError.value = true
@@ -91,15 +104,19 @@ onMounted(loadSettings)
 
 <template>
   <section>
-    <h2>{{ t('settings.title') }}</h2>
-    <p>{{ t('settings.intro') }}</p>
-    <p
-      v-if="loadError"
-      class="error"
-      role="alert"
-    >
-      {{ t('settings.loadFailed') }}
+    <h2 class="mt-6 mb-4 text-xl font-semibold">
+      {{ t('settings.title') }}
+    </h2>
+    <p class="mb-4">
+      {{ t('settings.intro') }}
     </p>
+    <UAlert
+      v-if="loadError"
+      color="error"
+      variant="subtle"
+      role="alert"
+      :description="t('settings.loadFailed')"
+    />
     <p
       v-else-if="loading || !settings"
       role="status"
@@ -110,22 +127,28 @@ onMounted(loadSettings)
       v-else-if="isAdmin"
       @submit.prevent="save"
     >
-      <p
+      <UAlert
         v-if="saveError"
-        class="error"
+        color="error"
+        variant="subtle"
         role="alert"
-      >
-        {{ t('settings.saveFailed') }}
-      </p>
-      <p
+        class="mb-4"
+        :description="t('settings.saveFailed')"
+      />
+      <UAlert
         v-else-if="saved"
+        color="success"
+        variant="subtle"
         role="status"
+        class="mb-4"
+        :description="t('settings.saved')"
+      />
+      <UFormField
+        :label="t('settings.airportWait')"
+        class="mb-4"
+        size="xl"
       >
-        {{ t('settings.saved') }}
-      </p>
-      <div class="field">
-        <label :for="airportId">{{ t('settings.airportWait') }}</label>
-        <input
+        <UInput
           :id="airportId"
           v-model.number="airportWaitMinutes"
           type="number"
@@ -134,11 +157,15 @@ onMounted(loadSettings)
           :max="WAIT_MINUTES_MAX"
           step="1"
           required
-        >
-      </div>
-      <div class="field">
-        <label :for="elsewhereId">{{ t('settings.elsewhereWait') }}</label>
-        <input
+          class="w-full"
+        />
+      </UFormField>
+      <UFormField
+        :label="t('settings.elsewhereWait')"
+        class="mb-4"
+        size="xl"
+      >
+        <UInput
           :id="elsewhereId"
           v-model.number="elsewhereWaitMinutes"
           type="number"
@@ -147,51 +174,46 @@ onMounted(loadSettings)
           :max="WAIT_MINUTES_MAX"
           step="1"
           required
-        >
-      </div>
-      <div class="field">
-        <label :for="timeZoneId">{{ t('settings.timeZone') }}</label>
-        <select
+          class="w-full"
+        />
+      </UFormField>
+      <UFormField
+        :label="t('settings.timeZone')"
+        class="mb-4"
+        size="xl"
+      >
+        <USelect
           :id="timeZoneId"
           v-model="timeZone"
+          :items="zoneItems"
           required
-        >
-          <option
-            v-if="unsupportedZone"
-            :value="unsupportedZone"
-          >
-            {{ t('settings.timeZoneUnsupported', { zone: unsupportedZone }) }}
-          </option>
-          <option
-            v-for="zone in allowedZones"
-            :key="zone"
-            :value="zone"
-          >
-            {{ zone }}
-          </option>
-        </select>
-      </div>
-      <button
+          class="w-full"
+        />
+      </UFormField>
+      <UButton
         type="submit"
+        size="xl"
         :disabled="pending"
       >
         {{ pending ? t('settings.saving') : t('settings.save') }}
-      </button>
+      </UButton>
     </form>
     <div v-else>
-      <p class="label">
+      <p class="text-sm text-muted">
         {{ t('settings.airportWait') }}
       </p>
       <p>{{ settings.airportWaitMinutes }}</p>
-      <p class="label">
+      <p class="mt-4 text-sm text-muted">
         {{ t('settings.elsewhereWait') }}
       </p>
       <p>{{ settings.elsewhereWaitMinutes }}</p>
-      <p class="label">
+      <p class="mt-4 text-sm text-muted">
         {{ t('settings.timeZone') }}
       </p>
       <p>{{ settings.timeZone }}</p>
-      <p>{{ t('settings.adminOnly') }}</p>
+      <p class="mt-4">
+        {{ t('settings.adminOnly') }}
+      </p>
     </div>
   </section>
 </template>

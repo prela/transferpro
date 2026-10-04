@@ -31,3 +31,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0013 | Invitation email and the accept path | accepted |
 | ADR-0014 | Append-only audit log | accepted; partially superseded by ADR-0015 |
 | ADR-0015 | Settings changes in the audit log | accepted |
+| ADR-0016 | UI: Nuxt UI + Tailwind v4 | proposed |
