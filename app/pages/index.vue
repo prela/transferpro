@@ -61,7 +61,10 @@ async function signOut() {
   pending.value = true
   shellError.value = null
   try {
-    await $fetch('/api/auth/sign-out', { method: 'POST' })
+    // ofetch omits Content-Type when there is no body. The auth route still
+    // gives that POST a body stream, and Better Auth answers 415. An empty
+    // object is application/json, which sign-out accepts.
+    await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
     await refresh()
     await setLocale('hr')
   }
@@ -101,6 +104,15 @@ function httpStatus(error: unknown): number | undefined {
     return error.status
   return undefined
 }
+
+// No membership is 403 (ADR-0011). Any other load failure stays a retry.
+const loadMessage = computed(() => {
+  if (shellError.value)
+    return shellError.value
+  if (httpStatus(loadError.value) === 403)
+    return 'shell.noAccess'
+  return 'shell.unavailable'
+})
 </script>
 
 <template>
@@ -110,7 +122,7 @@ function httpStatus(error: unknown): number | undefined {
         class="error"
         role="alert"
       >
-        {{ $t(shellError ?? 'shell.unavailable') }}
+        {{ $t(loadMessage) }}
       </p>
       <button
         type="button"

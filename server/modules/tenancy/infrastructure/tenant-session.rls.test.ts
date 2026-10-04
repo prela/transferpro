@@ -1,10 +1,15 @@
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { loadEnvFile } from 'node:process'
+import { Readable } from 'node:stream'
 import { sql } from 'drizzle-orm'
+import { createApp, createEvent, toWebHandler, toWebRequest } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
-import { closeTenantRuntime, TenantAccessError, withTenantFromSession } from '..'
+import { closeTenantRuntime, readSessionShell, TenantAccessError, withTenantFromSession } from '..'
+import sessionRoute from '../../../api/session.get'
 import { handleLoggedError, parseAppEnv, runWithRequestId } from '../../../core/index'
 import { captureLogs } from '../../../core/testing'
 import { createAuth } from './auth'
@@ -59,6 +64,8 @@ const fixtures = [
   { slug: 'slice10-tenant-a', email: 'slice10-a@example.com' },
   { slug: 'slice10-tenant-b', email: 'slice10-b@example.com' },
   { slug: 'slice10-nomember', email: 'slice10-nomember@example.com' },
+  { slug: 'slice10-page-signout', email: 'slice10-page-signout@example.com' },
+  { slug: 'slice10-removed', email: 'slice10-removed@example.com' },
   { slug: 'slice10-prod', email: 'slice10-prod@example.com' },
   { slug: 'slice10-no-create-org', email: 'slice10-no-create-org@example.com' },
 ]
@@ -339,6 +346,58 @@ it('a signed-in user with no membership is forbidden', async () => {
   })
 })
 
+it('signing out the way the page does clears the session cookie only with an empty json body', async () => {
+  await createTenant({
+    name: 'Page sign-out',
+    slug: 'slice10-page-signout',
+    adminEmail: 'slice10-page-signout@example.com',
+    adminName: 'Ada',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  const signedIn = await signIn('slice10-page-signout@example.com')
+
+  // No body: ofetch sends no Content-Type, and Better Auth answers 415.
+  const rejected = await postSignOut(signedIn.token)
+  expect(rejected.status).toBe(415)
+  expect(await getSession(signedIn.token)).toMatchObject({ user: { email: 'slice10-page-signout@example.com' } })
+
+  // body: {} is what the shell sends, so ofetch sets application/json.
+  const signedOut = await postSignOut(signedIn.token, {})
+  expect(signedOut.status).toBe(200)
+  const cookie = signedOut.headers.getSetCookie().find(part => part.includes('session_token'))
+  if (!cookie)
+    throw new Error('sign-out did not clear the session cookie')
+  expect(cookie.toLowerCase()).toContain('max-age=0')
+  expect(await getSession(signedIn.token)).toBeNull()
+})
+
+it('a signed-in user removed from their tenant is forbidden by the session shell', async () => {
+  const created = await createTenant({
+    name: 'Removed member',
+    slug: 'slice10-removed',
+    adminEmail: 'slice10-removed@example.com',
+    adminName: 'Ada',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  await authPool.query('delete from auth.member where user_id = $1', [created.adminUserId])
+
+  const signedIn = await signIn('slice10-removed@example.com')
+  const error = await readSessionShell(signedIn.headers).catch(caught => caught)
+  expect(error).toBeInstanceOf(TenantAccessError)
+  expect(error).toMatchObject({ statusCode: 403 })
+
+  const app = createApp()
+  app.use(sessionRoute)
+  const response = await toWebHandler(app)(new Request(`${baseUrl}/api/session`, {
+    headers: { cookie: signedIn.token },
+  }))
+  expect(response.status).toBe(403)
+})
+
 it('a user of tenant B cannot read or change tenant A rows through the session helper', async () => {
   const tenantA = await createTenant({
     name: 'Tenant A',
@@ -424,6 +483,74 @@ async function signIn(email: string, handle: ReturnType<typeof createAuth> = cur
   const token = cookie.split(';')[0] ?? ''
   const headers = new Headers({ cookie: token })
   return { cookie, token, headers }
+}
+
+interface PageFetch {
+  raw: (request: string, options: {
+    method: 'POST'
+    body?: Record<string, never>
+    headers: { origin: string, cookie: string }
+    ignoreResponseError: true
+  }) => Promise<Response>
+}
+
+/**
+ * The shell posts sign-out with ofetch ($fetch). ofetch is Nuxt's fetch and
+ * is not a direct dependency, so it is resolved from nuxt.
+ *
+ * The auth route does not hand that request to Better Auth as-is. It calls
+ * `toWebRequest` on the Node request. A POST with no bytes still gets a body
+ * stream, and Better Auth answers 415 when that stream has no Content-Type.
+ * `body: {}` makes ofetch send `{}` as application/json, which sign-out accepts.
+ */
+function postSignOut(token: string, body?: Record<string, never>): Promise<Response> {
+  const { ofetch } = createRequire(import.meta.resolve('nuxt/package.json'))('ofetch') as {
+    ofetch: {
+      create: (defaults: Record<string, never>, globalOptions: { fetch: typeof fetch }) => PageFetch
+    }
+  }
+  const pageFetch = ofetch.create({}, {
+    fetch: async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const pageRequest = new Request(input, init)
+      return currentAuth().auth.handler(await nodeRequestAsWeb(pageRequest))
+    },
+  })
+  return pageFetch.raw(`${baseUrl}/api/auth/sign-out`, {
+    method: 'POST',
+    body,
+    headers: {
+      origin: baseUrl,
+      cookie: token,
+    },
+    ignoreResponseError: true,
+  })
+}
+
+/** The conversion `server/api/auth/[...all].ts` applies before `auth.handler`. */
+async function nodeRequestAsWeb(pageRequest: Request): Promise<Request> {
+  const url = new URL(pageRequest.url)
+  const headers: Record<string, string> = { host: url.host }
+  pageRequest.headers.forEach((value, key) => {
+    headers[key] = value
+  })
+  if (url.protocol === 'https:')
+    headers['x-forwarded-proto'] = 'https'
+
+  const bytes = new Uint8Array(await pageRequest.arrayBuffer())
+  const req = new Readable({
+    read() {
+      this.push(bytes.byteLength > 0 ? bytes : null)
+      if (bytes.byteLength > 0)
+        this.push(null)
+    },
+  }) as Readable & IncomingMessage
+  req.method = pageRequest.method
+  req.url = `${url.pathname}${url.search}`
+  req.headers = headers
+  req.httpVersion = '1.1'
+  req.socket = { remoteAddress: '127.0.0.1' } as IncomingMessage['socket']
+
+  return toWebRequest(createEvent(req, {} as ServerResponse))
 }
 
 async function signOut(token: string): Promise<string> {

@@ -15,6 +15,7 @@
     "signOutFailed": "Sign-out failed. Try again.",
     "exampleTime": "Example time",
     "unavailable": "The screen could not be loaded. Try again.",
+    "noAccess": "You are not a member of any tenant. Sign out or ask for a new invitation.",
     "saveFailed": "The locale was not saved. Try again."
   },
   "locale": {
