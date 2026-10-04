@@ -31,6 +31,7 @@
     "email": "Email",
     "role": "Role",
     "chooseRole": "Choose a role",
+    "roleRequired": "Choose a role before sending the invite.",
     "roles": {
       "admin": "Admin",
       "dispatcher": "Dispatcher",

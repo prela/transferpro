@@ -47,6 +47,13 @@ const zoneItems = computed(() => {
 const airportId = useId()
 const elsewhereId = useId()
 const timeZoneId = useId()
+// autofocus stays off so a phone keyboard does not cover the list.
+// The placeholder is not a label, so the search field keeps the time-zone name.
+const timeZoneSearchInput = computed(() => ({
+  'aria-label': t('settings.timeZone'),
+  'autofocus': false as const,
+  'size': 'xl' as const,
+}))
 
 async function loadSettings() {
   loading.value = true
@@ -182,10 +189,12 @@ onMounted(loadSettings)
         class="mb-4"
         size="xl"
       >
-        <USelect
+        <USelectMenu
           :id="timeZoneId"
           v-model="timeZone"
+          value-key="value"
           :items="zoneItems"
+          :search-input="timeZoneSearchInput"
           required
           class="w-full"
         />

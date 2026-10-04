@@ -31,6 +31,7 @@
     "email": "E-pošta",
     "role": "Uloga",
     "chooseRole": "Odaberite ulogu",
+    "roleRequired": "Odaberite ulogu prije slanja pozivnice.",
     "roles": {
       "admin": "Administrator",
       "dispatcher": "Dispečer",

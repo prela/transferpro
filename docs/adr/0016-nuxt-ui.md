@@ -28,6 +28,12 @@ Inputs stay at 16px. The input theme's `md` and `xl` sizes are `text-base`, so a
 
 A successful settings save, invitation, role change, or removal bumps a shared counter. `AuditLog` watches that counter and reloads.
 
+## Rejected
+
+Hand-written CSS. We would hand-build accessible pickers, modals, toasts, and tables for #18 and #29. The cost is meeting WCAG 2.2 AA on those controls.
+
+shadcn-vue. It copies component source into this repo for us to maintain. A second styling system would fight Nuxt UI tokens.
+
 ## Consequences
 
 New screens use Nuxt UI components and tokens. A second library would fight the theme and the accessibility work already in these controls.

@@ -216,6 +216,7 @@ onMounted(() => {
               </p>
               <UButton
                 type="button"
+                color="error"
                 size="xl"
                 @click="removeMember(row.original.userId)"
               >

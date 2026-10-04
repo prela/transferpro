@@ -6,6 +6,8 @@ const { notifyAuditChanged } = useAuditRefresh()
 
 const email = ref('')
 const role = ref<'admin' | 'dispatcher' | 'driver'>()
+// Reka hides the select, so the native required check never shows a message.
+const roleMissing = ref(false)
 const pending = ref(false)
 const failed = ref(false)
 const emailSent = ref(true)
@@ -19,8 +21,11 @@ const roleItems = computed(() => [
 ])
 
 async function invite() {
-  if (role.value === undefined)
+  if (role.value === undefined) {
+    roleMissing.value = true
     return
+  }
+  roleMissing.value = false
   failed.value = false
   copied.value = false
   pending.value = true
@@ -89,6 +94,7 @@ async function copyLink() {
         name="role"
         class="mb-4"
         size="xl"
+        :error="roleMissing ? t('invite.roleRequired') : false"
       >
         <USelect
           id="invite-role"
@@ -96,9 +102,12 @@ async function copyLink() {
           name="role"
           :items="roleItems"
           :placeholder="t('invite.chooseRole')"
-          required
           class="w-full"
+          @update:model-value="roleMissing = false"
         />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
       </UFormField>
       <UButton
         type="submit"
