@@ -15,6 +15,7 @@
     "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno.",
     "exampleTime": "Primjer vremena",
     "unavailable": "Zaslon se nije mogao učitati. Pokušajte ponovno.",
+    "noAccess": "Niste član nijednog prijevoznika. Odjavite se ili zatražite novu pozivnicu.",
     "saveFailed": "Promjena jezika nije spremljena. Pokušajte ponovno."
   },
   "locale": {
