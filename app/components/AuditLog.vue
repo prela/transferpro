@@ -8,23 +8,41 @@ defineProps<{
 }>()
 
 const { t } = useI18n()
+const { generation } = useAuditRefresh()
 const titleId = useId()
 
 const entries = ref<AuditEntry[]>([])
 const loading = ref(false)
 const loadError = ref(false)
+// A slower reload must not replace the rows from a newer one.
+let loadTicket = 0
+
+const columns = computed(() => [
+  { accessorKey: 'occurredAt' as const, header: t('audit.when') },
+  { id: 'actor', header: t('audit.who') },
+  { accessorKey: 'action' as const, header: t('audit.action') },
+  { id: 'subject', header: t('audit.member') },
+  { id: 'detail', header: t('audit.detail') },
+])
 
 async function loadEntries() {
+  const ticket = ++loadTicket
   loading.value = true
   loadError.value = false
   try {
-    entries.value = auditEntryListSchema.parse(await $fetch('/api/audit-entries')).entries
+    const next = auditEntryListSchema.parse(await $fetch('/api/audit-entries')).entries
+    if (ticket !== loadTicket)
+      return
+    entries.value = next
   }
   catch {
+    if (ticket !== loadTicket)
+      return
     loadError.value = true
   }
   finally {
-    loading.value = false
+    if (ticket === loadTicket)
+      loading.value = false
   }
 }
 
@@ -49,20 +67,28 @@ function detailText(entry: AuditEntry): string {
 }
 
 onMounted(loadEntries)
+
+// A settings or member change on this page bumps the counter. Refresh stays for a manual reload.
+watch(generation, () => {
+  loadEntries()
+})
 </script>
 
 <template>
   <section>
-    <h2 :id="titleId">
+    <h2
+      :id="titleId"
+      class="mt-6 mb-4 text-xl font-semibold"
+    >
       {{ t('audit.title') }}
     </h2>
-    <p
+    <UAlert
       v-if="loadError"
-      class="error"
+      color="error"
+      variant="subtle"
       role="alert"
-    >
-      {{ t('audit.loadFailed') }}
-    </p>
+      :description="t('audit.loadFailed')"
+    />
     <p
       v-else-if="loading"
       role="status"
@@ -75,63 +101,46 @@ onMounted(loadEntries)
     <!-- Focusable, so a keyboard can scroll the columns a phone cannot fit. -->
     <div
       v-else
-      class="table-scroll"
+      class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
       role="region"
       :aria-labelledby="titleId"
       tabindex="0"
     >
-      <table>
-        <thead>
-          <tr>
-            <th>{{ t('audit.when') }}</th>
-            <th>{{ t('audit.who') }}</th>
-            <th>{{ t('audit.action') }}</th>
-            <th>{{ t('audit.member') }}</th>
-            <th>{{ t('audit.detail') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="entry in entries"
-            :key="entry.id"
-          >
-            <td>
-              <time :datetime="entry.occurredAt">
-                {{ formatInstant(new Date(entry.occurredAt), timeZone, locale) }}
-              </time>
-            </td>
-            <td>{{ entry.actorName ?? t('audit.formerMember') }}</td>
-            <td>{{ t(`audit.actions.${entry.action}`) }}</td>
-            <!-- An invite names no member: the invitee has no account yet. -->
-            <td>{{ entry.subjectUserId === null ? '' : entry.subjectName ?? t('audit.formerMember') }}</td>
-            <td>{{ detailText(entry) }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <UTable
+        :data="entries"
+        :columns="columns"
+        class="whitespace-nowrap"
+      >
+        <template #occurredAt-cell="{ row }">
+          <time :datetime="row.original.occurredAt">
+            {{ formatInstant(new Date(row.original.occurredAt), timeZone, locale) }}
+          </time>
+        </template>
+        <template #actor-cell="{ row }">
+          {{ row.original.actorName ?? t('audit.formerMember') }}
+        </template>
+        <template #action-cell="{ row }">
+          {{ t(`audit.actions.${row.original.action}`) }}
+        </template>
+        <!-- An invite names no member: the invitee has no account yet. -->
+        <template #subject-cell="{ row }">
+          {{ row.original.subjectUserId === null ? '' : row.original.subjectName ?? t('audit.formerMember') }}
+        </template>
+        <template #detail-cell="{ row }">
+          {{ detailText(row.original) }}
+        </template>
+      </UTable>
     </div>
-    <button
+    <UButton
       type="button"
-      class="secondary"
+      color="neutral"
+      variant="outline"
+      size="xl"
+      class="mt-4"
       :disabled="loading"
       @click="loadEntries"
     >
       {{ t('audit.refresh') }}
-    </button>
+    </UButton>
   </section>
 </template>
-
-<style scoped>
-.table-scroll {
-  overflow-x: auto;
-}
-
-.table-scroll:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
-
-th,
-td {
-  white-space: nowrap;
-}
-</style>

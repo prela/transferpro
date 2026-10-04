@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { acceptErrorKey, invitationPreviewSchema, signInErrorKey } from '../../shared'
 
-const { t, locale, setLocale } = useI18n()
-const { toggle: toggleTheme } = useThemeToggle()
+const { t, setLocale } = useI18n()
 
 const invitationId = ref('')
 const preview = ref<'set-password' | 'sign-in' | 'invalid' | null>(null)
@@ -106,112 +105,129 @@ function httpStatus(error: unknown): number | undefined {
 </script>
 
 <template>
-  <main>
-    <h1>{{ t('acceptInvite.title') }}</h1>
-    <p v-if="preview === null">
+  <main class="mx-auto box-border w-full max-w-md p-4">
+    <h1 class="mb-4 text-2xl font-semibold">
+      {{ t('acceptInvite.title') }}
+    </h1>
+    <p
+      v-if="preview === null"
+      role="status"
+    >
       {{ t('acceptInvite.loading') }}
     </p>
-    <p
+    <UAlert
       v-else-if="preview === 'invalid'"
-      class="error"
+      color="error"
+      variant="subtle"
       role="alert"
-    >
-      {{ t('acceptInvite.invalid') }}
-    </p>
+      :description="t('acceptInvite.invalid')"
+    />
     <template v-else>
-      <p
+      <UAlert
         v-if="formError"
-        class="error"
+        color="error"
+        variant="subtle"
         role="alert"
+        class="mb-4"
+        :description="t(formError)"
+      />
+      <p
+        v-if="preview === 'sign-in'"
+        class="mb-4"
       >
-        {{ t(formError) }}
-      </p>
-      <p v-if="preview === 'sign-in'">
         {{ t('acceptInvite.signInTitle') }}
       </p>
       <form
         v-if="preview === 'sign-in'"
         @submit.prevent="signInAndAccept"
       >
-        <div class="field">
-          <label for="accept-email">{{ t('signIn.email') }}</label>
-          <input
+        <UFormField
+          :label="t('signIn.email')"
+          name="email"
+          class="mb-4"
+          size="xl"
+        >
+          <UInput
             id="accept-email"
             v-model="email"
             name="email"
             type="email"
             autocomplete="email"
             required
-          >
-        </div>
-        <div class="field">
-          <label for="accept-password">{{ t('signIn.password') }}</label>
-          <input
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          :label="t('signIn.password')"
+          name="password"
+          class="mb-4"
+          size="xl"
+        >
+          <UInput
             id="accept-password"
             v-model="password"
             name="password"
             type="password"
             autocomplete="current-password"
             required
-          >
-        </div>
-        <button
+            class="w-full"
+          />
+        </UFormField>
+        <UButton
           type="submit"
+          size="xl"
           :disabled="pending"
         >
           {{ pending ? t('signIn.submitting') : t('acceptInvite.signInSubmit') }}
-        </button>
+        </UButton>
       </form>
       <form
         v-else
         @submit.prevent="createAccount"
       >
-        <div class="field">
-          <label for="accept-name">{{ t('acceptInvite.name') }}</label>
-          <input
+        <UFormField
+          :label="t('acceptInvite.name')"
+          name="name"
+          class="mb-4"
+          size="xl"
+        >
+          <UInput
             id="accept-name"
             v-model="name"
             name="name"
             type="text"
             autocomplete="name"
             required
-          >
-        </div>
-        <div class="field">
-          <label for="accept-new-password">{{ t('acceptInvite.password') }}</label>
-          <input
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          :label="t('acceptInvite.password')"
+          name="password"
+          class="mb-4"
+          size="xl"
+        >
+          <UInput
             id="accept-new-password"
             v-model="password"
             name="password"
             type="password"
             autocomplete="new-password"
             required
-          >
-        </div>
-        <button
+            class="w-full"
+          />
+        </UFormField>
+        <UButton
           type="submit"
+          size="xl"
           :disabled="pending"
         >
           {{ pending ? t('acceptInvite.submitting') : t('acceptInvite.submit') }}
-        </button>
+        </UButton>
       </form>
     </template>
-    <div class="actions">
-      <button
-        type="button"
-        class="secondary"
-        @click="chooseLocale(locale === 'hr' ? 'en' : 'hr')"
-      >
-        {{ locale === 'hr' ? t('locale.en') : t('locale.hr') }}
-      </button>
-      <button
-        type="button"
-        class="secondary"
-        @click="toggleTheme"
-      >
-        <span class="when-dark">{{ t('theme.useLight') }}</span>
-        <span class="when-light">{{ t('theme.useDark') }}</span>
-      </button>
+    <div class="mt-4 flex flex-wrap gap-2">
+      <LocaleThemeActions @choose="chooseLocale" />
     </div>
   </main>
 </template>

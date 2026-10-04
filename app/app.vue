@@ -1,7 +1,14 @@
 <script setup lang="ts">
-// The page is the sign-in screen or the signed-in shell.
+import { en, hr } from '@nuxt/ui/locale'
+
+const { locale } = useI18n()
+
+// Nuxt UI's own strings (selects, alerts) follow the same hr/en locale as the page.
+const uiLocale = computed(() => locale.value === 'en' ? en : hr)
 </script>
 
 <template>
-  <NuxtPage />
+  <UApp :locale="uiLocale">
+    <NuxtPage />
+  </UApp>
 </template>

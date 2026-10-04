@@ -2,9 +2,8 @@
 import type { SessionShell } from '../../shared'
 import { formatInstant, sessionShellSchema, signInErrorKey } from '../../shared'
 
-const { t, locale, setLocale } = useI18n()
+const { t, setLocale } = useI18n()
 const requestFetch = useRequestFetch()
-const { toggle: toggleTheme } = useThemeToggle()
 
 const email = ref('')
 const password = ref('')
@@ -116,32 +115,39 @@ const loadMessage = computed(() => {
 </script>
 
 <template>
-  <main>
+  <main class="mx-auto box-border w-full max-w-md p-4">
     <section v-if="loadError">
-      <p
-        class="error"
+      <UAlert
+        color="error"
+        variant="subtle"
         role="alert"
-      >
-        {{ $t(loadMessage) }}
-      </p>
-      <button
+        class="mb-4"
+        :description="t(loadMessage)"
+      />
+      <UButton
         type="button"
+        size="xl"
         :disabled="pending"
         @click="signOut"
       >
-        {{ pending ? $t('shell.signingOut') : $t('shell.signOut') }}
-      </button>
+        {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
+      </UButton>
     </section>
 
     <section v-else-if="session">
-      <p class="label">
-        {{ $t('shell.tenant') }}
+      <p class="text-sm text-muted">
+        {{ t('shell.tenant') }}
       </p>
-      <h1>{{ session.tenantName }}</h1>
-      <p class="label">
-        {{ $t('shell.exampleTime') }}
+      <h1 class="mb-4 text-2xl font-semibold">
+        {{ session.tenantName }}
+      </h1>
+      <p class="text-sm text-muted">
+        {{ t('shell.exampleTime') }}
       </p>
-      <time :datetime="exampleInstant.toISOString()">
+      <time
+        class="mt-1 block"
+        :datetime="exampleInstant.toISOString()"
+      >
         {{ formatInstant(exampleInstant, session.timeZone, session.locale) }}
       </time>
       <TenantSettings
@@ -159,94 +165,83 @@ const loadMessage = computed(() => {
         :time-zone="session.timeZone"
         :locale="session.locale"
       />
-      <p
+      <UAlert
         v-if="shellError"
-        class="error"
+        color="error"
+        variant="subtle"
         role="alert"
-      >
-        {{ $t(shellError) }}
-      </p>
-      <div class="actions">
-        <button
+        class="mt-4"
+        :description="t(shellError)"
+      />
+      <div class="mt-4 flex flex-wrap gap-2">
+        <UButton
           type="button"
+          size="xl"
+          class="flex-1 basis-32 justify-center"
           :disabled="pending"
           @click="signOut"
         >
-          {{ pending ? $t('shell.signingOut') : $t('shell.signOut') }}
-        </button>
-        <button
-          type="button"
-          class="secondary"
-          @click="chooseLocale(locale === 'hr' ? 'en' : 'hr')"
-        >
-          {{ locale === 'hr' ? $t('locale.en') : $t('locale.hr') }}
-        </button>
-        <button
-          type="button"
-          class="secondary"
-          @click="toggleTheme"
-        >
-          <span class="when-dark">{{ $t('theme.useLight') }}</span>
-          <span class="when-light">{{ $t('theme.useDark') }}</span>
-        </button>
+          {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
+        </UButton>
+        <LocaleThemeActions @choose="chooseLocale" />
       </div>
     </section>
 
     <section v-else>
-      <h1>{{ $t('signIn.title') }}</h1>
-      <p
+      <h1 class="mb-4 text-2xl font-semibold">
+        {{ t('signIn.title') }}
+      </h1>
+      <UAlert
         v-if="formError"
-        class="error"
+        color="error"
+        variant="subtle"
         role="alert"
-      >
-        {{ $t(formError) }}
-      </p>
+        class="mb-4"
+        :description="t(formError)"
+      />
       <form @submit.prevent="signIn">
-        <div class="field">
-          <label for="email">{{ $t('signIn.email') }}</label>
-          <input
+        <UFormField
+          :label="t('signIn.email')"
+          name="email"
+          class="mb-4"
+          size="xl"
+        >
+          <UInput
             id="email"
             v-model="email"
             name="email"
             type="email"
             autocomplete="email"
             required
-          >
-        </div>
-        <div class="field">
-          <label for="password">{{ $t('signIn.password') }}</label>
-          <input
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          :label="t('signIn.password')"
+          name="password"
+          class="mb-4"
+          size="xl"
+        >
+          <UInput
             id="password"
             v-model="password"
             name="password"
             type="password"
             autocomplete="current-password"
             required
-          >
-        </div>
-        <button
+            class="w-full"
+          />
+        </UFormField>
+        <UButton
           type="submit"
+          size="xl"
           :disabled="pending"
         >
-          {{ pending ? $t('signIn.submitting') : $t('signIn.submit') }}
-        </button>
+          {{ pending ? t('signIn.submitting') : t('signIn.submit') }}
+        </UButton>
       </form>
-      <div class="actions">
-        <button
-          type="button"
-          class="secondary"
-          @click="chooseLocale(locale === 'hr' ? 'en' : 'hr')"
-        >
-          {{ locale === 'hr' ? $t('locale.en') : $t('locale.hr') }}
-        </button>
-        <button
-          type="button"
-          class="secondary"
-          @click="toggleTheme"
-        >
-          <span class="when-dark">{{ $t('theme.useLight') }}</span>
-          <span class="when-light">{{ $t('theme.useDark') }}</span>
-        </button>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <LocaleThemeActions @choose="chooseLocale" />
       </div>
     </section>
   </main>

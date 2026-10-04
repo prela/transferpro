@@ -1,15 +1,27 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
-const themeBoot = `(function(){try{var stored=localStorage.getItem('transferpro-theme');if(stored==='light'||stored==='dark')document.documentElement.dataset.theme=stored}catch(e){}})()`
-
 export default defineNuxtConfig({
   compatibilityDate: '2026-10-02',
-  modules: ['@nuxtjs/i18n'],
-  css: ['~/assets/shell.css'],
-  // Stored theme before paint. System preference stays in CSS until then.
-  app: {
-    head: {
-      script: [{ innerHTML: themeBoot, tagPriority: 'critical' }],
+  modules: ['@nuxt/ui', '@nuxtjs/i18n'],
+  css: ['~/assets/css/main.css'],
+  // System until the user picks light or dark. The stored string is the same
+  // `transferpro-theme` key as before, applied before paint (ADR-0016).
+  colorMode: {
+    preference: 'system',
+    fallback: 'light',
+    classSuffix: '',
+    storageKey: 'transferpro-theme',
+  },
+  // Lucide is installed locally. A missing icon stays missing.
+  icon: {
+    serverBundle: 'local',
+    fallbackToApi: false,
+    clientBundle: {
+      scan: true,
     },
+  },
+  ui: {
+    // system-ui only. A webfont would be fetched for a face we do not use.
+    fonts: false,
   },
   i18n: {
     defaultLocale: 'hr',

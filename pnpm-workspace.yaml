@@ -8,6 +8,8 @@ shellEmulator: true
 
 allowBuilds:
   esbuild: true
+  # vue-demi's postinstall points its entry at Vue 3. Nuxt UI pulls it in through VueUse.
+  vue-demi: true
 
 auditConfig:
   # dev-only via listhen (dev-server self-signed cert), not in the production bundle, revisit when node-forge > 1.4.0 ships.
