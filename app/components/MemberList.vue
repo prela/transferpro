@@ -15,6 +15,9 @@ const loading = ref(false)
 const loadError = ref(false)
 const operationError = ref<string | null>(null)
 const confirmingRemove = ref<string | null>(null)
+const removing = ref(false)
+// True only after this dialog's removal failed, so a role-change alert is not repeated inside it.
+const removeError = ref(false)
 const changingRole = ref<{ userId: string, oldRole: Member['role'], newRole: Member['role'] } | null>(null)
 // The chosen role shows at once. A failed change drops it so the select returns to the loaded role.
 const chosenRole = ref<Partial<Record<string, Member['role']>>>({})
@@ -98,19 +101,38 @@ function onRoleChange(userId: string, value: string) {
   changeRole(userId, value)
 }
 
+const confirmingMember = computed(() =>
+  members.value.find(member => member.userId === confirmingRemove.value),
+)
+
+// X and Cancel write false. Esc and the overlay do too, except while a removal is in flight.
+const removeOpen = computed({
+  get: () => confirmingRemove.value !== null,
+  set(open: boolean) {
+    if (!open)
+      confirmingRemove.value = null
+  },
+})
+
 async function removeMember(userId: string) {
   operationError.value = null
+  removing.value = true
   try {
     await $fetch(`/api/members/${userId}`, {
       method: 'DELETE',
     })
+    removeError.value = false
     confirmingRemove.value = null
     notifyAuditChanged()
     await loadMembers()
   }
   catch (error) {
-    confirmingRemove.value = null
+    // Keep the dialog open. The alert below is the same operationError the list already shows.
     operationError.value = conflictKey(error, userId) ?? 'members.removeFailed'
+    removeError.value = true
+  }
+  finally {
+    removing.value = false
   }
 }
 
@@ -196,45 +218,64 @@ onMounted(() => {
           <span v-else>{{ t(`invite.roles.${row.original.role}`) }}</span>
         </template>
         <template #actions-cell="{ row }">
-          <template v-if="isAdmin && canModify(row.original.userId, currentUserId)">
-            <UButton
-              v-if="confirmingRemove !== row.original.userId"
-              type="button"
-              color="neutral"
-              variant="outline"
-              size="xl"
-              @click="confirmingRemove = row.original.userId"
-            >
-              {{ t('members.remove') }}
-            </UButton>
-            <div
-              v-else
-              class="flex flex-col gap-2"
-            >
-              <p class="text-sm">
-                {{ t('members.confirmRemove') }}
-              </p>
-              <UButton
-                type="button"
-                color="error"
-                size="xl"
-                @click="removeMember(row.original.userId)"
-              >
-                {{ t('members.confirmRemoveButton') }}
-              </UButton>
-              <UButton
-                type="button"
-                color="neutral"
-                variant="outline"
-                size="xl"
-                @click="confirmingRemove = null"
-              >
-                {{ t('members.cancel') }}
-              </UButton>
-            </div>
-          </template>
+          <UButton
+            v-if="isAdmin && canModify(row.original.userId, currentUserId)"
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="xl"
+            @click="removeError = false; confirmingRemove = row.original.userId"
+          >
+            {{ t('members.remove') }}
+          </UButton>
         </template>
       </UTable>
     </div>
+    <UModal
+      v-model:open="removeOpen"
+      :title="t('members.remove')"
+      :dismissible="!removing"
+      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
+    >
+      <template #body>
+        <p
+          v-if="confirmingMember?.name"
+          class="mb-2 font-medium"
+        >
+          {{ confirmingMember.name }}
+        </p>
+        <p>{{ t('members.confirmRemove') }}</p>
+        <UAlert
+          v-if="removeError && operationError"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mt-4"
+          :description="t(operationError)"
+        />
+      </template>
+      <template #footer>
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          @click="confirmingRemove = null"
+        >
+          {{ t('members.cancel') }}
+        </UButton>
+        <UButton
+          type="button"
+          color="error"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :loading="removing"
+          @click="confirmingRemove && removeMember(confirmingRemove)"
+        >
+          {{ t('members.confirmRemoveButton') }}
+        </UButton>
+      </template>
+    </UModal>
   </section>
 </template>

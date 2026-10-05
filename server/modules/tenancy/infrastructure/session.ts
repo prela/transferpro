@@ -9,7 +9,7 @@ import { parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, ten
 import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
-import { acceptInvitation, parseInviteInput, previewInvitation, sendInvitation } from './invitation'
+import { acceptInvitation, parseInviteInput, previewInvitation, repairInvitationCookies, sendInvitation } from './invitation'
 import { createResendMailer } from './mailer'
 import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, removeMember as removeMemberImpl } from './member-management'
 import { changeTenantSettings, loadTenantSettings } from './tenant-settings'
@@ -188,6 +188,14 @@ export async function previewMemberInvitation(raw: unknown) {
 /** `key` is the client address. The limiter is the sign-in rule. */
 export async function acceptMemberInvitation(raw: unknown, headers: Headers, key: string) {
   return acceptInvitation(tenantRuntime().handle, raw, headers, { key })
+}
+
+/**
+ * The invitation routes send and clear the path-scoped session cookie.
+ * Callers pass the repaired headers into Better Auth.
+ */
+export async function repairInvitationRequest(headers: Headers) {
+  return repairInvitationCookies(tenantRuntime().handle, headers)
 }
 
 /**

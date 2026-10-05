@@ -154,7 +154,8 @@ it('a refused invite, role change, or removal appends nothing', async () => {
   await expect(inviteMember(dispatcherHeaders, invite)).rejects.toMatchObject({ statusCode: 403 })
   await expect(inviteMember(driverHeaders, invite)).rejects.toMatchObject({ statusCode: 403 })
   await expect(inviteMember(admin, { ...invite, role: 'owner' })).rejects.toMatchObject({ statusCode: 400 })
-  await expect(inviteMember(admin, { email: 'ma-refused-dispatcher@example.test', role: 'driver' })).rejects.toMatchObject({ statusCode: 400 })
+  // Already a member. Better Auth's code is a 409, and nothing is written.
+  await expect(inviteMember(admin, { email: 'ma-refused-dispatcher@example.test', role: 'driver' })).rejects.toMatchObject({ statusCode: 409 })
 
   await expect(changeMemberRole(dispatcherHeaders, driver, { role: 'dispatcher' })).rejects.toMatchObject({ statusCode: 403 })
   await expect(removeTenantMember(driverHeaders, dispatcher)).rejects.toMatchObject({ statusCode: 403 })

@@ -129,7 +129,10 @@ export async function acceptInvitation(
   if (session) {
     if (session.user.email.toLowerCase() !== record.email.toLowerCase())
       throw new InvitationAccessError(403)
-    return acceptWithCookie(handle, body.invitationId, headers.get('cookie') ?? '')
+    // The browser already holds this session. Echoing the request Cookie
+    // would store a second copy with no Path.
+    await acceptMembership(handle, body.invitationId, headers.get('cookie') ?? '')
+    return { cookies: [] }
   }
 
   const existing = await handle.userIdByEmail(record.email)
@@ -151,10 +154,11 @@ export async function acceptInvitation(
       },
       returnHeaders: true,
     })
+    const signInCookies = signedIn.headers.getSetCookie()
     const cookie = cookieHeader(signedIn.headers)
     if (cookie === '')
       throw new InvitationAccessError(500)
-    return await acceptWithCookie(handle, body.invitationId, cookie, userId)
+    return await acceptWithCookie(handle, body.invitationId, cookie, signInCookies, userId)
   }
   catch (error) {
     if (userId !== null)
@@ -169,22 +173,34 @@ async function acceptWithCookie(
   handle: AuthHandle,
   invitationId: string,
   cookie: string,
+  signInCookies: readonly string[],
   userIdToRemove?: string,
 ): Promise<AcceptCookies> {
+  const issued = await acceptMembership(handle, invitationId, cookie, userIdToRemove)
+  // Accept updates the session row in place and often sets nothing.
+  // The sign-in Set-Cookie already names that row, attributes included.
+  if (issued.length > 0)
+    return { cookies: issued }
+  return { cookies: [...signInCookies] }
+}
+
+/**
+ * Server API, not auth.handler. The handler's default limiter would key
+ * every accept on one shared address.
+ */
+async function acceptMembership(
+  handle: AuthHandle,
+  invitationId: string,
+  cookie: string,
+  userIdToRemove?: string,
+): Promise<readonly string[]> {
   try {
-    // Server API, not auth.handler. The handler's default limiter would key
-    // every accept on one shared address.
     const accepted = await handle.auth.api.acceptInvitation({
       body: { invitationId },
       headers: { cookie },
       returnHeaders: true,
     })
-    const cookies = accepted.headers.getSetCookie()
-    if (cookies.length > 0)
-      return { cookies }
-    // Accept updates the session row in place. The sign-in cookie still names it.
-    const token = cookie.split(';').map(part => part.trim()).find(part => part.includes('session_token'))
-    return { cookies: token === undefined ? [] : [token] }
+    return accepted.headers.getSetCookie()
   }
   catch (error) {
     if (userIdToRemove !== undefined)
@@ -242,15 +258,33 @@ function readInvitationId(created: unknown): string {
   return parsed.data.id
 }
 
+const ALREADY_IN_ORGANIZATION = new Set([
+  'USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION',
+  'USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION',
+])
+
 function invitationFailure(error: unknown): InvitationAccessError {
   if (error instanceof InvitationAccessError)
     return error
+  // Better Auth reports both as 400. The screen treats 409 as "already in".
+  const code = betterAuthCode(error)
+  if (code !== undefined && ALREADY_IN_ORGANIZATION.has(code))
+    return new InvitationAccessError(409)
   const status = statusCodeOf(error)
   if (status === 403)
     return new InvitationAccessError(403)
   if (status === 401)
     return new InvitationAccessError(401)
   return new InvitationAccessError(400)
+}
+
+function betterAuthCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('body' in error))
+    return undefined
+  const body = error.body
+  if (typeof body !== 'object' || body === null || !('code' in body))
+    return undefined
+  return typeof body.code === 'string' ? body.code : undefined
 }
 
 function statusCodeOf(error: unknown): number | undefined {
@@ -271,4 +305,73 @@ function cookieHeader(headers: Headers): string {
     .map(part => part.split(';')[0] ?? '')
     .filter(part => part !== '')
     .join('; ')
+}
+
+const sessionCookieNameSchema = z.object({
+  authCookies: z.object({
+    sessionToken: z.object({
+      name: z.string().min(1),
+    }),
+  }),
+})
+
+/**
+ * A Set-Cookie with no Path is stored on the directory of the request.
+ * POST /api/invitations/accept therefore left a session cookie on
+ * /api/invitations. Max-Age 0 on that path drops the copy. Path=/ would
+ * drop the real session.
+ */
+const SHADOW_COOKIE_PATH = '/api/invitations'
+
+export async function repairInvitationCookies(handle: AuthHandle, headers: Headers): Promise<{
+  headers: Headers
+  clearShadow: string
+}> {
+  const parsed = sessionCookieNameSchema.safeParse(await handle.auth.$context)
+  if (!parsed.success)
+    throw new InvitationAccessError(500)
+  const name = parsed.data.authCookies.sessionToken.name
+  return {
+    headers: keepLastSessionCookie(headers, name),
+    clearShadow: invitationShadowClear(name),
+  }
+}
+
+/**
+ * Browsers ignore a `__Secure-` name that is not marked Secure, so the
+ * production clear would never land. Path stays the shadow directory.
+ */
+export function invitationShadowClear(name: string): string {
+  const secure = name.startsWith('__Secure-') ? '; Secure' : ''
+  return `${name}=; Path=${SHADOW_COOKIE_PATH}; Max-Age=0${secure}`
+}
+
+/**
+ * Better Auth keeps the first value when the same cookie is sent twice.
+ * The browser sends the longer path first, so the shadow hides the Path=/
+ * session. One cookie is left as it arrived.
+ */
+function keepLastSessionCookie(headers: Headers, name: string): Headers {
+  const next = new Headers(headers)
+  const cookie = next.get('cookie')
+  if (cookie === null)
+    return next
+  const pairs = cookie.split(';').map(part => part.trim()).filter(part => part !== '')
+  let last: string | undefined
+  let copies = 0
+  const kept: string[] = []
+  for (const pair of pairs) {
+    const eq = pair.indexOf('=')
+    const key = eq === -1 ? pair : pair.slice(0, eq)
+    if (key === name) {
+      last = pair
+      copies += 1
+      continue
+    }
+    kept.push(pair)
+  }
+  if (copies < 2 || last === undefined)
+    return next
+  next.set('cookie', [...kept, last].join('; '))
+  return next
 }

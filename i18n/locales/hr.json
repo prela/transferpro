@@ -40,6 +40,7 @@
     "submit": "Pošalji pozivnicu",
     "submitting": "Slanje pozivnice",
     "failed": "Pozivnica nije poslana. Pokušajte ponovno.",
+    "alreadyMember": "Ova osoba je već član ili već ima pozivnicu na čekanju.",
     "emailFailed": "E-pošta nije poslana. Kopirajte poveznicu i pošaljite je sami.",
     "link": "Poveznica pozivnice",
     "copy": "Kopiraj poveznicu",

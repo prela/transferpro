@@ -1,6 +1,6 @@
 # UI: Nuxt UI + Tailwind v4
 
-Status: proposed
+Status: accepted
 
 ## Context
 

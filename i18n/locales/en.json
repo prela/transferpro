@@ -40,6 +40,7 @@
     "submit": "Send invite",
     "submitting": "Sending invite",
     "failed": "The invite was not sent. Try again.",
+    "alreadyMember": "This person is already a member or already has a pending invitation.",
     "emailFailed": "The email was not sent. Copy the link and send it yourself.",
     "link": "Invite link",
     "copy": "Copy link",
