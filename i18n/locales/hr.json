@@ -113,6 +113,11 @@
       "driver": {
         "created": "Vozač dodan",
         "field_changed": "Vozač ispravljen"
+      },
+      "vehicle": {
+        "created": "Vozilo dodano",
+        "field_changed": "Vozilo ispravljeno",
+        "archived": "Vozilo arhivirano"
       }
     }
   },
@@ -211,6 +216,54 @@
       "transportLicenceExpiresOn": "Dozvola za prijevoz",
       "memberUserId": "Član",
       "mustAccept": "Mora prihvatiti"
+    }
+  },
+  "vehicles": {
+    "nav": "Vozila",
+    "home": "Početna",
+    "title": "Vozila",
+    "add": "Dodaj vozilo",
+    "edit": "Ispravi vozilo",
+    "archive": "Arhiviraj",
+    "showArchived": "Prikaži arhivirana",
+    "archived": "Arhivirano",
+    "registrationPlate": "Registarska oznaka",
+    "kind": "Vrsta",
+    "chooseKind": "Odaberite vrstu",
+    "registrationExpiresOn": "Registracija vrijedi do",
+    "technicalInspectionExpiresOn": "Tehnički pregled vrijedi do",
+    "insuranceExpiresOn": "Osiguranje vrijedi do",
+    "description": "Opis",
+    "plateEmpty": "Unesite registarsku oznaku.",
+    "plateTooLong": "Registarska oznaka može imati najviše 16 znakova.",
+    "kindInvalid": "Odaberite vrstu: stalno ili povremeno.",
+    "dateInvalid": "Unesite datum.",
+    "descriptionTooLong": "Opis može imati najviše 120 znakova.",
+    "plateTaken": "Vozilo s tom registarskom oznakom već postoji.",
+    "submit": "Dodaj vozilo",
+    "submitting": "Dodavanje vozila",
+    "save": "Spremi",
+    "saving": "Spremanje",
+    "cancel": "Odustani",
+    "loading": "Učitavanje vozila",
+    "loadFailed": "Vozila nije bilo moguće učitati. Pokušajte ponovno.",
+    "empty": "Još nema vozila.",
+    "rejected": "Podaci o vozilu nisu prihvaćeni.",
+    "notFound": "To vozilo više nije na popisu.",
+    "forbidden": "Vozač ne može dodavati ni ispravljati vozila.",
+    "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
+    "saveFailed": "Vozilo nije spremljeno. Pokušajte ponovno.",
+    "kinds": {
+      "fixed": "Stalno",
+      "occasional": "Povremeno"
+    },
+    "fields": {
+      "registrationPlate": "Registarska oznaka",
+      "kind": "Vrsta",
+      "registrationExpiresOn": "Istek registracije",
+      "technicalInspectionExpiresOn": "Istek tehničkog pregleda",
+      "insuranceExpiresOn": "Istek osiguranja",
+      "description": "Opis"
     }
   }
 }

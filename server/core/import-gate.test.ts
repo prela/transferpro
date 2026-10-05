@@ -116,6 +116,21 @@ it('rejects a Drivers import of the transfers module', async () => {
   expect(await driversTransfersImport('server/modules/clients/index.ts', source)).toEqual([])
 })
 
+async function vehiclesTransfersImport(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? []).filter(message =>
+    message.ruleId === 'transferpro/no-vehicles-transfers-import',
+  )
+}
+
+it('rejects a Vehicles import of the transfers module', async () => {
+  const source = `import { bookRide } from '../../transfers'\n`
+  const dynamic = `await import('../transfers/index')\n`
+  expect(await vehiclesTransfersImport('server/modules/vehicles/infrastructure/vehicles.ts', source)).not.toEqual([])
+  expect(await vehiclesTransfersImport('server/modules/vehicles/index.ts', dynamic)).not.toEqual([])
+  expect(await vehiclesTransfersImport('server/modules/drivers/index.ts', source)).toEqual([])
+})
+
 it('blocks console outside the logger module', async () => {
   const outside = await consoleUse(
     'server/modules/tenancy/domain/leak.ts',

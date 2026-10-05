@@ -171,6 +171,14 @@ const loadMessage = computed(() => {
         >
           {{ t('drivers.nav') }}
         </UButton>
+        <UButton
+          to="/vehicles"
+          color="neutral"
+          variant="outline"
+          size="xl"
+        >
+          {{ t('vehicles.nav') }}
+        </UButton>
       </nav>
       <TenantSettings
         :is-admin="session.role === 'admin'"

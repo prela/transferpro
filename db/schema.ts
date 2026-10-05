@@ -9,6 +9,7 @@ export { clients } from './clients'
 export { drivers } from './drivers'
 export { tenantInvitation } from './tenant-invitation'
 export { tenantMember } from './tenant-member'
+export { vehicles } from './vehicles'
 
 /**
  * One row per Tenant.

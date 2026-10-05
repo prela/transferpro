@@ -113,6 +113,11 @@
       "driver": {
         "created": "Driver added",
         "field_changed": "Driver corrected"
+      },
+      "vehicle": {
+        "created": "Vehicle added",
+        "field_changed": "Vehicle corrected",
+        "archived": "Vehicle archived"
       }
     }
   },
@@ -211,6 +216,54 @@
       "transportLicenceExpiresOn": "Transport licence",
       "memberUserId": "Member",
       "mustAccept": "Must accept"
+    }
+  },
+  "vehicles": {
+    "nav": "Vehicles",
+    "home": "Home",
+    "title": "Vehicles",
+    "add": "Add a vehicle",
+    "edit": "Correct vehicle",
+    "archive": "Archive",
+    "showArchived": "Show archived",
+    "archived": "Archived",
+    "registrationPlate": "Registration plate",
+    "kind": "Kind",
+    "chooseKind": "Choose a kind",
+    "registrationExpiresOn": "Registration valid until",
+    "technicalInspectionExpiresOn": "Technical inspection valid until",
+    "insuranceExpiresOn": "Insurance valid until",
+    "description": "Description",
+    "plateEmpty": "Enter a registration plate.",
+    "plateTooLong": "A registration plate can be at most 16 characters.",
+    "kindInvalid": "Choose a kind: fixed or occasional.",
+    "dateInvalid": "Enter a date.",
+    "descriptionTooLong": "A description can be at most 120 characters.",
+    "plateTaken": "A vehicle with this registration plate already exists.",
+    "submit": "Add vehicle",
+    "submitting": "Adding vehicle",
+    "save": "Save",
+    "saving": "Saving",
+    "cancel": "Cancel",
+    "loading": "Loading vehicles",
+    "loadFailed": "Vehicles could not be loaded. Try again.",
+    "empty": "No vehicles yet.",
+    "rejected": "The vehicle was not accepted.",
+    "notFound": "That vehicle is no longer on the list.",
+    "forbidden": "A driver cannot add or correct vehicles.",
+    "signedOut": "You are signed out. Sign in and try again.",
+    "saveFailed": "The vehicle was not saved. Try again.",
+    "kinds": {
+      "fixed": "Fixed",
+      "occasional": "Occasional"
+    },
+    "fields": {
+      "registrationPlate": "Registration plate",
+      "kind": "Kind",
+      "registrationExpiresOn": "Registration expiry",
+      "technicalInspectionExpiresOn": "Technical inspection expiry",
+      "insuranceExpiresOn": "Insurance expiry",
+      "description": "Description"
     }
   }
 }
