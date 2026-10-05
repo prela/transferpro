@@ -154,6 +154,21 @@ it('rejects a Vehicles import of the transfers module', async () => {
   expect(await vehiclesTransfersImport('server/modules/drivers/index.ts', source)).toEqual([])
 })
 
+async function expiringDocumentsTransfersImport(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? []).filter(message =>
+    message.ruleId === 'transferpro/no-expiring-documents-transfers-import',
+  )
+}
+
+it('rejects an expiring-documents import of the transfers module', async () => {
+  const source = `import { bookRide } from '../../transfers'\n`
+  const dynamic = `await import('../transfers/index')\n`
+  expect(await expiringDocumentsTransfersImport('server/modules/expiring-documents/infrastructure/expiring-documents.ts', source)).not.toEqual([])
+  expect(await expiringDocumentsTransfersImport('server/modules/expiring-documents/index.ts', dynamic)).not.toEqual([])
+  expect(await expiringDocumentsTransfersImport('server/modules/drivers/index.ts', source)).toEqual([])
+})
+
 it('blocks console outside the logger module', async () => {
   const outside = await consoleUse(
     'server/modules/tenancy/domain/leak.ts',

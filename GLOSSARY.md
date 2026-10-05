@@ -69,6 +69,10 @@ _Avoid_: language
 **Vehicle**:
 A vehicle the office can assign. Kind is `fixed` or `occasional`. The registration plate identifies it in the Tenant; three expiry dates (registration, technical inspection, insurance) are calendar days. Archive hides it from the default list without deleting it. A Ride has a Vehicle only when it has a Driver.
 
+**Expiring document**:
+A driving licence, transport licence, vehicle registration, technical inspection, or insurance whose expiry day is already past or falls within the next 30 days on the Tenant's calendar. An archived Vehicle is not one. For a driver, it is only a licence of the Driver linked to that account.
+_Avoid_: reminder
+
 **Dispatcher**:
 Office staff of a Tenant who manage Transfers and Rides.
 _Avoid_: admin

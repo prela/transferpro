@@ -1,9 +1,9 @@
 import type { DriverList } from '../../../../shared'
 import { parseCreateDriver, parseDriverPatch } from '../../../../shared'
 import { TenantAccessError, withTenantFromSession } from '../../tenancy'
-import { addDriver, correctDriver, DriverNotFoundError, loadDrivers } from './drivers'
+import { addDriver, correctDriver, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers } from './drivers'
 
-export { DriverNotFoundError }
+export { DriverNotFoundError, loadDriverLinkedToMember, loadDrivers }
 
 function officeOnly(role: string): void {
   // A driver sees their own Rides. Adding a Driver is office work.

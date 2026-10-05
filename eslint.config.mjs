@@ -183,6 +183,49 @@ const vehiclesTransfersImport = {
   },
 }
 
+const expiringDocumentsTransfersImport = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      banned: 'The expiring-documents module does not import the transfers module (ADR-0018).',
+    },
+  },
+  create(context) {
+    /**
+     * @param {import('estree').Node} node
+     * @param {unknown} source
+     */
+    function check(node, source) {
+      if (typeof source !== 'string' || !(/(?:^|\/)transfers(?:\/|$)/).test(source))
+        return
+      const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
+      if (!filename.includes('/server/modules/expiring-documents/'))
+        return
+      context.report({ node, messageId: 'banned' })
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ImportExpression(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source?.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportAllDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+    }
+  },
+}
+
 const tenancyTestingImport = {
   meta: {
     type: 'problem',
@@ -293,6 +336,7 @@ export default antfu(
           'no-tenancy-testing-import': tenancyTestingImport,
           'no-drivers-transfers-import': driversTransfersImport,
           'no-vehicles-transfers-import': vehiclesTransfersImport,
+          'no-expiring-documents-transfers-import': expiringDocumentsTransfersImport,
           'no-platform-boundary-import': platformBoundaryImport,
         },
       },
@@ -303,6 +347,7 @@ export default antfu(
       'transferpro/no-tenancy-testing-import': 'error',
       'transferpro/no-drivers-transfers-import': 'error',
       'transferpro/no-vehicles-transfers-import': 'error',
+      'transferpro/no-expiring-documents-transfers-import': 'error',
       'transferpro/no-platform-boundary-import': 'error',
     },
   },

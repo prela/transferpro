@@ -273,6 +273,22 @@
       "description": "Opis"
     }
   },
+  "expiringDocuments": {
+    "title": "Dokumenti koji istječu",
+    "empty": "Nema isteklih dokumenata ni dokumenata koji istječu u sljedećih 30 dana.",
+    "loading": "Učitavanje dokumenata",
+    "loadFailed": "Dokumente nije bilo moguće učitati. Pokušajte ponovno.",
+    "refresh": "Osvježi dokumente",
+    "expired": "Isteklo",
+    "expiring": "Istječe uskoro",
+    "kinds": {
+      "driving_licence": "Vozačka dozvola",
+      "transport_licence": "Dozvola za prijevoz",
+      "vehicle_registration": "Registracija vozila",
+      "technical_inspection": "Tehnički pregled",
+      "insurance": "Osiguranje"
+    }
+  },
   "platform": {
     "title": "Tvrtke",
     "empty": "Još nema tvrtki.",
