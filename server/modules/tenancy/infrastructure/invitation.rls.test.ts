@@ -3,7 +3,7 @@ import type { InvitationMail } from './mailer'
 import { loadEnvFile } from 'node:process'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { closeTenantRuntime, readSessionShell } from '..'
+import { closeTenantRuntime, readSessionShell, removeTenantMember } from '..'
 import { parseAppEnv } from '../../../core/index'
 import { createAuth, signInRateLimit } from './auth'
 import { createTenant } from './create-tenant'
@@ -103,6 +103,8 @@ afterAll(async () => {
     'slice11-burst-1@example.com',
     'slice11-burst-2@example.com',
     'slice11-burst-3@example.com',
+    'slice11-pending@example.com',
+    'slice11-removed@example.com',
   ])
   await removeTenant(slugB, [otherEmail])
   if (handle !== undefined)
@@ -156,6 +158,14 @@ it('lets an admin invite admin, dispatcher, and driver, and refuses the other ro
     name: 'Dora Driver',
     password: memberPassword,
   }, new Headers())
+  // The browser stores a Set-Cookie with no Path on this route's directory.
+  // Path=/, HttpOnly, and SameSite=Lax are what a sign-in cookie carries.
+  const sessionCookie = accepted.cookies.find(part => part.includes('session_token'))
+  expect(sessionCookie).toBeDefined()
+  const attributes = sessionCookie?.split(';').slice(1).map(part => part.trim())
+  expect(attributes).toContain('Path=/')
+  expect(attributes).toContain('HttpOnly')
+  expect(attributes).toContain('SameSite=Lax')
   const shell = await readSessionShell(cookieHeaders(accepted.cookies))
   expect(shell.tenantId).toBe(tenantA)
   expect(shell.role).toBe('driver')
@@ -235,7 +245,9 @@ it('asks an existing account to sign in, then accepts into this tenant', async (
 
   const signedIn = await signIn(otherEmail, adminPassword)
   const accepted = await acceptInvitation(handle, { invitationId: invited.id }, signedIn.headers)
-  const shell = await readSessionShell(cookieHeaders(accepted.cookies.length > 0 ? accepted.cookies : [signedIn.cookie]))
+  // The invitee already had a session. Accept must not issue another one.
+  expect(accepted.cookies).toEqual([])
+  const shell = await readSessionShell(cookieHeaders([signedIn.cookie]))
   expect(shell.tenantId).toBe(tenantA)
   expect(shell.role).toBe('dispatcher')
 })
@@ -361,6 +373,31 @@ it('deletes the new user when accept fails after insert, then a retry works', as
   const shell = await readSessionShell(cookieHeaders(accepted.cookies))
   expect(shell.tenantId).toBe(tenantA)
   expect(shell.role).toBe('driver')
+})
+
+it('answers 409 when the person is already a member or already invited, and invites them again after removal', async () => {
+  await expect(sendInvitation(handle, adminHeaders, {
+    email: adminEmail,
+    role: 'driver',
+    organizationId: tenantA,
+    locale: 'hr',
+  })).rejects.toMatchObject({ statusCode: 409, message: 'Account already exists.' })
+
+  const pending = 'slice11-pending@example.com'
+  await invite(pending, 'driver')
+  await expect(invite(pending, 'dispatcher')).rejects.toMatchObject({ statusCode: 409 })
+
+  const removed = 'slice11-removed@example.com'
+  const invited = await invite(removed, 'driver')
+  const accepted = await acceptInvitation(handle, {
+    invitationId: invited.id,
+    name: 'Removed Member',
+    password: memberPassword,
+  }, new Headers())
+  const shell = await readSessionShell(cookieHeaders(accepted.cookies))
+  await removeTenantMember(adminHeaders, shell.userId)
+  const again = await invite(removed, 'dispatcher')
+  expect(new URL(again.inviteUrl).hash).toMatch(/^#[0-9a-f-]{36}$/)
 })
 
 it('accepts four new accounts while the production sign-in limit is on', async () => {
