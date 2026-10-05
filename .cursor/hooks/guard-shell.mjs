@@ -5,11 +5,11 @@
  * stdout: { permission: "allow" | "deny" | "ask", user_message, agent_message }.
  * Project hooks run in cloud agents (cursor.com/docs/hooks). A local IDE
  * agent also has CURSOR_AGENT set, so that variable is not a cloud signal.
- * A managed VM counts when CURSOR_AGENT_SOCKET (default /run/cursor/api.sock)
- * is a unix socket. The guard does not read the socket. A self-hosted worker
- * counts when CURSOR_AGENT_WORKER_ID is set. TP_ALLOW_GIT=1 is the same
- * opt-out as that detection: commit, push, and creating a branch with
- * `git checkout -b <name>` or `git switch -c <name>`.
+ * A managed VM counts when the fixed path /run/cursor/api.sock is a unix
+ * socket. The path is not taken from the environment, and the socket is not
+ * read. A worker id counts only together with a conversation id from hook
+ * stdin that starts with `bc-`. A shell export cannot set that field.
+ * The same gate allows commit, push, and `git checkout -b` / `git switch -c`.
  * A prefix on the command does not count: the agent could add it itself.
  */
 import { Buffer } from 'node:buffer'
@@ -45,12 +45,16 @@ const REMOVERS = new Set(['rm', 'unlink', 'rmdir'])
 
 const MAX_DEPTH = 6
 
+/** Not CURSOR_AGENT_SOCKET: a shell export must not point the check at another file. */
+const FIXED_METADATA_SOCKET = '/run/cursor/api.sock'
+
 /**
  * @param {string} command
  * @param {NodeJS.ProcessEnv} [env]
  * @param {number} [depth]
+ * @param {{ isSocket?: (path: string) => boolean, conversationId?: string }} [deps]
  */
-export function decide(command, env = process.env, depth = 0) {
+export function decide(command, env = process.env, depth = 0, deps = {}) {
   if (depth > MAX_DEPTH) {
     return deny(
       'nested shell commands are too deep to inspect.',
@@ -59,7 +63,7 @@ export function decide(command, env = process.env, depth = 0) {
   }
 
   for (const statement of splitStatements(command)) {
-    const verdict = inspectStatement(statement, env, depth)
+    const verdict = inspectStatement(statement, env, depth, deps)
     if (verdict.permission === 'deny')
       return verdict
   }
@@ -67,24 +71,24 @@ export function decide(command, env = process.env, depth = 0) {
 }
 
 /**
- * True when the worker id is set, or the metadata path is a unix socket.
+ * Fixed-path socket, or worker id plus a `bc-` conversation id from hook stdin.
  * @param {NodeJS.ProcessEnv} env
+ * @param {{ isSocket?: (path: string) => boolean, conversationId?: string }} [deps]
  */
-export function isCloudAgent(env) {
-  if (env.CURSOR_AGENT_WORKER_ID)
+export function isCloudAgent(env, deps = {}) {
+  const check = deps.isSocket ?? isSocket
+  if (check(FIXED_METADATA_SOCKET))
     return true
-  const socketPath = env.CURSOR_AGENT_SOCKET || '/run/cursor/api.sock'
-  return isSocket(socketPath)
+  const conversationId = deps.conversationId ?? ''
+  return Boolean(env.CURSOR_AGENT_WORKER_ID) && conversationId.startsWith('bc-')
 }
 
 /**
  * @param {NodeJS.ProcessEnv} env
+ * @param {{ isSocket?: (path: string) => boolean, conversationId?: string }} [deps]
  */
-export function gitWritesAllowed(env) {
-  // Exact "1". A command prefix is not this variable.
-  if (env.TP_ALLOW_GIT === '1')
-    return true
-  return isCloudAgent(env)
+export function gitWritesAllowed(env, deps = {}) {
+  return isCloudAgent(env, deps)
 }
 
 /**
@@ -192,11 +196,12 @@ function tokenize(statement) {
  * @param {string} statement
  * @param {NodeJS.ProcessEnv} env
  * @param {number} depth
+ * @param {{ isSocket?: (path: string) => boolean, conversationId?: string }} deps
  */
-function inspectStatement(statement, env, depth) {
+function inspectStatement(statement, env, depth, deps) {
   const unwrapped = unwrap(tokenize(statement))
   if (unwrapped.script)
-    return decide(unwrapped.script, env, depth + 1)
+    return decide(unwrapped.script, env, depth + 1, deps)
   if (unwrapped.envDump)
     return deny('do not dump the environment with env.', statement)
 
@@ -210,22 +215,22 @@ function inspectStatement(statement, env, depth) {
 
   const inline = shellInlineScript(argv)
   if (inline !== null)
-    return decide(inline, env, depth + 1)
+    return decide(inline, env, depth + 1, deps)
 
   const git = gitSubcommand(argv)
   if (git.invoked) {
     // checkout -b and switch -c create a branch. -B and -C reset one that
     // already exists, so they stay denied. Same gate as commit and push.
-    const creating = createsNewBranch(git.name, git.args) && gitWritesAllowed(env)
+    const creating = createsNewBranch(git.name, git.args) && gitWritesAllowed(env, deps)
     if (ALWAYS_BLOCKED_GIT.has(git.name) && !creating) {
       return deny(
         `do not run git ${git.name}. The human does that.`,
         statement,
       )
     }
-    if (COMMIT_OR_PUSH.has(git.name) && !gitWritesAllowed(env)) {
+    if (COMMIT_OR_PUSH.has(git.name) && !gitWritesAllowed(env, deps)) {
       return deny(
-        'do not run git commit or git push. The human commits. A cloud agent, or TP_ALLOW_GIT=1 in the hook environment, may commit and push.',
+        'do not run git commit or git push. The human commits. A cloud agent may commit and push.',
         statement,
       )
     }
@@ -556,7 +561,7 @@ async function main() {
     chunks.push(chunk)
   const raw = Buffer.concat(chunks).toString('utf8')
 
-  /** @type {{ command?: unknown }} */
+  /** @type {{ command?: unknown, conversation_id?: unknown }} */
   let input
   try {
     input = JSON.parse(raw)
@@ -567,7 +572,8 @@ async function main() {
   }
 
   const command = typeof input.command === 'string' ? input.command : ''
-  const verdict = command ? decide(command) : allow()
+  const conversationId = typeof input.conversation_id === 'string' ? input.conversation_id : ''
+  const verdict = command ? decide(command, process.env, 0, { conversationId }) : allow()
   process.stdout.write(`${JSON.stringify(verdict)}\n`)
 }
 

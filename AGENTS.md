@@ -28,6 +28,9 @@ One at a time. Apply locally with `pnpm db:migrate:local`. In `db/migrations/met
 
 Croatian and English copy. Light and dark mode.
 
+Tests never send real mail. Use the fake or console mailer and leave RESEND unset.
+Migrations, RLS, auth, and ride assignment run only on the strongest tier: Grok 4.7 high or stronger.
+
 ## Report
 
 What changed, tests added or changed (never weaken or remove a test; flag any), migrations, open questions. Then `Context summarized: yes/no`. The last line is `REVIEW_READY`.
@@ -36,4 +39,4 @@ What changed, tests added or changed (never weaken or remove a test; flag any), 
 
 Commit messages, PR titles, and PR bodies do not name models or contain a `Model:` line. PR bodies do not contain an agent footer or an agent-run link. `.husky/commit-msg` and `.github/workflows/agent-guard.yml` enforce that.
 
-`.cursor/hooks.json` runs `.cursor/hooks/guard-shell.sh` on `beforeShellExecution`. It denies the git commands above, deletion of `node_modules` or `.modules.yaml`, and reading `.env` files. Project hooks run in cloud agents. `~/.cursor/hooks.json` does not, so a user stop hook does not clash. `git commit` and `git push` are allowed on a managed cloud VM (metadata socket) or a self-hosted worker (`CURSOR_AGENT_WORKER_ID`), and when `TP_ALLOW_GIT=1`. Other denials stay. `CURSOR_AGENT` alone is not the cloud signal.
+`.cursor/hooks.json` runs `.cursor/hooks/guard-shell.sh` on `beforeShellExecution`. It denies the git commands above, deletion of `node_modules` or `.modules.yaml`, and reading `.env` files. Project hooks run in cloud agents. `~/.cursor/hooks.json` does not, so a user stop hook does not clash. `git commit` and `git push` are allowed when `/run/cursor/api.sock` is a unix socket, or when `CURSOR_AGENT_WORKER_ID` is set and the hook conversation id starts with `bc-`. Other denials stay. `CURSOR_AGENT` alone is not the cloud signal.

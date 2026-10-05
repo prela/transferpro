@@ -2,28 +2,29 @@
  * Feeds sample commands to the shell guard and checks allow / deny.
  * Run: node --test .cursor/hooks/guard-shell.checks.mjs
  * The name is `.checks.mjs`, not `.test.mjs`: ESLint rewrites `node:test` to vitest in test files.
+ *
+ * Policy cases call `decide` with `isSocket: () => false`. That is the local
+ * environment. Spawning the CLI would stat the real `/run/cursor/api.sock`,
+ * which exists on a managed VM and would allow git commit and git push.
  */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
-import net from 'node:net'
-import os from 'node:os'
-import path from 'node:path'
 import process from 'node:process'
 import test from 'node:test'
+import { decide, isCloudAgent } from './guard-shell.mjs'
+
+const FIXED_SOCKET = '/run/cursor/api.sock'
+
+/** Local: no worker id, and the metadata socket is not present. */
+const localDeps = { isSocket: () => false }
 
 /**
- * Local-agent environment: no worker id, no metadata socket, no opt-out.
- * Spreading process.env keeps PATH. Overrides win over the cloud VM this
- * test may itself be running in.
  * @param {NodeJS.ProcessEnv} extra
  */
-function hookEnv(extra = {}) {
+function localEnv(extra = {}) {
   return {
-    ...process.env,
-    CURSOR_AGENT_SOCKET: path.join(os.tmpdir(), 'transferpro-no-such-hook.sock'),
     CURSOR_AGENT_WORKER_ID: '',
-    TP_ALLOW_GIT: '',
     ...extra,
   }
 }
@@ -31,9 +32,44 @@ function hookEnv(extra = {}) {
 /**
  * @param {string} command
  * @param {NodeJS.ProcessEnv} [env]
- * @param {string} [bin]
+ * @param {{ isSocket?: (filePath: string) => boolean, conversationId?: string }} [deps]
  */
-function run(command, env = {}, bin = 'node') {
+function verdict(command, env = localEnv(), deps = localDeps) {
+  return decide(command, env, 0, deps)
+}
+
+/**
+ * @param {string} command
+ * @param {RegExp} pattern
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {{ isSocket?: (filePath: string) => boolean, conversationId?: string }} [deps]
+ */
+function denied(command, pattern, env = localEnv(), deps = localDeps) {
+  const result = verdict(command, env, deps)
+  assert.equal(result.permission, 'deny', command)
+  assert.match(result.user_message, /transferpro shell guard/)
+  assert.match(result.agent_message, pattern)
+  assert.equal(result.user_message, result.agent_message)
+}
+
+/**
+ * @param {string} command
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {{ isSocket?: (filePath: string) => boolean, conversationId?: string }} [deps]
+ */
+function allowed(command, env = localEnv(), deps = localDeps) {
+  const result = verdict(command, env, deps)
+  assert.equal(result.permission, 'allow', `${command} -> ${result.user_message ?? ''}`)
+}
+
+/**
+ * Spawn only for commands whose verdict does not depend on the metadata socket.
+ * @param {string} command
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {string} [bin]
+ * @param {Record<string, unknown>} [input]
+ */
+function run(command, env = {}, bin = 'node', input = {}) {
   const args = bin === 'node'
     ? ['.cursor/hooks/guard-shell.mjs']
     : ['.cursor/hooks/guard-shell.sh']
@@ -43,34 +79,13 @@ function run(command, env = {}, bin = 'node') {
       cwd: '/workspace',
       hook_event_name: 'beforeShellExecution',
       sandbox: false,
+      ...input,
     }),
     encoding: 'utf8',
-    env: hookEnv(env),
+    env: { ...process.env, ...env },
   })
   assert.equal(result.status, 0, result.stderr)
   return JSON.parse(result.stdout)
-}
-
-/**
- * @param {string} command
- * @param {RegExp} pattern
- * @param {NodeJS.ProcessEnv} [env]
- */
-function denied(command, pattern, env) {
-  const verdict = run(command, env)
-  assert.equal(verdict.permission, 'deny', command)
-  assert.match(verdict.user_message, /transferpro shell guard/)
-  assert.match(verdict.agent_message, pattern)
-  assert.equal(verdict.user_message, verdict.agent_message)
-}
-
-/**
- * @param {string} command
- * @param {NodeJS.ProcessEnv} [env]
- */
-function allowed(command, env) {
-  const verdict = run(command, env)
-  assert.equal(verdict.permission, 'allow', `${command} -> ${verdict.user_message ?? ''}`)
 }
 
 test('allows ordinary work', () => {
@@ -115,58 +130,82 @@ test('denies git history and branch commands for a local agent', () => {
     'sudo git commit -m "chore: test"',
     'sudo -u root git reset --hard',
     'command git stash',
-    'TP_ALLOW_GIT=1 git commit -m "chore: test"',
   ]) {
     denied(command, /git/)
   }
 })
 
-test('cloud agent and TP_ALLOW_GIT=1 may commit and push, and nothing else on that list', () => {
-  const cloud = { CURSOR_AGENT_WORKER_ID: 'worker-1' }
-  const opted = { TP_ALLOW_GIT: '1' }
-  for (const env of [cloud, opted]) {
-    allowed('git commit -m "chore: test"', env)
-    allowed('git push', env)
-    allowed('git checkout -b chore/other', env)
-    allowed('git checkout -b chore/other develop', env)
-    allowed('git switch -c chore/other', env)
-    allowed('git switch -c chore/other develop', env)
-    denied('git reset --hard HEAD', /git reset/, env)
-    denied('git checkout develop', /git checkout/, env)
-    denied('git checkout -- AGENTS.md', /git checkout/, env)
-    denied('git checkout -b', /git checkout/, env)
-    denied('git checkout -B chore/other', /git checkout/, env)
-    denied('git checkout -b chore/other -B other', /git checkout/, env)
-    denied('git stash', /git stash/, env)
-    denied('git switch develop', /git switch/, env)
-    denied('git switch -', /git switch/, env)
-    denied('git switch -c', /git switch/, env)
-    denied('git switch -C chore/other', /git switch/, env)
-    denied('git switch -c chore/other -C other', /git switch/, env)
-    denied('git restore --source=HEAD AGENTS.md', /git restore/, env)
-    denied('cat .env', /do not read/, env)
-    denied('rm -rf node_modules', /node_modules/, env)
+test('a local env denies a shell opt-out and a worker id prefix', () => {
+  for (const command of [
+    'env TP_ALLOW_GIT=1 git push',
+    'TP_ALLOW_GIT=1 git commit -m x',
+    'export TP_ALLOW_GIT=1 && git commit -m x',
+    'CURSOR_AGENT_WORKER_ID=x git push',
+    'export CURSOR_AGENT_WORKER_ID=x; git push',
+  ]) {
+    denied(command, /git commit or git push/)
   }
+  denied('git push', /git commit or git push/, { TP_ALLOW_GIT: '1', CURSOR_AGENT_WORKER_ID: '' })
+  denied('git commit -m x', /git commit or git push/, { CURSOR_AGENT_WORKER_ID: 'x' })
 })
 
-test('a metadata socket allows commit; a regular file at that path does not', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tp-guard-'))
-  const sockPath = path.join(dir, 'api.sock')
-  const server = net.createServer()
-  await new Promise((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(sockPath, resolve)
-  })
-  const plain = path.join(dir, 'not-a-socket')
-  fs.writeFileSync(plain, '')
-  try {
-    allowed('git commit -m "chore: test"', { CURSOR_AGENT_SOCKET: sockPath })
-    denied('git push', /git commit or git push/, { CURSOR_AGENT_SOCKET: plain })
+test('a worker id allows git writes only with a bc- conversation id', () => {
+  const worker = { CURSOR_AGENT_WORKER_ID: 'worker-1' }
+  const cloud = { ...localDeps, conversationId: 'bc-123' }
+  assert.equal(isCloudAgent(worker, cloud), true)
+  assert.equal(isCloudAgent(worker, localDeps), false)
+  assert.equal(isCloudAgent(worker, { ...localDeps, conversationId: 'local-1' }), false)
+  assert.equal(isCloudAgent(localEnv(), { ...localDeps, conversationId: 'bc-123' }), false)
+
+  for (const command of [
+    'git commit -m "chore: test"',
+    'git push',
+    'git checkout -b chore/other',
+    'git checkout -b chore/other develop',
+    'git switch -c chore/other',
+    'git switch -c chore/other develop',
+  ]) {
+    allowed(command, worker, cloud)
+    denied(command, /git/, worker, localDeps)
   }
-  finally {
-    server.close()
-    fs.rmSync(dir, { recursive: true, force: true })
+
+  denied('git reset --hard HEAD', /git reset/, worker, cloud)
+  denied('git checkout develop', /git checkout/, worker, cloud)
+  denied('git checkout -- AGENTS.md', /git checkout/, worker, cloud)
+  denied('git checkout -b', /git checkout/, worker, cloud)
+  denied('git checkout -B chore/other', /git checkout/, worker, cloud)
+  denied('git checkout -b chore/other -B other', /git checkout/, worker, cloud)
+  denied('git stash', /git stash/, worker, cloud)
+  denied('git switch develop', /git switch/, worker, cloud)
+  denied('git switch -', /git switch/, worker, cloud)
+  denied('git switch -c', /git switch/, worker, cloud)
+  denied('git switch -C chore/other', /git switch/, worker, cloud)
+  denied('git switch -c chore/other -C other', /git switch/, worker, cloud)
+  denied('git restore --source=HEAD AGENTS.md', /git restore/, worker, cloud)
+  denied('cat .env', /do not read/, worker, cloud)
+  denied('rm -rf node_modules', /node_modules/, worker, cloud)
+})
+
+test('the metadata socket is the fixed path, and a true stat allows git writes', () => {
+  /** @type {string[]} */
+  const seen = []
+  const deps = {
+    isSocket: (filePath) => {
+      seen.push(filePath)
+      return filePath === FIXED_SOCKET
+    },
   }
+  allowed('git commit -m "chore: test"', { CURSOR_AGENT_SOCKET: '/tmp/not-the-socket', CURSOR_AGENT_WORKER_ID: '' }, deps)
+  allowed('git push', localEnv(), deps)
+  assert.deepEqual(seen, [FIXED_SOCKET, FIXED_SOCKET])
+
+  const missing = {
+    isSocket: (filePath) => {
+      assert.equal(filePath, FIXED_SOCKET)
+      return false
+    },
+  }
+  denied('git push', /git commit or git push/, { CURSOR_AGENT_SOCKET: FIXED_SOCKET }, missing)
 })
 
 test('denies deletion of node_modules and .modules.yaml', () => {
@@ -230,7 +269,6 @@ test('bad hook JSON is denied and an empty command is allowed', () => {
   const bad = spawnSync('node', ['.cursor/hooks/guard-shell.mjs'], {
     input: 'not-json',
     encoding: 'utf8',
-    env: hookEnv(),
   })
   assert.equal(bad.status, 0)
   assert.equal(JSON.parse(bad.stdout).permission, 'deny')
@@ -238,8 +276,30 @@ test('bad hook JSON is denied and an empty command is allowed', () => {
   const empty = spawnSync('node', ['.cursor/hooks/guard-shell.mjs'], {
     input: JSON.stringify({ hook_event_name: 'beforeShellExecution' }),
     encoding: 'utf8',
-    env: hookEnv(),
   })
   assert.equal(empty.status, 0)
   assert.equal(JSON.parse(empty.stdout).permission, 'allow')
+})
+
+test('the CLI passes conversation_id from stdin into the worker-id gate', (t) => {
+  // On a managed VM the fixed socket already allows git push, so this
+  // wiring is asserted through decide() above. CI has no such socket.
+  let present = false
+  try {
+    present = fs.statSync(FIXED_SOCKET).isSocket()
+  }
+  catch {
+    present = false
+  }
+  if (present) {
+    t.skip('metadata socket is present; decide() covers the worker-id gate')
+    return
+  }
+
+  const deniedPush = run('git push', { CURSOR_AGENT_WORKER_ID: 'x' }, 'node', { conversation_id: 'local' })
+  assert.equal(deniedPush.permission, 'deny')
+  const allowedPush = run('git push', { CURSOR_AGENT_WORKER_ID: 'x' }, 'node', { conversation_id: 'bc-ci' })
+  assert.equal(allowedPush.permission, 'allow')
+  const prefix = run('export CURSOR_AGENT_WORKER_ID=x; git push', {}, 'node', { conversation_id: 'bc-ci' })
+  assert.equal(prefix.permission, 'deny')
 })

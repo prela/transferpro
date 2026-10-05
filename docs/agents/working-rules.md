@@ -133,10 +133,14 @@ The guard needs `sh` and `node`. On Windows, run Cursor in WSL or Git Bash.
 
 Cursor docs: project hooks in `.cursor/hooks.json` run in cloud agents, including `beforeShellExecution`, once the VM is writable. They do not run during an early read-only turn. User hooks in `~/.cursor/hooks.json` are not loaded in a cloud VM, so a stop hook there does not run beside this project hook and does not clash with it.
 
-`git commit` and `git push` are denied for a local agent. They are allowed when either of these is true in the hook process environment:
+`git commit` and `git push` are denied for a local agent. They are allowed when the guard sees a cloud agent:
 
-- `TP_ALLOW_GIT=1` (exactly `1`). A prefix on the command does not count.
-- The process is a cloud agent. A managed VM counts when `CURSOR_AGENT_SOCKET` (default `/run/cursor/api.sock`) is a unix socket. The guard does not read that socket. A self-hosted worker sets `CURSOR_AGENT_WORKER_ID`. `CURSOR_AGENT` is also set for a local IDE agent, so it is not the signal. `CURSOR_CODE_REMOTE` means a remote workspace, not a cloud agent.
+- `/run/cursor/api.sock` is a unix socket. The guard stats that fixed path and does not read the socket. `CURSOR_AGENT_SOCKET` is ignored, so a shell export cannot point the check at another file.
+- `CURSOR_AGENT_WORKER_ID` is set and the hook input `conversation_id` starts with `bc-`. Cursor puts that id on stdin. A shell export cannot set it. The worker id alone is not enough.
+
+`CURSOR_AGENT` is also set for a local IDE agent, so it is not the signal. `CURSOR_CODE_REMOTE` means a remote workspace, not a cloud agent.
+
+Cursor's hooks page (https://cursor.com/docs/hooks, Environment Variables and `sessionStart`) lists the variables a hook receives, and says a `sessionStart` hook may return an `env` object that later hooks in that session see. It does not say the hook process inherits variables an agent `export`s in a shell, and it does not say hooks are spawned from the terminal session. The guard therefore treats a command prefix and `export` as text, not as its own environment. The worker id stays a residual risk if a hook runner both inherited the shell and already had a `bc-` conversation id. On a managed VM the fixed socket allows commit and push without that variable.
 
 The same gate allows `git checkout -b <name>` and `git switch -c <name>` (a start-point after the name is fine). `git checkout -B` and `git switch -C` stay denied, because those reset a branch that already exists. Plain `checkout` or `switch` of an existing branch or of files stays denied everywhere, including cloud agents. Local branch creation stays denied. `git reset`, `git stash`, and `git restore` stay denied everywhere. So do deletions of `node_modules` or `.modules.yaml`, and reading `.env` files (`cat`, `less`, `more`, `head`, `tail`, `grep`) other than `.env.example`. `printenv` and a bare `env` dump are denied. `env pnpm test` is allowed.
 
