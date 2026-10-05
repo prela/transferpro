@@ -1,7 +1,9 @@
+import type { Server } from 'node:http'
 import { spawnSync } from 'node:child_process'
+import { createServer } from 'node:http'
 import { loadEnvFile } from 'node:process'
 import { sql } from 'drizzle-orm'
-import { createApp, toWebHandler } from 'h3'
+import { createApp, toNodeListener, toWebHandler } from 'h3'
 import { ofetch } from 'ofetch'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
@@ -78,6 +80,8 @@ const settingsRows = z.object({
 })
 
 let auth: ReturnType<typeof createAuth> | undefined
+let authServer: Server | undefined
+let authOrigin = ''
 
 function currentAuth(): ReturnType<typeof createAuth> {
   if (!auth)
@@ -85,10 +89,31 @@ function currentAuth(): ReturnType<typeof createAuth> {
   return auth
 }
 
+/**
+ * Nitro's node preset wraps the h3 app with `toNodeListener`. A web
+ * Request through `toWebHandler` skips the IncomingMessage body stream
+ * that makes a bare POST 415.
+ */
+const authApp = createApp()
+authApp.use(authRoute)
+
 beforeAll(async () => {
   auth = createAuth(env)
   for (const fixture of fixtures)
     await removeFixture(fixture.slug, fixture.email)
+  authOrigin = await new Promise((resolve, reject) => {
+    const server = createServer(toNodeListener(authApp))
+    authServer = server
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        reject(new Error('auth test server did not bind a port'))
+        return
+      }
+      resolve(`http://127.0.0.1:${address.port}`)
+    })
+  })
 })
 
 afterAll(async () => {
@@ -98,6 +123,13 @@ afterAll(async () => {
   await closeTenantRuntime()
   await authPool.end()
   await ownerPool.end()
+  await new Promise<void>((resolve, reject) => {
+    if (!authServer) {
+      resolve()
+      return
+    }
+    authServer.close(error => error ? reject(error) : resolve())
+  })
 })
 
 it('refuses the app role for provisioning', async () => {
@@ -345,7 +377,7 @@ it('a signed-in user with no membership is forbidden', async () => {
   })
 })
 
-it('signing out the way the page does clears the session cookie', async () => {
+it('signing out the way the page does clears the session cookie only with an empty json body', async () => {
   await createTenant({
     name: 'Page sign-out',
     slug: 'slice10-page-signout',
@@ -357,6 +389,12 @@ it('signing out the way the page does clears the session cookie', async () => {
   })
   const signedIn = await signIn('slice10-page-signout@example.com')
 
+  // No body: ofetch sends no Content-Type. The Node listener still gives
+  // that POST a body stream, and Better Auth answers 415.
+  const rejected = await postSignOut(signedIn.token)
+  expect(rejected.status).toBe(415)
+  expect(await getSession(signedIn.token)).toMatchObject({ user: { email: 'slice10-page-signout@example.com' } })
+
   // body: {} is what the shell sends, so ofetch sets application/json.
   const signedOut = await postSignOut(signedIn.token, {})
   expect(signedOut.status).toBe(200)
@@ -365,14 +403,6 @@ it('signing out the way the page does clears the session cookie', async () => {
     throw new Error('sign-out did not clear the session cookie')
   expect(cookie.toLowerCase()).toContain('max-age=0')
   expect(await getSession(signedIn.token)).toBeNull()
-
-  // A reconstructed IncomingMessage with an empty stream used to 415.
-  // The real auth route + ofetch with no body is a bare POST; Better Auth
-  // accepts it. The shell still posts `{}` so the Content-Type is set.
-  const signedInAgain = await signIn('slice10-page-signout@example.com')
-  const noBody = await postSignOut(signedInAgain.token)
-  expect(noBody.status).toBe(200)
-  expect(await getSession(signedInAgain.token)).toBeNull()
 })
 
 it('a signed-in user removed from their tenant is forbidden by the session shell', async () => {
@@ -489,23 +519,15 @@ async function signIn(email: string, handle: ReturnType<typeof createAuth> = cur
 
 /**
  * The shell posts sign-out with ofetch ($fetch). This suite uses the same
- * client against the real `server/api/auth/[...all].ts` handler: h3 turns
- * the Request into a Node event, and that route calls `toWebRequest`.
+ * client against the real `server/api/auth/[...all].ts` handler on a Node
+ * HTTP server (`toNodeListener`), the Nitro node-server path.
  *
- * The shell posts `body: {}` so ofetch sends application/json. A
- * reconstructed IncomingMessage with an empty stream used to 415; the
- * real route does not invent that stream.
+ * A POST with no bytes still gets a body stream, and Better Auth answers
+ * 415 when that stream has no Content-Type. `body: {}` makes ofetch send
+ * `{}` as application/json, which sign-out accepts.
  */
-const authApp = createApp()
-authApp.use(authRoute)
-const dispatchAuth = toWebHandler(authApp)
-
-const pageFetch = ofetch.create({}, {
-  fetch: (input, init) => dispatchAuth(new Request(input, init)),
-})
-
 function postSignOut(token: string, body?: Record<string, never>) {
-  return pageFetch.raw(`${baseUrl}/api/auth/sign-out`, {
+  return ofetch.raw(`${authOrigin}/api/auth/sign-out`, {
     method: 'POST',
     body,
     headers: {
