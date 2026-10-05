@@ -207,6 +207,7 @@ const loadMessage = computed(() => {
           {{ t('vehicles.nav') }}
         </UButton>
       </nav>
+      <ExpiringDocuments />
       <TenantSettings
         :is-admin="session.role === 'admin'"
         @saved="refresh()"

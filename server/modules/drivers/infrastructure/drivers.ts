@@ -44,11 +44,29 @@ const driverColumns = sql`
   must_accept as "mustAccept"
 `
 
-/** This Tenant's Drivers, by name, so the office can find one. */
+/**
+ * This Tenant's Drivers, by name, so the office can find one.
+ * There is no inactive or archived Driver column, so this is every row.
+ */
 export async function loadDrivers(transaction: TenantTransaction): Promise<Driver[]> {
   const selected = driverRows.parse(await transaction.execute(sql`
     select ${driverColumns}
     from app.drivers
+    order by name, id
+  `))
+  return selected.rows.map(toDriver)
+}
+
+/**
+ * The Driver linked to this member, or none.
+ * The expiry list uses this so a driver member's query does not select
+ * other Drivers' licence dates. The office list stays `loadDrivers`.
+ */
+export async function loadDriverLinkedToMember(transaction: TenantTransaction, memberUserId: string): Promise<Driver[]> {
+  const selected = driverRows.parse(await transaction.execute(sql`
+    select ${driverColumns}
+    from app.drivers
+    where member_user_id = ${memberUserId}
     order by name, id
   `))
   return selected.rows.map(toDriver)

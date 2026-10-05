@@ -273,6 +273,22 @@
       "description": "Description"
     }
   },
+  "expiringDocuments": {
+    "title": "Expiring documents",
+    "empty": "No documents are expired or expire within the next 30 days.",
+    "loading": "Loading documents",
+    "loadFailed": "Documents could not be loaded. Try again.",
+    "refresh": "Refresh documents",
+    "expired": "Expired",
+    "expiring": "Expiring soon",
+    "kinds": {
+      "driving_licence": "Driving licence",
+      "transport_licence": "Transport licence",
+      "vehicle_registration": "Vehicle registration",
+      "technical_inspection": "Technical inspection",
+      "insurance": "Insurance"
+    }
+  },
   "platform": {
     "title": "Firms",
     "empty": "No firms yet.",
