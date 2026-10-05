@@ -34,7 +34,8 @@ const authUrl = required('BETTER_AUTH_URL')
 
 const app = createApp()
 app.use('/api/drivers', (event) => {
-  const id = event.path === '/' ? '' : decodeURIComponent(event.path.slice(1))
+  const pathOnly = event.path.split('?')[0] ?? '/'
+  const id = pathOnly === '/' ? '' : decodeURIComponent(pathOnly.slice(1))
   if (id === '') {
     if (event.method === 'POST')
       return postDriver(event)
