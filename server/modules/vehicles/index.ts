@@ -4,4 +4,4 @@
  * The record can be archived.
  * Rides will point at a Vehicle later; this module does not import them.
  */
-export { archiveVehicle, createVehicle, listVehicles, updateVehicle, VehicleConflictError, VehicleNotFoundError } from './infrastructure/vehicle-access'
+export { archiveVehicle, createVehicle, listVehicles, updateVehicle, VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError } from './infrastructure/vehicle-access'

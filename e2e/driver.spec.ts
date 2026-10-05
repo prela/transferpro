@@ -16,4 +16,12 @@ test('a driver cannot open members, settings, or clients', async ({ page }) => {
   await page.goto('/clients')
   await expect(page.getByRole('alert')).toContainText('Vozač ne može dodavati ni ispravljati klijente.')
   await expect(page.getByRole('heading', { name: 'Dodaj klijenta' })).toHaveCount(0)
+
+  await page.goto('/drivers')
+  await expect(page.getByRole('alert')).toContainText('Vozač ne može dodavati ni ispravljati vozače.')
+  await expect(page.getByLabel('Ime')).toHaveCount(0)
+
+  await page.goto('/vehicles')
+  await expect(page.getByRole('alert')).toContainText('Vozač ne može dodavati ni ispravljati vozila.')
+  await expect(page.getByLabel('Registarska oznaka', { exact: true })).toHaveCount(0)
 })

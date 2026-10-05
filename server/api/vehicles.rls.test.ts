@@ -177,6 +177,8 @@ it('post answers 400 for a bad body and does not echo the plate, and no session 
   expect((await call('PATCH', '/api/vehicles/a1b2c3d4-5555-4555-8555-555555555555', undefined, { kind: 'occasional' })).status).toBe(401)
   expect((await call('POST', '/api/vehicles/a1b2c3d4-5555-4555-8555-555555555555/archive')).status).toBe(401)
   expect((await call('GET', '/api/vehicles?includeArchived=1')).status).toBe(400)
+  expect((await call('GET', '/api/vehicles?includeArchived=')).status).toBe(400)
+  expect((await call('GET', '/api/vehicles?includeArchived=false')).status).toBe(401)
 })
 
 it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and a driver is refused', async () => {
@@ -216,7 +218,9 @@ it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and
 
   const duplicate = await call('POST', '/api/vehicles', admin, vehicleBody({ registrationPlate: 'DU 123 AB' }))
   expect(duplicate.status).toBe(409)
-  const duplicateText = await duplicate.text()
+  const duplicateBody = await duplicate.json()
+  expect(duplicateBody.code).toBe('vehicle_plate_taken')
+  const duplicateText = JSON.stringify(duplicateBody)
   expect(duplicateText).not.toContain(plate)
   expect(duplicateText).not.toContain('DU 123 AB')
 
@@ -243,7 +247,9 @@ it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and
 
   const frozen = await call('PATCH', `/api/vehicles/${row.id}`, admin, { kind: 'fixed' })
   expect(frozen.status).toBe(409)
-  expect(await frozen.text()).not.toContain('ZG111AA')
+  const frozenBody = await frozen.json()
+  expect(frozenBody.code).toBe('vehicle_archived')
+  expect(JSON.stringify(frozenBody)).not.toContain('ZG111AA')
 
   const hidden = await call('GET', '/api/vehicles', dispatcher)
   expect(await hidden.json()).toEqual({ vehicles: [] })
@@ -257,6 +263,13 @@ it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and
       archivedAt: expect.any(String),
     })],
   })
+
+  const other = await call('POST', '/api/vehicles', dispatcher, vehicleBody({ registrationPlate: 'ST333DD' }))
+  expect(other.status).toBe(200)
+  const otherRow = await other.json()
+  const archivedPlate = await call('PATCH', `/api/vehicles/${otherRow.id}`, admin, { registrationPlate: 'ZG111AA' })
+  expect(archivedPlate.status).toBe(409)
+  expect((await archivedPlate.json()).code).toBe('vehicle_archived_plate')
 
   const again = await call('POST', `/api/vehicles/${row.id}/archive`, admin)
   expect(again.status).toBe(200)

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { isCalendarDate } from './driver'
+import { isCalendarDate } from './date'
 
 /**
  * A registration plate after spaces are removed. 16 covers a Croatian plate
@@ -83,20 +83,6 @@ export const vehicleListSchema = z.object({
 export type VehicleList = z.infer<typeof vehicleListSchema>
 
 /**
- * GET /api/vehicles?includeArchived=. Absent, empty, or false hides archived
- * rows. Only true includes them. Any other value is refused.
- */
-export const includeArchivedQuerySchema = z.union([
-  z.undefined(),
-  z.null(),
-  z.literal(''),
-  z.literal('false'),
-  z.literal(false),
-  z.literal('true'),
-  z.literal(true),
-])
-
-/**
  * POST /api/vehicles. Archive is absent: a new Vehicle starts on the list.
  * An unknown key is refused.
  */
@@ -164,14 +150,6 @@ export function parseVehiclePatch(raw: unknown): VehiclePatch {
   if (!parsed.success)
     throw new VehicleInputError()
   return parsed.data
-}
-
-/** Accepts the list query. Any other value throws first. */
-export function parseIncludeArchivedQuery(raw: unknown): boolean {
-  const parsed = includeArchivedQuerySchema.safeParse(raw)
-  if (!parsed.success)
-    throw new VehicleInputError()
-  return parsed.data === 'true' || parsed.data === true
 }
 
 export type VehiclePlateError = 'empty' | 'too-long'

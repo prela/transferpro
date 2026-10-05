@@ -9,6 +9,14 @@ export async function signIn(page: Page, email: string, password: string, tenant
   await expect(page.getByRole('heading', { level: 1, name: tenantName })).toBeVisible()
 }
 
+/** Apply light or dark theme before navigation so color-mode paints the right variant. */
+export async function useTheme(page: Page, theme: 'light' | 'dark') {
+  await page.emulateMedia({ colorScheme: theme })
+  await page.evaluate((value) => {
+    localStorage.setItem('transferpro-theme', value)
+  }, theme)
+}
+
 export async function signOut(page: Page) {
   await page.getByRole('button', { name: 'Odjava', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
