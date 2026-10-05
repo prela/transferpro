@@ -18,22 +18,32 @@ export async function usePlatformPage() {
       return platformShellSchema.parse(await requestFetch<unknown>('/api/platform/session'))
     }
     catch (error) {
-      if (httpStatus(error) === 401) {
-        await navigateTo('/')
+      // Same as the tenant screens: 401 is "signed out", not a load failure.
+      // navigateTo inside this fetcher throws during the document request
+      // (NUXT_E1001) and leaves the error + Sign out chrome on the page.
+      if (httpStatus(error) === 401)
         return null
-      }
       throw error
     }
+  }, {
+    // A cached shell would keep the firm list after the session cookie is gone.
+    getCachedData: () => undefined,
   })
 
   if (shell.value)
     await setLocale(shell.value.locale)
+  else if (!loadError.value)
+    await navigateTo('/')
 
   async function signOut() {
     pending.value = true
     shellError.value = null
     try {
+      // ofetch omits Content-Type when there is no body. The auth route still
+      // gives that POST a body stream, and Better Auth answers 415. An empty
+      // object is application/json, which sign-out accepts.
       await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
+      clearNuxtData()
       await navigateTo('/')
     }
     catch {
