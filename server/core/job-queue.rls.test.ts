@@ -1,4 +1,5 @@
 import type { JobQueue, TenantTransaction } from './index'
+import { loadEnvFile } from 'node:process'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
@@ -14,6 +15,9 @@ import { captureLogs } from './testing'
  * A committed job is taken as well, so an empty queue cannot pass this test
  * by never storing anything.
  */
+loadEnvFile('.env')
+loadEnvFile('.env.migrate')
+
 const databaseUrl = process.env.DATABASE_URL
 const authDatabaseUrl = process.env.AUTH_DATABASE_URL
 const queueDatabaseUrl = process.env.QUEUE_DATABASE_URL
