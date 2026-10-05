@@ -119,6 +119,11 @@
         "field_changed": "Vehicle corrected",
         "archived": "Vehicle archived"
       },
+      "roster": {
+        "assigned": "Vehicle given for the day",
+        "changed": "Day's vehicle changed",
+        "cleared": "Day's vehicle cleared"
+      },
       "tenant": {
         "renamed": "The platform renamed the firm",
         "suspended": "The platform deactivated the firm",
@@ -272,6 +277,33 @@
       "insuranceExpiresOn": "Insurance expiry",
       "description": "Description"
     }
+  },
+  "roster": {
+    "nav": "Roster",
+    "home": "Home",
+    "title": "Vehicle roster",
+    "date": "Date",
+    "intro": "One vehicle per driver for this day. A vehicle already given to another driver that day is refused.",
+    "loading": "Loading the roster",
+    "loadFailed": "The roster could not be loaded. Try again.",
+    "emptyDrivers": "No drivers yet.",
+    "emptyVehicles": "No vehicles yet. Add one before giving it to a driver.",
+    "chooseVehicle": "Choose a vehicle",
+    "vehicleFor": "Vehicle for {name}",
+    "saveFor": "Save vehicle for {name}",
+    "clearFor": "Clear vehicle for {name}",
+    "saving": "Saving",
+    "saved": "Saved.",
+    "archivedStill": "{plate} is archived and stays on this day until you clear it or choose another vehicle.",
+    "missingVehicle": "The vehicle on this day is no longer on the list. Clear it or choose another.",
+    "vehicleTaken": "That vehicle is already given to another driver on this day.",
+    "vehicleArchived": "An archived vehicle cannot be given for the day.",
+    "driverTaken": "That driver already has a vehicle for this day. Reload the day.",
+    "notFound": "That driver or vehicle is not on the list.",
+    "forbidden": "A driver cannot change the roster.",
+    "signedOut": "You are signed out. Sign in and try again.",
+    "saveFailed": "The roster could not be saved. Try again.",
+    "vehicle": "Vehicle"
   },
   "platform": {
     "title": "Firms",

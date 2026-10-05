@@ -96,6 +96,11 @@ function detailText(entry: AuditEntry): string {
       return t(`vehicles.fields.${entry.data.field}`)
     case 'vehicle.archived':
       return ''
+    case 'roster.assigned':
+    case 'roster.changed':
+    case 'roster.cleared':
+      // The field name only. The ids stay on the row; a plate or a driver name does not.
+      return t('roster.vehicle')
     case 'tenant.renamed':
     case 'tenant.suspended':
     case 'tenant.reactivated':

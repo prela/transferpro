@@ -24,4 +24,8 @@ test('a driver cannot open members, settings, or clients', async ({ page }) => {
   await page.goto('/vehicles')
   await expect(page.getByRole('alert')).toContainText('Vozač ne može dodavati ni ispravljati vozila.')
   await expect(page.getByLabel('Registarska oznaka', { exact: true })).toHaveCount(0)
+
+  await page.goto('/roster')
+  await expect(page.getByRole('alert')).toContainText('Vozač ne može mijenjati raspored.')
+  await expect(page.getByLabel('Datum')).toHaveCount(0)
 })

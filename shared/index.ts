@@ -17,6 +17,8 @@ export type { ChangeMemberRoleBody, Member, MemberErrorKey, MemberList } from '.
 export { companyAccountListSchema, companyAccountSchema, parseRenameTenantAccount, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './platform-account'
 export type { CompanyAccount, CompanyAccountList, PlatformActor, PlatformShell } from './platform-account'
 export { includeArchivedQuerySchema, parseIncludeArchivedQuery, QueryParamError } from './query'
+export { calendarDateInTimeZone, parseRosterDate, parseSetRoster, rosterAssignmentSchema, rosterDateSchema, rosterDaySchema, RosterInputError, setRosterResultSchema, setRosterSchema } from './roster'
+export type { RosterAssignment, RosterDay, SetRoster, SetRosterResult } from './roster'
 export { sessionShellSchema } from './session-shell'
 export type { SessionShell } from './session-shell'
 export { signInErrorKey } from './sign-in-error'

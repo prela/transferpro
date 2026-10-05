@@ -125,6 +125,20 @@ function vehicleFieldsArray(data: AnyPgColumn) {
   return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${vehicleFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${vehicleFieldsJson}`
 }
 
+/** An id stored as text. Same RFC 4122 shape as a Driver id. A plate cannot sit here. */
+function uuidText(data: AnyPgColumn, key: string) {
+  const name = sql.raw(`'${key}'`)
+  return sql`jsonb_typeof(${data} -> ${name}) = 'string' and ${data} ->> ${name} ~* ${sql.raw(`'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`)}`
+}
+
+/**
+ * A calendar date stored as text. Month and day are digits only.
+ * Zod refuses 31 February; this check refuses a name or a plate in the same slot.
+ */
+function rosterDateText(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'rosterDate'`)}) = 'string' and ${data} ->> ${sql.raw(`'rosterDate'`)} ~ ${sql.raw(`'^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'`)}`
+}
+
 /**
  * Append-only (ADR-0014). The app role may only SELECT. Rows are written by
  * `audit.append_entry` and by the trigger on `auth.invitation`, and a trigger
@@ -166,6 +180,9 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'vehicle.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId', 'fields')} and ${vehicleIdText(table.data)} and ${vehicleFieldsArray(table.data)}
     when 'vehicle.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId', 'field')} and ${vehicleIdText(table.data)} and ${vehicleFieldText(table.data)}
     when 'vehicle.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId')} and ${vehicleIdText(table.data)}
+    when 'roster.assigned' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'vehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')}
+    when 'roster.changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'fromVehicleId', 'toVehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'fromVehicleId')} and ${uuidText(table.data, 'toVehicleId')}
+    when 'roster.cleared' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'vehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')}
     when 'tenant.renamed' then ${table.subjectUserId} is null and ${emptyData(table.data)}
     when 'tenant.suspended' then ${table.subjectUserId} is null and ${emptyData(table.data)}
     when 'tenant.reactivated' then ${table.subjectUserId} is null and ${emptyData(table.data)}

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { clientKindSchema } from './client'
 import { driverFieldSchema } from './driver'
+import { rosterDateSchema } from './roster'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
 import { vehicleFieldSchema } from './vehicle'
@@ -25,6 +26,9 @@ export const auditActions = [
   'vehicle.created',
   'vehicle.field_changed',
   'vehicle.archived',
+  'roster.assigned',
+  'roster.changed',
+  'roster.cleared',
   'tenant.renamed',
   'tenant.suspended',
   'tenant.reactivated',
@@ -168,6 +172,42 @@ const vehicleArchived = z.object({
 })
 
 /*
+ * A roster row is not a member. The data names the day and the ids.
+ * A plate, a driver name, or a phone would stay forever on a row that
+ * is never deleted, so none of those keys exist.
+ */
+const rosterAssigned = z.object({
+  action: z.literal('roster.assigned'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rosterDate: rosterDateSchema,
+    driverId,
+    vehicleId,
+  }),
+})
+
+const rosterChanged = z.object({
+  action: z.literal('roster.changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rosterDate: rosterDateSchema,
+    driverId,
+    fromVehicleId: vehicleId,
+    toVehicleId: vehicleId,
+  }),
+})
+
+const rosterCleared = z.object({
+  action: z.literal('roster.cleared'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rosterDate: rosterDateSchema,
+    driverId,
+    vehicleId,
+  }),
+})
+
+/*
  * A platform mutation names no person and stores no company name.
  * The organization id is the row's tenant_id. `data` stays empty.
  */
@@ -199,6 +239,9 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   vehicleCreated,
   vehicleFieldChanged,
   vehicleArchived,
+  rosterAssigned,
+  rosterChanged,
+  rosterCleared,
   tenantRenamed,
   tenantSuspended,
   tenantReactivated,
@@ -233,6 +276,9 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   vehicleCreated.extend(listed),
   vehicleFieldChanged.extend(listed),
   vehicleArchived.extend(listed),
+  rosterAssigned.extend(listed),
+  rosterChanged.extend(listed),
+  rosterCleared.extend(listed),
   tenantRenamed.extend(listed),
   tenantSuspended.extend(listed),
   tenantReactivated.extend(listed),

@@ -119,6 +119,11 @@
         "field_changed": "Vozilo ispravljeno",
         "archived": "Vozilo arhivirano"
       },
+      "roster": {
+        "assigned": "Vozilo dodijeljeno za dan",
+        "changed": "Vozilo za dan promijenjeno",
+        "cleared": "Vozilo za dan uklonjeno"
+      },
       "tenant": {
         "renamed": "Platforma je preimenovala tvrtku",
         "suspended": "Platforma je deaktivirala tvrtku",
@@ -272,6 +277,33 @@
       "insuranceExpiresOn": "Istek osiguranja",
       "description": "Opis"
     }
+  },
+  "roster": {
+    "nav": "Raspored",
+    "home": "Početna",
+    "title": "Raspored vozila",
+    "date": "Datum",
+    "intro": "Jedno vozilo po vozaču za taj dan. Vozilo koje je već dano drugom vozaču tog dana nije prihvaćeno.",
+    "loading": "Učitavanje rasporeda",
+    "loadFailed": "Raspored se nije mogao učitati. Pokušajte ponovno.",
+    "emptyDrivers": "Još nema vozača.",
+    "emptyVehicles": "Još nema vozila. Dodajte vozilo prije nego što ga date vozaču.",
+    "chooseVehicle": "Odaberite vozilo",
+    "vehicleFor": "Vozilo za {name}",
+    "saveFor": "Spremi vozilo za {name}",
+    "clearFor": "Ukloni vozilo za {name}",
+    "saving": "Spremanje",
+    "saved": "Spremljeno.",
+    "archivedStill": "{plate} je arhivirano i ostaje na ovom danu dok ga ne uklonite ili odaberete drugo vozilo.",
+    "missingVehicle": "Vozilo za ovaj dan više nije na popisu. Uklonite ga ili odaberite drugo.",
+    "vehicleTaken": "To vozilo je već dano drugom vozaču za taj dan.",
+    "vehicleArchived": "Arhivirano vozilo ne može se dati za taj dan.",
+    "driverTaken": "Taj vozač već ima vozilo za taj dan. Učitajte dan ponovno.",
+    "notFound": "Taj vozač ili to vozilo nije na popisu.",
+    "forbidden": "Vozač ne može mijenjati raspored.",
+    "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
+    "saveFailed": "Raspored nije spremljen. Pokušajte ponovno.",
+    "vehicle": "Vozilo"
   },
   "platform": {
     "title": "Tvrtke",

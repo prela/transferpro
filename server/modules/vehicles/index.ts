@@ -5,3 +5,5 @@
  * Rides will point at a Vehicle later; this module does not import them.
  */
 export { archiveVehicle, createVehicle, listVehicles, updateVehicle, VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError } from './infrastructure/vehicle-access'
+export { vehiclePresence } from './infrastructure/vehicles'
+export type { VehiclePresence } from './infrastructure/vehicles'
