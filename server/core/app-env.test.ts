@@ -9,6 +9,7 @@ const base = {
   DATABASE_URL: 'postgres://app@127.0.0.1:5432/transferpro',
   AUTH_DATABASE_URL: 'postgres://auth@127.0.0.1:5432/transferpro',
   QUEUE_DATABASE_URL: 'postgres://queue@127.0.0.1:5432/transferpro',
+  PLATFORM_DATABASE_URL: 'postgres://platform@127.0.0.1:5432/transferpro',
   BETTER_AUTH_SECRET: 'transferpro-test-secret-32-characters',
   BETTER_AUTH_URL: 'http://localhost:3000',
   RESEND_API_KEY: 'test-resend-key',
@@ -59,6 +60,11 @@ it('accepts an optional SENTRY_DSN and SENTRY_RELEASE', () => {
     SENTRY_RELEASE: 'abc123def456',
   })
   expect(() => parseAppEnv({ ...base, SENTRY_DSN: 'not-a-url' })).toThrow()
+})
+
+it('requires the platform role url', () => {
+  const { PLATFORM_DATABASE_URL: _removed, ...withoutPlatform } = base
+  expect(() => parseAppEnv(withoutPlatform)).toThrow()
 })
 
 it('leaves MAILER unset in development and test', () => {

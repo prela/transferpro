@@ -118,6 +118,11 @@
         "created": "Vozilo dodano",
         "field_changed": "Vozilo ispravljeno",
         "archived": "Vozilo arhivirano"
+      },
+      "tenant": {
+        "renamed": "Platforma je preimenovala tvrtku",
+        "suspended": "Platforma je deaktivirala tvrtku",
+        "reactivated": "Platforma je ponovno aktivirala tvrtku"
       }
     }
   },
@@ -267,5 +272,21 @@
       "insuranceExpiresOn": "Istek osiguranja",
       "description": "Opis"
     }
+  },
+  "platform": {
+    "title": "Tvrtke",
+    "empty": "Još nema tvrtki.",
+    "back": "Tvrtke",
+    "name": "Naziv",
+    "slug": "Oznaka",
+    "created": "Stvoreno",
+    "active": "Aktivna",
+    "activeYes": "Da",
+    "activeNo": "Ne",
+    "rename": "Preimenuj",
+    "renamed": "Naziv je spremljen.",
+    "nameInvalid": "Unesite naziv od najviše 120 znakova.",
+    "notFound": "Ta tvrtka nije pronađena.",
+    "saveFailed": "Naziv nije spremljen. Pokušajte ponovno."
   }
 }

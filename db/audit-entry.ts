@@ -65,6 +65,14 @@ function keysOnly(data: AnyPgColumn, ...keys: string[]) {
 }
 
 /**
+ * A platform mutation stores nothing but the action. An empty object keeps
+ * a company name, and a person's name, off a row that is never deleted.
+ */
+function emptyData(data: AnyPgColumn) {
+  return sql`${data} = ${sql.raw(`'{}'::jsonb`)}`
+}
+
+/**
  * A Client id stored as text. Zod's uuid is the same RFC 4122 shape.
  * `~*` so a lowercase or uppercase hex id both pass.
  */
@@ -158,5 +166,8 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'vehicle.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId', 'fields')} and ${vehicleIdText(table.data)} and ${vehicleFieldsArray(table.data)}
     when 'vehicle.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId', 'field')} and ${vehicleIdText(table.data)} and ${vehicleFieldText(table.data)}
     when 'vehicle.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId')} and ${vehicleIdText(table.data)}
+    when 'tenant.renamed' then ${table.subjectUserId} is null and ${emptyData(table.data)}
+    when 'tenant.suspended' then ${table.subjectUserId} is null and ${emptyData(table.data)}
+    when 'tenant.reactivated' then ${table.subjectUserId} is null and ${emptyData(table.data)}
     else false end) is true`),
 ], { oneRowPerTenant: false })

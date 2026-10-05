@@ -135,6 +135,9 @@ export async function acceptInvitation(
   const record = await handle.invitationById(body.invitationId)
   if (record === null || !usable(record))
     throw new InvitationAccessError(400)
+  // Before any user insert. A deactivated firm does not gain an account.
+  if (await handle.organizationSuspended(record.organizationId))
+    throw new InvitationAccessError(403)
 
   const session = await handle.auth.api.getSession({ headers })
   if (session) {

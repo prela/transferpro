@@ -118,6 +118,11 @@
         "created": "Vehicle added",
         "field_changed": "Vehicle corrected",
         "archived": "Vehicle archived"
+      },
+      "tenant": {
+        "renamed": "The platform renamed the firm",
+        "suspended": "The platform deactivated the firm",
+        "reactivated": "The platform reactivated the firm"
       }
     }
   },
@@ -267,5 +272,21 @@
       "insuranceExpiresOn": "Insurance expiry",
       "description": "Description"
     }
+  },
+  "platform": {
+    "title": "Firms",
+    "empty": "No firms yet.",
+    "back": "Firms",
+    "name": "Name",
+    "slug": "Slug",
+    "created": "Created",
+    "active": "Active",
+    "activeYes": "Yes",
+    "activeNo": "No",
+    "rename": "Rename",
+    "renamed": "The name was saved.",
+    "nameInvalid": "Enter a name of at most 120 characters.",
+    "notFound": "That firm was not found.",
+    "saveFailed": "The name was not saved. Try again."
   }
 }

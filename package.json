@@ -10,7 +10,10 @@
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "node --env-file=.env.migrate ./node_modules/drizzle-kit/bin.cjs migrate",
-    "tenant:create": "node --import ./scripts/register-ts.mjs --env-file=.env --env-file=.env.migrate ./scripts/tenant-create.ts"
+    "tenant:create": "node --import ./scripts/register-ts.mjs --env-file=.env --env-file=.env.migrate ./scripts/tenant-create.ts",
+    "superadmin:create": "node --import ./scripts/register-ts.mjs --env-file=.env --env-file=.env.migrate ./scripts/superadmin-create.ts",
+    "superadmin:revoke": "node --import ./scripts/register-ts.mjs --env-file=.env --env-file=.env.migrate ./scripts/superadmin-revoke.ts",
+    "tenant:account": "node --import ./scripts/register-ts.mjs --env-file=.env --env-file=.env.migrate ./scripts/tenant-account.ts"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.7.7",

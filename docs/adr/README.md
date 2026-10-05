@@ -29,8 +29,9 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0011 | Tenant session, grant-walled roles, and the member read | accepted; partially superseded by ADR-0014 |
 | ADR-0012 | Logging, redaction, and error responses | accepted |
 | ADR-0013 | Invitation email and the accept path | accepted |
-| ADR-0014 | Append-only audit log | accepted; partially superseded by ADR-0015 |
+| ADR-0014 | Append-only audit log | accepted; partially superseded by ADR-0015 and ADR-0019 |
 | ADR-0015 | Settings changes in the audit log | accepted |
 | ADR-0016 | UI: Nuxt UI + Tailwind v4 | proposed |
 | ADR-0017 | A Client keeps its name off the audit log | accepted |
 | ADR-0018 | Module boundaries | accepted |
+| ADR-0019 | Superadmin | accepted |

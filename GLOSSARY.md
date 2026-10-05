@@ -55,7 +55,7 @@ A pending offer for one email to join a Tenant as admin, dispatcher, or driver. 
 _Avoid_: signup link
 
 **Audit entry**:
-One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to, the setting value that changed, the Client (its id, and for a kind change the previous and next kind), the Driver fields that changed, or the Vehicle (its id and field names for created, field changed, and archived). A Client's name is not in the record. A Driver change does not record the phone or the licence dates. A Vehicle change does not record the plate or the dates. It is written with the action and never changed or removed.
+One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to, the setting value that changed, the Client (its id, and for a kind change the previous and next kind), the Driver fields that changed, or the Vehicle (its id and field names for created, field changed, and archived). A Client's name is not in the record. A Driver change does not record the phone or the licence dates. A Vehicle change does not record the plate or the dates. A platform rename, deactivation, or reactivation stores an empty object and no person's name. It is written with the action and never changed or removed.
 _Avoid_: history, event, activity
 
 **Driver**:
@@ -75,6 +75,10 @@ _Avoid_: admin
 
 **Admin**:
 The owner of a Tenant.
+
+**Superadmin**:
+The platform owner. A user with a row in `platform.superadmin` and no Tenant membership. They can list, open, and rename Tenants. Opening a Tenant shows its name, slug, created time, and whether it is active, and does not show that Tenant's clients, drivers, vehicles, rides, members, or audit log.
+_Avoid_: admin, owner
 
 **Partner**:
 A subcontractor company a Ride is handed to. *(draft)*

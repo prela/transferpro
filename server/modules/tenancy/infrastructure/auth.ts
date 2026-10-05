@@ -10,7 +10,7 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
 import * as authSchema from '../../../../db/auth-schema'
-import { inviteLink, tenantRoleSchema } from '../../../../shared'
+import { inviteLink, SUPERADMIN_SESSION_SECONDS, tenantRoleSchema } from '../../../../shared'
 import { nodeEnv } from '../../../core/index'
 import { deliverInvitationEmail, inviteSendState } from './invite-send'
 import { invitationExpiresInSeconds, organizationRoles } from './tenant-roles'
@@ -136,6 +136,83 @@ export interface InvitationRecord {
   readonly organizationId: string
 }
 
+/**
+ * Eight hours after the session was created, and not a sliding window.
+ * A missing grant leaves the caller's expiresAt alone, so a Tenant member
+ * keeps the seven-day session. The select lists user_id only.
+ */
+const sessionStamp = z.object({
+  user_id: z.string(),
+  created_at: z.coerce.date(),
+})
+
+interface SessionHookContext {
+  getSignedCookie?: (name: string, secret: string) => Promise<string | false | null | undefined>
+  context?: {
+    secret?: string
+    authCookies?: { sessionToken?: { name?: string } }
+  }
+}
+
+/**
+ * A refresh sends only the new expiresAt. The signed cookie is the token
+ * of the row, so the cap can still be measured from created_at.
+ * The database trigger is the backstop when this context is missing.
+ */
+async function sessionToken(context: unknown): Promise<string | undefined> {
+  if (typeof context !== 'object' || context === null)
+    return undefined
+  const hook = context as SessionHookContext
+  const name = hook.context?.authCookies?.sessionToken?.name
+  const secret = hook.context?.secret
+  if (!name || !secret || !hook.getSignedCookie)
+    return undefined
+  const token = await hook.getSignedCookie(name, secret)
+  return typeof token === 'string' && token !== '' ? token : undefined
+}
+
+async function superadminExpiresAt(
+  pool: pg.Pool,
+  session: { id?: string, userId?: string, createdAt?: Date },
+  context?: unknown,
+): Promise<Date | undefined> {
+  let userId = session.userId
+  let createdAt = session.createdAt
+  if (!userId || !createdAt) {
+    const token = await sessionToken(context)
+    const existing = session.id
+      ? await pool.query('select user_id, created_at from auth.session where id = $1', [session.id])
+      : token
+        ? await pool.query('select user_id, created_at from auth.session where token = $1', [token])
+        : undefined
+    const row = sessionStamp.safeParse(existing?.rows[0])
+    if (row.success) {
+      userId ??= row.data.user_id
+      createdAt ??= row.data.created_at
+    }
+  }
+  if (!userId || !createdAt)
+    return undefined
+  const grant = await pool.query(
+    'select user_id from platform.superadmin where user_id = $1',
+    [userId],
+  )
+  if ((grant.rowCount ?? 0) === 0)
+    return undefined
+  return new Date(createdAt.getTime() + SUPERADMIN_SESSION_SECONDS * 1000)
+}
+
+async function capSuperadminSession(
+  pool: pg.Pool,
+  session: { id?: string, userId?: string, createdAt?: Date },
+  context: unknown,
+) {
+  const expiresAt = await superadminExpiresAt(pool, session, context)
+  if (!expiresAt)
+    return
+  return { data: { ...session, expiresAt } }
+}
+
 export function createAuth(
   env: Pick<AppEnv, 'AUTH_DATABASE_URL' | 'BETTER_AUTH_SECRET' | 'BETTER_AUTH_URL'>,
   options?: { mailer?: Mailer, rateLimit?: ReturnType<typeof signInRateLimit> },
@@ -178,6 +255,19 @@ export function createAuth(
           required: false,
           // The shell writes hr or en through POST /api/locale, not this body.
           input: false,
+        },
+      },
+    },
+    databaseHooks: {
+      session: {
+        create: {
+          // A platform owner does not keep the seven-day session.
+          // The row's expires_at is what getSession honours.
+          before: async (session, context) => capSuperadminSession(pool, session, context),
+        },
+        update: {
+          // A refresh must not stretch an eight-hour session out to seven days.
+          before: async (session, context) => capSuperadminSession(pool, session, context),
         },
       },
     },
@@ -320,6 +410,27 @@ export function createAuth(
      * Memberships only: organization id and role. The email stays on auth.user.
      * This pool is the auth role. The app role cannot read this table.
      */
+    /**
+     * The grant is the row. Selecting user_id is the only column this role has.
+     */
+    async isSuperadmin(userId: string): Promise<boolean> {
+      const result = await pool.query(
+        'select user_id from platform.superadmin where user_id = $1',
+        [userId],
+      )
+      return (result.rowCount ?? 0) > 0
+    },
+    /**
+     * A row means the firm is deactivated. organization_id is the only column
+     * this role may read. The check does not open schema app.
+     */
+    async organizationSuspended(organizationId: string): Promise<boolean> {
+      const result = await pool.query(
+        'select organization_id from platform.tenant_account where organization_id = $1',
+        [organizationId],
+      )
+      return (result.rowCount ?? 0) > 0
+    },
     async memberships(userId: string): Promise<Membership[]> {
       const result = await pool.query(
         'select organization_id, role from auth.member where user_id = $1',

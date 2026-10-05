@@ -32,6 +32,7 @@ function required(value: string | undefined, name: string): string {
 const databaseUrl = process.env.DATABASE_URL
 const authDatabaseUrl = process.env.AUTH_DATABASE_URL
 const queueDatabaseUrl = process.env.QUEUE_DATABASE_URL
+const platformDatabaseUrl = process.env.PLATFORM_DATABASE_URL
 const ownerUrl = process.env.DATABASE_MIGRATE_URL
 const baseUrl = required(process.env.BETTER_AUTH_URL, 'BETTER_AUTH_URL')
 if (!databaseUrl)
@@ -40,6 +41,8 @@ if (!authDatabaseUrl)
   throw new Error('AUTH_DATABASE_URL is required (the transferpro_auth role)')
 if (!queueDatabaseUrl)
   throw new Error('QUEUE_DATABASE_URL is required (the transferpro_queue role)')
+if (!platformDatabaseUrl)
+  throw new Error('PLATFORM_DATABASE_URL is required (the transferpro_platform role)')
 if (!ownerUrl)
   throw new Error('DATABASE_MIGRATE_URL is required (the transferpro_owner role)')
 
@@ -47,6 +50,7 @@ const env = parseAppEnv({
   DATABASE_URL: databaseUrl,
   AUTH_DATABASE_URL: authDatabaseUrl,
   QUEUE_DATABASE_URL: queueDatabaseUrl,
+  PLATFORM_DATABASE_URL: platformDatabaseUrl,
   BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
   BETTER_AUTH_URL: baseUrl,
   NODE_ENV: 'test',

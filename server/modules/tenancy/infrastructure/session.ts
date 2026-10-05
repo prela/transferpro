@@ -1,4 +1,4 @@
-import type { AuditEntryList, DisplayLocale, SessionShell, TenantRole, TenantSettings } from '../../../../shared'
+import type { AuditEntryList, DisplayLocale, PlatformActor, SessionShell, TenantRole, TenantSettings } from '../../../../shared'
 import type { TenantContext, TenantTransaction } from '../../../core/index'
 import type { Membership } from './auth'
 import { sql } from 'drizzle-orm'
@@ -26,10 +26,17 @@ import { changeTenantSettings, loadTenantSettings } from './tenant-settings'
 export class TenantAccessError extends Error {
   readonly statusCode: 401 | 403
 
-  constructor(statusCode: 401 | 403) {
+  /**
+   * Set when a signed-in user is refused, so a platform log can name the
+   * actor without a second session read. Absent on 401.
+   */
+  readonly userId?: string
+
+  constructor(statusCode: 401 | 403, userId?: string) {
     super(statusCode === 401 ? 'Unauthorized' : 'Forbidden')
     this.name = 'TenantAccessError'
     this.statusCode = statusCode
+    this.userId = userId
   }
 }
 
@@ -315,6 +322,28 @@ export async function updateUserLocale(headers: Headers, locale: DisplayLocale):
  * One getSession and one memberships read per call. The context and the
  * role both come from the membership `chooseMembership` picks.
  */
+/**
+ * The platform gate. No session is 401. Any signed-in user who is not in
+ * `platform.superadmin` is 403, before the caller looks at an organization id.
+ * The result has no tenantId and is not a TenantContext.
+ */
+export async function platformActorFromSession(headers: Headers): Promise<PlatformActor> {
+  const { handle } = tenantRuntime()
+  const result = await handle.auth.api.getSession({ headers })
+  const parsed = sessionSchema.safeParse(result)
+  if (!parsed.success)
+    throw new TenantAccessError(401)
+  const userId = parsed.data.user.id
+  if (!await handle.isSuperadmin(userId))
+    throw new TenantAccessError(403, userId)
+  return { userId }
+}
+
+/** The signed-in user's locale, or null when they have not chosen one. No tenant session. */
+export async function readUserLocale(userId: string): Promise<string | null> {
+  return tenantRuntime().handle.userLocale(userId)
+}
+
 async function actorFromSession(handle: Runtime['handle'], headers: Headers): Promise<Actor> {
   const result = await handle.auth.api.getSession({ headers })
   const parsed = sessionSchema.safeParse(result)
@@ -322,6 +351,9 @@ async function actorFromSession(handle: Runtime['handle'], headers: Headers): Pr
     throw new TenantAccessError(401)
 
   const membership = chooseMembership(await handle.memberships(parsed.data.user.id), parsed.data.session.activeOrganizationId)
+  // A deactivated firm fails closed on the next request. The session row stays.
+  if (await handle.organizationSuspended(membership.organizationId))
+    throw new TenantAccessError(403, parsed.data.user.id)
   return { context: { tenantId: membership.organizationId }, userId: parsed.data.user.id, role: membership.role }
 }
 

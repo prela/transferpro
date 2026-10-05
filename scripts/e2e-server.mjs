@@ -13,6 +13,11 @@ if (process.env.NODE_ENV !== 'test' || (key !== undefined && key !== '')) {
   process.exit(1)
 }
 
+if (process.env.PLATFORM_DATABASE_URL === undefined || process.env.PLATFORM_DATABASE_URL === '') {
+  console.error('E2E refused to start: PLATFORM_DATABASE_URL is required (the transferpro_platform role).')
+  process.exit(1)
+}
+
 const child = spawn(process.execPath, ['.output/server/index.mjs'], {
   stdio: 'inherit',
   env: process.env,

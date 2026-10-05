@@ -190,20 +190,23 @@ TOTAL_STAGES=3
 gen_secret() { openssl rand -hex 24; }
 
 write_role_env() {
-  local owner app auth queue
+  local owner app auth queue platform
   owner=$(gen_secret)
   app=$(gen_secret)
   auth=$(gen_secret)
   queue=$(gen_secret)
+  platform=$(gen_secret)
 
   ENV_FILE=.env
   write_env TRANSFERPRO_OWNER_PASSWORD "$owner"
   write_env TRANSFERPRO_APP_PASSWORD "$app"
   write_env TRANSFERPRO_AUTH_PASSWORD "$auth"
   write_env TRANSFERPRO_QUEUE_PASSWORD "$queue"
+  write_env TRANSFERPRO_PLATFORM_PASSWORD "$platform"
   write_env DATABASE_URL "postgres://transferpro_app:${app}@127.0.0.1:5432/transferpro"
   write_env AUTH_DATABASE_URL "postgres://transferpro_auth:${auth}@127.0.0.1:5432/transferpro"
   write_env QUEUE_DATABASE_URL "postgres://transferpro_queue:${queue}@127.0.0.1:5432/transferpro"
+  write_env PLATFORM_DATABASE_URL "postgres://transferpro_platform:${platform}@127.0.0.1:5432/transferpro"
 
   ENV_FILE=.env.migrate
   write_env DATABASE_MIGRATE_URL "postgres://transferpro_owner:${owner}@127.0.0.1:5432/transferpro"
@@ -213,7 +216,7 @@ write_role_env() {
 banner "Local database roles"
 
 stage "Generate local passwords"
-say "Four passwords are generated here. Nothing is pasted from a dashboard."
+say "Five passwords are generated here. Nothing is pasted from a dashboard."
 say "The app reads .env. Migrations read .env.migrate, which the app does not load."
 note "Both files are gitignored. The passwords are not printed."
 if [[ -f .env || -f .env.migrate ]]; then
@@ -228,7 +231,7 @@ fi
 
 stage "Create the roles in local Postgres"
 say "The first start of this database runs docker/postgres/init-roles.sh."
-say "That script reads the passwords from .env and creates the four roles."
+say "That script reads the passwords from .env and creates the five roles."
 step "From the repo root, run: docker compose up -d"
 note "If the Postgres volume already exists, Docker does not run init scripts again."
 pause "Press Enter once the container is up."

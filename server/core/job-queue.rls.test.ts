@@ -21,17 +21,21 @@ loadEnvFile('.env.migrate')
 const databaseUrl = process.env.DATABASE_URL
 const authDatabaseUrl = process.env.AUTH_DATABASE_URL
 const queueDatabaseUrl = process.env.QUEUE_DATABASE_URL
+const platformDatabaseUrl = process.env.PLATFORM_DATABASE_URL
 if (!databaseUrl)
   throw new Error('DATABASE_URL is required (the transferpro_app role)')
 if (!authDatabaseUrl)
   throw new Error('AUTH_DATABASE_URL is required (the transferpro_auth role)')
 if (!queueDatabaseUrl)
   throw new Error('QUEUE_DATABASE_URL is required (the transferpro_queue role)')
+if (!platformDatabaseUrl)
+  throw new Error('PLATFORM_DATABASE_URL is required (the transferpro_platform role)')
 
 const env = parseAppEnv({
   DATABASE_URL: databaseUrl,
   AUTH_DATABASE_URL: authDatabaseUrl,
   QUEUE_DATABASE_URL: queueDatabaseUrl,
+  PLATFORM_DATABASE_URL: platformDatabaseUrl,
   BETTER_AUTH_SECRET: 'transferpro-test-secret-32-characters',
   BETTER_AUTH_URL: 'http://localhost:3000',
   NODE_ENV: 'test',

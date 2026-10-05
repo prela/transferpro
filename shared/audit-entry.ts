@@ -25,6 +25,9 @@ export const auditActions = [
   'vehicle.created',
   'vehicle.field_changed',
   'vehicle.archived',
+  'tenant.renamed',
+  'tenant.suspended',
+  'tenant.reactivated',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -164,6 +167,22 @@ const vehicleArchived = z.object({
   }),
 })
 
+/*
+ * A platform mutation names no person and stores no company name.
+ * The organization id is the row's tenant_id. `data` stays empty.
+ */
+function tenantPlatformAction(action: 'tenant.renamed' | 'tenant.suspended' | 'tenant.reactivated') {
+  return z.object({
+    action: z.literal(action),
+    subjectUserId: z.null(),
+    data: z.strictObject({}),
+  })
+}
+
+const tenantRenamed = tenantPlatformAction('tenant.renamed')
+const tenantSuspended = tenantPlatformAction('tenant.suspended')
+const tenantReactivated = tenantPlatformAction('tenant.reactivated')
+
 /** What happened: the action, the member it was done to, and its data. */
 export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
@@ -180,6 +199,9 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   vehicleCreated,
   vehicleFieldChanged,
   vehicleArchived,
+  tenantRenamed,
+  tenantSuspended,
+  tenantReactivated,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -211,6 +233,9 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   vehicleCreated.extend(listed),
   vehicleFieldChanged.extend(listed),
   vehicleArchived.extend(listed),
+  tenantRenamed.extend(listed),
+  tenantSuspended.extend(listed),
+  tenantReactivated.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

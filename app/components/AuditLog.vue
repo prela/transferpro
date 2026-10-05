@@ -50,6 +50,20 @@ function roleLabel(role: TenantRole): string {
   return t(`invite.roles.${role}`)
 }
 
+/**
+ * A platform entry stores a user id or the owner role, neither of which is a
+ * member of the firm. The action sentence already says the platform did it.
+ */
+function isPlatformAuditAction(action: AuditEntry['action']): boolean {
+  return action === 'tenant.renamed' || action === 'tenant.suspended' || action === 'tenant.reactivated'
+}
+
+function actorLabel(entry: AuditEntry): string {
+  if (isPlatformAuditAction(entry.action))
+    return ''
+  return entry.actorName ?? t('audit.formerMember')
+}
+
 /** The role the entry kept, or the wait or time zone it changed from and to. */
 function detailText(entry: AuditEntry): string {
   switch (entry.action) {
@@ -81,6 +95,11 @@ function detailText(entry: AuditEntry): string {
     case 'vehicle.field_changed':
       return t(`vehicles.fields.${entry.data.field}`)
     case 'vehicle.archived':
+      return ''
+    case 'tenant.renamed':
+    case 'tenant.suspended':
+    case 'tenant.reactivated':
+      // The action sentence is the whole entry. The data object is empty.
       return ''
   }
 }
@@ -136,7 +155,7 @@ watch(generation, () => {
           </time>
         </template>
         <template #actor-cell="{ row }">
-          {{ row.original.actorName ?? t('audit.formerMember') }}
+          {{ actorLabel(row.original) }}
         </template>
         <template #action-cell="{ row }">
           {{ t(`audit.actions.${row.original.action}`) }}
