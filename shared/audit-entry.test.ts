@@ -120,6 +120,56 @@ it('records a Driver by id and field names, and refuses the phone and the dates'
   }).success).toBe(false)
 })
 
+it('records a Vehicle by id and field names, and refuses the plate and the dates', () => {
+  const vehicleId = 'a1b2c3d4-5555-4555-8555-555555555555'
+  const plate = 'DU123AB'
+  const created = {
+    action: 'vehicle.created' as const,
+    subjectUserId: null,
+    data: {
+      vehicleId,
+      fields: ['registrationPlate', 'kind', 'registrationExpiresOn', 'technicalInspectionExpiresOn', 'insuranceExpiresOn'] as const,
+    },
+  }
+  expect(auditFactSchema.parse(created)).toEqual(created)
+  expect(auditFactSchema.safeParse({
+    ...created,
+    data: { ...created.data, registrationPlate: plate },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...created,
+    data: { vehicleId, fields: ['kind'], registrationExpiresOn: '2027-06-01' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...created, subjectUserId: memberId }).success).toBe(false)
+
+  const changed = {
+    action: 'vehicle.field_changed' as const,
+    subjectUserId: null,
+    data: { vehicleId, field: 'registrationPlate' as const },
+  }
+  expect(auditFactSchema.parse(changed)).toEqual(changed)
+  expect(auditFactSchema.parse({
+    action: 'vehicle.field_changed' as const,
+    subjectUserId: null,
+    data: { vehicleId, field: 'description' as const },
+  }).data).toEqual({ vehicleId, field: 'description' })
+  expect(auditFactSchema.safeParse({
+    ...changed,
+    data: { vehicleId, field: 'description', from: 'van' },
+  }).success).toBe(false)
+
+  const archived = {
+    action: 'vehicle.archived' as const,
+    subjectUserId: null,
+    data: { vehicleId },
+  }
+  expect(auditFactSchema.parse(archived)).toEqual(archived)
+  expect(auditFactSchema.safeParse({
+    ...archived,
+    data: { vehicleId, registrationPlate: plate },
+  }).success).toBe(false)
+})
+
 it('lists an entry whose people are no longer members with null names', () => {
   const listed = auditEntryListSchema.parse({
     entries: [{

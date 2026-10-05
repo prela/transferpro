@@ -3,6 +3,7 @@ import { clientKindSchema } from './client'
 import { driverFieldSchema } from './driver'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
+import { vehicleFieldSchema } from './vehicle'
 
 /**
  * Every action the audit log records (ADR-0014). The database enum
@@ -21,6 +22,9 @@ export const auditActions = [
   'client.kind_changed',
   'driver.created',
   'driver.field_changed',
+  'vehicle.created',
+  'vehicle.field_changed',
+  'vehicle.archived',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -127,6 +131,39 @@ const driverFieldChanged = z.object({
   }),
 })
 
+/*
+ * A Vehicle is not a member. The id says which row. The data names the
+ * fields that were written and nothing else: a plate or an expiry date
+ * would stay forever on a row that is never deleted.
+ */
+const vehicleId = z.uuid()
+
+const vehicleCreated = z.object({
+  action: z.literal('vehicle.created'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    vehicleId,
+    fields: z.array(vehicleFieldSchema).min(1),
+  }),
+})
+
+const vehicleFieldChanged = z.object({
+  action: z.literal('vehicle.field_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    vehicleId,
+    field: vehicleFieldSchema,
+  }),
+})
+
+const vehicleArchived = z.object({
+  action: z.literal('vehicle.archived'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    vehicleId,
+  }),
+})
+
 /** What happened: the action, the member it was done to, and its data. */
 export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
@@ -140,6 +177,9 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   clientKindChanged,
   driverCreated,
   driverFieldChanged,
+  vehicleCreated,
+  vehicleFieldChanged,
+  vehicleArchived,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -168,6 +208,9 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   clientKindChanged.extend(listed),
   driverCreated.extend(listed),
   driverFieldChanged.extend(listed),
+  vehicleCreated.extend(listed),
+  vehicleFieldChanged.extend(listed),
+  vehicleArchived.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

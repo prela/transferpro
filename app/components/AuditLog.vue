@@ -75,6 +75,13 @@ function detailText(entry: AuditEntry): string {
       return entry.data.fields.map(field => t(`drivers.fields.${field}`)).join(', ')
     case 'driver.field_changed':
       return t(`drivers.fields.${entry.data.field}`)
+    case 'vehicle.created':
+      // Field names only. The plate and the expiry dates stay on the Vehicle row.
+      return entry.data.fields.map(field => t(`vehicles.fields.${field}`)).join(', ')
+    case 'vehicle.field_changed':
+      return t(`vehicles.fields.${entry.data.field}`)
+    case 'vehicle.archived':
+      return ''
   }
 }
 

@@ -64,6 +64,13 @@
       "when": 1791190655353,
       "tag": "0008_drivers",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791195291248,
+      "tag": "0009_vehicles",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -99,6 +99,24 @@ function driverFieldsArray(data: AnyPgColumn) {
   return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${driverFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${driverFieldsJson}`
 }
 
+const vehicleFields = sql.raw(VEHICLE_FIELDS.map(field => `'${field}'`).join(', '))
+const vehicleFieldsJson = sql.raw(`'${JSON.stringify([...VEHICLE_FIELDS])}'::jsonb`)
+const vehicleFieldCount = sql.raw(String(VEHICLE_FIELDS.length))
+
+/** A Vehicle id stored as text. Same RFC 4122 shape as a Driver id. */
+function vehicleIdText(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'vehicleId'`)}) = 'string' and ${data} ->> ${sql.raw(`'vehicleId'`)} ~* ${sql.raw(`'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`)}`
+}
+
+/** `field` is one name from the Vehicle list. A plate cannot sit here. */
+function vehicleFieldText(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'field'`)}) = 'string' and ${data} ->> ${sql.raw(`'field'`)} in (${vehicleFields})`
+}
+
+function vehicleFieldsArray(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${vehicleFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${vehicleFieldsJson}`
+}
+
 /**
  * Append-only (ADR-0014). The app role may only SELECT. Rows are written by
  * `audit.append_entry` and by the trigger on `auth.invitation`, and a trigger
@@ -137,5 +155,8 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'client.kind_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'from', 'to')} and ${clientIdText(table.data)} and ${kindText(table.data, 'from')} and ${kindText(table.data, 'to')}
     when 'driver.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'driverId', 'fields')} and ${driverIdText(table.data)} and ${driverFieldsArray(table.data)}
     when 'driver.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'driverId', 'field')} and ${driverIdText(table.data)} and ${driverFieldText(table.data)}
+    when 'vehicle.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId', 'fields')} and ${vehicleIdText(table.data)} and ${vehicleFieldsArray(table.data)}
+    when 'vehicle.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId', 'field')} and ${vehicleIdText(table.data)} and ${vehicleFieldText(table.data)}
+    when 'vehicle.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId')} and ${vehicleIdText(table.data)}
     else false end) is true`),
 ], { oneRowPerTenant: false })

@@ -55,7 +55,7 @@ A pending offer for one email to join a Tenant as admin, dispatcher, or driver. 
 _Avoid_: signup link
 
 **Audit entry**:
-One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to, the setting value that changed, the Client (its id, and for a kind change the previous and next kind), or the Driver fields that changed. A Client's name is not in the record. A Driver change does not record the phone or the licence dates. It is written with the action and never changed or removed.
+One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to, the setting value that changed, the Client (its id, and for a kind change the previous and next kind), the Driver fields that changed, or the Vehicle (its id and field names for created, field changed, and archived). A Client's name is not in the record. A Driver change does not record the phone or the licence dates. A Vehicle change does not record the plate or the dates. It is written with the action and never changed or removed.
 _Avoid_: history, event, activity
 
 **Driver**:
@@ -67,7 +67,7 @@ The language a user works in, Croatian or English. Each Tenant has a default loc
 _Avoid_: language
 
 **Vehicle**:
-The vehicle set on a Ride together with a Driver. A Ride has a Vehicle only when it has a Driver.
+A vehicle the office can assign. Kind is `fixed` or `occasional`. The registration plate identifies it in the Tenant; three expiry dates (registration, technical inspection, insurance) are calendar days. Archive hides it from the default list without deleting it. A Ride has a Vehicle only when it has a Driver.
 
 **Dispatcher**:
 Office staff of a Tenant who manage Transfers and Rides.

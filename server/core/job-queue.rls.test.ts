@@ -1,4 +1,5 @@
 import type { JobQueue, TenantTransaction } from './index'
+import { loadEnvFile } from 'node:process'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
@@ -7,6 +8,9 @@ import { z } from 'zod'
 import { openTenantSession, parseAppEnv, runWithRequestId } from './index'
 import { createPgBossJobQueue } from './infrastructure'
 import { captureLogs } from './testing'
+
+loadEnvFile('.env')
+loadEnvFile('.env.migrate')
 
 /**
  * Queue seam: the caller enqueues through the JobQueue port inside its
