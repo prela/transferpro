@@ -9,10 +9,10 @@ export async function signIn(page: Page, email: string, password: string, tenant
   await expect(page.getByRole('heading', { level: 1, name: tenantName })).toBeVisible()
 }
 
-/** Apply light or dark theme before navigation so color-mode paints the right variant. */
+/** Apply light or dark theme before the next navigation so color-mode paints the right variant. */
 export async function useTheme(page: Page, theme: 'light' | 'dark') {
   await page.emulateMedia({ colorScheme: theme })
-  await page.evaluate((value) => {
+  await page.addInitScript((value) => {
     localStorage.setItem('transferpro-theme', value)
   }, theme)
 }
