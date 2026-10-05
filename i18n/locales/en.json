@@ -119,6 +119,11 @@
         "field_changed": "Vehicle corrected",
         "archived": "Vehicle archived"
       },
+      "location": {
+        "created": "Location added",
+        "field_changed": "Location corrected",
+        "archived": "Location archived"
+      },
       "roster": {
         "assigned": "Vehicle given for the day",
         "changed": "Day's vehicle changed",
@@ -175,6 +180,49 @@
       "agency": "Agency",
       "hotel": "Hotel",
       "individual": "Individual"
+    }
+  },
+  "locations": {
+    "nav": "Locations",
+    "home": "Home",
+    "title": "Locations",
+    "add": "Add a location",
+    "edit": "Correct location",
+    "archive": "Archive",
+    "showArchived": "Show archived",
+    "archived": "Archived",
+    "name": "Name",
+    "kind": "Kind",
+    "address": "Address",
+    "chooseKind": "Choose a kind",
+    "nameEmpty": "Enter a name.",
+    "nameTooLong": "A name can be at most 200 characters.",
+    "kindInvalid": "Choose a kind: airport, hotel, address, or other.",
+    "addressTooLong": "An address can be at most 200 characters.",
+    "archivedLocked": "An archived location cannot be changed. Show archived locations to find it.",
+    "submit": "Add location",
+    "submitting": "Adding location",
+    "save": "Save",
+    "saving": "Saving",
+    "cancel": "Cancel",
+    "loading": "Loading locations",
+    "loadFailed": "Locations could not be loaded. Try again.",
+    "empty": "No locations yet.",
+    "rejected": "The location was not accepted.",
+    "notFound": "That location is no longer on the list.",
+    "forbidden": "A driver cannot add or correct locations.",
+    "signedOut": "You are signed out. Sign in and try again.",
+    "saveFailed": "The location was not saved. Try again.",
+    "kinds": {
+      "airport": "Airport",
+      "hotel": "Hotel",
+      "address": "Address",
+      "other": "Other"
+    },
+    "fields": {
+      "name": "Name",
+      "kind": "Kind",
+      "address": "Address"
     }
   },
   "drivers": {

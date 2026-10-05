@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, LOCATION_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -125,6 +125,24 @@ function vehicleFieldsArray(data: AnyPgColumn) {
   return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${vehicleFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${vehicleFieldsJson}`
 }
 
+const locationFields = sql.raw(LOCATION_FIELDS.map(field => `'${field}'`).join(', '))
+const locationFieldsJson = sql.raw(`'${JSON.stringify([...LOCATION_FIELDS])}'::jsonb`)
+const locationFieldCount = sql.raw(String(LOCATION_FIELDS.length))
+
+/** A Location id stored as text. Same RFC 4122 shape as a Vehicle id. A name cannot sit here. */
+function locationIdText(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'locationId'`)}) = 'string' and ${data} ->> ${sql.raw(`'locationId'`)} ~* ${sql.raw(`'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`)}`
+}
+
+/** `field` is one name from the Location list. An address cannot sit here. */
+function locationFieldText(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'field'`)}) = 'string' and ${data} ->> ${sql.raw(`'field'`)} in (${locationFields})`
+}
+
+function locationFieldsArray(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${locationFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${locationFieldsJson}`
+}
+
 /** An id stored as text. Same RFC 4122 shape as a Driver id. A plate cannot sit here. */
 function uuidText(data: AnyPgColumn, key: string) {
   const name = sql.raw(`'${key}'`)
@@ -180,6 +198,9 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'vehicle.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId', 'fields')} and ${vehicleIdText(table.data)} and ${vehicleFieldsArray(table.data)}
     when 'vehicle.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId', 'field')} and ${vehicleIdText(table.data)} and ${vehicleFieldText(table.data)}
     when 'vehicle.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId')} and ${vehicleIdText(table.data)}
+    when 'location.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'locationId', 'fields')} and ${locationIdText(table.data)} and ${locationFieldsArray(table.data)}
+    when 'location.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'locationId', 'field')} and ${locationIdText(table.data)} and ${locationFieldText(table.data)}
+    when 'location.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'locationId')} and ${locationIdText(table.data)}
     when 'roster.assigned' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'vehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')}
     when 'roster.changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'fromVehicleId', 'toVehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'fromVehicleId')} and ${uuidText(table.data, 'toVehicleId')}
     when 'roster.cleared' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'vehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')}

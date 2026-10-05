@@ -96,6 +96,13 @@ function detailText(entry: AuditEntry): string {
       return t(`vehicles.fields.${entry.data.field}`)
     case 'vehicle.archived':
       return ''
+    case 'location.created':
+      // Field names only. The name and the address stay on the Location row.
+      return entry.data.fields.map(field => t(`locations.fields.${field}`)).join(', ')
+    case 'location.field_changed':
+      return t(`locations.fields.${entry.data.field}`)
+    case 'location.archived':
+      return ''
     case 'roster.assigned':
     case 'roster.changed':
     case 'roster.cleared':

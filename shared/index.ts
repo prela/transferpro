@@ -14,6 +14,8 @@ export { acceptErrorKey, invitationAcceptBodySchema, invitationPreviewBodySchema
 export type { InvitationPreview, InviteResult, PasswordLengthLimits } from './invitation'
 export { inviteLink } from './invite-link'
 export { LocaleChoiceError, saveDisplayLocale } from './locale-update'
+export { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_FIELDS, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, locationAddressError, locationAddressSchema, locationFieldSchema, LocationInputError, locationKindError, locationKindSchema, locationListSchema, locationNameError, locationNameSchema, locationPatchSchema, locationSchema, parseCreateLocation, parseLocationPatch } from './location'
+export type { CreateLocation, Location, LocationAddressError, LocationField, LocationKind, LocationKindError, LocationList, LocationNameError, LocationPatch } from './location'
 export { changeMemberRoleBodySchema, memberErrorKey, memberErrorMessage, memberListSchema, memberSchema } from './member'
 export type { ChangeMemberRoleBody, Member, MemberErrorKey, MemberList } from './member'
 export { companyAccountListSchema, companyAccountSchema, parseRenameTenantAccount, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './platform-account'
