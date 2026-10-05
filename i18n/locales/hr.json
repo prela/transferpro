@@ -119,6 +119,11 @@
         "field_changed": "Vozilo ispravljeno",
         "archived": "Vozilo arhivirano"
       },
+      "location": {
+        "created": "Lokacija dodana",
+        "field_changed": "Lokacija ispravljena",
+        "archived": "Lokacija arhivirana"
+      },
       "roster": {
         "assigned": "Vozilo dodijeljeno za dan",
         "changed": "Vozilo za dan promijenjeno",
@@ -175,6 +180,49 @@
       "agency": "Agencija",
       "hotel": "Hotel",
       "individual": "Osoba"
+    }
+  },
+  "locations": {
+    "nav": "Lokacije",
+    "home": "Početna",
+    "title": "Lokacije",
+    "add": "Dodaj lokaciju",
+    "edit": "Ispravi lokaciju",
+    "archive": "Arhiviraj",
+    "showArchived": "Prikaži arhivirane",
+    "archived": "Arhivirano",
+    "name": "Ime",
+    "kind": "Vrsta",
+    "address": "Adresa",
+    "chooseKind": "Odaberite vrstu",
+    "nameEmpty": "Unesite ime.",
+    "nameTooLong": "Ime može imati najviše 200 znakova.",
+    "kindInvalid": "Odaberite vrstu: aerodrom, hotel, adresa ili ostalo.",
+    "addressTooLong": "Adresa može imati najviše 200 znakova.",
+    "archivedLocked": "Arhiviranu lokaciju nije moguće mijenjati. Prikažite arhivirane lokacije da je pronađete.",
+    "submit": "Dodaj lokaciju",
+    "submitting": "Dodavanje lokacije",
+    "save": "Spremi",
+    "saving": "Spremanje",
+    "cancel": "Odustani",
+    "loading": "Učitavanje lokacija",
+    "loadFailed": "Lokacije nije bilo moguće učitati. Pokušajte ponovno.",
+    "empty": "Još nema lokacija.",
+    "rejected": "Lokacija nije prihvaćena.",
+    "notFound": "Ta lokacija više nije na popisu.",
+    "forbidden": "Vozač ne može dodavati ni ispravljati lokacije.",
+    "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
+    "saveFailed": "Lokacija nije spremljena. Pokušajte ponovno.",
+    "kinds": {
+      "airport": "Aerodrom",
+      "hotel": "Hotel",
+      "address": "Adresa",
+      "other": "Ostalo"
+    },
+    "fields": {
+      "name": "Ime",
+      "kind": "Vrsta",
+      "address": "Adresa"
     }
   },
   "drivers": {

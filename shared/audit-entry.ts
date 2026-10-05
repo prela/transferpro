@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { clientKindSchema } from './client'
 import { driverFieldSchema } from './driver'
+import { locationFieldSchema } from './location'
 import { rosterDateSchema } from './roster'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
@@ -26,6 +27,9 @@ export const auditActions = [
   'vehicle.created',
   'vehicle.field_changed',
   'vehicle.archived',
+  'location.created',
+  'location.field_changed',
+  'location.archived',
   'roster.assigned',
   'roster.changed',
   'roster.cleared',
@@ -172,6 +176,39 @@ const vehicleArchived = z.object({
 })
 
 /*
+ * A Location is not a member. The id says which row. The data names the
+ * fields that were written and nothing else: a name or an address would
+ * stay forever on a row that is never deleted.
+ */
+const locationId = z.uuid()
+
+const locationCreated = z.object({
+  action: z.literal('location.created'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    locationId,
+    fields: z.array(locationFieldSchema).min(1),
+  }),
+})
+
+const locationFieldChanged = z.object({
+  action: z.literal('location.field_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    locationId,
+    field: locationFieldSchema,
+  }),
+})
+
+const locationArchived = z.object({
+  action: z.literal('location.archived'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    locationId,
+  }),
+})
+
+/*
  * A roster row is not a member. The data names the day and the ids.
  * A plate, a driver name, or a phone would stay forever on a row that
  * is never deleted, so none of those keys exist.
@@ -239,6 +276,9 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   vehicleCreated,
   vehicleFieldChanged,
   vehicleArchived,
+  locationCreated,
+  locationFieldChanged,
+  locationArchived,
   rosterAssigned,
   rosterChanged,
   rosterCleared,
@@ -276,6 +316,9 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   vehicleCreated.extend(listed),
   vehicleFieldChanged.extend(listed),
   vehicleArchived.extend(listed),
+  locationCreated.extend(listed),
+  locationFieldChanged.extend(listed),
+  locationArchived.extend(listed),
   rosterAssigned.extend(listed),
   rosterChanged.extend(listed),
   rosterCleared.extend(listed),

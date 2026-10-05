@@ -191,6 +191,14 @@ const loadMessage = computed(() => {
           {{ t('clients.nav') }}
         </UButton>
         <UButton
+          to="/locations"
+          color="neutral"
+          variant="outline"
+          size="xl"
+        >
+          {{ t('locations.nav') }}
+        </UButton>
+        <UButton
           to="/drivers"
           color="neutral"
           variant="outline"

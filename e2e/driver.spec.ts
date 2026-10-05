@@ -9,6 +9,7 @@ test('a driver cannot open members, settings, or clients', async ({ page }) => {
 
   await expect(page.getByRole('navigation')).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Klijenti' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Lokacije' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Članovi' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Spremi', exact: true })).toHaveCount(0)
   await expect(page.getByText('Samo administrator može ovo promijeniti.')).toBeVisible()
@@ -28,4 +29,8 @@ test('a driver cannot open members, settings, or clients', async ({ page }) => {
   await page.goto('/roster')
   await expect(page.getByRole('alert')).toContainText('Vozač ne može mijenjati raspored.')
   await expect(page.getByLabel('Datum')).toHaveCount(0)
+
+  await page.goto('/locations')
+  await expect(page.getByRole('alert')).toContainText('Vozač ne može dodavati ni ispravljati lokacije.')
+  await expect(page.getByRole('heading', { name: 'Dodaj lokaciju' })).toHaveCount(0)
 })

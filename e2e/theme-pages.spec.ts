@@ -31,6 +31,20 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('button', { name: 'Add vehicle', exact: true })).toBeVisible()
   })
 
+  test(`locations page is usable in ${theme} mode`, async ({ page }) => {
+    const tenant = await seedTenant(`locations-theme-${theme}`)
+    await useTheme(page, theme)
+    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+    await page.getByRole('link', { name: 'Lokacije' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Lokacije' })).toBeVisible()
+    await expect(page.getByLabel('Ime')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Dodaj lokaciju', exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'English', exact: true }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Locations' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Add location', exact: true })).toBeVisible()
+  })
+
   test(`roster page is usable in ${theme} mode`, async ({ page }) => {
     const tenant = await seedTenant(`roster-theme-${theme}`)
     await useTheme(page, theme)

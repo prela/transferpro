@@ -170,6 +170,56 @@ it('records a Vehicle by id and field names, and refuses the plate and the dates
   }).success).toBe(false)
 })
 
+it('records a Location by id and field names, and refuses the name and the address', () => {
+  const locationId = 'd1d1d1d1-5555-4555-8555-555555555555'
+  const place = 'Zračna luka Dubrovnik'
+  const address = 'Dobrota bb, Čilipi'
+  const created = {
+    action: 'location.created' as const,
+    subjectUserId: null,
+    data: {
+      locationId,
+      fields: ['name', 'kind', 'address'] as const,
+    },
+  }
+  expect(auditFactSchema.parse(created)).toEqual(created)
+  expect(auditFactSchema.safeParse({
+    ...created,
+    data: { ...created.data, name: place, address },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...created,
+    data: { locationId, fields: ['kind'], address },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...created, subjectUserId: memberId }).success).toBe(false)
+
+  const changed = {
+    action: 'location.field_changed' as const,
+    subjectUserId: null,
+    data: { locationId, field: 'address' as const },
+  }
+  expect(auditFactSchema.parse(changed)).toEqual(changed)
+  expect(auditFactSchema.safeParse({
+    ...changed,
+    data: { locationId, field: 'address', from: address, to: 'Nova adresa' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...changed,
+    data: { locationId, field: 'notes' },
+  }).success).toBe(false)
+
+  const archived = {
+    action: 'location.archived' as const,
+    subjectUserId: null,
+    data: { locationId },
+  }
+  expect(auditFactSchema.parse(archived)).toEqual(archived)
+  expect(auditFactSchema.safeParse({
+    ...archived,
+    data: { locationId, name: place },
+  }).success).toBe(false)
+})
+
 it('records a roster day as ids and a calendar date, and refuses a plate, a name, or a phone', () => {
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
   const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
