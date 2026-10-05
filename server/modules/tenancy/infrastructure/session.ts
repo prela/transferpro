@@ -10,7 +10,7 @@ import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
 import { acceptInvitation, parseInviteInput, previewInvitation, repairInvitationCookies, sendInvitation } from './invitation'
-import { createResendMailer } from './mailer'
+import { mailerForApp } from './mailer'
 import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, removeMember as removeMemberImpl } from './member-management'
 import { changeTenantSettings, loadTenantSettings } from './tenant-settings'
 
@@ -71,7 +71,7 @@ function tenantRuntime(): Runtime {
   const env = loadAppEnv()
   // App role. The tenant session sets app.tenant_id on this pool only.
   const appPool = new pg.Pool({ connectionString: env.DATABASE_URL })
-  const mailer = env.RESEND_API_KEY === undefined ? undefined : createResendMailer(env.RESEND_API_KEY)
+  const mailer = mailerForApp(env)
   runtime = {
     handle: createAuth(env, { mailer }),
     appPool,
@@ -181,8 +181,8 @@ export async function inviteMember(headers: Headers, raw: unknown) {
   })
 }
 
-export async function previewMemberInvitation(raw: unknown) {
-  return previewInvitation(tenantRuntime().handle, raw)
+export async function previewMemberInvitation(raw: unknown, headers: Headers) {
+  return previewInvitation(tenantRuntime().handle, raw, headers)
 }
 
 /** `key` is the client address. The limiter is the sign-in rule. */

@@ -1,9 +1,41 @@
 import { z } from 'zod'
 import { tenantRoleSchema } from './tenant-role'
 
-export const invitationPreviewSchema = z.object({
-  state: z.enum(['set-password', 'sign-in', 'invalid']),
-})
+/**
+ * Length bounds from Better Auth's password config. The screen shows these
+ * and names the bound a password misses. It does not invent a stricter rule.
+ */
+export interface PasswordLengthLimits {
+  readonly minPasswordLength: number
+  readonly maxPasswordLength: number
+}
+
+export function passwordLengthRule(password: string, limits: PasswordLengthLimits): 'too-short' | 'too-long' | null {
+  if (password.length < limits.minPasswordLength)
+    return 'too-short'
+  if (password.length > limits.maxPasswordLength)
+    return 'too-long'
+  return null
+}
+
+export const invitationPreviewSchema = z.discriminatedUnion('state', [
+  z.object({
+    state: z.literal('set-password'),
+    minPasswordLength: z.number().int().positive(),
+    maxPasswordLength: z.number().int().positive(),
+  }),
+  z.object({
+    state: z.literal('sign-in'),
+  }),
+  z.object({
+    state: z.literal('invalid'),
+  }),
+  z.object({
+    state: z.literal('wrong-account'),
+    // The signed-in account, shown back to that person. Not the invite email.
+    account: z.string().min(1),
+  }),
+])
 
 export type InvitationPreview = z.infer<typeof invitationPreviewSchema>
 

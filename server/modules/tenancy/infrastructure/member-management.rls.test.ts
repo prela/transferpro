@@ -1,11 +1,10 @@
-import type { TenantRole } from '../../../../shared'
 import type { AuthHandle } from './auth'
 import type { Actor } from './session'
 import { loadEnvFile } from 'node:process'
-import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { changeMemberRole, closeTenantRuntime, handleAuthRequest, listMembers, removeTenantMember } from '..'
+import { insertCredentialMember, insertMembership } from '../testing'
 import { createAuth } from './auth'
 import { createTenant } from './create-tenant'
 import { assertAnotherAdmin, changeMemberRole as changeMemberRoleImpl, removeMember as removeMemberImpl } from './member-management'
@@ -63,31 +62,6 @@ afterAll(async () => {
   await handle.close()
   await authPool.end()
 })
-
-/** A credential user with one membership, the same rows the operator script writes. */
-async function addMember(tenantId: string, input: { email: string, name: string, password: string, role: TenantRole }): Promise<string> {
-  const userId = crypto.randomUUID()
-  await authPool.query(
-    `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
-     values ($1, $2, $3, true, now(), now())`,
-    [userId, input.name, input.email],
-  )
-  await authPool.query(
-    `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
-     values ($1, $2, 'credential', $2, $3, now(), now())`,
-    [crypto.randomUUID(), userId, await hashPassword(input.password)],
-  )
-  await join(tenantId, userId, input.role)
-  return userId
-}
-
-async function join(tenantId: string, userId: string, role: TenantRole): Promise<void> {
-  await authPool.query(
-    `insert into auth.member (id, organization_id, user_id, role, created_at)
-     values ($1, $2, $3, $4, now())`,
-    [crypto.randomUUID(), tenantId, userId, role],
-  )
-}
 
 /** A fresh session. Better Auth leaves its active organization unset. */
 async function signIn(email: string, password: string): Promise<Headers> {
@@ -177,8 +151,8 @@ it('dispatcher and driver get 403 when trying to change roles or remove members'
     authDatabaseUrl,
     migrateDatabaseUrl,
   })
-  await addMember(tenant.tenantId, { email: 'mm-dispatcher@example.test', name: 'Dispatcher', password: 'password-dispatcher', role: 'dispatcher' })
-  await addMember(tenant.tenantId, { email: 'mm-driver@example.test', name: 'Driver', password: 'password-driver', role: 'driver' })
+  await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-dispatcher@example.test', name: 'Dispatcher', password: 'password-dispatcher', role: 'dispatcher' })
+  await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-driver@example.test', name: 'Driver', password: 'password-driver', role: 'driver' })
 
   try {
     // Dispatcher tries to change admin's role - should get 403
@@ -217,7 +191,7 @@ it('the last admin is refused by the admin recount (409), and only another admin
     migrateDatabaseUrl,
   })
   // Create a second admin so we can have one admin try to demote the other
-  const admin2UserId = await addMember(tenant.tenantId, { email: 'mm-admin2-last@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
+  const admin2UserId = await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-admin2-last@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
 
   try {
     const headers = await signIn('mm-admin2-last@example.test', 'password-admin2')
@@ -245,7 +219,7 @@ it('the last admin is refused by the admin recount (409), and only another admin
     expect(await roleIn(tenant.tenantId, admin2UserId)).toBe('admin')
 
     // Now create a third admin so admin2 is not the last
-    const admin3UserId = await addMember(tenant.tenantId, { email: 'mm-admin3-last@example.test', name: 'Admin 3', password: 'password-admin3', role: 'admin' })
+    const admin3UserId = await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-admin3-last@example.test', name: 'Admin 3', password: 'password-admin3', role: 'admin' })
     await inAuthTransaction(async (client) => {
       await expect(assertAnotherAdmin(client, tenant.tenantId, admin2UserId)).resolves.toBeUndefined()
     })
@@ -287,8 +261,8 @@ it('removal deletes the member\'s sessions for this Tenant and with no Tenant, k
     authDatabaseUrl,
     migrateDatabaseUrl,
   })
-  const dispatcherUserId = await addMember(tenant.tenantId, { email: 'mm-disp-revoke@example.test', name: 'Dispatcher Rev', password: 'password-disp', role: 'dispatcher' })
-  await join(other.tenantId, dispatcherUserId, 'dispatcher')
+  const dispatcherUserId = await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-disp-revoke@example.test', name: 'Dispatcher Rev', password: 'password-disp', role: 'dispatcher' })
+  await insertMembership(authPool, other.tenantId, dispatcherUserId, 'dispatcher')
 
   try {
     // Three sessions: no active organization, this Tenant, and the other Tenant.
@@ -335,7 +309,7 @@ it('concurrent role changes with advisory lock ensure at least one admin remains
     migrateDatabaseUrl,
   })
   // Create a second admin
-  const admin2UserId = await addMember(tenant.tenantId, { email: 'mm-admin2-concurrent@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
+  const admin2UserId = await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-admin2-concurrent@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
 
   try {
     // Sign in as both admins
@@ -380,7 +354,7 @@ it('admin cannot change their own role or remove themselves (self-protection)', 
     migrateDatabaseUrl,
   })
   // Create a second admin so we're not testing last-admin protection
-  await addMember(tenant.tenantId, { email: 'mm-admin2-self@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
+  await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-admin2-self@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
 
   try {
     // Sign in as first admin
@@ -413,8 +387,8 @@ it('a driver gets 403 from listMembers and a dispatcher of the same Tenant gets 
     authDatabaseUrl,
     migrateDatabaseUrl,
   })
-  const driverUserId = await addMember(tenant.tenantId, { email: 'mm-driver-list@example.test', name: 'Driver', password: 'password-driver', role: 'driver' })
-  const dispatcherUserId = await addMember(tenant.tenantId, { email: 'mm-dispatcher-list@example.test', name: 'Dispatcher', password: 'password-dispatcher', role: 'dispatcher' })
+  const driverUserId = await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-driver-list@example.test', name: 'Driver', password: 'password-driver', role: 'driver' })
+  const dispatcherUserId = await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-dispatcher-list@example.test', name: 'Dispatcher', password: 'password-dispatcher', role: 'dispatcher' })
 
   try {
     const driverHeaders = await signIn('mm-driver-list@example.test', 'password-driver')
@@ -453,8 +427,8 @@ it('a driver in tenant A who is a dispatcher in tenant B gets 403 from listMembe
     authDatabaseUrl,
     migrateDatabaseUrl,
   })
-  const userId = await addMember(tenantA.tenantId, { email: 'mm-two-roles@example.test', name: 'Two Roles', password: 'password-two', role: 'driver' })
-  await join(tenantB.tenantId, userId, 'dispatcher')
+  const userId = await insertCredentialMember(authPool, tenantA.tenantId, { email: 'mm-two-roles@example.test', name: 'Two Roles', password: 'password-two', role: 'driver' })
+  await insertMembership(authPool, tenantB.tenantId, userId, 'dispatcher')
 
   try {
     const headers = await signIn('mm-two-roles@example.test', 'password-two')
@@ -485,8 +459,8 @@ it('an admin demoted after their actor was read gets 403 under the lock and noth
     authDatabaseUrl,
     migrateDatabaseUrl,
   })
-  const admin2UserId = await addMember(tenant.tenantId, { email: 'mm-admin2-stale@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
-  const dispatcherUserId = await addMember(tenant.tenantId, { email: 'mm-disp-stale@example.test', name: 'Dispatcher', password: 'password-disp', role: 'dispatcher' })
+  const admin2UserId = await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-admin2-stale@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
+  const dispatcherUserId = await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-disp-stale@example.test', name: 'Dispatcher', password: 'password-disp', role: 'dispatcher' })
 
   try {
     // Admin 2's actor as the session read it, before Admin 1 demotes them.
@@ -518,8 +492,8 @@ it('better Auth\'s own member routes under /api/auth are off, so the lock, the c
     migrateDatabaseUrl,
   })
   // A second admin, so Better Auth's own "last owner" rule does not answer first.
-  const admin2UserId = await addMember(tenant.tenantId, { email: 'mm-admin2-endpoints@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
-  const driverUserId = await addMember(tenant.tenantId, { email: 'mm-driver-endpoints@example.test', name: 'Driver', password: 'password-driver', role: 'driver' })
+  const admin2UserId = await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-admin2-endpoints@example.test', name: 'Admin 2', password: 'password-admin2', role: 'admin' })
+  const driverUserId = await insertCredentialMember(authPool, tenant.tenantId, { email: 'mm-driver-endpoints@example.test', name: 'Driver', password: 'password-driver', role: 'driver' })
   const memberIds = await authPool.query<{ id: string, user_id: string }>(
     'select id, user_id from auth.member where organization_id = $1',
     [tenant.tenantId],

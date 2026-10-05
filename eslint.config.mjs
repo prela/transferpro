@@ -84,23 +84,73 @@ const dynamicDriverImport = {
   },
 }
 
+/**
+ * ADR-0013: the operator script and invite accept are the account-creation
+ * paths. server/modules/tenancy/testing.ts is the test and e2e exception.
+ * server/api and app must not import it, including their tests.
+ */
+const tenancyTestingImport = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      banned: 'Import tenancy/testing only from e2e or a test outside server/api (ADR-0013).',
+    },
+  },
+  create(context) {
+    /**
+     * @param {import('estree').Node} node
+     * @param {unknown} source
+     */
+    function check(node, source) {
+      if (typeof source !== 'string' || !source.includes('tenancy/testing'))
+        return
+      const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
+      if (!filename.includes('/server/api/') && !filename.includes('/app/'))
+        return
+      context.report({ node, messageId: 'banned' })
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ImportExpression(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source?.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportAllDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+    }
+  },
+}
+
 export default antfu(
   {
     type: 'app',
     // Skills and ADRs are prose. The hook formats code with ESLint.
-    ignores: ['.agents/**', 'docs/**', '*.md'],
+    ignores: ['.agents/**', 'docs/**', '*.md', 'playwright-report/**', 'test-results/**', 'blob-report/**'],
   },
   {
     plugins: {
       transferpro: {
         rules: {
           'no-dynamic-driver-import': dynamicDriverImport,
+          'no-tenancy-testing-import': tenancyTestingImport,
         },
       },
     },
     rules: {
       'no-restricted-imports': ['error', driverImports],
       'transferpro/no-dynamic-driver-import': 'error',
+      'transferpro/no-tenancy-testing-import': 'error',
     },
   },
   {

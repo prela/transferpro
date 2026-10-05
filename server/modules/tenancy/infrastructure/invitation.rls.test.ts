@@ -150,7 +150,12 @@ it('lets an admin invite admin, dispatcher, and driver, and refuses the other ro
   expect(expiresAt.getTime()).toBeGreaterThan(Date.now() + sevenDaysMs - 60_000)
   expect(expiresAt.getTime()).toBeLessThan(Date.now() + sevenDaysMs + 60_000)
 
-  expect(await previewInvitation(handle, { invitationId: driverId })).toEqual({ state: 'set-password' })
+  const limits = (await handle.auth.$context).password.config
+  expect(await previewInvitation(handle, { invitationId: driverId })).toEqual({
+    state: 'set-password',
+    minPasswordLength: limits.minPasswordLength,
+    maxPasswordLength: limits.maxPasswordLength,
+  })
   // A body email is ignored. The account is the invitation address.
   const accepted = await acceptInvitation(handle, {
     invitationId: driverId,
@@ -284,6 +289,10 @@ it('hides this tenant\'s invitations from another tenant session', async () => {
 
   const otherHeaders = (await signIn(otherEmail, adminPassword)).headers
   await expect(acceptInvitation(handle, { invitationId: invited.id }, otherHeaders)).rejects.toMatchObject({ statusCode: 403 })
+  expect(await previewInvitation(handle, { invitationId: invited.id }, otherHeaders)).toEqual({
+    state: 'wrong-account',
+    account: otherEmail,
+  })
 })
 
 it('uses the auth password limits and still refuses public sign-up', async () => {

@@ -39,6 +39,7 @@ Roles, grants, and the tenant session are ADR-0011. Working rules on top of that
 
 - `pnpm test` is the unit and integration suite. `pnpm test:rls` is the cross-tenant suite. It reads `.env` and `.env.migrate` itself. CI migrates, mints ephemeral role passwords, then runs it. Local passwords stay local.
 - `pnpm test:rls` stays off the pre-commit hook (that hook is under Commit and branch flow). The suite runs in CI and when you invoke it.
+- `pnpm test:e2e` is Playwright (Chromium) against the built app. It stays off the pre-commit hook. Build first with `pnpm exec nuxi build`. The harness starts `node .output/server/index.mjs` through `scripts/e2e-server.mjs` on `http://127.0.0.1:3000` (`E2E_PORT` changes the port), with `NODE_ENV=test` and `RESEND_API_KEY` unset. That script exits if either is wrong, and the app selects the fake mailer and refuses to boot if the Resend transport is active. It does not reuse a server that is already listening: `pnpm dev` has the Resend key. Stop that process, or set `E2E_PORT`, before a local run. Specs assert Croatian copy, with one English smoke. The invite link is read from the screen. Every UI ticket adds or extends a spec under `e2e/`.
 - Application code opens a session with a kernel `TenantContext`: HTTP handlers use `withTenantFromSession` (`server/modules/tenancy`); other callers use `openTenantSession`. Catalog RLS tests may call `set_config`; they prove the catalog. Assert behaviour, not policy SQL text.
 - No session is 401. No single membership, or a role other than `admin`, `dispatcher`, or `driver`, is 403. Both go through `handleLoggedError`. One membership still resolves when the active organization is missing.
 - Enqueue stores the current `request_id` on the job envelope beside `tenantId`, outside `data`. The handler restores it with `runWithRequestId` before `openTenantSession`. A job enqueued outside a request carries no invented id. `runWithTenantId` stays off `server/core/index.ts`.
@@ -78,7 +79,7 @@ It runs as `node --import ./scripts/register-ts.mjs`. `scripts/ts-loader.mjs` ex
 
 ## Invitations
 
-`disableSignUp` stays on. The operator script and `POST /api/invitations/accept` are the only account-creation paths (ADR-0013). Accepting creates an account only for a pending, unexpired, unused invitation, and the email is copied from that row. An email that already has an account signs in and then accepts; the route does not change that password. An invitation lasts 7 days. The link keeps the id in the URL hash. Only an admin may invite. `POST /api/invitations/accept` uses the same production limit as email sign-in. Resend sends from `noreply@transfers.prela.net` through the mailer port. `RESEND_API_KEY` is required in the env schema and optional when `NODE_ENV` is `test`. The domain region is `eu-west-1`; Resend stores account logs in the US. Invitations are read in a tenant session through `app.tenant_invitation`, which does not return the email.
+`disableSignUp` stays on. The operator script and `POST /api/invitations/accept` are the only account-creation paths in the app (ADR-0013). Tests and `e2e/` may insert credential rows through `server/modules/tenancy/testing.ts`. `server/api` and `app` must not import that file. Accepting creates an account only for a pending, unexpired, unused invitation, and the email is copied from that row. An email that already has an account signs in and then accepts; the route does not change that password. An invitation lasts 7 days. The link keeps the id in the URL hash. Only an admin may invite. `POST /api/invitations/accept` uses the same production limit as email sign-in. Resend sends from `noreply@transfers.prela.net` through the mailer port. `RESEND_API_KEY` is required in the env schema and optional when `NODE_ENV` is `test`. The domain region is `eu-west-1`; Resend stores account logs in the US. Invitations are read in a tenant session through `app.tenant_invitation`, which does not return the email.
 
 ## Tenant settings
 
@@ -114,16 +115,17 @@ Formatting is Antfu ESLint via lint-staged (`eslint --fix`). Prettier stays unin
 
 ## Commands
 
-Scripts live in `package.json`. Two invocations that file does not show:
+Scripts live in `package.json`. `pnpm dev` is the local app on port 3000. `pnpm test:e2e` is Playwright; build first. One invocation that file does not show:
 
 ```bash
-pnpm exec nuxi dev    # local app; there is no pnpm dev script
 docker compose up -d  # local Postgres
+pnpm exec nuxi build  # the app Playwright starts
 ```
 
 ## Definition of done (per PR)
 
 - Tests written first and green; lint, typecheck, coverage pass in CI.
+- A UI change adds or extends a Playwright spec in `e2e/`.
 - RLS tests for any new tenant table.
 - `GLOSSARY.md` / ADR updated if a term or decision changed.
 - PR description: WP id, what changed, what it could break, migration notes.

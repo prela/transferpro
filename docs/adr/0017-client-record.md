@@ -1,6 +1,6 @@
 # A Client keeps its name off the audit log
 
-Status: proposed
+Status: accepted
 
 ## Context
 

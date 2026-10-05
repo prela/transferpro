@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { createResendMailer, invitationEmail } from './mailer'
+import { assertTestMailer, createResendMailer, invitationEmail, isResendMailer, mailerForApp, ResendTransportError } from './mailer'
 
 const invitationId = '6b1e0c3a-2222-4222-8222-222222222222'
 const inviteUrl = `http://localhost:3000/accept-invite#${invitationId}`
@@ -56,3 +56,57 @@ it('posts to Resend and refuses a failed send without echoing the link', async (
     expect((error as Error).message).not.toContain(invitationId)
   }
 })
+
+it('uses the fake mailer in test even when a Resend key is present', async () => {
+  const previous = process.env.NODE_ENV
+  process.env.NODE_ENV = 'test'
+  const calls: string[] = []
+  const original = globalThis.fetch
+  globalThis.fetch = async (input) => {
+    calls.push(String(input))
+    return new Response('sent', { status: 200 })
+  }
+  try {
+    const mailer = mailerForApp({ RESEND_API_KEY: 're_live_key' })
+    expect(isResendMailer(mailer)).toBe(false)
+    await mailer?.sendInvitation(mail)
+    expect(calls).toEqual([])
+  }
+  finally {
+    globalThis.fetch = original
+    restoreNodeEnv(previous)
+  }
+})
+
+it('refuses to start when the Resend transport is selected for test', () => {
+  const mailer = createResendMailer('re_live_key', async () => new Response('no'))
+  expect(isResendMailer(mailer)).toBe(true)
+  expect(() => assertTestMailer(mailer)).toThrow(ResendTransportError)
+  expect(() => assertTestMailer(mailer)).toThrow('The Resend transport must not be active when NODE_ENV is test.')
+})
+
+it('does not call Resend from the default transport when NODE_ENV is test', async () => {
+  const previous = process.env.NODE_ENV
+  process.env.NODE_ENV = 'test'
+  const calls: string[] = []
+  const original = globalThis.fetch
+  globalThis.fetch = async (input) => {
+    calls.push(String(input))
+    return new Response('sent', { status: 200 })
+  }
+  try {
+    await expect(createResendMailer('re_live_key', globalThis.fetch).sendInvitation(mail)).rejects.toBeInstanceOf(ResendTransportError)
+    expect(calls).toEqual([])
+  }
+  finally {
+    globalThis.fetch = original
+    restoreNodeEnv(previous)
+  }
+})
+
+function restoreNodeEnv(previous: string | undefined) {
+  if (previous === undefined)
+    delete process.env.NODE_ENV
+  else
+    process.env.NODE_ENV = previous
+}
