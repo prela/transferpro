@@ -7,7 +7,7 @@ import { expect, it, vi } from 'vitest'
 import { DriverInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
 import { TenantAccessError } from '../../tenancy'
-import { addDriver, correctDriver, DriverNotFoundError, loadDrivers } from './drivers'
+import { addDriver, correctDriver, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers } from './drivers'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const driverId = '9e4b3f6d-5555-4555-8555-555555555555'
@@ -67,8 +67,14 @@ function fakeTransaction(
       }
       if (text.includes('update'))
         return { rows: [] }
-      if (text.includes('drivers'))
+      if (text.includes('drivers')) {
+        // A linked-member read binds the member id. The office list does not.
+        if (text.includes('member_user_id =')) {
+          const memberId = compiled.params[0]
+          return { rows: drivers.filter(row => row.memberUserId === memberId) }
+        }
         return { rows: drivers }
+      }
       return { rows: [] }
     }),
   }
@@ -162,6 +168,15 @@ it('replaces any other write failure so the log line does not keep the phone', a
 it('lists the Drivers the session returned', async () => {
   const { transaction } = fakeTransaction([stored])
   await expect(loadDrivers(transaction)).resolves.toEqual([stored])
+})
+
+it('returns only the Driver linked to the given member', async () => {
+  const linked = { ...stored, memberUserId }
+  const otherId = '8d3a2e5c-4444-4444-8444-444444444444'
+  const other = { ...stored, id: otherId, name: 'Boris Kovač', memberUserId: '5a0d9b29-1111-4111-8111-111111111111' }
+  const { transaction } = fakeTransaction([other, linked])
+  await expect(loadDriverLinkedToMember(transaction, memberUserId)).resolves.toEqual([linked])
+  await expect(loadDrivers(transaction)).resolves.toEqual([other, linked])
 })
 
 it('records each corrected field by name, and not the phone or the date', async () => {

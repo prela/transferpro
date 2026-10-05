@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
-import { calendarDateInTimeZone, parseRosterDate, parseSetRoster, RosterInputError } from './roster'
+import { calendarDateInTimeZone } from './date'
+import { parseRosterDate, parseSetRoster, RosterInputError } from './roster'
 
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
 const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'

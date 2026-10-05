@@ -69,26 +69,3 @@ export function parseSetRoster(raw: unknown): SetRoster {
     throw new RosterInputError()
   return parsed.data
 }
-
-/**
- * The calendar date of `instant` in an IANA time zone.
- * Used to open the roster on "today" in the Tenant zone. The roster stores
- * that date, not the instant.
- */
-export function calendarDateInTimeZone(timeZone: string, instant: Date): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    calendar: 'gregory',
-    numberingSystem: 'latn',
-  }).formatToParts(instant)
-  const year = parts.find(part => part.type === 'year')?.value
-  const month = parts.find(part => part.type === 'month')?.value
-  const day = parts.find(part => part.type === 'day')?.value
-  const date = `${year}-${month}-${day}`
-  if (!isCalendarDate(date))
-    throw new Error('Calendar date could not be read.')
-  return date
-}

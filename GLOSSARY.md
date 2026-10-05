@@ -73,6 +73,10 @@ A vehicle the office can assign. Kind is `fixed` or `occasional`. The registrati
 The office's assignment of one Vehicle to one Driver for one calendar date. The date is that day in the Tenant's time zone, stored with no time. A Driver has at most one Vehicle that day, and a Vehicle is given to at most one Driver that day. The office can clear the day. An archived Vehicle cannot be newly given; a row already stored stays until the office clears or replaces it. A later Ride reads this row and may still use a different Vehicle for that one Ride.
 _Avoid_: schedule, shift
 
+**Expiring document**:
+A driving licence, transport licence, vehicle registration, technical inspection, or insurance whose expiry day is already past or falls within the next 30 days on the Tenant's calendar. An archived Vehicle is not one. For a driver, it is only a licence of the Driver linked to that account.
+_Avoid_: reminder
+
 **Dispatcher**:
 Office staff of a Tenant who manage Transfers and Rides.
 _Avoid_: admin
