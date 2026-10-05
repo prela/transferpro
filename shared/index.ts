@@ -4,6 +4,8 @@ export { CLIENT_KINDS, CLIENT_NAME_MAX_LENGTH, ClientInputError, clientKindError
 export type { Client, ClientKind, ClientKindError, ClientList, ClientNameError, ClientPatch, CreateClient } from './client'
 export { displayLocaleSchema, resolveDisplayLocale } from './display-locale'
 export type { DisplayLocale } from './display-locale'
+export { DRIVER_FIELDS, DRIVER_KINDS, DRIVER_MEMBER_ID_MAX_LENGTH, DRIVER_NAME_MAX_LENGTH, DRIVER_PHONE_MAX_LENGTH, driverDateError, driverDateSchema, driverFieldSchema, DriverInputError, driverKindError, driverKindSchema, driverListSchema, driverNameError, driverPhoneError, driverPhoneSchema, driverSchema, isCalendarDate, parseCreateDriver, parseDriverPatch } from './driver'
+export type { CreateDriver, Driver, DriverDateError, DriverField, DriverKind, DriverKindError, DriverList, DriverNameError, DriverPatch, DriverPhoneError } from './driver'
 export { formatInstant } from './format-instant'
 export { acceptErrorKey, invitationAcceptBodySchema, invitationPreviewBodySchema, invitationPreviewSchema, inviteInputSchema, inviteResultSchema, passwordLengthRule } from './invitation'
 export type { InvitationPreview, InviteResult, PasswordLengthLimits } from './invitation'

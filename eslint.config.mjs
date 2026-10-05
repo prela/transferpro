@@ -89,6 +89,53 @@ const dynamicDriverImport = {
  * paths. server/modules/tenancy/testing.ts is the test and e2e exception.
  * server/api and app must not import it, including their tests.
  */
+/**
+ * Drivers is its own module (ADR-0018). Rides will reference Drivers later.
+ * This module does not import the transfers module, including through import().
+ */
+const driversTransfersImport = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      banned: 'The Drivers module does not import the transfers module (ADR-0018).',
+    },
+  },
+  create(context) {
+    /**
+     * @param {import('estree').Node} node
+     * @param {unknown} source
+     */
+    function check(node, source) {
+      if (typeof source !== 'string' || !(/(?:^|\/)transfers(?:\/|$)/).test(source))
+        return
+      const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
+      if (!filename.includes('/server/modules/drivers/'))
+        return
+      context.report({ node, messageId: 'banned' })
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ImportExpression(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source?.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportAllDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+    }
+  },
+}
+
 const tenancyTestingImport = {
   meta: {
     type: 'problem',
@@ -144,6 +191,7 @@ export default antfu(
         rules: {
           'no-dynamic-driver-import': dynamicDriverImport,
           'no-tenancy-testing-import': tenancyTestingImport,
+          'no-drivers-transfers-import': driversTransfersImport,
         },
       },
     },
@@ -151,6 +199,7 @@ export default antfu(
       'no-restricted-imports': ['error', driverImports],
       'transferpro/no-dynamic-driver-import': 'error',
       'transferpro/no-tenancy-testing-import': 'error',
+      'transferpro/no-drivers-transfers-import': 'error',
     },
   },
   {

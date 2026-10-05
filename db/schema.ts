@@ -6,6 +6,7 @@ import { tenantTable } from './tenant-table'
 export { auditAction, auditEntry } from './audit-entry'
 export { account, invitation, member, organization, session, user, verification } from './auth-schema'
 export { clients } from './clients'
+export { drivers } from './drivers'
 export { tenantInvitation } from './tenant-invitation'
 export { tenantMember } from './tenant-member'
 

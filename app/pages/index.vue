@@ -152,7 +152,7 @@ const loadMessage = computed(() => {
       </time>
       <nav
         v-if="session.role !== 'driver'"
-        class="mt-4"
+        class="mt-4 flex flex-wrap gap-2"
         :aria-label="t('shell.nav')"
       >
         <UButton
@@ -162,6 +162,14 @@ const loadMessage = computed(() => {
           size="xl"
         >
           {{ t('clients.nav') }}
+        </UButton>
+        <UButton
+          to="/drivers"
+          color="neutral"
+          variant="outline"
+          size="xl"
+        >
+          {{ t('drivers.nav') }}
         </UButton>
       </nav>
       <TenantSettings

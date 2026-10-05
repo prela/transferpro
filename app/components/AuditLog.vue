@@ -70,6 +70,11 @@ function detailText(entry: AuditEntry): string {
     case 'client.name_changed':
       // The name stays off the row (ADR-0017). The action column says it was corrected.
       return ''
+    case 'driver.created':
+      // Field names only. The phone and the licence dates stay on the Driver row.
+      return entry.data.fields.map(field => t(`drivers.fields.${field}`)).join(', ')
+    case 'driver.field_changed':
+      return t(`drivers.fields.${entry.data.field}`)
   }
 }
 

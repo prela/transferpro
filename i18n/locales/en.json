@@ -109,6 +109,10 @@
         "created": "Client added",
         "name_changed": "Client name corrected",
         "kind_changed": "Client kind corrected"
+      },
+      "driver": {
+        "created": "Driver added",
+        "field_changed": "Driver corrected"
       }
     }
   },
@@ -156,6 +160,57 @@
       "agency": "Agency",
       "hotel": "Hotel",
       "individual": "Individual"
+    }
+  },
+  "drivers": {
+    "nav": "Drivers",
+    "home": "Home",
+    "title": "Drivers",
+    "add": "Add a driver",
+    "edit": "Correct driver",
+    "name": "Name",
+    "kind": "Kind",
+    "chooseKind": "Choose a kind",
+    "phone": "Phone",
+    "drivingLicenceExpiresOn": "Driving licence valid until",
+    "transportLicenceExpiresOn": "Transport licence valid until",
+    "member": "Member",
+    "noAccount": "No account",
+    "memberGone": "Former member",
+    "mustAccept": "Must accept",
+    "yes": "Yes",
+    "no": "No",
+    "nameEmpty": "Enter a name.",
+    "nameTooLong": "A name can be at most 200 characters.",
+    "kindInvalid": "Choose a kind: own or external.",
+    "phoneEmpty": "Enter a phone number.",
+    "phoneTooLong": "A phone number can be at most 40 characters.",
+    "dateInvalid": "Enter a date.",
+    "submit": "Add driver",
+    "submitting": "Adding driver",
+    "save": "Save",
+    "saving": "Saving",
+    "cancel": "Cancel",
+    "loading": "Loading drivers",
+    "loadFailed": "Drivers could not be loaded. Try again.",
+    "empty": "No drivers yet.",
+    "rejected": "The driver was not accepted.",
+    "notFound": "That driver is no longer on the list.",
+    "forbidden": "A driver cannot add or correct drivers.",
+    "signedOut": "You are signed out. Sign in and try again.",
+    "saveFailed": "The driver was not saved. Try again.",
+    "kinds": {
+      "own": "Own",
+      "external": "External"
+    },
+    "fields": {
+      "name": "Name",
+      "kind": "Kind",
+      "phone": "Phone",
+      "drivingLicenceExpiresOn": "Driving licence",
+      "transportLicenceExpiresOn": "Transport licence",
+      "memberUserId": "Member",
+      "mustAccept": "Must accept"
     }
   }
 }

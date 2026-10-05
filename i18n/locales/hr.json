@@ -109,6 +109,10 @@
         "created": "Klijent dodan",
         "name_changed": "Ime klijenta ispravljeno",
         "kind_changed": "Vrsta klijenta ispravljena"
+      },
+      "driver": {
+        "created": "Vozač dodan",
+        "field_changed": "Vozač ispravljen"
       }
     }
   },
@@ -156,6 +160,57 @@
       "agency": "Agencija",
       "hotel": "Hotel",
       "individual": "Osoba"
+    }
+  },
+  "drivers": {
+    "nav": "Vozači",
+    "home": "Početna",
+    "title": "Vozači",
+    "add": "Dodaj vozača",
+    "edit": "Ispravi vozača",
+    "name": "Ime",
+    "kind": "Vrsta",
+    "chooseKind": "Odaberite vrstu",
+    "phone": "Telefon",
+    "drivingLicenceExpiresOn": "Vozačka dozvola vrijedi do",
+    "transportLicenceExpiresOn": "Dozvola za prijevoz vrijedi do",
+    "member": "Član",
+    "noAccount": "Bez računa",
+    "memberGone": "Bivši član",
+    "mustAccept": "Mora prihvatiti",
+    "yes": "Da",
+    "no": "Ne",
+    "nameEmpty": "Unesite ime.",
+    "nameTooLong": "Ime može imati najviše 200 znakova.",
+    "kindInvalid": "Odaberite vrstu: vlastiti ili vanjski.",
+    "phoneEmpty": "Unesite telefon.",
+    "phoneTooLong": "Telefon može imati najviše 40 znakova.",
+    "dateInvalid": "Unesite datum.",
+    "submit": "Dodaj vozača",
+    "submitting": "Dodavanje vozača",
+    "save": "Spremi",
+    "saving": "Spremanje",
+    "cancel": "Odustani",
+    "loading": "Učitavanje vozača",
+    "loadFailed": "Vozače nije bilo moguće učitati. Pokušajte ponovno.",
+    "empty": "Još nema vozača.",
+    "rejected": "Podaci o vozaču nisu prihvaćeni.",
+    "notFound": "Taj vozač više nije na popisu.",
+    "forbidden": "Vozač ne može dodavati ni ispravljati vozače.",
+    "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
+    "saveFailed": "Vozač nije spremljen. Pokušajte ponovno.",
+    "kinds": {
+      "own": "Vlastiti",
+      "external": "Vanjski"
+    },
+    "fields": {
+      "name": "Ime",
+      "kind": "Vrsta",
+      "phone": "Telefon",
+      "drivingLicenceExpiresOn": "Vozačka dozvola",
+      "transportLicenceExpiresOn": "Dozvola za prijevoz",
+      "memberUserId": "Član",
+      "mustAccept": "Mora prihvatiti"
     }
   }
 }

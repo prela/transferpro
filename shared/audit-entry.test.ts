@@ -82,6 +82,44 @@ it('records a Client by id and kind, and refuses the name', () => {
   expect(auditFactSchema.safeParse({ ...kind, data: { clientId, from: 'hotel', to: 'partner' } }).success).toBe(false)
 })
 
+it('records a Driver by id and field names, and refuses the phone and the dates', () => {
+  const driverId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const phone = '+385911112222'
+  const created = {
+    action: 'driver.created' as const,
+    subjectUserId: null,
+    data: {
+      driverId,
+      fields: ['name', 'kind', 'phone', 'drivingLicenceExpiresOn', 'transportLicenceExpiresOn'] as const,
+    },
+  }
+  expect(auditFactSchema.parse(created)).toEqual(created)
+  expect(auditFactSchema.safeParse({
+    ...created,
+    data: { ...created.data, phone },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...created,
+    data: { driverId, fields: ['phone'], drivingLicenceExpiresOn: '2027-06-01' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...created, subjectUserId: memberId }).success).toBe(false)
+
+  const changed = {
+    action: 'driver.field_changed' as const,
+    subjectUserId: null,
+    data: { driverId, field: 'phone' as const },
+  }
+  expect(auditFactSchema.parse(changed)).toEqual(changed)
+  expect(auditFactSchema.safeParse({
+    ...changed,
+    data: { driverId, field: 'phone', from: phone, to: '+385911110000' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...changed,
+    data: { driverId, field: 'notes' },
+  }).success).toBe(false)
+})
+
 it('lists an entry whose people are no longer members with null names', () => {
   const listed = auditEntryListSchema.parse({
     entries: [{
