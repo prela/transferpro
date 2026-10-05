@@ -82,6 +82,10 @@ A subcontractor company a Ride is handed to. *(draft)*
 **Client**:
 An agency, hotel, or individual who books a Transfer. *(draft)*
 
+**Location**:
+A place a Ride starts or ends.
+_Avoid_: place, stop
+
 **BookingSource**:
 A port through which bookings are imported. *(draft)*
 
