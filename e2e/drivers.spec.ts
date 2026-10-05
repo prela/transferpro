@@ -12,6 +12,12 @@ test('admin adds a driver, corrects it, and the audit log does not show the phon
   await page.getByRole('link', { name: 'Vozači' }).click()
   await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
 
+  // Other required fields are filled so the empty name is the only alert.
+  await page.getByRole('combobox', { name: 'Vrsta' }).click()
+  await page.getByRole('option', { name: 'Vlastiti', exact: true }).click()
+  await page.getByLabel('Telefon').fill(phone)
+  await page.getByLabel('Vozačka dozvola vrijedi do').fill('2027-06-01')
+  await page.getByLabel('Dozvola za prijevoz vrijedi do').fill('2028-01-31')
   await page.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Unesite ime.')
 
@@ -21,11 +27,6 @@ test('admin adds a driver, corrects it, and the audit log does not show the phon
 
   await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
   await page.getByLabel('Ime').fill('Marko Marić')
-  await page.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Vlastiti', exact: true }).click()
-  await page.getByLabel('Telefon').fill(phone)
-  await page.getByLabel('Vozačka dozvola vrijedi do').fill('2027-06-01')
-  await page.getByLabel('Dozvola za prijevoz vrijedi do').fill('2028-01-31')
   await page.getByRole('combobox', { name: 'Član' }).click()
   await page.getByRole('option', { name: linked.name, exact: true }).click()
   await page.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()

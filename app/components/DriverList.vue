@@ -11,6 +11,13 @@ const { notifyAuditChanged } = useAuditRefresh()
 const titleId = useId()
 const listTitleId = useId()
 
+/**
+ * Reka UI refuses a SelectItem whose value is `''`: that string is reserved
+ * for clearing the select. "No account" is a real choice, so it needs its own value.
+ * The API still receives no memberUserId, or null when a link is cleared.
+ */
+const noAccount = 'no-account'
+
 const drivers = ref<Driver[]>([])
 const members = ref<Array<{ userId: string, name: string }>>([])
 const loading = ref(false)
@@ -23,7 +30,7 @@ const kind = ref<DriverKind>()
 const phone = ref('')
 const driving = ref('')
 const transport = ref('')
-const memberUserId = ref('')
+const memberUserId = ref(noAccount)
 const nameErrorKey = ref<NameErrorKey | null>(null)
 const kindErrorKey = ref<'drivers.kindInvalid' | null>(null)
 const phoneErrorKey = ref<PhoneErrorKey | null>(null)
@@ -36,7 +43,7 @@ const editKind = ref<DriverKind>()
 const editPhone = ref('')
 const editDriving = ref('')
 const editTransport = ref('')
-const editMemberUserId = ref('')
+const editMemberUserId = ref(noAccount)
 const editMustAccept = ref(false)
 const editNameErrorKey = ref<NameErrorKey | null>(null)
 const editKindErrorKey = ref<'drivers.kindInvalid' | null>(null)
@@ -56,7 +63,7 @@ const kindItems = computed(() => [
 ])
 
 const memberItems = computed(() => [
-  { label: t('drivers.noAccount'), value: '' },
+  { label: t('drivers.noAccount'), value: noAccount },
   ...members.value.map(member => ({ label: member.name, value: member.userId })),
 ])
 
@@ -149,7 +156,7 @@ async function loadDrivers() {
 }
 
 function memberBody(value: string): { memberUserId: string } | Record<string, never> {
-  return value === '' ? {} : { memberUserId: value }
+  return value === noAccount ? {} : { memberUserId: value }
 }
 
 async function addDriver() {
@@ -180,7 +187,7 @@ async function addDriver() {
     phone.value = ''
     driving.value = ''
     transport.value = ''
-    memberUserId.value = ''
+    memberUserId.value = noAccount
     notifyAuditChanged()
     await loadDrivers()
   }
@@ -199,7 +206,7 @@ function openEdit(driver: Driver) {
   editPhone.value = driver.phone
   editDriving.value = driver.drivingLicenceExpiresOn
   editTransport.value = driver.transportLicenceExpiresOn
-  editMemberUserId.value = driver.memberUserId ?? ''
+  editMemberUserId.value = driver.memberUserId ?? noAccount
   editMustAccept.value = driver.mustAccept
   editNameErrorKey.value = null
   editKindErrorKey.value = null
@@ -224,7 +231,7 @@ async function saveEdit() {
     return
   saving.value = true
   try {
-    const memberChanged = (current.memberUserId ?? '') !== editMemberUserId.value
+    const memberChanged = (current.memberUserId ?? noAccount) !== editMemberUserId.value
     driverSchema.parse(await $fetch(`/api/drivers/${current.id}`, {
       method: 'PATCH',
       body: {
@@ -235,7 +242,7 @@ async function saveEdit() {
         transportLicenceExpiresOn: editTransport.value,
         // An unchanged link is omitted, so a member who has since left does not block a name correction.
         ...(memberChanged
-          ? { memberUserId: editMemberUserId.value === '' ? null : editMemberUserId.value }
+          ? { memberUserId: editMemberUserId.value === noAccount ? null : editMemberUserId.value }
           : {}),
         // Starts off. Only an admin may turn it on or off, so a dispatcher omits it.
         ...(props.isAdmin ? { mustAccept: editMustAccept.value } : {}),
