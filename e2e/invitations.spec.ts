@@ -2,6 +2,32 @@ import { expect, test } from '@playwright/test'
 import { memberPassword, seedTenant } from './fixtures/seed'
 import { expectNoInvitationCookie, invite, signIn, signOut } from './fixtures/ui'
 
+test('a failed send shows the message and the copyable invite link', async ({ page }) => {
+  const tenant = await seedTenant('invite-mail-fail')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const inviteUrl = 'http://127.0.0.1:3000/accept-invite#6b1e0c3a-3333-4333-8333-333333333333'
+  await page.route('**/api/invitations', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback()
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ inviteUrl, emailSent: false }),
+    })
+  })
+  const region = page.getByRole('region', { name: 'Pozovi člana' })
+  await region.getByLabel('E-pošta').fill(`e2e-mail-fail-${crypto.randomUUID()}@example.test`)
+  await region.getByRole('combobox', { name: 'Uloga' }).click()
+  await page.getByRole('option', { name: 'Vozač', exact: true }).click()
+  await region.getByRole('button', { name: 'Pošalji pozivnicu', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('E-pošta nije poslana. Kopirajte poveznicu i pošaljite je sami.')
+  await expect(region.getByLabel('Poveznica pozivnice')).toHaveValue(inviteUrl)
+  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('The email was not sent. Copy the link and send it yourself.')
+})
+
 test('invite without a role shows the role message', async ({ page }) => {
   const tenant = await seedTenant('invite-role')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)

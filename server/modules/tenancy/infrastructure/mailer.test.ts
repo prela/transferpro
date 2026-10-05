@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
-import { assertTestMailer, createResendMailer, invitationEmail, isResendMailer, mailerForApp, ResendTransportError } from './mailer'
+import { captureLogs } from '../../../core/testing'
+import { assertTestMailer, createConsoleMailer, createResendMailer, invitationEmail, isConsoleMailer, isResendMailer, mailerForApp, ResendTransportError } from './mailer'
 
 const invitationId = '6b1e0c3a-2222-4222-8222-222222222222'
 const inviteUrl = `http://localhost:3000/accept-invite#${invitationId}`
@@ -67,8 +68,9 @@ it('uses the fake mailer in test even when a Resend key is present', async () =>
     return new Response('sent', { status: 200 })
   }
   try {
-    const mailer = mailerForApp({ RESEND_API_KEY: 're_live_key' })
+    const mailer = mailerForApp({ RESEND_API_KEY: 're_live_key', MAILER: 'resend' })
     expect(isResendMailer(mailer)).toBe(false)
+    expect(isConsoleMailer(mailer)).toBe(false)
     await mailer?.sendInvitation(mail)
     expect(calls).toEqual([])
   }
@@ -76,6 +78,40 @@ it('uses the fake mailer in test even when a Resend key is present', async () =>
     globalThis.fetch = original
     restoreNodeEnv(previous)
   }
+})
+
+it('uses the console mailer in development unless MAILER=resend and the key are both set', () => {
+  const previous = process.env.NODE_ENV
+  process.env.NODE_ENV = 'development'
+  try {
+    const fallback = mailerForApp({ RESEND_API_KEY: 're_live_key' })
+    expect(isConsoleMailer(fallback)).toBe(true)
+    expect(isResendMailer(fallback)).toBe(false)
+    const resend = mailerForApp({ RESEND_API_KEY: 're_live_key', MAILER: 'resend' })
+    expect(isResendMailer(resend)).toBe(true)
+    expect(isConsoleMailer(resend)).toBe(false)
+    const missingKey = mailerForApp({ RESEND_API_KEY: undefined, MAILER: 'resend' })
+    expect(isConsoleMailer(missingKey)).toBe(true)
+  }
+  finally {
+    restoreNodeEnv(previous)
+  }
+})
+
+it('logs only the subject and the recipient domain from the console mailer', async () => {
+  const logs = captureLogs()
+  const mailer = createConsoleMailer(logs.logger)
+  expect(isConsoleMailer(mailer)).toBe(true)
+  await mailer.sendInvitation(mail)
+  const [line] = logs.lines()
+  expect(line?.event).toBe('mail.console')
+  expect(line?.subject).toBe('Pozivnica u Prijevoz <Dubrovnik>')
+  expect(line?.domain).toBe('example.com')
+  const text = JSON.stringify(line)
+  expect(text).not.toContain('dora@example.com')
+  expect(text).not.toContain(inviteUrl)
+  expect(text).not.toContain(invitationId)
+  expect(text).not.toContain('Otvorite poveznicu')
 })
 
 it('refuses to start when the Resend transport is selected for test', () => {
