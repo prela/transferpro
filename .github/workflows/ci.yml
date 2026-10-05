@@ -103,16 +103,17 @@ jobs:
           pnpm db:migrate:local
           pnpm test:rls
 
-      # The built app. Playwright sets NODE_ENV=test and omits RESEND_API_KEY.
+      # The built app. Playwright sets NODE_ENV=test and clears RESEND_API_KEY.
       # scripts/e2e-server.mjs refuses to start if that is not true, so this
-      # job cannot send mail through Resend.
+      # job cannot send mail through Resend. The migrate URL stays in
+      # .env.migrate: the Playwright worker loads that file for seeding, and
+      # the app process does not receive DATABASE_MIGRATE_URL.
       - name: End-to-end
         run: |
           set -euo pipefail
           set -a
           # shellcheck disable=SC1091
           . ./.env
-          . ./.env.migrate
           set +a
           pnpm exec playwright install --with-deps chromium
           pnpm exec nuxi build

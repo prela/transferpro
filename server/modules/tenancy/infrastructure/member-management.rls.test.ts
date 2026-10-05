@@ -4,9 +4,9 @@ import { loadEnvFile } from 'node:process'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { changeMemberRole, closeTenantRuntime, handleAuthRequest, listMembers, removeTenantMember } from '..'
+import { insertCredentialMember, insertMembership } from '../testing'
 import { createAuth } from './auth'
 import { createTenant } from './create-tenant'
-import { insertCredentialMember, insertMembership } from './credential-member'
 import { assertAnotherAdmin, changeMemberRole as changeMemberRoleImpl, removeMember as removeMemberImpl } from './member-management'
 
 /**

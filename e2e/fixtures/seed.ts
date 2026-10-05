@@ -1,5 +1,6 @@
 import process from 'node:process'
-import { createTenant, insertCredentialMemberConnecting, insertCredentialUserConnecting } from '../../server/modules/tenancy'
+import { createTenant } from '../../server/modules/tenancy'
+import { insertCredentialMemberConnecting, insertCredentialUserConnecting } from '../../server/modules/tenancy/testing'
 
 /** Shared by every seeded account. Inside the auth password bounds. */
 export const memberPassword = 'e2e-member-password'

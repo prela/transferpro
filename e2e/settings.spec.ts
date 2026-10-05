@@ -15,11 +15,8 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
   await settings.getByRole('button', { name: 'Spremi', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Spremljeno.' })).toBeVisible()
 
-  await page.reload()
-  await expect(settings.getByLabel('Čekanje na aerodromu (minute)')).toHaveValue('45')
-  await expect(settings.getByLabel('Čekanje izvan aerodroma (minute)')).toHaveValue('30')
-  await expect(settings.getByLabel('Vremenska zona')).toContainText('Europe/London')
-
+  // The log is already on this page. These rows appear because the save
+  // calls notifyAuditChanged, before any reload.
   await expect(page.getByText('Promijenjeno čekanje na aerodromu')).toBeVisible()
   await expect(page.getByText('90 → 45 min')).toBeVisible()
   await expect(page.getByText('Promijenjeno čekanje izvan aerodroma')).toBeVisible()
@@ -27,4 +24,9 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
   await expect(page.getByText('Promijenjena vremenska zona')).toBeVisible()
   await expect(page.getByText('Europe/Zagreb → Europe/London')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Osvježi', exact: true })).toBeVisible()
+
+  await page.reload()
+  await expect(settings.getByLabel('Čekanje na aerodromu (minute)')).toHaveValue('45')
+  await expect(settings.getByLabel('Čekanje izvan aerodroma (minute)')).toHaveValue('30')
+  await expect(settings.getByLabel('Vremenska zona')).toContainText('Europe/London')
 })

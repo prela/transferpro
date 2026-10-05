@@ -8,6 +8,10 @@ test('admin adds a client, corrects it, and the audit log shows the entries', as
   await page.getByRole('link', { name: 'Klijenti' }).click()
   await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
 
+  await page.getByLabel('Ime').fill('Ana Kovač')
+  await page.getByRole('button', { name: 'Dodaj klijenta', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Odaberite vrstu: agencija, hotel ili osoba.')
+
   await page.getByLabel('Ime').fill(' ')
   await page.getByRole('combobox', { name: 'Vrsta' }).click()
   await page.getByRole('option', { name: 'Hotel', exact: true }).click()
@@ -33,14 +37,27 @@ test('admin adds a client, corrects it, and the audit log shows the entries', as
   await expect(page.getByRole('button', { name: 'Ispravi klijenta: Hotel Park' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Agencija' })).toBeVisible()
 
+  await page.getByLabel('Ime').fill('Marko Marić')
+  await page.getByRole('combobox', { name: 'Vrsta' }).click()
+  await page.getByRole('option', { name: 'Osoba', exact: true }).click()
+  await page.getByRole('button', { name: 'Dodaj klijenta', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Ispravi klijenta: Marko Marić' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Osoba' })).toBeVisible()
+
+  // Home mounts the log that was notified from this page. Assert before reload.
+  await page.getByRole('link', { name: 'Početna' }).click()
+  await expect(page.getByRole('cell', { name: 'Klijent dodan', exact: true })).toHaveCount(2)
+  await expect(page.getByRole('cell', { name: 'Ime klijenta ispravljeno', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Vrsta klijenta ispravljena', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Osoba', exact: true })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Klijenti' }).click()
+  await expect(page).toHaveURL(/\/clients$/)
   await page.reload()
   await expect(page.getByRole('button', { name: 'Ispravi klijenta: Hotel Park' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Agencija' })).toBeVisible()
-
-  await page.getByRole('link', { name: 'Početna' }).click()
-  await expect(page.getByText('Klijent dodan')).toBeVisible()
-  await expect(page.getByText('Ime klijenta ispravljeno')).toBeVisible()
-  await expect(page.getByText('Vrsta klijenta ispravljena')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Ispravi klijenta: Marko Marić' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Osoba' })).toBeVisible()
 })
 
 test('dispatcher adds a client and the screen shows the tenant name', async ({ page }) => {

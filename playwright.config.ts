@@ -15,13 +15,15 @@ const baseURL = `http://127.0.0.1:${port}`
 /**
  * The built server inherits this env. The Resend key is omitted on purpose:
  * `scripts/e2e-server.mjs` exits if it is present, and the app selects the
- * fake mailer when NODE_ENV is test. `BETTER_AUTH_URL` matches the URL the
- * browser uses, so the session cookie is for this server.
+ * fake mailer when NODE_ENV is test. `DATABASE_MIGRATE_URL` is the owner
+ * role; the Playwright worker loads it for seeding, and the app must not
+ * see it. `BETTER_AUTH_URL` matches the URL the browser uses, so the
+ * session cookie is for this server.
  */
 function e2eServerEnv(): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [name, value] of Object.entries(process.env)) {
-    if (value === undefined || name === 'RESEND_API_KEY')
+    if (value === undefined || name === 'RESEND_API_KEY' || name === 'DATABASE_MIGRATE_URL')
       continue
     env[name] = value
   }
@@ -29,9 +31,10 @@ function e2eServerEnv(): Record<string, string> {
   env.HOST = '127.0.0.1'
   env.PORT = port
   env.BETTER_AUTH_URL = baseURL
-  // Playwright merges this object over the parent env, so omitting the key
-  // would leave the parent's Resend key in place. Empty clears it.
+  // Playwright merges this object over the parent env, so omitting a key
+  // would leave the parent's value in place. Empty clears both.
   env.RESEND_API_KEY = ''
+  env.DATABASE_MIGRATE_URL = ''
   return env
 }
 

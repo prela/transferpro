@@ -71,6 +71,36 @@ async function consoleUse(filePath: string, source: string) {
   return (result?.messages ?? []).filter(message => message.ruleId === 'no-console')
 }
 
+async function tenancyTestingImport(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? []).filter(message =>
+    message.ruleId === 'transferpro/no-tenancy-testing-import',
+  )
+}
+
+it('rejects tenancy/testing imports from server/api and app', async () => {
+  const source = `import { insertCredentialUser } from '../modules/tenancy/testing'\n`
+  const dynamic = `await import('../modules/tenancy/testing.ts')\n`
+  const reexport = `export { insertCredentialUser } from '../modules/tenancy/testing'\n`
+
+  for (const filePath of ['server/api/leak.ts', 'app/components/leak.ts', 'server/api/clients.rls.test.ts']) {
+    expect(await tenancyTestingImport(filePath, source), filePath).not.toEqual([])
+    expect(await tenancyTestingImport(filePath, dynamic), filePath).not.toEqual([])
+    expect(await tenancyTestingImport(filePath, reexport), filePath).not.toEqual([])
+  }
+})
+
+it('allows tenancy/testing imports from e2e and module tests', async () => {
+  const source = `import { insertCredentialMember } from '../../server/modules/tenancy/testing'\n`
+  const allowed = [
+    'e2e/fixtures/seed.ts',
+    'server/modules/tenancy/infrastructure/member-management.rls.test.ts',
+  ]
+  for (const filePath of allowed) {
+    expect(await tenancyTestingImport(filePath, source), filePath).toEqual([])
+  }
+})
+
 it('blocks console outside the logger module', async () => {
   const outside = await consoleUse(
     'server/modules/tenancy/domain/leak.ts',

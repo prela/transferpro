@@ -4,8 +4,6 @@
  */
 export { createTenant, TenantProvisionError } from './infrastructure/create-tenant'
 export type { CreatedTenant, CreateTenantInput } from './infrastructure/create-tenant'
-export { insertCredentialMember, insertCredentialMemberConnecting, insertCredentialUser, insertCredentialUserConnecting, insertMembership } from './infrastructure/credential-member'
-export type { CredentialDb, CredentialUserInput } from './infrastructure/credential-member'
 export { InvitationAccessError } from './infrastructure/invitation'
 export { MemberAccessError } from './infrastructure/member-management'
 export { acceptMemberInvitation, changeMemberRole, closeTenantRuntime, handleAuthRequest, inviteMember, listMembers, previewMemberInvitation, readAuditLog, readSessionShell, readTenantSettings, removeTenantMember, repairInvitationRequest, TenantAccessError, updateTenantSettings, updateUserLocale, withTenantFromSession } from './infrastructure/session'
