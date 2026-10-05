@@ -157,6 +157,7 @@ export interface ClientErrorBody {
   readonly statusCode: number
   readonly message: string
   readonly request_id: string
+  readonly code?: string
 }
 
 function statusCodeOf(error: unknown): number {
@@ -172,6 +173,18 @@ function genericMessage(statusCode: number): string {
   return GENERIC_STATUS_MESSAGE[statusCode] ?? (statusCode >= 500 ? 'Internal Server Error' : 'Request failed')
 }
 
+const clientErrorCode = /^[a-z][a-z0-9_]{0,63}$/
+
+function errorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('data' in error))
+    return undefined
+  const data = (error as { data: unknown }).data
+  if (typeof data !== 'object' || data === null || !('code' in data))
+    return undefined
+  const code = (data as { code: unknown }).code
+  return typeof code === 'string' && clientErrorCode.test(code) ? code : undefined
+}
+
 /**
  * One log line with type and stack, then a body of three fields.
  * The thrown message is not copied: Nitro's default handler would send
@@ -185,9 +198,11 @@ export function handleLoggedError(logger: Logger, error: unknown, requestId: str
     logger.warn({ err })
   else
     logger.error({ err })
+  const code = errorCode(error)
   return {
     statusCode,
     message: genericMessage(statusCode),
     request_id: requestId ?? '',
+    ...(code === undefined ? {} : { code }),
   }
 }

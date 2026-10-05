@@ -6,7 +6,7 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
 import { VehicleInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
-import { addVehicle, archiveStoredVehicle, correctVehicle, loadVehicles, VehicleConflictError, VehicleNotFoundError } from './vehicles'
+import { addVehicle, archiveStoredVehicle, correctVehicle, loadVehicles, VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError } from './vehicles'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const vehicleId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -54,6 +54,22 @@ function fakeTransaction(
             description: compiled.params[5] ?? null,
             archivedAt: null,
           }],
+        }
+      }
+      if (text.includes('registration_plate =') && text.includes('archived_at is not null')) {
+        const plate = compiled.params[0]
+        const excludeId = compiled.params[1]
+        return {
+          rows: vehicles.filter(row =>
+            row.archivedAt !== null && row.registrationPlate === plate && row.id !== excludeId),
+        }
+      }
+      if (text.includes('registration_plate =') && text.includes('archived_at is null') && !text.includes('insert')) {
+        const plate = compiled.params[0]
+        const excludeId = compiled.params[1]
+        return {
+          rows: vehicles.filter(row =>
+            row.archivedAt === null && row.registrationPlate === plate && row.id !== excludeId),
         }
       }
       if (text.includes('for update')) {
@@ -122,7 +138,7 @@ it('drops a live-plate unique violation so the log line does not keep the plate'
     message: `duplicate key ${plate} vehicles_plate_active`,
   })
   const error = await addVehicle(transaction, actorUserId, input).catch(caught => caught)
-  expect(error).toBeInstanceOf(VehicleConflictError)
+  expect(error).toBeInstanceOf(VehiclePlateTakenError)
   expect(error).toMatchObject({ message: 'Conflict', statusCode: 409 })
   expect(JSON.stringify(error)).not.toContain(plate)
   expect(logLine(error)).not.toContain(plate)
@@ -200,7 +216,22 @@ it('does not find a Vehicle the session cannot see', async () => {
 it('refuses a correction of an archived Vehicle and writes nothing', async () => {
   const archived = { ...stored, archivedAt: '2026-10-05T10:00:00.000Z' }
   const { transaction, queries } = fakeTransaction([archived])
-  await expect(correctVehicle(transaction, actorUserId, vehicleId, { kind: 'occasional' })).rejects.toBeInstanceOf(VehicleConflictError)
+  await expect(correctVehicle(transaction, actorUserId, vehicleId, { kind: 'occasional' })).rejects.toBeInstanceOf(VehicleArchivedError)
+  expect(queries.filter(query => query.sql.includes('update') && !query.sql.includes('for update'))).toEqual([])
+  expect(auditPayloads(queries)).toEqual([])
+})
+
+it('refuses a plate change to one held only by an archived Vehicle', async () => {
+  const archivedId = 'b2c3d4e5-6666-4666-8666-666666666666'
+  const archived = {
+    ...stored,
+    id: archivedId,
+    registrationPlate: 'ZG111AA',
+    archivedAt: '2026-10-05T10:00:00.000Z',
+  }
+  const live = { ...stored, registrationPlate: 'ST222CC' }
+  const { transaction, queries } = fakeTransaction([archived, live])
+  await expect(correctVehicle(transaction, actorUserId, vehicleId, { registrationPlate: 'ZG111AA' })).rejects.toBeInstanceOf(VehicleArchivedPlateError)
   expect(queries.filter(query => query.sql.includes('update') && !query.sql.includes('for update'))).toEqual([])
   expect(auditPayloads(queries)).toEqual([])
 })

@@ -1,7 +1,7 @@
-import { defineEventHandler, toWebRequest } from 'h3'
+import { defineEventHandler, getQuery, toWebRequest } from 'h3'
 import { driverListSchema } from '../../shared'
 import { listDrivers } from '../modules/drivers'
-import { driverHttpError } from './drivers/http'
+import { driverHttpError, parseIncludeArchived } from './drivers/http'
 
 /**
  * GET /api/drivers
@@ -10,6 +10,7 @@ import { driverHttpError } from './drivers/http'
  */
 export default defineEventHandler(async (event) => {
   try {
+    parseIncludeArchived(getQuery(event).includeArchived)
     return driverListSchema.parse(await listDrivers(toWebRequest(event).headers))
   }
   catch (error) {

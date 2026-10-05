@@ -45,7 +45,7 @@ const editErrorKey = ref<VehicleFailure | null>(null)
 const saving = ref(false)
 
 type PlateErrorKey = 'vehicles.plateEmpty' | 'vehicles.plateTooLong'
-type VehicleFailure = 'vehicles.loadFailed' | 'vehicles.rejected' | 'vehicles.notFound' | 'vehicles.forbidden' | 'vehicles.signedOut' | 'vehicles.saveFailed' | 'vehicles.plateTaken'
+type VehicleFailure = 'vehicles.loadFailed' | 'vehicles.rejected' | 'vehicles.notFound' | 'vehicles.forbidden' | 'vehicles.signedOut' | 'vehicles.saveFailed' | 'vehicles.plateTaken' | 'vehicles.plateArchived' | 'vehicles.archivedLocked'
 
 const kindItems = computed(() => [
   { label: t('vehicles.kinds.fixed'), value: 'fixed' as const },
@@ -72,6 +72,10 @@ const editOpen = computed({
 })
 
 function failureKey(error: unknown): VehicleFailure {
+  if (vehicleErrorCode(error) === 'vehicle_archived_plate')
+    return 'vehicles.plateArchived'
+  if (vehicleErrorCode(error) === 'vehicle_archived')
+    return 'vehicles.archivedLocked'
   switch (httpStatus(error)) {
     case 400: return 'vehicles.rejected'
     case 401: return 'vehicles.signedOut'
@@ -80,6 +84,16 @@ function failureKey(error: unknown): VehicleFailure {
     case 409: return 'vehicles.plateTaken'
     default: return 'vehicles.saveFailed'
   }
+}
+
+function vehicleErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null)
+    return undefined
+  if ('data' in error && typeof error.data === 'object' && error.data !== null && 'code' in error.data) {
+    const code = error.data.code
+    return typeof code === 'string' ? code : undefined
+  }
+  return undefined
 }
 
 function plateKey(value: string): PlateErrorKey | null {

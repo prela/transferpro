@@ -245,6 +245,8 @@
     "dateInvalid": "Enter a date.",
     "descriptionTooLong": "A description can be at most 120 characters.",
     "plateTaken": "A vehicle with this registration plate already exists.",
+    "archivedLocked": "An archived vehicle cannot be changed. Show archived vehicles to find it.",
+    "plateArchived": "A vehicle with this registration plate is archived. Show archived vehicles or restore the archived vehicle before adding or correcting.",
     "submit": "Add vehicle",
     "submitting": "Adding vehicle",
     "save": "Save",
