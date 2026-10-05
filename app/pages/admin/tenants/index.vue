@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { companyAccountListSchema } from '../../../../shared'
 
+definePageMeta({
+  middleware: 'platform-auth',
+})
+
 const requestFetch = useRequestFetch()
 const { t, shell, loadError, pending, shellError, signOut, chooseLocale, loadMessage } = await usePlatformPage()
 

@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { plantOperationalRows, seedSuperadmin, seedTenant } from './fixtures/seed'
+import { signOut } from './fixtures/ui'
 
 const operationalPaths = ['/clients', '/drivers', '/vehicles', '/transfers', '/rides']
 
@@ -40,6 +41,26 @@ test('superadmin lists, opens, and renames a firm in Croatian and English, light
   await expect(page.getByRole('link', { name: 'Firms', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Light theme', exact: true }).click()
   await expect(page.locator('html')).not.toHaveClass(/dark/)
+})
+
+test('superadmin signs out from the firm list', async ({ page }) => {
+  await seedTenant('platform-out')
+  const owner = await seedSuperadmin('platform-out')
+
+  await page.goto('/')
+  await page.getByLabel('E-pošta').fill(owner.email)
+  await page.getByLabel('Lozinka').fill(owner.password)
+  await page.getByRole('button', { name: 'Prijavi se', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Tvrtke' })).toBeVisible()
+
+  await signOut(page)
+  const cookies = await page.context().cookies()
+  expect(cookies.filter(cookie => cookie.name.includes('session_token') && cookie.value !== '')).toEqual([])
+  await page.goto('/')
+  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await page.goto('/admin/tenants')
+  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Tvrtke' })).toHaveCount(0)
 })
 
 test('a tenant admin does not get the platform screen', async ({ page }) => {

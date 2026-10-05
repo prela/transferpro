@@ -453,6 +453,41 @@ it('keeps a superadmin session shorter than a tenant admin session', async () =>
   expect(await sessionLife(created.adminEmail)).toBeGreaterThan(6 * 24 * 60 * 60)
 })
 
+it('signing out a superadmin the way the platform page does clears the session cookie', async () => {
+  const email = 'plt-owner-signout@example.test'
+  await createSuperadmin({
+    name: 'Platform Signout',
+    email,
+    password,
+    migrateDatabaseUrl,
+  })
+  const ownerSession = await signIn(email)
+  const cookie = ownerSession.get('cookie')
+  if (!cookie)
+    throw new Error('sign-in did not set a session cookie')
+
+  const signedOut = await handleAuthRequest(new Request(new URL('/api/auth/sign-out', authUrl), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'origin': authUrl,
+      cookie,
+    },
+    body: JSON.stringify({}),
+  }))
+  expect(signedOut.status, await signedOut.clone().text()).toBe(200)
+  const cleared = signedOut.headers.getSetCookie().find(part => part.includes('session_token'))
+  if (!cleared)
+    throw new Error('sign-out did not clear the session cookie')
+  expect(cleared.toLowerCase()).toContain('max-age=0')
+
+  const leftover = await handleAuthRequest(new Request(new URL('/api/auth/get-session', authUrl), {
+    headers: { origin: authUrl, cookie },
+  }))
+  expect(leftover.status).toBe(200)
+  expect(await leftover.json()).toBeNull()
+})
+
 it('deactivates the next request and refuses an invitation before a user exists', async () => {
   const slug = 'plt-suspend'
   const created = await tenant(slug)
