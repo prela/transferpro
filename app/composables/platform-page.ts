@@ -25,9 +25,6 @@ export async function usePlatformPage() {
         return null
       throw error
     }
-  }, {
-    // A cached shell would keep the firm list after the session cookie is gone.
-    getCachedData: () => undefined,
   })
 
   if (shell.value)
