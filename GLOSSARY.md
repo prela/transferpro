@@ -55,11 +55,11 @@ A pending offer for one email to join a Tenant as admin, dispatcher, or driver. 
 _Avoid_: signup link
 
 **Audit entry**:
-One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to, the setting value that changed, or the Client (its id, and for a kind change the previous and next kind). A Client's name is not in the record. It is written with the action and never changed or removed.
+One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to, the setting value that changed, the Client (its id, and for a kind change the previous and next kind), or the Driver fields that changed. A Client's name is not in the record. A Driver change does not record the phone or the licence dates. It is written with the action and never changed or removed.
 _Avoid_: history, event, activity
 
 **Driver**:
-A Tenant's record of a member whose role is driver. That member has at most one Driver. A Driver may be set to must-accept; otherwise assignment is enough. Their upcoming list is the unfinished Rides currently assigned to them. A Ride leaves that list as soon as it is no longer theirs.
+A Tenant's record of a person who can be assigned to a Ride. It may have no account. A link, when present, joins one member whose role is driver, and that member has at most one Driver. A Driver may be set to must-accept; otherwise assignment is enough. Their upcoming list is the unfinished Rides currently assigned to them. A Ride leaves that list as soon as it is no longer theirs.
 _Avoid_: operator, external collaborator
 
 **Locale**:

@@ -101,6 +101,21 @@ it('allows tenancy/testing imports from e2e and module tests', async () => {
   }
 })
 
+async function driversTransfersImport(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? []).filter(message =>
+    message.ruleId === 'transferpro/no-drivers-transfers-import',
+  )
+}
+
+it('rejects a Drivers import of the transfers module', async () => {
+  const source = `import { bookRide } from '../../transfers'\n`
+  const dynamic = `await import('../transfers/index')\n`
+  expect(await driversTransfersImport('server/modules/drivers/infrastructure/drivers.ts', source)).not.toEqual([])
+  expect(await driversTransfersImport('server/modules/drivers/index.ts', dynamic)).not.toEqual([])
+  expect(await driversTransfersImport('server/modules/clients/index.ts', source)).toEqual([])
+})
+
 it('blocks console outside the logger module', async () => {
   const outside = await consoleUse(
     'server/modules/tenancy/domain/leak.ts',

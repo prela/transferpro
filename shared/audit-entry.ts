@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { clientKindSchema } from './client'
+import { driverFieldSchema } from './driver'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
 
@@ -18,6 +19,8 @@ export const auditActions = [
   'client.created',
   'client.name_changed',
   'client.kind_changed',
+  'driver.created',
+  'driver.field_changed',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -99,6 +102,31 @@ const clientKindChanged = z.object({
   data: z.strictObject({ clientId, from: clientKindSchema, to: clientKindSchema }),
 })
 
+/*
+ * A Driver is not a member. The id says which row. The data names the
+ * fields that were written and nothing else: a phone or a licence date
+ * would stay forever on a row that is never deleted.
+ */
+const driverId = z.uuid()
+
+const driverCreated = z.object({
+  action: z.literal('driver.created'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    driverId,
+    fields: z.array(driverFieldSchema).min(1),
+  }),
+})
+
+const driverFieldChanged = z.object({
+  action: z.literal('driver.field_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    driverId,
+    field: driverFieldSchema,
+  }),
+})
+
 /** What happened: the action, the member it was done to, and its data. */
 export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
@@ -110,6 +138,8 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   clientCreated,
   clientNameChanged,
   clientKindChanged,
+  driverCreated,
+  driverFieldChanged,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -136,6 +166,8 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   clientCreated.extend(listed),
   clientNameChanged.extend(listed),
   clientKindChanged.extend(listed),
+  driverCreated.extend(listed),
+  driverFieldChanged.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

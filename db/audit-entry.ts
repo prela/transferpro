@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, CLIENT_KINDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -77,6 +77,28 @@ function kindText(data: AnyPgColumn, key: string) {
   return sql`${data} ->> ${name} in (${clientKinds})`
 }
 
+const driverFields = sql.raw(DRIVER_FIELDS.map(field => `'${field}'`).join(', '))
+const driverFieldsJson = sql.raw(`'${JSON.stringify([...DRIVER_FIELDS])}'::jsonb`)
+const driverFieldCount = sql.raw(String(DRIVER_FIELDS.length))
+
+/** A Driver id stored as text. Same RFC 4122 shape as a Client id. */
+function driverIdText(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'driverId'`)}) = 'string' and ${data} ->> ${sql.raw(`'driverId'`)} ~* ${sql.raw(`'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`)}`
+}
+
+/** `field` is one name from the Driver list. A phone number cannot sit here. */
+function driverFieldText(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'field'`)}) = 'string' and ${data} ->> ${sql.raw(`'field'`)} in (${driverFields})`
+}
+
+/**
+ * `fields` is a non-empty array of those names. Containment refuses a
+ * string that is not a field name, so a phone or a date cannot be an element.
+ */
+function driverFieldsArray(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${driverFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${driverFieldsJson}`
+}
+
 /**
  * Append-only (ADR-0014). The app role may only SELECT. Rows are written by
  * `audit.append_entry` and by the trigger on `auth.invitation`, and a trigger
@@ -113,5 +135,7 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'client.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'kind')} and ${clientIdText(table.data)} and ${kindText(table.data, 'kind')}
     when 'client.name_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId')} and ${clientIdText(table.data)}
     when 'client.kind_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'from', 'to')} and ${clientIdText(table.data)} and ${kindText(table.data, 'from')} and ${kindText(table.data, 'to')}
+    when 'driver.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'driverId', 'fields')} and ${driverIdText(table.data)} and ${driverFieldsArray(table.data)}
+    when 'driver.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'driverId', 'field')} and ${driverIdText(table.data)} and ${driverFieldText(table.data)}
     else false end) is true`),
 ], { oneRowPerTenant: false })
