@@ -146,6 +146,21 @@ async function vehiclesTransfersImport(filePath: string, source: string) {
   )
 }
 
+async function rosterTransfersImport(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? []).filter(message =>
+    message.ruleId === 'transferpro/no-roster-transfers-import',
+  )
+}
+
+it('rejects a Roster import of the transfers module', async () => {
+  const source = `import { bookRide } from '../../transfers'\n`
+  const dynamic = `await import('../transfers/index')\n`
+  expect(await rosterTransfersImport('server/modules/roster/infrastructure/roster.ts', source)).not.toEqual([])
+  expect(await rosterTransfersImport('server/modules/roster/index.ts', dynamic)).not.toEqual([])
+  expect(await rosterTransfersImport('server/modules/vehicles/index.ts', source)).toEqual([])
+})
+
 it('rejects a Vehicles import of the transfers module', async () => {
   const source = `import { bookRide } from '../../transfers'\n`
   const dynamic = `await import('../transfers/index')\n`

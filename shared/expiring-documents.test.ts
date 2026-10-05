@@ -2,7 +2,8 @@ import type { Driver } from './driver'
 import type { ExpiringDocument } from './expiring-documents'
 import type { Vehicle } from './vehicle'
 import { expect, it } from 'vitest'
-import { addCalendarDays, calendarDateInTimeZone, selectExpiringDocuments } from './expiring-documents'
+import { calendarDateInTimeZone } from './date'
+import { addCalendarDays, selectExpiringDocuments } from './expiring-documents'
 
 /**
  * Worked window around 5 Oct 2026, counted as calendar days, not 30×24h.

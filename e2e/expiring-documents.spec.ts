@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { addCalendarDays, calendarDateInTimeZone } from '../shared/expiring-documents'
+import { calendarDateInTimeZone } from '../shared/date'
+import { addCalendarDays } from '../shared/expiring-documents'
 import { seedDriverRecord, seedMember, seedTenant, seedVehicleRecord } from './fixtures/seed'
 import { signIn, signOut, useTheme } from './fixtures/ui'
 

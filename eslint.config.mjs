@@ -183,6 +183,49 @@ const vehiclesTransfersImport = {
   },
 }
 
+const rosterTransfersImport = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      banned: 'The Roster module does not import the transfers module (ADR-0018).',
+    },
+  },
+  create(context) {
+    /**
+     * @param {import('estree').Node} node
+     * @param {unknown} source
+     */
+    function check(node, source) {
+      if (typeof source !== 'string' || !(/(?:^|\/)transfers(?:\/|$)/).test(source))
+        return
+      const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
+      if (!filename.includes('/server/modules/roster/'))
+        return
+      context.report({ node, messageId: 'banned' })
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ImportExpression(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source?.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportAllDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+    }
+  },
+}
+
 const expiringDocumentsTransfersImport = {
   meta: {
     type: 'problem',
@@ -336,6 +379,7 @@ export default antfu(
           'no-tenancy-testing-import': tenancyTestingImport,
           'no-drivers-transfers-import': driversTransfersImport,
           'no-vehicles-transfers-import': vehiclesTransfersImport,
+          'no-roster-transfers-import': rosterTransfersImport,
           'no-expiring-documents-transfers-import': expiringDocumentsTransfersImport,
           'no-platform-boundary-import': platformBoundaryImport,
         },
@@ -347,6 +391,7 @@ export default antfu(
       'transferpro/no-tenancy-testing-import': 'error',
       'transferpro/no-drivers-transfers-import': 'error',
       'transferpro/no-vehicles-transfers-import': 'error',
+      'transferpro/no-roster-transfers-import': 'error',
       'transferpro/no-expiring-documents-transfers-import': 'error',
       'transferpro/no-platform-boundary-import': 'error',
     },

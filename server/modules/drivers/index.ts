@@ -4,3 +4,4 @@
  * account. Rides will point at a Driver later; this module does not import them.
  */
 export { createDriver, DriverNotFoundError, listDrivers, loadDriverLinkedToMember, loadDrivers, updateDriver } from './infrastructure/driver-access'
+export { driverIsInTenant } from './infrastructure/drivers'

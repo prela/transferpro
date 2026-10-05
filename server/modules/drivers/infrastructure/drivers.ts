@@ -45,6 +45,22 @@ const driverColumns = sql`
 `
 
 /**
+ * Whether this Tenant has that Driver.
+ * Another Tenant's id is absent: the select runs under the session's row security.
+ * The roster module calls this through the Drivers index, by id.
+ */
+export async function driverIsInTenant(transaction: TenantTransaction, driverId: string): Promise<boolean> {
+  const selected = z.object({
+    rows: z.array(z.object({ id: z.uuid() })),
+  }).parse(await transaction.execute(sql`
+    select id
+    from app.drivers
+    where id = ${driverId}
+  `))
+  return selected.rows.length === 1
+}
+
+/**
  * This Tenant's Drivers, by name, so the office can find one.
  * There is no inactive or archived Driver column, so this is every row.
  */

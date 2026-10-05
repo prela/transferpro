@@ -170,6 +170,53 @@ it('records a Vehicle by id and field names, and refuses the plate and the dates
   }).success).toBe(false)
 })
 
+it('records a roster day as ids and a calendar date, and refuses a plate, a name, or a phone', () => {
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
+  const otherVehicleId = 'c2c2c2c2-2222-4222-8222-222222222222'
+  const assigned = {
+    action: 'roster.assigned' as const,
+    subjectUserId: null,
+    data: { rosterDate: '2026-10-05', driverId, vehicleId },
+  }
+  expect(auditFactSchema.parse(assigned)).toEqual(assigned)
+  expect(auditFactSchema.safeParse({
+    ...assigned,
+    data: { ...assigned.data, registrationPlate: 'DU123AB' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...assigned,
+    data: { ...assigned.data, name: 'Ana', phone: '+38591111' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...assigned,
+    data: { ...assigned.data, rosterDate: '2026-02-31' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...assigned, subjectUserId: memberId }).success).toBe(false)
+
+  const changed = {
+    action: 'roster.changed' as const,
+    subjectUserId: null,
+    data: { rosterDate: '2026-10-05', driverId, fromVehicleId: vehicleId, toVehicleId: otherVehicleId },
+  }
+  expect(auditFactSchema.parse(changed)).toEqual(changed)
+  expect(auditFactSchema.safeParse({
+    ...changed,
+    data: { ...changed.data, registrationPlate: 'DU123AB' },
+  }).success).toBe(false)
+
+  const cleared = {
+    action: 'roster.cleared' as const,
+    subjectUserId: null,
+    data: { rosterDate: '2026-10-05', driverId, vehicleId },
+  }
+  expect(auditFactSchema.parse(cleared)).toEqual(cleared)
+  expect(auditFactSchema.safeParse({
+    ...cleared,
+    data: { driverId, vehicleId },
+  }).success).toBe(false)
+})
+
 it('records a platform rename, deactivation, or reactivation with an empty object and no person', () => {
   for (const action of ['tenant.renamed', 'tenant.suspended', 'tenant.reactivated'] as const) {
     const entry = { action, subjectUserId: null, data: {} }

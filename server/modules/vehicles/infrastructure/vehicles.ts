@@ -77,6 +77,31 @@ const vehicleColumns = sql`
   archived_at as "archivedAt"
 `
 
+/**
+ * Whether this Tenant's Vehicle can be given for a day.
+ * `archived` stays readable on a roster row already stored; a new assignment
+ * still refuses it. A missing id and another Tenant's id are the same result.
+ * The roster module calls this through the Vehicles index, by id.
+ */
+export type VehiclePresence = 'active' | 'archived' | 'missing'
+
+export async function vehiclePresence(transaction: TenantTransaction, vehicleId: string): Promise<VehiclePresence> {
+  const selected = z.object({
+    rows: z.array(z.object({
+      id: z.uuid(),
+      archivedAt: z.unknown().nullable(),
+    })),
+  }).parse(await transaction.execute(sql`
+    select id, archived_at as "archivedAt"
+    from app.vehicles
+    where id = ${vehicleId}
+  `))
+  const row = selected.rows[0]
+  if (!row)
+    return 'missing'
+  return row.archivedAt === null ? 'active' : 'archived'
+}
+
 /** This Tenant's Vehicles, by plate, so the office can find one. */
 export async function loadVehicles(
   transaction: TenantTransaction,

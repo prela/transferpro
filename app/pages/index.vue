@@ -206,6 +206,14 @@ const loadMessage = computed(() => {
         >
           {{ t('vehicles.nav') }}
         </UButton>
+        <UButton
+          to="/roster"
+          color="neutral"
+          variant="outline"
+          size="xl"
+        >
+          {{ t('roster.nav') }}
+        </UButton>
       </nav>
       <ExpiringDocuments />
       <TenantSettings

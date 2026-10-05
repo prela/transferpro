@@ -75,31 +75,6 @@ interface DatedDocument {
   readonly expiresOn: string
 }
 
-/**
- * The calendar day of `now` in an IANA zone. Parts are reassembled so the
- * string does not depend on which ICU build formats the locale.
- * The Tenant time zone is display for instants and is also the calendar
- * used to decide whether a stored date is already past.
- */
-export function calendarDateInTimeZone(timeZone: string, now: Date): string {
-  if (Number.isNaN(now.getTime()))
-    throw new RangeError('Instant is not a valid time.')
-
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now)
-  const value = (type: Intl.DateTimeFormatPartTypes) => {
-    const part = parts.find(item => item.type === type)
-    if (!part)
-      throw new RangeError(`Missing ${type} from the formatted date.`)
-    return part.value
-  }
-  return `${value('year')}-${value('month')}-${value('day')}`
-}
-
 /** Move a `YYYY-MM-DD` by whole calendar days. Month length and leap days are included. */
 export function addCalendarDays(isoDate: string, days: number): string {
   if (!isCalendarDate(isoDate) || !Number.isInteger(days))
