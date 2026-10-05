@@ -98,11 +98,17 @@ test('denies git history and branch commands for a local agent', () => {
     'git push -u origin chore/agent-rules',
     'git reset --hard',
     'git checkout develop',
+    'git checkout -- AGENTS.md',
     'git checkout -b chore/other',
+    'git checkout -b',
+    'git checkout -B chore/other',
     'git stash',
     'git stash push',
     'git switch develop',
+    'git switch -',
     'git switch -c chore/other',
+    'git switch -c',
+    'git switch -C chore/other',
     'git restore AGENTS.md',
     'git -C /tmp/repo commit -m "chore: test"',
     '/usr/bin/git push',
@@ -121,10 +127,22 @@ test('cloud agent and TP_ALLOW_GIT=1 may commit and push, and nothing else on th
   for (const env of [cloud, opted]) {
     allowed('git commit -m "chore: test"', env)
     allowed('git push', env)
+    allowed('git checkout -b chore/other', env)
+    allowed('git checkout -b chore/other develop', env)
+    allowed('git switch -c chore/other', env)
+    allowed('git switch -c chore/other develop', env)
     denied('git reset --hard HEAD', /git reset/, env)
+    denied('git checkout develop', /git checkout/, env)
     denied('git checkout -- AGENTS.md', /git checkout/, env)
+    denied('git checkout -b', /git checkout/, env)
+    denied('git checkout -B chore/other', /git checkout/, env)
+    denied('git checkout -b chore/other -B other', /git checkout/, env)
     denied('git stash', /git stash/, env)
+    denied('git switch develop', /git switch/, env)
     denied('git switch -', /git switch/, env)
+    denied('git switch -c', /git switch/, env)
+    denied('git switch -C chore/other', /git switch/, env)
+    denied('git switch -c chore/other -C other', /git switch/, env)
     denied('git restore --source=HEAD AGENTS.md', /git restore/, env)
     denied('cat .env', /do not read/, env)
     denied('rm -rf node_modules', /node_modules/, env)

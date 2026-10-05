@@ -5,9 +5,11 @@
  * stdout: { permission: "allow" | "deny" | "ask", user_message, agent_message }.
  * Project hooks run in cloud agents (cursor.com/docs/hooks). A local IDE
  * agent also has CURSOR_AGENT set, so that variable is not a cloud signal.
- * A managed cloud VM exposes the metadata socket (default /run/cursor/api.sock,
- * key agent/runtime). A self-hosted worker sets CURSOR_AGENT_WORKER_ID.
- * TP_ALLOW_GIT=1 is the explicit opt-out for commit and push only.
+ * A managed VM counts when CURSOR_AGENT_SOCKET (default /run/cursor/api.sock)
+ * is a unix socket. The guard does not read the socket. A self-hosted worker
+ * counts when CURSOR_AGENT_WORKER_ID is set. TP_ALLOW_GIT=1 is the same
+ * opt-out as that detection: commit, push, and creating a branch with
+ * `git checkout -b <name>` or `git switch -c <name>`.
  * A prefix on the command does not count: the agent could add it itself.
  */
 import { Buffer } from 'node:buffer'
@@ -65,7 +67,7 @@ export function decide(command, env = process.env, depth = 0) {
 }
 
 /**
- * Managed cloud VM or self-hosted worker. See the file comment.
+ * True when the worker id is set, or the metadata path is a unix socket.
  * @param {NodeJS.ProcessEnv} env
  */
 export function isCloudAgent(env) {
@@ -212,7 +214,10 @@ function inspectStatement(statement, env, depth) {
 
   const git = gitSubcommand(argv)
   if (git.invoked) {
-    if (ALWAYS_BLOCKED_GIT.has(git.name)) {
+    // checkout -b and switch -c create a branch. -B and -C reset one that
+    // already exists, so they stay denied. Same gate as commit and push.
+    const creating = createsNewBranch(git.name, git.args) && gitWritesAllowed(env)
+    if (ALWAYS_BLOCKED_GIT.has(git.name) && !creating) {
       return deny(
         `do not run git ${git.name}. The human does that.`,
         statement,
@@ -375,12 +380,12 @@ function shellInlineScript(argv) {
  */
 function gitSubcommand(argv) {
   if (baseName(argv[0]) !== 'git')
-    return { invoked: false, name: '' }
+    return { invoked: false, name: '', args: [] }
   let i = 1
   while (i < argv.length) {
     const token = argv[i]
     if (token === '--')
-      return { invoked: true, name: '' }
+      return { invoked: true, name: '', args: [] }
     if (token.startsWith('-')) {
       const opt = token.includes('=') ? token.slice(0, token.indexOf('=')) : token
       if (!token.includes('=') && GIT_OPTIONS_WITH_VALUE.has(opt))
@@ -389,9 +394,38 @@ function gitSubcommand(argv) {
         i++
       continue
     }
-    return { invoked: true, name: token }
+    return { invoked: true, name: token, args: argv.slice(i + 1) }
   }
-  return { invoked: true, name: '' }
+  return { invoked: true, name: '', args: [] }
+}
+
+/**
+ * `git checkout -b <name>` or `git switch -c <name>`, and not `-B` or `-C`.
+ * The name is the next word. A start-point after the name is still a create.
+ * @param {string} subcommand
+ * @param {string[]} args
+ */
+function createsNewBranch(subcommand, args) {
+  const flag = subcommand === 'checkout' ? '-b' : subcommand === 'switch' ? '-c' : ''
+  if (!flag)
+    return false
+  let named = false
+  for (let i = 0; i < args.length; i++) {
+    const token = args[i]
+    if (token === '--')
+      break
+    // -B / -C (and -Bname / -Cname) reset an existing branch. Never a create.
+    if (token === '-B' || token === '-C' || token.startsWith('-B') || token.startsWith('-C'))
+      return false
+    if (token === flag) {
+      const name = args[i + 1]
+      if (!name || name === '--' || name.startsWith('-'))
+        return false
+      named = true
+      i++
+    }
+  }
+  return named
 }
 
 /**

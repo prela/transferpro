@@ -127,14 +127,18 @@ Pull-request titles and bodies follow the same model-name rule. Bodies also must
 
 `.cursor/hooks.json` registers `beforeShellExecution` as `.cursor/hooks/guard-shell.sh` (`failClosed: true`). The script execs `.cursor/hooks/guard-shell.mjs`. Input and output are the Cursor hook JSON: `permission` is `allow` or `deny`, and a denial sets `user_message` and `agent_message`.
 
+The hook is fail-closed. If node or the guard script crashes, every agent shell command is denied. Repair the script, or temporarily remove the hook entry locally.
+
+The guard needs `sh` and `node`. On Windows, run Cursor in WSL or Git Bash.
+
 Cursor docs: project hooks in `.cursor/hooks.json` run in cloud agents, including `beforeShellExecution`, once the VM is writable. They do not run during an early read-only turn. User hooks in `~/.cursor/hooks.json` are not loaded in a cloud VM, so a stop hook there does not run beside this project hook and does not clash with it.
 
 `git commit` and `git push` are denied for a local agent. They are allowed when either of these is true in the hook process environment:
 
 - `TP_ALLOW_GIT=1` (exactly `1`). A prefix on the command does not count.
-- The process is a cloud agent. A managed VM has the metadata socket (`CURSOR_AGENT_SOCKET`, default `/run/cursor/api.sock`; `agent/runtime` is `managed`). A self-hosted worker sets `CURSOR_AGENT_WORKER_ID`. `CURSOR_AGENT` is also set for a local IDE agent, so it is not the signal. `CURSOR_CODE_REMOTE` means a remote workspace, not a cloud agent.
+- The process is a cloud agent. A managed VM counts when `CURSOR_AGENT_SOCKET` (default `/run/cursor/api.sock`) is a unix socket. The guard does not read that socket. A self-hosted worker sets `CURSOR_AGENT_WORKER_ID`. `CURSOR_AGENT` is also set for a local IDE agent, so it is not the signal. `CURSOR_CODE_REMOTE` means a remote workspace, not a cloud agent.
 
-`git reset`, `git checkout`, `git stash`, `git switch`, and `git restore` stay denied everywhere, including cloud agents and `TP_ALLOW_GIT=1`. So do deletions of `node_modules` or `.modules.yaml`, and reading `.env` files (`cat`, `less`, `more`, `head`, `tail`, `grep`) other than `.env.example`. `printenv` and a bare `env` dump are denied. `env pnpm test` is allowed.
+The same gate allows `git checkout -b <name>` and `git switch -c <name>` (a start-point after the name is fine). `git checkout -B` and `git switch -C` stay denied, because those reset a branch that already exists. Plain `checkout` or `switch` of an existing branch or of files stays denied everywhere, including cloud agents. Local branch creation stays denied. `git reset`, `git stash`, and `git restore` stay denied everywhere. So do deletions of `node_modules` or `.modules.yaml`, and reading `.env` files (`cat`, `less`, `more`, `head`, `tail`, `grep`) other than `.env.example`. `printenv` and a bare `env` dump are denied. `env pnpm test` is allowed.
 
 Check it locally:
 
@@ -145,7 +149,7 @@ printf '%s\n' '{"command":"cat .env","cwd":"/workspace"}' | .cursor/hooks/guard-
 
 The checks are `.cursor/hooks/*.checks.mjs` and use `node:test`. A `*.test.*` name makes ESLint rewrite that import to vitest.
 
-The guard does not see past the command string. It will not catch a runtime read (`node -e` with a file read), `sed` or `awk` on `.env`, `eval`, a variable that expands to `.env`, `git show` of a secret path, or deleting `node_modules` by renaming it first. `pnpm install` stays a written rule, not a hook denial. `git checkout` and `git switch` stay denied for cloud agents too; the platform branch has to exist before those commands would be needed, or the human creates it.
+The guard does not see past the command string. It will not catch a runtime read (`node -e` with a file read), `sed` or `awk` on `.env`, `eval`, a variable that expands to `.env`, `git show` of a secret path, or deleting `node_modules` by renaming it first. `pnpm install` stays a written rule, not a hook denial.
 
 ## Skill workflow
 
