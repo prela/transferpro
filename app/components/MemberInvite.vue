@@ -80,7 +80,7 @@ async function copyLink() {
 </script>
 
 <template>
-  <section>
+  <section :aria-label="t('invite.title')">
     <h2 class="mt-6 mb-4 text-xl font-semibold">
       {{ t('invite.title') }}
     </h2>

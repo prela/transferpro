@@ -58,6 +58,10 @@
     "signInSubmit": "Sign in and accept",
     "invalid": "This invite is not valid.",
     "failed": "The invite could not be accepted.",
+    "wrongAccount": "You are signed in as {account}. Sign out to accept this invite.",
+    "passwordLength": "The password must be at least {min} and at most {max} characters.",
+    "passwordTooShort": "The password must be at least {min} characters.",
+    "passwordTooLong": "The password must be at most {max} characters.",
     "passwordRules": "The password does not meet the rules.",
     "limited": "Too many attempts. Wait and try again."
   },

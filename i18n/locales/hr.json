@@ -58,6 +58,10 @@
     "signInSubmit": "Prijavi se i prihvati",
     "invalid": "Ova pozivnica nije valjana.",
     "failed": "Pozivnicu nije moguće prihvatiti.",
+    "wrongAccount": "Prijavljeni ste kao {account}. Odjavite se da biste prihvatili ovu pozivnicu.",
+    "passwordLength": "Lozinka mora imati najmanje {min} i najviše {max} znakova.",
+    "passwordTooShort": "Lozinka mora imati najmanje {min} znakova.",
+    "passwordTooLong": "Lozinka može imati najviše {max} znakova.",
     "passwordRules": "Lozinka ne zadovoljava pravila.",
     "limited": "Previše pokušaja. Pričekajte i pokušajte ponovno."
   },

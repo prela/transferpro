@@ -4,9 +4,10 @@
     "prepare": "husky",
     "dev": "nuxi dev --port 3000",
     "lint": "eslint .",
-    "typecheck": "nuxi typecheck",
+    "typecheck": "nuxi typecheck && tsc -p e2e/tsconfig.json --noEmit",
     "test": "vitest run",
     "test:rls": "vitest run --config vitest.rls.config.ts",
+    "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "node --env-file=.env.migrate ./node_modules/drizzle-kit/bin.cjs migrate",
     "tenant:create": "node --import ./scripts/register-ts.mjs --env-file=.env --env-file=.env.migrate ./scripts/tenant-create.ts"
@@ -29,6 +30,8 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^9.5.1",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.4",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
     "eslint": "^10.11.0",

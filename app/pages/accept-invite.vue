@@ -1,18 +1,34 @@
 <script setup lang="ts">
-import { acceptErrorKey, invitationPreviewSchema, signInErrorKey } from '../../shared'
+import type { PasswordLengthLimits } from '../../shared'
+import { acceptErrorKey, invitationPreviewSchema, passwordLengthRule, signInErrorKey } from '../../shared'
 
 const { t, setLocale } = useI18n()
 
 const invitationId = ref('')
-const preview = ref<'set-password' | 'sign-in' | 'invalid' | null>(null)
+const preview = ref<'set-password' | 'sign-in' | 'invalid' | 'wrong-account' | null>(null)
+const limits = ref<PasswordLengthLimits | null>(null)
+// The account already signed in, when it is not the invitee.
+const signedInAs = ref('')
 const name = ref('')
 const email = ref('')
 const password = ref('')
 const pending = ref(false)
-const formError = ref<'signIn.failed' | 'signIn.limited' | 'acceptInvite.passwordRules' | 'acceptInvite.limited' | 'acceptInvite.signInTitle' | 'acceptInvite.failed' | null>(null)
+const formError = ref<'signIn.failed' | 'signIn.limited' | 'acceptInvite.passwordTooShort' | 'acceptInvite.passwordTooLong' | 'acceptInvite.passwordRules' | 'acceptInvite.limited' | 'acceptInvite.signInTitle' | 'acceptInvite.failed' | 'shell.signOutFailed' | null>(null)
 
 useHead({
   title: () => t('acceptInvite.title'),
+})
+
+const formErrorText = computed(() => {
+  const key = formError.value
+  const bounds = limits.value
+  if (key === null)
+    return ''
+  if (key === 'acceptInvite.passwordTooShort' && bounds)
+    return t(key, { min: bounds.minPasswordLength })
+  if (key === 'acceptInvite.passwordTooLong' && bounds)
+    return t(key, { max: bounds.maxPasswordLength })
+  return t(key)
 })
 
 onMounted(async () => {
@@ -22,20 +38,42 @@ onMounted(async () => {
     preview.value = 'invalid'
     return
   }
+  await loadPreview()
+})
+
+async function loadPreview() {
   try {
     const result = invitationPreviewSchema.parse(await $fetch('/api/invitations/preview', {
       method: 'POST',
-      body: { invitationId: hash },
+      body: { invitationId: invitationId.value },
     }))
     preview.value = result.state
+    limits.value = result.state === 'set-password' ? result : null
+    signedInAs.value = result.state === 'wrong-account' ? result.account : ''
   }
   catch {
     preview.value = 'invalid'
+    limits.value = null
+    signedInAs.value = ''
   }
-})
+}
+
+function namedPasswordError(): 'acceptInvite.passwordTooShort' | 'acceptInvite.passwordTooLong' | null {
+  const bounds = limits.value
+  if (!bounds)
+    return null
+  const rule = passwordLengthRule(password.value, bounds)
+  if (rule === 'too-short')
+    return 'acceptInvite.passwordTooShort'
+  if (rule === 'too-long')
+    return 'acceptInvite.passwordTooLong'
+  return null
+}
 
 async function createAccount() {
-  formError.value = null
+  formError.value = namedPasswordError()
+  if (formError.value)
+    return
   pending.value = true
   try {
     await $fetch('/api/invitations/accept', {
@@ -50,7 +88,9 @@ async function createAccount() {
     await navigateTo('/')
   }
   catch (error) {
-    formError.value = acceptErrorKey(httpStatus(error) ?? 0)
+    const key = acceptErrorKey(httpStatus(error) ?? 0)
+    // 422 is only the length bounds. Name the bound the password missed.
+    formError.value = key === 'acceptInvite.passwordRules' ? namedPasswordError() ?? key : key
     if (formError.value === 'acceptInvite.signInTitle')
       preview.value = 'sign-in'
   }
@@ -83,6 +123,24 @@ async function signInAndAccept() {
   }
   catch (error) {
     formError.value = acceptErrorKey(httpStatus(error) ?? 0)
+  }
+  finally {
+    pending.value = false
+  }
+}
+
+async function signOut() {
+  formError.value = null
+  pending.value = true
+  try {
+    // ofetch omits Content-Type when there is no body. The auth route still
+    // gives that POST a body stream, and Better Auth answers 415. An empty
+    // object is application/json, which sign-out accepts.
+    await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
+    await loadPreview()
+  }
+  catch {
+    formError.value = 'shell.signOutFailed'
   }
   finally {
     pending.value = false
@@ -122,6 +180,31 @@ function httpStatus(error: unknown): number | undefined {
       role="alert"
       :description="t('acceptInvite.invalid')"
     />
+    <template v-else-if="preview === 'wrong-account'">
+      <UAlert
+        v-if="formError"
+        color="error"
+        variant="subtle"
+        role="alert"
+        class="mb-4"
+        :description="formErrorText"
+      />
+      <UAlert
+        color="error"
+        variant="subtle"
+        role="alert"
+        class="mb-4"
+        :description="t('acceptInvite.wrongAccount', { account: signedInAs })"
+      />
+      <UButton
+        type="button"
+        size="xl"
+        :disabled="pending"
+        @click="signOut"
+      >
+        {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
+      </UButton>
+    </template>
     <template v-else>
       <UAlert
         v-if="formError"
@@ -129,7 +212,7 @@ function httpStatus(error: unknown): number | undefined {
         variant="subtle"
         role="alert"
         class="mb-4"
-        :description="t(formError)"
+        :description="formErrorText"
       />
       <p
         v-if="preview === 'sign-in'"
@@ -201,6 +284,12 @@ function httpStatus(error: unknown): number | undefined {
             class="w-full"
           />
         </UFormField>
+        <p
+          v-if="limits"
+          class="mb-4"
+        >
+          {{ t('acceptInvite.passwordLength', { min: limits.minPasswordLength, max: limits.maxPasswordLength }) }}
+        </p>
         <UFormField
           :label="t('acceptInvite.password')"
           name="password"

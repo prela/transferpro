@@ -102,3 +102,28 @@ jobs:
 
           pnpm db:migrate:local
           pnpm test:rls
+
+      # The built app. Playwright sets NODE_ENV=test and omits RESEND_API_KEY.
+      # scripts/e2e-server.mjs refuses to start if that is not true, so this
+      # job cannot send mail through Resend.
+      - name: End-to-end
+        run: |
+          set -euo pipefail
+          set -a
+          # shellcheck disable=SC1091
+          . ./.env
+          . ./.env.migrate
+          set +a
+          pnpm exec playwright install --with-deps chromium
+          pnpm exec nuxi build
+          pnpm test:e2e
+
+      - name: Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          if-no-files-found: ignore
+          path: |
+            playwright-report/
+            test-results/

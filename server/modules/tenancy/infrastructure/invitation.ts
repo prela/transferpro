@@ -1,8 +1,8 @@
 import type { DisplayLocale, TenantRole } from '../../../../shared'
 import type { AuthHandle } from './auth'
-import process from 'node:process'
 import { z } from 'zod'
-import { invitationAcceptBodySchema, invitationPreviewBodySchema, inviteInputSchema, inviteLink, tenantRoleSchema } from '../../../../shared'
+import { invitationAcceptBodySchema, invitationPreviewBodySchema, inviteInputSchema, inviteLink, passwordLengthRule, tenantRoleSchema } from '../../../../shared'
+import { nodeEnv } from '../../../core/index'
 import { acceptAttemptLimit, createAttemptLimiter } from './auth'
 import { inviteSendState } from './invite-send'
 
@@ -53,7 +53,7 @@ interface AcceptAttempt {
  * passes. Tests run with NODE_ENV=test, which disables it. This is the only
  * limit on accept: the new-account sign-in does not go through the HTTP handler.
  */
-const allowAcceptAttempt = createAttemptLimiter(acceptAttemptLimit(process.env.NODE_ENV))
+const allowAcceptAttempt = createAttemptLimiter(acceptAttemptLimit(nodeEnv()))
 
 export function parseInviteInput(raw: unknown): { email: string, role: TenantRole } {
   const parsed = inviteInputSchema.safeParse(raw)
@@ -96,13 +96,24 @@ export async function sendInvitation(
 export async function previewInvitation(
   handle: AuthHandle,
   raw: unknown,
-): Promise<{ state: 'set-password' | 'sign-in' | 'invalid' }> {
+  headers?: Headers,
+): Promise<{ state: 'set-password', minPasswordLength: number, maxPasswordLength: number } | { state: 'sign-in' } | { state: 'invalid' } | { state: 'wrong-account', account: string }> {
   const invitationId = parsePreview(raw)
   const record = await handle.invitationById(invitationId)
   if (record === null || !usable(record))
     return { state: 'invalid' }
+  // A session for a different account cannot accept. The screen names that
+  // account and offers sign-out, instead of a bare refusal after submit.
+  if (headers) {
+    const session = await handle.auth.api.getSession({ headers })
+    const account = session?.user.email
+    if (account !== undefined && account.toLowerCase() !== record.email.toLowerCase())
+      return { state: 'wrong-account', account }
+  }
   const existing = await handle.userIdByEmail(record.email)
-  return { state: existing === null ? 'set-password' : 'sign-in' }
+  if (existing !== null)
+    return { state: 'sign-in' }
+  return { state: 'set-password', ...await passwordLimits(handle) }
 }
 
 /**
@@ -222,12 +233,17 @@ async function insertOrConflict(handle: AuthHandle, email: string, name: string,
 
 /**
  * Min and max come from the auth context Better Auth built for sign-in
- * and sign-up. The numbers are not repeated here.
+ * and sign-up. The numbers are not repeated here. The screen uses the
+ * same check, so a failed rule is named from this config.
  */
-async function assertPassword(handle: AuthHandle, password: string): Promise<void> {
+async function passwordLimits(handle: AuthHandle): Promise<{ minPasswordLength: number, maxPasswordLength: number }> {
   const ctx = await handle.auth.$context
   const { minPasswordLength, maxPasswordLength } = ctx.password.config
-  if (password.length < minPasswordLength || password.length > maxPasswordLength)
+  return { minPasswordLength, maxPasswordLength }
+}
+
+async function assertPassword(handle: AuthHandle, password: string): Promise<void> {
+  if (passwordLengthRule(password, await passwordLimits(handle)) !== null)
     throw new InvitationAccessError(422)
 }
 

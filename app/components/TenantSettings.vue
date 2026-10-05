@@ -110,7 +110,7 @@ onMounted(loadSettings)
 </script>
 
 <template>
-  <section>
+  <section :aria-label="t('settings.title')">
     <h2 class="mt-6 mb-4 text-xl font-semibold">
       {{ t('settings.title') }}
     </h2>

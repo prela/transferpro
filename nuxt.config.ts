@@ -1,3 +1,6 @@
+import { resolve } from 'node:path'
+import process from 'node:process'
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   compatibilityDate: '2026-10-02',
@@ -36,6 +39,20 @@ export default defineNuxtConfig({
     // Project root, not the Nuxt 4 `app/` srcDir. Replaces the dev and
     // prod handlers so neither writes a stack nor calls console.error.
     errorHandler: './server/error.ts',
+    rollupConfig: {
+      plugins: [
+        {
+          name: 'resolve-shared-index',
+          resolveId(source: string) {
+            // Vite's SSR build leaves shared/index.ts as a relative import.
+            // The relative depth does not match this cache path, so Nitro
+            // cannot load it. The file is the project shared module.
+            if (source.endsWith('/shared/index.ts'))
+              return resolve(process.cwd(), 'shared/index.ts')
+          },
+        },
+      ],
+    },
   },
   typescript: {
     strict: true,

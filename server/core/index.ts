@@ -69,6 +69,19 @@ function parseLogLevel(source: NodeJS.ProcessEnv): LogLevel {
   return z.enum(logLevels).parse(raw)
 }
 
+/**
+ * The live `NODE_ENV`. Nitro's production build replaces the token
+ * `process.env.NODE_ENV` with `"production"`, which would force Secure
+ * cookies and the sign-in limit on an http preview of the built server.
+ * Bracket access keeps the process value, so Playwright can start that
+ * server with `NODE_ENV=test`.
+ */
+export function nodeEnv(): string | undefined {
+  // Bracket access: Nitro replaces the token `process.env.NODE_ENV` only.
+  // eslint-disable-next-line dot-notation
+  return process.env['NODE_ENV']
+}
+
 /** Parse one source. Boot uses `loadAppEnv`, which caches this. */
 export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
   return {

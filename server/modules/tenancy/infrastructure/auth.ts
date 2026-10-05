@@ -1,7 +1,6 @@
 import type { account, invitation, member, organization, session, user, verification } from '../../../../db/auth-schema'
 import type { AppEnv } from '../../../core/index'
 import type { Mailer } from './mailer'
-import process from 'node:process'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { betterAuth } from 'better-auth'
 import { APIError } from 'better-auth/api'
@@ -12,7 +11,9 @@ import pg from 'pg'
 import { z } from 'zod'
 import * as authSchema from '../../../../db/auth-schema'
 import { inviteLink, tenantRoleSchema } from '../../../../shared'
+import { nodeEnv } from '../../../core/index'
 import { inviteSendState } from './invite-send'
+import { ResendTransportError } from './mailer'
 import { invitationExpiresInSeconds, organizationRoles } from './tenant-roles'
 
 /**
@@ -144,7 +145,7 @@ export function createAuth(
   const db = drizzle(pool, { schema })
   // Secure only in production, so a local http sign-in still sets a cookie.
   // The name prefix `__Secure-` is tied to that flag by Better Auth.
-  const secureCookies = process.env.NODE_ENV === 'production'
+  const secureCookies = nodeEnv() === 'production'
   const auth = betterAuth({
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
@@ -155,7 +156,7 @@ export function createAuth(
       disableSignUp: true,
     },
     // Tests pass the production rule. The app uses NODE_ENV, which is off in test.
-    rateLimit: options?.rateLimit ?? signInRateLimit(process.env.NODE_ENV),
+    rateLimit: options?.rateLimit ?? signInRateLimit(nodeEnv()),
     advanced: {
       useSecureCookies: secureCookies,
       defaultCookieAttributes: {
@@ -217,7 +218,10 @@ export function createAuth(
             if (pending)
               pending.emailSent = true
           }
-          catch {
+          catch (error) {
+            // A test server must fail the request, not skip the send and continue.
+            if (error instanceof ResendTransportError)
+              throw error
             // Resend's error body can echo the link. The caller still returns it.
           }
         },
