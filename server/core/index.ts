@@ -8,7 +8,7 @@ import process from 'node:process'
 import { z } from 'zod'
 import { configureLogger, logLevels } from './logger'
 
-export { configureLogger, createLogger, currentRequestId, endRequestLog, getLogger, handleLoggedError, openRequestLog, resolveRequestId, runWithRequestId } from './logger'
+export { configureLogger, createLogger, currentRequestId, currentTenantId, endRequestLog, getLogger, handleLoggedError, openRequestLog, resolveRequestId, runWithRequestId } from './logger'
 export type { Logger, LogLevel } from './logger'
 
 /**
@@ -34,6 +34,13 @@ export interface AppEnv {
    * daily quota. The name is redacted (`apikey`). ADR-0013.
    */
   readonly RESEND_API_KEY: string | undefined
+  /**
+   * Sentry or GlitchTip DSN. When unset, the SDK is not initialised and no
+   * events are sent. ADR charter observability baseline (#34).
+   */
+  readonly SENTRY_DSN: string | undefined
+  /** Git SHA or release name. Set in deployment; forwarded to Sentry as `release`. */
+  readonly SENTRY_RELEASE: string | undefined
 }
 
 /**
@@ -88,6 +95,20 @@ function parseResendApiKey(source: NodeJS.ProcessEnv): string | undefined {
   return resendKeySchema.parse(key)
 }
 
+function parseSentryDsn(source: NodeJS.ProcessEnv): string | undefined {
+  const dsn = blankEnv(source.SENTRY_DSN)
+  if (dsn === undefined)
+    return undefined
+  return z.url().parse(dsn)
+}
+
+function parseSentryRelease(source: NodeJS.ProcessEnv): string | undefined {
+  const release = blankEnv(source.SENTRY_RELEASE)
+  if (release === undefined)
+    return undefined
+  return z.string().min(1).max(200).parse(release)
+}
+
 function parseLogLevel(source: NodeJS.ProcessEnv): LogLevel {
   const raw = source.LOG_LEVEL
   if (raw === undefined || raw === '')
@@ -121,6 +142,8 @@ export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
     LOG_LEVEL: parseLogLevel(source),
     MAILER: parseMailer(source),
     RESEND_API_KEY: parseResendApiKey(source),
+    SENTRY_DSN: parseSentryDsn(source),
+    SENTRY_RELEASE: parseSentryRelease(source),
   }
 }
 

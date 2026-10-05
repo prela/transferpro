@@ -1,10 +1,27 @@
+import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import process from 'node:process'
 
+const require = createRequire(import.meta.url)
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
+const sentryDsn = process.env.SENTRY_DSN ?? ''
+const sentryEnabled = sentryDsn !== ''
+
 export default defineNuxtConfig({
   compatibilityDate: '2026-10-02',
-  modules: ['@nuxt/ui', '@nuxtjs/i18n'],
+  modules: [
+    '@nuxt/ui',
+    '@nuxtjs/i18n',
+    ...(sentryEnabled ? ['@sentry/nuxt/module'] as const : []),
+  ],
+  runtimeConfig: {
+    public: {
+      sentryDsn,
+      sentryRelease: process.env.SENTRY_RELEASE ?? '',
+      sentryEnvironment: process.env.NODE_ENV ?? 'development',
+    },
+  },
   css: ['~/assets/css/main.css'],
   // System until the user picks light or dark. The stored string is the same
   // `transferpro-theme` key as before, applied before paint (ADR-0016).
@@ -49,6 +66,9 @@ export default defineNuxtConfig({
             // cannot load it. The file is the project shared module.
             if (source.endsWith('/shared/index.ts'))
               return resolve(process.cwd(), 'shared/index.ts')
+            // @sentry/nuxt traces pg without the .js extension on this CJS subpath.
+            if (source === 'xtend/mutable')
+              return require.resolve('xtend/mutable.js')
           },
         },
       ],

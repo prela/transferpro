@@ -4,124 +4,10 @@ import { randomUUID } from 'node:crypto'
 import process from 'node:process'
 import pino from 'pino'
 import { z } from 'zod'
-
-/**
- * Shown in place of a redacted value. The test treats this literal as the
- * proof that the field did not reach the line.
- */
-const REDACTED = '[Redacted]'
+import { redact } from '../../shared/redact'
 
 export const logLevels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const
 export type LogLevel = (typeof logLevels)[number]
-
-/**
- * Personal-data keys, compared after lowercasing and stripping `_` and `-`.
- * Exact match only: a substring would also hide `username` or `hostname`.
- * `user_id` is absent on purpose. The charter allows that opaque id.
- */
-const PERSONAL_KEYS = new Set([
-  'name',
-  'firstname',
-  'lastname',
-  'fullname',
-  'guestname',
-  'passengername',
-  'displayname',
-  'email',
-  'emailaddress',
-  'phone',
-  'phonenumber',
-  'mobile',
-  'telephone',
-  'flight',
-  'flightnumber',
-  'flightno',
-  'address',
-  'street',
-  'streetaddress',
-  'postalcode',
-  'zipcode',
-  'price',
-  'prices',
-  'fare',
-  'note',
-  'notes',
-  // Postgres `detail` carries the row values that caused the error.
-  'detail',
-  'connectionstring',
-])
-
-/**
- * Secret keys match when the normalized name contains one of these.
- * `BETTER_AUTH_SECRET` and `AUTH_DATABASE_URL` are caught that way.
- */
-const SECRET_PARTS = ['secret', 'token', 'password', 'cookie', 'authorization', 'apikey', 'databaseurl']
-
-/**
- * An invitation id is a bearer secret (ADR-0013). The link keeps it in the
- * hash, and these keys are redacted whole. A URL in any other string is
- * scrubbed below, including a log message: ADR-0012 does not scan messages
- * for personal data, and this pattern is the exception.
- */
-const INVITE_BEARER_KEYS = new Set(['invitationid', 'inviteurl'])
-
-function scrubInviteBearer(value: string): string {
-  // A fresh regex each call: a shared /g pattern would keep lastIndex.
-  return value.replace(
-    /(invitationId=|accept-invite[#/])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
-    '$1[Redacted]',
-  )
-}
-
-function normalizeKey(key: string): string {
-  return key.toLowerCase().replaceAll('_', '').replaceAll('-', '')
-}
-
-function isRedactedKey(key: string, parentKey?: string): boolean {
-  const normalized = normalizeKey(key)
-  if (PERSONAL_KEYS.has(normalized) || INVITE_BEARER_KEYS.has(normalized))
-    return true
-  // `{ invitation: { id } }` is the bearer, not a user id.
-  if (parentKey !== undefined && normalizeKey(parentKey) === 'invitation' && normalized === 'id')
-    return true
-  return SECRET_PARTS.some(part => normalized.includes(part))
-}
-
-/**
- * Walks the payload. Pino's path redaction matches one level, and a
- * passenger name sits under `passenger.name`.
- */
-function redact(value: unknown, parentKey?: string): unknown {
-  // `name` is a person's name. An Error's name is its type, so the log
-  // field is `type`. Enumerable extras (Postgres `detail`) stay on the
-  // object and go through the same key list. `message` and `stack` are
-  // not scanned: do not interpolate personal data into them.
-  if (value instanceof Error) {
-    const fields: Record<string, unknown> = {}
-    for (const [key, child] of Object.entries(value))
-      fields[key] = child
-    delete fields.name
-    fields.type = value.name
-    fields.message = value.message
-    fields.stack = value.stack
-    return redact(fields, parentKey)
-  }
-
-  if (Array.isArray(value))
-    return value.map(item => redact(item, parentKey))
-
-  if (value !== null && typeof value === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [key, child] of Object.entries(value))
-      out[key] = isRedactedKey(key, parentKey) ? REDACTED : redact(child, key)
-    return out
-  }
-
-  if (typeof value === 'string')
-    return scrubInviteBearer(value)
-
-  return value
-}
 
 /**
  * Header value we will store and send back. Letters, digits, `.`, `_`, `-`.
@@ -187,6 +73,11 @@ export function currentRequestId(): string | undefined {
   return logScope.getStore()?.request_id
 }
 
+/** The tenant id bound by `runWithTenantId`, if this call is inside a tenant session. */
+export function currentTenantId(): string | undefined {
+  return logScope.getStore()?.tenant_id
+}
+
 /**
  * Lines written inside `fn` carry this tenant id. The request id already
  * on the scope stays. After `fn` returns, the tenant id is gone again:
@@ -241,7 +132,7 @@ export function createLogger(options: { level: LogLevel, destination?: Writable 
     if (msg === undefined)
       logger[level](payload)
     else
-      logger[level](payload, scrubInviteBearer(msg))
+      logger[level](payload, redact(msg) as string)
   }
 
   return {
