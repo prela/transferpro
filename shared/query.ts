@@ -1,10 +1,15 @@
 import { z } from 'zod'
 
-/** GET list query `includeArchived`. Only the strings true or false are accepted. */
+/**
+ * GET list query `includeArchived`. Absent means false. h3 coerces the
+ * strings true and false to booleans at the boundary; both shapes are accepted.
+ */
 export const includeArchivedQuerySchema = z.union([
   z.undefined(),
   z.literal('true'),
   z.literal('false'),
+  z.literal(true),
+  z.literal(false),
 ])
 
 /** The query param was not a valid includeArchived value. */
@@ -24,5 +29,5 @@ export function parseIncludeArchivedQuery(raw: unknown): boolean {
   const parsed = includeArchivedQuerySchema.safeParse(raw)
   if (!parsed.success)
     throw new QueryParamError()
-  return parsed.data === 'true'
+  return parsed.data === 'true' || parsed.data === true
 }
