@@ -6,6 +6,10 @@ trustPolicyExclude:
 
 shellEmulator: true
 
+# @sentry/browser-utils pulls web-vitals; 6.2.3 shipped the same day as the Sentry pin (#34).
+overrides:
+  web-vitals: 6.2.2
+
 allowBuilds:
   esbuild: true
   # vue-demi's postinstall points its entry at Vue 3. Nuxt UI pulls it in through VueUse.

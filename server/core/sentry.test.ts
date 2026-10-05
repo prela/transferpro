@@ -24,6 +24,44 @@ it('captureServerException reports faults only after markSentryEnabled', () => {
   expect(capture).toHaveBeenCalledOnce()
 })
 
+it('drops request bodies, cookies, and sensitive headers from the shared scrubber', () => {
+  const event = {
+    type: undefined,
+    event_id: '00000000000000000000000000000000',
+    platform: 'node',
+    timestamp: 1,
+    request: {
+      data: {
+        name: 'Ana Horvat',
+        phone: '+385911112222',
+        email: 'ana@example.com',
+      },
+      cookies: {
+        session: 'session-cookie-value',
+      },
+      headers: {
+        'Authorization': 'Bearer session-token-value',
+        'Cookie': 'session=session-cookie-value',
+        'Set-Cookie': 'session=session-cookie-value',
+        'X-Request-Id': '6b1e0c3a-1111-4111-8111-111111111111',
+      },
+    },
+  }
+
+  const scrubbed = scrubSentryPayload(event)
+  expect(scrubbed?.request).toEqual({
+    headers: {
+      'X-Request-Id': '6b1e0c3a-1111-4111-8111-111111111111',
+    },
+  })
+  const text = JSON.stringify(scrubbed)
+  expect(text).not.toContain('Ana Horvat')
+  expect(text).not.toContain('ana@example.com')
+  expect(text).not.toContain('+385911112222')
+  expect(text).not.toContain('session-token-value')
+  expect(text).not.toContain('session-cookie-value')
+})
+
 it('redacts a passenger name, phone, email, and an auth token in the shared scrubber', () => {
   const event = {
     type: undefined,

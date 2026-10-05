@@ -19,3 +19,7 @@ Log message text and `Error.message` / `Error.stack` are not scanned. The redact
 ## Consequences
 
 A nested personal-data field is redacted. A value interpolated into the message text is not. `console` outside the logger is a lint error. A `console` call inside the logger would still skip the list, which is why that module does not use one. Error tracking (Sentry or GlitchTip) stays a separate charter item; this decision adds no SDK.
+
+## Amendment (2026-10-05, #34)
+
+The redaction list now lives in `shared/redact.ts` and is shared with Sentry `beforeSend` scrubbing. Logger behaviour is unchanged: it still imports that module and walks the same key list at write time.
