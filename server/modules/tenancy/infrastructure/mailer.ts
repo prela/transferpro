@@ -1,5 +1,6 @@
 import type { DisplayLocale, TenantRole } from '../../../../shared'
-import { nodeEnv } from '../../../core/index'
+import type { Logger } from '../../../core/index'
+import { getLogger, nodeEnv } from '../../../core/index'
 import { INVITATION_EXPIRES_DAYS } from './tenant-roles'
 
 /**
@@ -30,6 +31,7 @@ export class ResendTransportError extends Error {
 }
 
 const resendMailers = new WeakSet<Mailer>()
+const consoleMailers = new WeakSet<Mailer>()
 
 /** Records the invite and does not call the network. */
 export function createFakeMailer(outbox: InvitationMail[] = []): Mailer {
@@ -44,6 +46,31 @@ export function isResendMailer(mailer: Mailer | undefined): boolean {
   return mailer !== undefined && resendMailers.has(mailer)
 }
 
+export function isConsoleMailer(mailer: Mailer | undefined): boolean {
+  return mailer !== undefined && consoleMailers.has(mailer)
+}
+
+/**
+ * Local delivery. The line carries the subject and the recipient's
+ * domain only: the address, body, and invite link stay off the log.
+ */
+export function createConsoleMailer(log?: Logger): Mailer {
+  const mailer: Mailer = {
+    async sendInvitation(mail) {
+      const at = mail.to.lastIndexOf('@')
+      const domain = at === -1 ? undefined : mail.to.slice(at + 1)
+      const logger = log ?? getLogger()
+      logger.info({
+        event: 'mail.console',
+        subject: invitationEmail(mail).subject,
+        domain,
+      })
+    },
+  }
+  consoleMailers.add(mailer)
+  return mailer
+}
+
 /** Fails the process when the selected mailer is the Resend adapter. */
 export function assertTestMailer(mailer: Mailer | undefined): void {
   if (isResendMailer(mailer))
@@ -51,18 +78,24 @@ export function assertTestMailer(mailer: Mailer | undefined): void {
 }
 
 /**
- * Test always gets the fake, even when a Resend key is present in the
- * environment. Any other selection of the Resend adapter is refused.
+ * Test always gets the fake, even when a Resend key is present.
+ * Resend is used only when `MAILER=resend` and the key are both set.
+ * Development otherwise uses the console mailer so a local process
+ * does not spend the shared daily quota. Any other selection of the
+ * Resend adapter is refused in test.
  */
-export function mailerForApp(env: { readonly RESEND_API_KEY: string | undefined }): Mailer | undefined {
-  const mailer = nodeEnv() === 'test'
-    ? createFakeMailer()
-    : env.RESEND_API_KEY === undefined
-      ? undefined
-      : createResendMailer(env.RESEND_API_KEY)
-  if (nodeEnv() === 'test')
+export function mailerForApp(env: {
+  readonly RESEND_API_KEY: string | undefined
+  readonly MAILER?: 'resend' | 'console' | undefined
+}): Mailer {
+  if (nodeEnv() === 'test') {
+    const mailer = createFakeMailer()
     assertTestMailer(mailer)
-  return mailer
+    return mailer
+  }
+  if (env.MAILER === 'resend' && env.RESEND_API_KEY !== undefined)
+    return createResendMailer(env.RESEND_API_KEY)
+  return createConsoleMailer()
 }
 
 const ROLE_LABEL: Record<DisplayLocale, Record<TenantRole, string>> = {

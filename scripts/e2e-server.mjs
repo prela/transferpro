@@ -4,7 +4,8 @@ import process from 'node:process'
 /**
  * Playwright starts the built app through this script.
  * The server must be the test mailer: NODE_ENV=test and no Resend key.
- * A set key would select the real transport if the app forgot the test branch.
+ * A set key would select Resend if the app forgot the test branch
+ * while MAILER=resend.
  */
 const key = process.env.RESEND_API_KEY
 if (process.env.NODE_ENV !== 'test' || (key !== undefined && key !== '')) {

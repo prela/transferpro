@@ -24,8 +24,14 @@ export interface AppEnv {
   /** Pino level. Production defaults to `info`; anywhere else, `debug`. */
   readonly LOG_LEVEL: LogLevel
   /**
-   * Resend API key. Absent only when `NODE_ENV` is `test`.
-   * The name is redacted (`apikey`). ADR-0013.
+   * Which transport `mailerForApp` may select. Production is always `resend`.
+   * Local and test leave this unset unless the operator opts in.
+   */
+  readonly MAILER: 'resend' | 'console' | undefined
+  /**
+   * Resend API key. Required in production together with `MAILER=resend`.
+   * Optional in development and test so `pnpm dev` does not share the
+   * daily quota. The name is redacted (`apikey`). ADR-0013.
    */
   readonly RESEND_API_KEY: string | undefined
 }
@@ -48,17 +54,37 @@ const appEnvSchema = z.object({
  */
 const resendKeySchema = z.string().min(1)
 
+function blankEnv(value: string | undefined): string | undefined {
+  if (value === undefined || value === '')
+    return undefined
+  return value
+}
+
 /**
- * Required outside test so a deployed process cannot boot without mail.
- * Test runs omit it. A blank value counts as missing.
+ * Production cannot boot without `MAILER=resend`. Anywhere else the
+ * value is optional: unset means the console mailer in development
+ * and the fake mailer in test.
+ */
+function parseMailer(source: NodeJS.ProcessEnv): 'resend' | 'console' | undefined {
+  const raw = blankEnv(source.MAILER)
+  if (source.NODE_ENV === 'production')
+    return z.literal('resend').parse(raw)
+  if (raw === undefined)
+    return undefined
+  return z.enum(['resend', 'console']).parse(raw)
+}
+
+/**
+ * Production cannot boot without a key. Development and test omit it
+ * so a local process does not send through the shared Resend quota.
+ * A blank value counts as missing.
  */
 function parseResendApiKey(source: NodeJS.ProcessEnv): string | undefined {
-  const key = source.RESEND_API_KEY
-  if (key === undefined || key === '') {
-    if (source.NODE_ENV === 'test')
-      return undefined
+  const key = blankEnv(source.RESEND_API_KEY)
+  if (source.NODE_ENV === 'production')
     return resendKeySchema.parse(key)
-  }
+  if (key === undefined)
+    return undefined
   return resendKeySchema.parse(key)
 }
 
@@ -93,6 +119,7 @@ export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
       BETTER_AUTH_URL: source.BETTER_AUTH_URL,
     }),
     LOG_LEVEL: parseLogLevel(source),
+    MAILER: parseMailer(source),
     RESEND_API_KEY: parseResendApiKey(source),
   }
 }

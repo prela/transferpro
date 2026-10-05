@@ -12,8 +12,7 @@ import { z } from 'zod'
 import * as authSchema from '../../../../db/auth-schema'
 import { inviteLink, tenantRoleSchema } from '../../../../shared'
 import { nodeEnv } from '../../../core/index'
-import { inviteSendState } from './invite-send'
-import { ResendTransportError } from './mailer'
+import { deliverInvitationEmail, inviteSendState } from './invite-send'
 import { invitationExpiresInSeconds, organizationRoles } from './tenant-roles'
 
 /**
@@ -205,25 +204,15 @@ export function createAuth(
         async sendInvitationEmail(data) {
           const pending = inviteSendState.getStore()
           const role = tenantRoleSchema.safeParse(data.role)
-          if (!role.success || options?.mailer === undefined)
+          if (!role.success)
             return
-          try {
-            await options.mailer.sendInvitation({
-              to: data.email,
-              inviteUrl: inviteLink(env.BETTER_AUTH_URL, data.id),
-              role: role.data,
-              tenantName: data.organization.name,
-              locale: pending?.locale ?? 'hr',
-            })
-            if (pending)
-              pending.emailSent = true
-          }
-          catch (error) {
-            // A test server must fail the request, not skip the send and continue.
-            if (error instanceof ResendTransportError)
-              throw error
-            // Resend's error body can echo the link. The caller still returns it.
-          }
+          await deliverInvitationEmail(options?.mailer, {
+            to: data.email,
+            inviteUrl: inviteLink(env.BETTER_AUTH_URL, data.id),
+            role: role.data,
+            tenantName: data.organization.name,
+            locale: pending?.locale ?? 'hr',
+          })
         },
       }),
     ],
