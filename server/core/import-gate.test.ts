@@ -78,12 +78,35 @@ async function tenancyTestingImport(filePath: string, source: string) {
   )
 }
 
-it('rejects tenancy/testing imports from server/api and app', async () => {
+it('rejects tenancy/testing imports from server/api, app, server/plugins and server/core', async () => {
   const source = `import { insertCredentialUser } from '../modules/tenancy/testing'\n`
   const dynamic = `await import('../modules/tenancy/testing.ts')\n`
   const reexport = `export { insertCredentialUser } from '../modules/tenancy/testing'\n`
 
-  for (const filePath of ['server/api/leak.ts', 'app/components/leak.ts', 'server/api/clients.rls.test.ts']) {
+  for (const filePath of [
+    'server/api/leak.ts',
+    'app/components/leak.ts',
+    'server/api/clients.rls.test.ts',
+    'server/plugins/leak.ts',
+    'server/core/leak.ts',
+  ]) {
+    expect(await tenancyTestingImport(filePath, source), filePath).not.toEqual([])
+    expect(await tenancyTestingImport(filePath, dynamic), filePath).not.toEqual([])
+    expect(await tenancyTestingImport(filePath, reexport), filePath).not.toEqual([])
+  }
+})
+
+it('rejects a deep credential-member import from those same trees', async () => {
+  const source = `import { insertCredentialUser } from '../modules/tenancy/infrastructure/credential-member'\n`
+  const dynamic = `await import('../modules/tenancy/infrastructure/credential-member.ts')\n`
+  const reexport = `export { insertCredentialUser } from '../tenancy/infrastructure/credential-member'\n`
+
+  for (const filePath of [
+    'server/api/leak.ts',
+    'app/components/leak.ts',
+    'server/plugins/leak.ts',
+    'server/core/leak.ts',
+  ]) {
     expect(await tenancyTestingImport(filePath, source), filePath).not.toEqual([])
     expect(await tenancyTestingImport(filePath, dynamic), filePath).not.toEqual([])
     expect(await tenancyTestingImport(filePath, reexport), filePath).not.toEqual([])

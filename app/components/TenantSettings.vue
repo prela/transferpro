@@ -54,6 +54,7 @@ const timeZoneSearchInput = computed(() => ({
   'autofocus': false as const,
   'size': 'xl' as const,
 }))
+// The IANA list is hundreds of rows. USelectMenu virtualize keeps search.
 
 async function loadSettings() {
   loading.value = true
@@ -195,6 +196,7 @@ onMounted(loadSettings)
           value-key="value"
           :items="zoneItems"
           :search-input="timeZoneSearchInput"
+          virtualize
           required
           class="w-full"
         />

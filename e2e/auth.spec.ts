@@ -6,6 +6,10 @@ test('admin signs in and signs out', async ({ page }) => {
   const tenant = await seedTenant('auth')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await signOut(page)
+  const cookies = await page.context().cookies()
+  expect(cookies.filter(cookie => cookie.name.includes('session_token') && cookie.value !== '')).toEqual([])
+  await page.goto('/')
+  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
 })
 
 test('wrong password shows an error', async ({ page }) => {
