@@ -10,6 +10,7 @@ const role = ref<'admin' | 'dispatcher' | 'driver'>()
 const roleMissing = ref(false)
 const pending = ref(false)
 const failed = ref(false)
+const alreadyMember = ref(false)
 const emailSent = ref(true)
 const inviteUrl = ref('')
 const copied = ref(false)
@@ -21,12 +22,15 @@ const roleItems = computed(() => [
 ])
 
 async function invite() {
+  // Before the role check: a missing role returns early, and a previous
+  // "invite was not sent" alert would otherwise stay on screen.
+  failed.value = false
+  alreadyMember.value = false
   if (role.value === undefined) {
     roleMissing.value = true
     return
   }
   roleMissing.value = false
-  failed.value = false
   copied.value = false
   pending.value = true
   try {
@@ -40,12 +44,28 @@ async function invite() {
     role.value = undefined
     notifyAuditChanged()
   }
-  catch {
-    failed.value = true
+  catch (error) {
+    const status = httpStatus(error)
+    // 401 still refreshes the shell so sign-in can replace this page. The alerts
+    // below still run: a signed-out submit is a failure, and 409 is already-a-member.
+    if (status === 401)
+      await refreshNuxtData('session-shell')
+    alreadyMember.value = status === 409
+    failed.value = status !== 409
   }
   finally {
     pending.value = false
   }
+}
+
+function httpStatus(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null)
+    return undefined
+  if ('statusCode' in error && typeof error.statusCode === 'number')
+    return error.statusCode
+  if ('status' in error && typeof error.status === 'number')
+    return error.status
+  return undefined
 }
 
 async function copyLink() {
@@ -65,7 +85,15 @@ async function copyLink() {
       {{ t('invite.title') }}
     </h2>
     <UAlert
-      v-if="failed"
+      v-if="alreadyMember"
+      color="error"
+      variant="subtle"
+      role="alert"
+      class="mb-4"
+      :description="t('invite.alreadyMember')"
+    />
+    <UAlert
+      v-else-if="failed"
       color="error"
       variant="subtle"
       role="alert"
