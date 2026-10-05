@@ -87,7 +87,9 @@ const dynamicDriverImport = {
 /**
  * ADR-0013: the operator script and invite accept are the account-creation
  * paths. server/modules/tenancy/testing.ts is the test and e2e exception.
- * server/api and app must not import it, including their tests.
+ * server/api, app, server/plugins, and server/core must not import it,
+ * including their tests. A deep import of credential-member is the same
+ * leak: those insertCredential* helpers stay off the production trees.
  */
 /**
  * Drivers is its own module (ADR-0018). Rides will reference Drivers later.
@@ -141,7 +143,7 @@ const tenancyTestingImport = {
     type: 'problem',
     schema: [],
     messages: {
-      banned: 'Import tenancy/testing only from e2e or a test outside server/api (ADR-0013).',
+      banned: 'Import tenancy/testing or credential-member only from e2e or a test outside server/api, app, server/plugins, and server/core (ADR-0013).',
     },
   },
   create(context) {
@@ -150,10 +152,16 @@ const tenancyTestingImport = {
      * @param {unknown} source
      */
     function check(node, source) {
-      if (typeof source !== 'string' || !source.includes('tenancy/testing'))
+      if (typeof source !== 'string'
+        || (!source.includes('tenancy/testing') && !source.includes('credential-member'))) {
         return
+      }
       const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
-      if (!filename.includes('/server/api/') && !filename.includes('/app/'))
+      const bannedTree = filename.includes('/server/api/')
+        || filename.includes('/app/')
+        || filename.includes('/server/plugins/')
+        || filename.includes('/server/core/')
+      if (!bannedTree)
         return
       context.report({ node, messageId: 'banned' })
     }
