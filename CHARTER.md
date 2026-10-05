@@ -41,7 +41,7 @@ All roles on all devices (mobile-first). Driver UX is a PWA.
 
 ## Modules (build order)
 
-1. **Transfers & assignment** — manual booking entry, assign Driver + Vehicle, Ride statuses.
+1. **Transfers & assignment** — manual booking entry, assign Driver + Vehicle, Ride statuses. Clients and Locations (pickup and drop-off places: airport, hotels, addresses) are standalone modules that Transfers depend on, never the other way round (ADR-0018).
 2. **Driver mobile view** — own Rides; accepted / done / no-show.
 3. **Alerts** — unassigned Rides and Rides not accepted by the Driver, before pickup time.
 4. **No-show records** — per Client (agency/hotel); history and counts.
@@ -53,7 +53,7 @@ Cross-cutting from day one: tenant isolation, audit log, i18n hr/en. GDPR export
 ## v1 thin slice
 
 - Tenant provisioned by an operator script (no public signup), login (Better Auth, organization = Tenant), invite users with a role.
-- Dispatcher creates a Transfer manually (client, pickup time, flight no. as free text, from/to, pax, guest name, price as free number, payment cash/card).
+- Dispatcher creates a Transfer manually (client, pickup time, flight no. as free text, from/to picked from the Tenant's Locations, pax, guest name, price as free number, payment cash/card).
 - Dispatcher assigns Driver + Vehicle to the Ride.
 - Driver sees own upcoming Rides on the phone and marks **accepted**, **done**, or **no-show**.
 - Dispatcher board warns about unassigned Rides (and, if cheap, not-accepted Rides).
@@ -61,6 +61,14 @@ Cross-cutting from day one: tenant isolation, audit log, i18n hr/en. GDPR export
 ### v1 non-goals
 
 Invoicing, fiscalization, price-list automation, platform APIs, Gmail/email import, GPS, guest messaging (WhatsApp/SMS/email), public web booking, flight-tracking API, Partner handoff workflow beyond a free-text note, native apps, billing of tenants.
+
+## Future direction (outside v1)
+
+Not built in v1. Recorded so v1 choices do not block it.
+
+- **CRM on Clients:** contact people, notes, communication history, offers, pipeline. v1 Clients stay simple, but the model must grow into this through new tables keyed by the Client, without a painful migration (ADR-0018).
+- **Invoicing:** v1 records only the price and the payment method. Real invoices, fiscalization, and Croatian eRačun come later through an external service or integration, as their own module; the rules differ by country.
+- **Shared starter:** standalone modules (Clients, Locations, later Invoicing) are built so they can be extracted. The starter is extracted after Transferpro runs in production, from two real applications, not designed up front.
 
 ## Tech stack
 
@@ -189,7 +197,7 @@ Status: `todo` · `doing` · `review` · `done` · `blocked`. Phases **7+** are 
 | **1.1** | Tenancy + auth: Better Auth orgs, roles, invite (verify starter auth before copy) | 0.3 | todo |
 | **1.2** | RLS foundation: `tenant_id` convention, session tenant setting, policy tests | 1.1 | todo |
 | **1.3** | Audit log (append-only) | 1.2 | todo |
-| **1.4** | Drivers, Vehicles, Clients (minimal CRUD) | 1.2 | todo |
+| **1.4** | Drivers, Vehicles, Clients, Locations (minimal CRUD) | 1.2 | todo |
 | **1.5** | Transfer + Ride domain, statuses, application services (fakes) | 1.2 | todo |
 | **1.6** | Manual Transfer entry + assign Driver/Vehicle (dispatcher UI) | 1.4, 1.5 | todo |
 | **2.1** | Driver PWA: own Rides list, accept / done / no-show | 1.6 | todo |

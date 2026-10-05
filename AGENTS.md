@@ -16,6 +16,7 @@ Instructions for Cursor agents working in the `transferpro` repo.
 - **No production access.** Never connect to, deploy to, or read secrets of production.
 - **No destructive DB operations** (drop, truncate, mass delete/update, destructive migrations). Every migration goes in the PR for owner review; never apply it outside local/test DBs.
 - **No deep imports** across modules or Tiers. Import only from a module's `index.ts`. Domain/application never import Drizzle, Better Auth, Nuxt, or the queue directly; they use ports.
+- **Module boundaries:** when adding a module, follow ADR-0018.
 - **Tests first.** Red before green for domain and application code. Lint and typecheck 0 errors; coverage 80% global, 95% domain + application services.
 - **Zod at every runtime boundary** (env, request bodies, query params, imported bookings).
 - **One WP = one `feature/<wp>-<slug>` branch = one PR into `develop`.** Never commit to `develop` or `main`. Claim a WP only when its dependencies are merged.
