@@ -32,8 +32,6 @@ export async function usePlatformPage() {
 
   if (shell.value)
     await setLocale(shell.value.locale)
-  else if (!loadError.value)
-    await navigateTo('/')
 
   async function signOut() {
     pending.value = true
