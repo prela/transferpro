@@ -37,6 +37,8 @@ const infrastructureAndTests = [
   'server/core/infrastructure.ts',
   'server/**/infrastructure/**',
   '**/*.test.ts',
+  // Playwright seeds rows the same way the RLS tests do.
+  'e2e/**/*.ts',
 ]
 
 const driverSpecifiers = new Set([
@@ -186,7 +188,7 @@ const tenancyTestingImport = {
     type: 'problem',
     schema: [],
     messages: {
-      banned: 'Import tenancy/testing or credential-member only from e2e or a test outside server/api, app, server/plugins, and server/core (ADR-0013).',
+      banned: 'Import tenancy/testing, platform/testing, or credential-member only from e2e or a test outside server/api, app, server/plugins, and server/core (ADR-0013, ADR-0019).',
     },
   },
   create(context) {
@@ -196,7 +198,9 @@ const tenancyTestingImport = {
      */
     function check(node, source) {
       if (typeof source !== 'string'
-        || (!source.includes('tenancy/testing') && !source.includes('credential-member'))) {
+        || (!source.includes('tenancy/testing')
+          && !source.includes('credential-member')
+          && !source.includes('platform/testing'))) {
         return
       }
       const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
@@ -230,6 +234,51 @@ const tenancyTestingImport = {
   },
 }
 
+/**
+ * ADR-0019: platform does not import tenancy internals, and tenancy does not
+ * import the platform module. Tests may reach either side.
+ */
+const platformBoundaryImport = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      banned: 'Platform and tenancy do not import each other except through tenancy\'s public index (ADR-0019).',
+    },
+  },
+  create(context) {
+    /**
+     * @param {import('estree').Node} node
+     * @param {unknown} source
+     */
+    function check(node, source) {
+      if (typeof source !== 'string')
+        return
+      const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
+      const test = filename.includes('.test.ts')
+      if (test)
+        return
+      const platform = filename.includes('/server/modules/platform/')
+      const tenancy = filename.includes('/server/modules/tenancy/')
+      if (platform && source.includes('tenancy/infrastructure'))
+        context.report({ node, messageId: 'banned' })
+      if (tenancy && source.includes('modules/platform'))
+        context.report({ node, messageId: 'banned' })
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ImportExpression(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+    }
+  },
+}
+
 export default antfu(
   {
     type: 'app',
@@ -244,6 +293,7 @@ export default antfu(
           'no-tenancy-testing-import': tenancyTestingImport,
           'no-drivers-transfers-import': driversTransfersImport,
           'no-vehicles-transfers-import': vehiclesTransfersImport,
+          'no-platform-boundary-import': platformBoundaryImport,
         },
       },
     },
@@ -253,6 +303,7 @@ export default antfu(
       'transferpro/no-tenancy-testing-import': 'error',
       'transferpro/no-drivers-transfers-import': 'error',
       'transferpro/no-vehicles-transfers-import': 'error',
+      'transferpro/no-platform-boundary-import': 'error',
     },
   },
   {

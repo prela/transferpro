@@ -19,6 +19,11 @@ export interface AppEnv {
   readonly DATABASE_URL: string
   readonly AUTH_DATABASE_URL: string
   readonly QUEUE_DATABASE_URL: string
+  /**
+   * `transferpro_platform`. Directory reads and renames only.
+   * The migrator URL is still not a field of this object.
+   */
+  readonly PLATFORM_DATABASE_URL: string
   readonly BETTER_AUTH_SECRET: string
   readonly BETTER_AUTH_URL: string
   /** Pino level. Production defaults to `info`; anywhere else, `debug`. */
@@ -51,6 +56,7 @@ const appEnvSchema = z.object({
   DATABASE_URL: z.url(),
   AUTH_DATABASE_URL: z.url(),
   QUEUE_DATABASE_URL: z.url(),
+  PLATFORM_DATABASE_URL: z.url(),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.url(),
 })
@@ -136,6 +142,7 @@ export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
       DATABASE_URL: source.DATABASE_URL,
       AUTH_DATABASE_URL: source.AUTH_DATABASE_URL,
       QUEUE_DATABASE_URL: source.QUEUE_DATABASE_URL,
+      PLATFORM_DATABASE_URL: source.PLATFORM_DATABASE_URL,
       BETTER_AUTH_SECRET: source.BETTER_AUTH_SECRET,
       BETTER_AUTH_URL: source.BETTER_AUTH_URL,
     }),
@@ -160,8 +167,8 @@ export function loadAppEnv(): AppEnv {
 }
 
 /**
- * Parse once, then refuse to start if the app, auth, or queue role is
- * over-privileged. The privilege query lives in the adapter.
+ * Parse once, then refuse to start if the app, auth, queue, or platform
+ * role is over-privileged. The privilege query lives in the adapter.
  */
 export async function boot(): Promise<AppEnv> {
   const env = loadAppEnv()

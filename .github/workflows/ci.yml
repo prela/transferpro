@@ -65,17 +65,20 @@ jobs:
           app_password=$(openssl rand -hex 24)
           auth_password=$(openssl rand -hex 24)
           queue_password=$(openssl rand -hex 24)
+          platform_password=$(openssl rand -hex 24)
           better_auth_secret=$(openssl rand -hex 32)
           echo "::add-mask::$owner_password"
           echo "::add-mask::$app_password"
           echo "::add-mask::$auth_password"
           echo "::add-mask::$queue_password"
+          echo "::add-mask::$platform_password"
           echo "::add-mask::$better_auth_secret"
 
           export TRANSFERPRO_OWNER_PASSWORD="$owner_password"
           export TRANSFERPRO_APP_PASSWORD="$app_password"
           export TRANSFERPRO_AUTH_PASSWORD="$auth_password"
           export TRANSFERPRO_QUEUE_PASSWORD="$queue_password"
+          export TRANSFERPRO_PLATFORM_PASSWORD="$platform_password"
           bash docker/postgres/init-roles.sh
 
           umask 077
@@ -84,9 +87,11 @@ jobs:
           TRANSFERPRO_APP_PASSWORD=${app_password}
           TRANSFERPRO_AUTH_PASSWORD=${auth_password}
           TRANSFERPRO_QUEUE_PASSWORD=${queue_password}
+          TRANSFERPRO_PLATFORM_PASSWORD=${platform_password}
           DATABASE_URL=postgres://transferpro_app:${app_password}@127.0.0.1:5432/transferpro
           AUTH_DATABASE_URL=postgres://transferpro_auth:${auth_password}@127.0.0.1:5432/transferpro
           QUEUE_DATABASE_URL=postgres://transferpro_queue:${queue_password}@127.0.0.1:5432/transferpro
+          PLATFORM_DATABASE_URL=postgres://transferpro_platform:${platform_password}@127.0.0.1:5432/transferpro
           BETTER_AUTH_SECRET=${better_auth_secret}
           BETTER_AUTH_URL=http://127.0.0.1:3000
           EOF

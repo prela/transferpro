@@ -4,6 +4,7 @@ const baseEnv = {
   DATABASE_URL: 'postgres://app@127.0.0.1:5432/transferpro',
   AUTH_DATABASE_URL: 'postgres://auth@127.0.0.1:5432/transferpro',
   QUEUE_DATABASE_URL: 'postgres://queue@127.0.0.1:5432/transferpro',
+  PLATFORM_DATABASE_URL: 'postgres://platform@127.0.0.1:5432/transferpro',
   BETTER_AUTH_SECRET: 'transferpro-test-secret-32-characters',
   BETTER_AUTH_URL: 'http://localhost:3000',
   NODE_ENV: 'test',

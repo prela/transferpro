@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { SessionShell } from '../../shared'
-import { formatInstant, sessionShellSchema, signInErrorKey } from '../../shared'
+import { formatInstant, platformShellSchema, sessionShellSchema, signInErrorKey } from '../../shared'
 
 const { t, setLocale } = useI18n()
 const requestFetch = useRequestFetch()
@@ -14,16 +14,41 @@ const shellError = ref<'shell.saveFailed' | 'shell.signOutFailed' | null>(null)
 // 23:30 UTC is 00:30 the next day in Europe/Zagreb during standard time.
 const exampleInstant = new Date('2026-01-15T23:30:00.000Z')
 
-const { data: session, error: loadError, refresh } = await useAsyncData('session-shell', async () => {
+const platformRedirect = ref(false)
+
+const { data: session, error: loadError, refresh } = await useAsyncData('session-shell', loadShell, {
+  // A cached null would show the sign-in form to a superadmin on the next visit.
+  getCachedData: () => undefined,
+})
+
+async function loadShell() {
   try {
     return sessionShellSchema.parse(await requestFetch<unknown>('/api/session'))
   }
   catch (error) {
     if (httpStatus(error) === 401)
       return null
+    // 200 stays on this page. 403 then a platform session goes to the firm list.
+    if (httpStatus(error) === 403 && await hasPlatformSession()) {
+      platformRedirect.value = true
+      await navigateTo('/admin/tenants')
+      return null
+    }
     throw error
   }
-})
+}
+
+async function hasPlatformSession(): Promise<boolean> {
+  try {
+    platformShellSchema.parse(await requestFetch<unknown>('/api/platform/session'))
+    return true
+  }
+  catch (error) {
+    if (httpStatus(error) === 401 || httpStatus(error) === 403)
+      return false
+    throw error
+  }
+}
 
 if (session.value)
   await setLocale(session.value.locale)
@@ -42,6 +67,8 @@ async function signIn() {
     })
     password.value = ''
     await refresh()
+    if (platformRedirect.value)
+      return
     if (!session.value) {
       formError.value = 'signIn.failed'
       return

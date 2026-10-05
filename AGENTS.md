@@ -82,6 +82,18 @@ It runs as `node --import ./scripts/register-ts.mjs`. `scripts/ts-loader.mjs` ex
 
 `disableSignUp` stays on. The operator script and `POST /api/invitations/accept` are the only account-creation paths in the app (ADR-0013). Tests and `e2e/` may insert credential rows through `server/modules/tenancy/testing.ts`. `server/api` and `app` must not import that file. Accepting creates an account only for a pending, unexpired, unused invitation, and the email is copied from that row. An email that already has an account signs in and then accepts; the route does not change that password. An invitation lasts 7 days. The link keeps the id in the URL hash. Only an admin may invite. `POST /api/invitations/accept` uses the same production limit as email sign-in. Resend sends from `noreply@transfers.prela.net` through the mailer port. Production requires `MAILER=resend` and `RESEND_API_KEY`. Development uses the console mailer unless both are set; the Resend key is not required to boot. A failed send still returns the copyable invite link and `invite.emailFailed` in both locales. The domain region is `eu-west-1`; Resend stores account logs in the US. Invitations are read in a tenant session through `app.tenant_invitation`, which does not return the email.
 
+## Superadmin
+
+ADR-0019. A superadmin is a Better Auth user with a row in `platform.superadmin` and no membership. `pnpm superadmin:create --name --email` and `pnpm superadmin:revoke --email` are the only writers of that row. The password is read like `tenant:create`. `--password` is refused. A duplicate email, an existing membership, or an existing grant exits 1 with a fixed sentence that omits the email.
+
+`pnpm tenant:account --slug <slug> --deactivate` and `--reactivate` are the emergency lever. There is no suspend UI or API in v1. A deactivated firm's members get the ordinary 403 on the next request. Invitation accept for that firm is refused and creates no user. Sessions are not deleted.
+
+Platform screens list firms, open one, and rename it. Open shows name, slug, created time, and active. It never shows clients, drivers, vehicles, rides, transfers, members, or audit. Rename appends `tenant.renamed` with empty data. List and open append nothing. The lever appends `tenant.suspended` or `tenant.reactivated` with empty data and actor `transferpro_owner`, which is the role name, not a person.
+
+`transferpro_platform` is `NOBYPASSRLS`, has no `USAGE` on schema `app`, and has column grants only. `PLATFORM_DATABASE_URL` is that role. Boot refuses any other role on that URL and refuses `USAGE` on schema `app`. The migrator URL stays out of `AppEnv`.
+
+A superadmin session lasts 8 hours (`SUPERADMIN_SESSION_SECONDS`). There is no second factor in v1. Every platform route logs `userId`, `action`, `targetTenantId`, and `outcome`, and does not log names or bodies. `targetTenantId` is not the `tenant_id` log scope. Rate limiting those routes is backlog.
+
 ## Tenant settings
 
 `app.tenant_settings` already has FORCE RLS, so another Tenant cannot read or write the row. The waits and the time zone are columns on that row.

@@ -1,7 +1,7 @@
 import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { z } from 'zod'
-import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, TENANT_TIME_ZONE_DEFAULT } from '../../../../shared'
+import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, TENANT_TIME_ZONE_DEFAULT, tenantNameSchema } from '../../../../shared'
 
 /**
  * Creates one Tenant and its admin.
@@ -41,7 +41,7 @@ export class TenantProvisionError extends Error {
 }
 
 const inputSchema = z.object({
-  name: z.string().trim().min(1).max(120),
+  name: tenantNameSchema,
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   adminEmail: z.email(),
   adminName: z.string().trim().min(1).max(120),

@@ -207,11 +207,41 @@ export async function assertRuntimeRole(connectionString: string): Promise<void>
 }
 
 /**
- * The three runtime connections, in app, auth, queue order.
+ * The platform connection must be `transferpro_platform` and must not be
+ * able to see schema `app`. The shared probe already rejects superuser,
+ * BYPASSRLS, and owning an app table, so the owner role fails there.
+ * A URL pointed at the auth role passes that probe and fails the name check.
+ */
+export async function assertPlatformRole(connectionString: string): Promise<void> {
+  await assertRuntimeRole(connectionString)
+  const pool = new pg.Pool({ connectionString, max: 1 })
+  try {
+    const result = await pool.query(`
+      select
+        current_user as role,
+        has_schema_privilege(current_user, 'app', 'USAGE') as app_usage
+    `)
+    const row = z.object({
+      role: z.string(),
+      app_usage: z.boolean(),
+    }).parse(result.rows[0])
+    if (row.role !== 'transferpro_platform')
+      throw new Error(`refusing to start: ${row.role} is not transferpro_platform`)
+    if (row.app_usage)
+      throw new Error('refusing to start: transferpro_platform has USAGE on schema app')
+  }
+  finally {
+    await pool.end()
+  }
+}
+
+/**
+ * The runtime connections, in app, auth, queue, platform order.
  * The first over-privileged role stops boot; the migrator URL is not among them.
  */
 export async function assertRuntimeRoles(env: AppEnv): Promise<void> {
   await assertRuntimeRole(env.DATABASE_URL)
   await assertRuntimeRole(env.AUTH_DATABASE_URL)
   await assertRuntimeRole(env.QUEUE_DATABASE_URL)
+  await assertPlatformRole(env.PLATFORM_DATABASE_URL)
 }

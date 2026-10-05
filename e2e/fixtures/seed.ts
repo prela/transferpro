@@ -1,4 +1,6 @@
 import process from 'node:process'
+import pg from 'pg'
+import { createSuperadmin } from '../../server/modules/platform'
 import { createTenant } from '../../server/modules/tenancy'
 import { insertCredentialMemberConnecting, insertCredentialUserConnecting } from '../../server/modules/tenancy/testing'
 
@@ -8,6 +10,7 @@ export const memberPassword = 'e2e-member-password'
 export interface SeededTenant {
   readonly tenantId: string
   readonly name: string
+  readonly slug: string
   readonly adminEmail: string
   readonly adminName: string
   readonly password: string
@@ -34,11 +37,12 @@ function id(): string {
 export async function seedTenant(label: string): Promise<SeededTenant> {
   const suffix = id()
   const name = `E2E ${label} ${suffix.slice(0, 8)}`
+  const slug = `e2e-${label}-${suffix}`
   const adminEmail = `e2e-${label}-${suffix}@example.test`
   const adminName = `Admin ${label}`
   const created = await createTenant({
     name,
-    slug: `e2e-${label}-${suffix}`,
+    slug,
     adminEmail,
     adminName,
     password: memberPassword,
@@ -48,6 +52,7 @@ export async function seedTenant(label: string): Promise<SeededTenant> {
   return {
     tenantId: created.tenantId,
     name,
+    slug,
     adminEmail,
     adminName,
     password: memberPassword,
@@ -80,4 +85,51 @@ export async function seedUserWithoutMembership(label: string): Promise<SeededMe
     password: memberPassword,
   })
   return { email, name, password: memberPassword }
+}
+
+/** A platform owner. No organization and no membership. */
+export async function seedSuperadmin(label: string): Promise<SeededMember> {
+  const suffix = id()
+  const email = `e2e-platform-${label}-${suffix}@example.test`
+  const name = `Platform ${label}`
+  await createSuperadmin({
+    name,
+    email,
+    password: memberPassword,
+    migrateDatabaseUrl: required('DATABASE_MIGRATE_URL'),
+  })
+  return { email, name, password: memberPassword }
+}
+
+/**
+ * Rows a platform screen must never show. The owner writes them because
+ * current_tenant_id() is null on that connection.
+ */
+export async function plantOperationalRows(tenantId: string): Promise<{ clientName: string, driverName: string, vehicleDescription: string }> {
+  const clientName = 'PlantedClient'
+  const driverName = 'PlantedDriver'
+  const vehicleDescription = 'PlantedVehicle'
+  const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
+  try {
+    await pool.query(
+      `insert into app.clients (tenant_id, name, kind) values ($1, $2, 'agency')`,
+      [tenantId, clientName],
+    )
+    await pool.query(
+      `insert into app.drivers (tenant_id, name, kind, phone, driving_licence_expires_on, transport_licence_expires_on)
+       values ($1, $2, 'own', '+385911112233', '2030-06-01', '2030-06-01')`,
+      [tenantId, driverName],
+    )
+    await pool.query(
+      `insert into app.vehicles (
+         tenant_id, registration_plate, kind, registration_expires_on,
+         technical_inspection_expires_on, insurance_expires_on, description
+       ) values ($1, 'E2EVH01', 'fixed', '2030-06-01', '2030-06-01', '2030-06-01', $2)`,
+      [tenantId, vehicleDescription],
+    )
+  }
+  finally {
+    await pool.end()
+  }
+  return { clientName, driverName, vehicleDescription }
 }

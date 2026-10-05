@@ -71,6 +71,34 @@
       "when": 1791195291248,
       "tag": "0009_vehicles",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791400000000,
+      "tag": "0010_platform_superadmin",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791400001000,
+      "tag": "0011_platform_directory",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791400002000,
+      "tag": "0012_platform_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791400003000,
+      "tag": "0013_superadmin_session_cap",
+      "breakpoints": true
     }
   ]
 }

@@ -170,6 +170,16 @@ it('records a Vehicle by id and field names, and refuses the plate and the dates
   }).success).toBe(false)
 })
 
+it('records a platform rename, deactivation, or reactivation with an empty object and no person', () => {
+  for (const action of ['tenant.renamed', 'tenant.suspended', 'tenant.reactivated'] as const) {
+    const entry = { action, subjectUserId: null, data: {} }
+    expect(auditFactSchema.parse(entry)).toEqual(entry)
+    expect(auditFactSchema.safeParse({ ...entry, subjectUserId: adminId }).success).toBe(false)
+    expect(auditFactSchema.safeParse({ ...entry, data: { name: 'Mora' } }).success).toBe(false)
+    expect(auditFactSchema.safeParse({ ...entry, data: { email: 'ana@example.test' } }).success).toBe(false)
+  }
+})
+
 it('lists an entry whose people are no longer members with null names', () => {
   const listed = auditEntryListSchema.parse({
     entries: [{

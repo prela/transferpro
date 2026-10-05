@@ -26,12 +26,14 @@ const databaseUrl = required(process.env.DATABASE_URL, 'DATABASE_URL')
 const authDatabaseUrl = required(process.env.AUTH_DATABASE_URL, 'AUTH_DATABASE_URL')
 const migrateDatabaseUrl = required(process.env.DATABASE_MIGRATE_URL, 'DATABASE_MIGRATE_URL')
 const queueDatabaseUrl = required(process.env.QUEUE_DATABASE_URL, 'QUEUE_DATABASE_URL')
+const platformDatabaseUrl = required(process.env.PLATFORM_DATABASE_URL, 'PLATFORM_DATABASE_URL')
 const baseUrl = required(process.env.BETTER_AUTH_URL, 'BETTER_AUTH_URL')
 
 const env = parseAppEnv({
   DATABASE_URL: databaseUrl,
   AUTH_DATABASE_URL: authDatabaseUrl,
   QUEUE_DATABASE_URL: queueDatabaseUrl,
+  PLATFORM_DATABASE_URL: platformDatabaseUrl,
   BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
   BETTER_AUTH_URL: baseUrl,
   NODE_ENV: 'test',
