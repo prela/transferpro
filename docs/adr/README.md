@@ -32,3 +32,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0014 | Append-only audit log | accepted; partially superseded by ADR-0015 |
 | ADR-0015 | Settings changes in the audit log | accepted |
 | ADR-0016 | UI: Nuxt UI + Tailwind v4 | proposed |
+| ADR-0017 | A Client keeps its name off the audit log | proposed |

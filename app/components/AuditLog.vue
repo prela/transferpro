@@ -63,6 +63,13 @@ function detailText(entry: AuditEntry): string {
     case 'settings.airport_wait_changed':
     case 'settings.elsewhere_wait_changed':
       return t('audit.minutesChange', { from: entry.data.from, to: entry.data.to })
+    case 'client.created':
+      return t(`clients.kinds.${entry.data.kind}`)
+    case 'client.kind_changed':
+      return `${t(`clients.kinds.${entry.data.from}`)} → ${t(`clients.kinds.${entry.data.to}`)}`
+    case 'client.name_changed':
+      // The name stays off the row (ADR-0017). The action column says it was corrected.
+      return ''
   }
 }
 

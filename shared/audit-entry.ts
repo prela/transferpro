@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { clientKindSchema } from './client'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
 
@@ -14,6 +15,9 @@ export const auditActions = [
   'settings.airport_wait_changed',
   'settings.elsewhere_wait_changed',
   'settings.time_zone_changed',
+  'client.created',
+  'client.name_changed',
+  'client.kind_changed',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -70,6 +74,31 @@ const settingsTimeZoneChanged = z.object({
   data: z.strictObject({ from: storedTimeZoneSchema, to: ianaTimeZoneSchema }),
 })
 
+/*
+ * A Client is not a member. The id says which row. The name stays on
+ * `app.clients` (ADR-0017): an individual Client is a person, and this
+ * row is never deleted. Kind is not a name, so a kind change keeps from/to.
+ */
+const clientId = z.uuid()
+
+const clientCreated = z.object({
+  action: z.literal('client.created'),
+  subjectUserId: z.null(),
+  data: z.strictObject({ clientId, kind: clientKindSchema }),
+})
+
+const clientNameChanged = z.object({
+  action: z.literal('client.name_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({ clientId }),
+})
+
+const clientKindChanged = z.object({
+  action: z.literal('client.kind_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({ clientId, from: clientKindSchema, to: clientKindSchema }),
+})
+
 /** What happened: the action, the member it was done to, and its data. */
 export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
@@ -78,6 +107,9 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   settingsAirportWaitChanged,
   settingsElsewhereWaitChanged,
   settingsTimeZoneChanged,
+  clientCreated,
+  clientNameChanged,
+  clientKindChanged,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -101,6 +133,9 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   settingsAirportWaitChanged.extend(listed),
   settingsElsewhereWaitChanged.extend(listed),
   settingsTimeZoneChanged.extend(listed),
+  clientCreated.extend(listed),
+  clientNameChanged.extend(listed),
+  clientKindChanged.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

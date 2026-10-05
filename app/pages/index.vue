@@ -150,6 +150,20 @@ const loadMessage = computed(() => {
       >
         {{ formatInstant(exampleInstant, session.timeZone, session.locale) }}
       </time>
+      <nav
+        v-if="session.role !== 'driver'"
+        class="mt-4"
+        :aria-label="t('shell.nav')"
+      >
+        <UButton
+          to="/clients"
+          color="neutral"
+          variant="outline"
+          size="xl"
+        >
+          {{ t('clients.nav') }}
+        </UButton>
+      </nav>
       <TenantSettings
         :is-admin="session.role === 'admin'"
         @saved="refresh()"

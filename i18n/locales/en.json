@@ -16,7 +16,8 @@
     "exampleTime": "Example time",
     "unavailable": "The screen could not be loaded. Try again.",
     "noAccess": "You are not a member of any tenant. Sign out or ask for a new invitation.",
-    "saveFailed": "The locale was not saved. Try again."
+    "saveFailed": "The locale was not saved. Try again.",
+    "nav": "Sections"
   },
   "locale": {
     "hr": "Hrvatski",
@@ -99,6 +100,11 @@
         "airport_wait_changed": "Airport wait changed",
         "elsewhere_wait_changed": "Wait elsewhere changed",
         "time_zone_changed": "Time zone changed"
+      },
+      "client": {
+        "created": "Client added",
+        "name_changed": "Client name corrected",
+        "kind_changed": "Client kind corrected"
       }
     }
   },
@@ -116,5 +122,36 @@
     "saved": "Saved.",
     "saveFailed": "The settings could not be saved. Try again.",
     "adminOnly": "Only an administrator can change these."
+  },
+  "clients": {
+    "nav": "Clients",
+    "home": "Home",
+    "title": "Clients",
+    "add": "Add a client",
+    "edit": "Correct client",
+    "name": "Name",
+    "kind": "Kind",
+    "chooseKind": "Choose a kind",
+    "nameEmpty": "Enter a name.",
+    "nameTooLong": "A name can be at most 200 characters.",
+    "kindInvalid": "Choose a kind: agency, hotel, or individual.",
+    "submit": "Add client",
+    "submitting": "Adding client",
+    "save": "Save",
+    "saving": "Saving",
+    "cancel": "Cancel",
+    "loading": "Loading clients",
+    "loadFailed": "Clients could not be loaded. Try again.",
+    "empty": "No clients yet.",
+    "rejected": "The name or the kind was not accepted.",
+    "notFound": "That client is no longer on the list.",
+    "forbidden": "A driver cannot add or correct clients.",
+    "signedOut": "You are signed out. Sign in and try again.",
+    "saveFailed": "The client was not saved. Try again.",
+    "kinds": {
+      "agency": "Agency",
+      "hotel": "Hotel",
+      "individual": "Individual"
+    }
   }
 }

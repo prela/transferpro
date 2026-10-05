@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, CLIENT_KINDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -57,6 +57,26 @@ function zonesFromTo(data: AnyPgColumn) {
   ], sql` and `)
 }
 
+const clientKinds = sql.raw(CLIENT_KINDS.map(kind => `'${kind}'`).join(', '))
+
+/** `data` holds exactly these keys, and nothing else. */
+function keysOnly(data: AnyPgColumn, ...keys: string[]) {
+  return sql`${data} - ${sql.raw(`'{${keys.join(',')}}'::text[]`)} = '{}'::jsonb`
+}
+
+/**
+ * A Client id stored as text. Zod's uuid is the same RFC 4122 shape.
+ * `~*` so a lowercase or uppercase hex id both pass.
+ */
+function clientIdText(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'clientId'`)}) = 'string' and ${data} ->> ${sql.raw(`'clientId'`)} ~* ${sql.raw(`'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`)}`
+}
+
+function kindText(data: AnyPgColumn, key: string) {
+  const name = sql.raw(`'${key}'`)
+  return sql`${data} ->> ${name} in (${clientKinds})`
+}
+
 /**
  * Append-only (ADR-0014). The app role may only SELECT. Rows are written by
  * `audit.append_entry` and by the trigger on `auth.invitation`, and a trigger
@@ -90,5 +110,8 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'settings.airport_wait_changed' then ${table.subjectUserId} is null and ${minutesFromTo(table.data)}
     when 'settings.elsewhere_wait_changed' then ${table.subjectUserId} is null and ${minutesFromTo(table.data)}
     when 'settings.time_zone_changed' then ${table.subjectUserId} is null and ${zonesFromTo(table.data)}
+    when 'client.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'kind')} and ${clientIdText(table.data)} and ${kindText(table.data, 'kind')}
+    when 'client.name_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId')} and ${clientIdText(table.data)}
+    when 'client.kind_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'from', 'to')} and ${clientIdText(table.data)} and ${kindText(table.data, 'from')} and ${kindText(table.data, 'to')}
     else false end) is true`),
 ], { oneRowPerTenant: false })
