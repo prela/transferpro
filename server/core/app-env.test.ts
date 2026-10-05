@@ -47,6 +47,20 @@ it('requires MAILER=resend and the Resend key in production', () => {
   })
 })
 
+it('accepts an optional SENTRY_DSN and SENTRY_RELEASE', () => {
+  expect(parseAppEnv(base).SENTRY_DSN).toBeUndefined()
+  expect(parseAppEnv(base).SENTRY_RELEASE).toBeUndefined()
+  expect(parseAppEnv({
+    ...base,
+    SENTRY_DSN: 'https://o0.ingest.sentry.io/0',
+    SENTRY_RELEASE: 'abc123def456',
+  })).toMatchObject({
+    SENTRY_DSN: 'https://o0.ingest.sentry.io/0',
+    SENTRY_RELEASE: 'abc123def456',
+  })
+  expect(() => parseAppEnv({ ...base, SENTRY_DSN: 'not-a-url' })).toThrow()
+})
+
 it('leaves MAILER unset in development and test', () => {
   expect(parseAppEnv(base).MAILER).toBeUndefined()
   expect(parseAppEnv({ ...base, NODE_ENV: 'test' }).MAILER).toBeUndefined()

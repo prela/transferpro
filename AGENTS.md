@@ -59,7 +59,7 @@ Rationale is ADR-0014. Working rules:
 
 The charter lists the personal-data keys. Rationale for the logger shape is ADR-0012 (proposed). Also:
 
-- Import the logger from `server/core/index.ts`. `no-console` is an error except in `server/core/logger.ts`, and that file still does not call `console`. `server/error.ts` does not call `console.error`. A `console` call skips redaction.
+- Import the logger from `server/core/index.ts`. `no-console` is an error except in `server/core/logger.ts`, and that file still does not call `console`. `server/error.ts` does not call `console.error`. A `console` call skips redaction. The personal-data and secret key list lives in `shared/redact.ts` and is shared with Sentry (#34).
 - Personal-data keys match exactly, plus `notes`. `user_id` is kept. A normalized name containing `secret`, `token`, `password`, `cookie`, `authorization`, `apikey`, or `databaseurl` is redacted (`BETTER_AUTH_SECRET`, `AUTH_DATABASE_URL`, `RESEND_API_KEY`). `detail` is exact. Comparison ignores case and `_` / `-`. `invitationId` and `inviteUrl` are redacted whole. A string containing `accept-invite#<id>`, `accept-invite/<id>`, or `invitationId=<id>` is scrubbed, including in a message, because the id is a bearer secret (ADR-0013). Other personal data in a message stays unscanned.
 - Put personal data and secrets in fields the list can see. Message text and `Error.message` are not scanned for personal data. The invitation-id patterns in the previous bullet are the exception, and they are scrubbed inside a message (ADR-0013).
 - `server/plugins/boot.ts` configures the logger; `server/plugins/request-log.ts` echoes `x-request-id`. Nuxt runs plugins in alphabetical order, so those two names stay in that order.
