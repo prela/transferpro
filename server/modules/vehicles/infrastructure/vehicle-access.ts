@@ -1,9 +1,9 @@
 import type { VehicleList } from '../../../../shared'
 import { parseCreateVehicle, parseVehiclePatch } from '../../../../shared'
 import { TenantAccessError, withTenantFromSession } from '../../tenancy'
-import { addVehicle, archiveStoredVehicle, correctVehicle, loadVehicles, VehicleConflictError, VehicleNotFoundError } from './vehicles'
+import { addVehicle, archiveStoredVehicle, correctVehicle, loadVehicles, VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError } from './vehicles'
 
-export { VehicleConflictError, VehicleNotFoundError }
+export { VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError }
 
 function officeOnly(role: string): void {
   // A driver sees their own Rides. Adding a Vehicle is office work.

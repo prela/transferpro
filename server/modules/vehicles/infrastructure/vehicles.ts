@@ -21,6 +21,10 @@ const vehicleRows = z.object({
   rows: z.array(vehicleRowSchema),
 })
 
+const vehicleIdRows = z.object({
+  rows: z.array(z.object({ id: z.uuid() })),
+})
+
 /** The Vehicle is not in this Tenant. Another Tenant's row looks the same. */
 export class VehicleNotFoundError extends Error {
   readonly statusCode = 404
@@ -31,16 +35,36 @@ export class VehicleNotFoundError extends Error {
   }
 }
 
-/**
- * A live plate is already on the list, or the Vehicle is archived and cannot
- * be corrected. The message is a fixed phrase. The plate is not in it.
- */
-export class VehicleConflictError extends Error {
+/** A live plate is already on the list. The message is a fixed phrase. The plate is not in it. */
+export class VehiclePlateTakenError extends Error {
   readonly statusCode = 409
+  readonly code = 'vehicle_plate_taken'
 
   constructor() {
     super('Conflict')
-    this.name = 'VehicleConflictError'
+    this.name = 'VehiclePlateTakenError'
+  }
+}
+
+/** The Vehicle is archived and cannot be corrected. The message is a fixed phrase. */
+export class VehicleArchivedError extends Error {
+  readonly statusCode = 409
+  readonly code = 'vehicle_archived'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'VehicleArchivedError'
+  }
+}
+
+/** The plate is on an archived Vehicle. The message is a fixed phrase. The plate is not in it. */
+export class VehicleArchivedPlateError extends Error {
+  readonly statusCode = 409
+  readonly code = 'vehicle_archived_plate'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'VehicleArchivedPlateError'
   }
 }
 
@@ -118,8 +142,10 @@ export async function correctVehicle(
 ): Promise<Vehicle> {
   const current = await lockVehicle(transaction, vehicleId)
   if (current.archivedAt !== null)
-    throw new VehicleConflictError()
+    throw new VehicleArchivedError()
   const next = applyPatch(current, patch)
+  if (patch.registrationPlate !== undefined && patch.registrationPlate !== current.registrationPlate)
+    await assertArchivedPlateBlocks(transaction, next.registrationPlate, current.id)
   const fields = changedFields(current, next)
   if (fields.length === 0)
     return current
@@ -263,9 +289,42 @@ async function writeVehicle(transaction: TenantTransaction, query: SQL): Promise
   }
   catch (error) {
     if (isPlateUniqueViolation(error))
-      throw new VehicleConflictError()
+      throw new VehiclePlateTakenError()
     throw new Error('Vehicle write failed')
   }
+}
+
+/**
+ * A correction to a plate that only an archived Vehicle holds is refused so
+ * the office can show archived rows or restore the archived Vehicle first.
+ * Reusing a plate after archive is still allowed on create.
+ */
+async function assertArchivedPlateBlocks(
+  transaction: TenantTransaction,
+  plate: string,
+  excludeId: string,
+): Promise<void> {
+  const archived = vehicleIdRows.parse(await transaction.execute(sql`
+    select id
+    from app.vehicles
+    where registration_plate = ${plate}
+      and archived_at is not null
+      and id <> ${excludeId}
+    limit 1
+  `))
+  if (archived.rows.length === 0)
+    return
+  const live = vehicleIdRows.parse(await transaction.execute(sql`
+    select id
+    from app.vehicles
+    where registration_plate = ${plate}
+      and archived_at is null
+      and id <> ${excludeId}
+    limit 1
+  `))
+  if (live.rows.length > 0)
+    return
+  throw new VehicleArchivedPlateError()
 }
 
 /**

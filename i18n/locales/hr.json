@@ -240,6 +240,8 @@
     "dateInvalid": "Unesite datum.",
     "descriptionTooLong": "Opis može imati najviše 120 znakova.",
     "plateTaken": "Vozilo s tom registarskom oznakom već postoji.",
+    "archivedLocked": "Arhivirano vozilo nije moguće mijenjati. Uključite arhivirana vozila da ga pronađete.",
+    "plateArchived": "Vozilo s tom registarskom oznakom je arhivirano. Uključite arhivirana vozila ili vratite arhivirano vozilo prije dodavanja ili ispravka.",
     "submit": "Dodaj vozilo",
     "submitting": "Dodavanje vozila",
     "save": "Spremi",

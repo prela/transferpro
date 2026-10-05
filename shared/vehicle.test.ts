@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { parseCreateVehicle, parseIncludeArchivedQuery, parseVehiclePatch, VEHICLE_DESCRIPTION_MAX_LENGTH, VEHICLE_PLATE_MAX_LENGTH, vehicleDateError, vehicleDescriptionError, VehicleInputError, vehicleKindError, vehicleListSchema, vehiclePlateError } from './vehicle'
+import { parseCreateVehicle, parseVehiclePatch, VEHICLE_DESCRIPTION_MAX_LENGTH, VEHICLE_PLATE_MAX_LENGTH, vehicleDateError, vehicleDescriptionError, VehicleInputError, vehicleKindError, vehicleListSchema, vehiclePlateError } from './vehicle'
 
 const plate = 'DU123AB'
 
@@ -99,17 +99,4 @@ it('lists a Vehicle the office can correct or archive later', () => {
   expect(vehicleListSchema.safeParse({
     vehicles: [{ ...listed.vehicles[0], kind: 'own' }],
   }).success).toBe(false)
-})
-
-it('reads includeArchived from the query: absent or false hides archived rows, true includes them', () => {
-  expect(parseIncludeArchivedQuery(undefined)).toBe(false)
-  expect(parseIncludeArchivedQuery(null)).toBe(false)
-  expect(parseIncludeArchivedQuery('')).toBe(false)
-  expect(parseIncludeArchivedQuery('false')).toBe(false)
-  expect(parseIncludeArchivedQuery(false)).toBe(false)
-  expect(parseIncludeArchivedQuery('true')).toBe(true)
-  expect(parseIncludeArchivedQuery(true)).toBe(true)
-  expect(() => parseIncludeArchivedQuery('1')).toThrow(VehicleInputError)
-  expect(() => parseIncludeArchivedQuery('True')).toThrow(VehicleInputError)
-  expect(() => parseIncludeArchivedQuery(['true'])).toThrow(VehicleInputError)
 })

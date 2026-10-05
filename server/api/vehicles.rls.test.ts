@@ -177,6 +177,8 @@ it('post answers 400 for a bad body and does not echo the plate, and no session 
   expect((await call('PATCH', '/api/vehicles/a1b2c3d4-5555-4555-8555-555555555555', undefined, { kind: 'occasional' })).status).toBe(401)
   expect((await call('POST', '/api/vehicles/a1b2c3d4-5555-4555-8555-555555555555/archive')).status).toBe(401)
   expect((await call('GET', '/api/vehicles?includeArchived=1')).status).toBe(400)
+  expect((await call('GET', '/api/vehicles?includeArchived=')).status).toBe(400)
+  expect((await call('GET', '/api/vehicles?includeArchived=false')).status).toBe(401)
 })
 
 it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and a driver is refused', async () => {
@@ -257,6 +259,13 @@ it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and
       archivedAt: expect.any(String),
     })],
   })
+
+  const other = await call('POST', '/api/vehicles', dispatcher, vehicleBody({ registrationPlate: 'ST333DD' }))
+  expect(other.status).toBe(200)
+  const otherRow = await other.json()
+  const archivedPlate = await call('PATCH', `/api/vehicles/${otherRow.id}`, admin, { registrationPlate: 'ZG111AA' })
+  expect(archivedPlate.status).toBe(409)
+  expect(await archivedPlate.text()).not.toContain('ZG111AA')
 
   const again = await call('POST', `/api/vehicles/${row.id}/archive`, admin)
   expect(again.status).toBe(200)

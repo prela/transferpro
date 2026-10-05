@@ -34,7 +34,8 @@ const authUrl = required('BETTER_AUTH_URL')
 
 const app = createApp()
 app.use('/api/drivers', (event) => {
-  const id = event.path === '/' ? '' : decodeURIComponent(event.path.slice(1))
+  const pathOnly = event.path.split('?')[0] ?? '/'
+  const id = pathOnly === '/' ? '' : decodeURIComponent(pathOnly.slice(1))
   if (id === '') {
     if (event.method === 'POST')
       return postDriver(event)
@@ -171,6 +172,10 @@ it('post answers 400 for a bad body and does not echo the phone, and no session 
   expect((await call('GET', '/api/drivers')).status).toBe(401)
   expect((await call('POST', '/api/drivers', undefined, driverBody())).status).toBe(401)
   expect((await call('PATCH', '/api/drivers/9e4b3f6d-5555-4555-8555-555555555555', undefined, { kind: 'external' })).status).toBe(401)
+  expect((await call('GET', '/api/drivers?includeArchived=true')).status).toBe(401)
+  expect((await call('GET', '/api/drivers?includeArchived=false')).status).toBe(401)
+  expect((await call('GET', '/api/drivers?includeArchived=1')).status).toBe(400)
+  expect((await call('GET', '/api/drivers?includeArchived=')).status).toBe(400)
 })
 
 it('a dispatcher and an admin can add, correct, and list a Driver, and a driver is refused', async () => {
@@ -203,6 +208,8 @@ it('a dispatcher and an admin can add, correct, and list a Driver, and a driver 
   const listed = await call('GET', '/api/drivers', admin)
   expect(listed.status).toBe(200)
   expect(await listed.json()).toEqual({ drivers: [row] })
+  expect((await call('GET', '/api/drivers?includeArchived=true', admin)).status).toBe(200)
+  expect((await call('GET', '/api/drivers?includeArchived=false', admin)).status).toBe(200)
 
   const same = await call('PATCH', `/api/drivers/${row.id}`, dispatcher, { phone })
   expect(same.status).toBe(200)
