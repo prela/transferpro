@@ -345,7 +345,7 @@ it('a signed-in user with no membership is forbidden', async () => {
   })
 })
 
-it('signing out the way the page does clears the session cookie only with an empty json body', async () => {
+it('signing out the way the page does clears the session cookie', async () => {
   await createTenant({
     name: 'Page sign-out',
     slug: 'slice10-page-signout',
@@ -357,11 +357,6 @@ it('signing out the way the page does clears the session cookie only with an emp
   })
   const signedIn = await signIn('slice10-page-signout@example.com')
 
-  // No body: ofetch sends no Content-Type, and Better Auth answers 415.
-  const rejected = await postSignOut(signedIn.token)
-  expect(rejected.status).toBe(415)
-  expect(await getSession(signedIn.token)).toMatchObject({ user: { email: 'slice10-page-signout@example.com' } })
-
   // body: {} is what the shell sends, so ofetch sets application/json.
   const signedOut = await postSignOut(signedIn.token, {})
   expect(signedOut.status).toBe(200)
@@ -370,6 +365,14 @@ it('signing out the way the page does clears the session cookie only with an emp
     throw new Error('sign-out did not clear the session cookie')
   expect(cookie.toLowerCase()).toContain('max-age=0')
   expect(await getSession(signedIn.token)).toBeNull()
+
+  // A reconstructed IncomingMessage with an empty stream used to 415.
+  // The real auth route + ofetch with no body is a bare POST; Better Auth
+  // accepts it. The shell still posts `{}` so the Content-Type is set.
+  const signedInAgain = await signIn('slice10-page-signout@example.com')
+  const noBody = await postSignOut(signedInAgain.token)
+  expect(noBody.status).toBe(200)
+  expect(await getSession(signedInAgain.token)).toBeNull()
 })
 
 it('a signed-in user removed from their tenant is forbidden by the session shell', async () => {
@@ -489,9 +492,9 @@ async function signIn(email: string, handle: ReturnType<typeof createAuth> = cur
  * client against the real `server/api/auth/[...all].ts` handler: h3 turns
  * the Request into a Node event, and that route calls `toWebRequest`.
  *
- * A POST with no bytes still gets a body stream, and Better Auth answers
- * 415 when that stream has no Content-Type. `body: {}` makes ofetch send
- * `{}` as application/json, which sign-out accepts.
+ * The shell posts `body: {}` so ofetch sends application/json. A
+ * reconstructed IncomingMessage with an empty stream used to 415; the
+ * real route does not invent that stream.
  */
 const authApp = createApp()
 authApp.use(authRoute)
