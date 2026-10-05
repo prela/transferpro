@@ -1,5 +1,5 @@
 -- ADR-0017. drizzle-kit emits the table, ENABLE RLS, the policy, and the audit check.
--- FORCE RLS and the grant are hand-written, the same grants as tenant_settings.
+-- FORCE RLS and the grant are hand-written, SELECT, INSERT, UPDATE only: there is no delete.
 ALTER TYPE "app"."audit_action" ADD VALUE 'client.created';--> statement-breakpoint
 ALTER TYPE "app"."audit_action" ADD VALUE 'client.name_changed';--> statement-breakpoint
 ALTER TYPE "app"."audit_action" ADD VALUE 'client.kind_changed';--> statement-breakpoint
@@ -32,4 +32,4 @@ ALTER TABLE "app"."clients" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 REVOKE ALL ON TABLE "app"."clients" FROM PUBLIC;
 --> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "app"."clients" TO "transferpro_app";
+GRANT SELECT, INSERT, UPDATE ON TABLE "app"."clients" TO "transferpro_app";

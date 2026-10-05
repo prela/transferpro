@@ -118,7 +118,7 @@ const loadMessage = computed(() => {
         </UButton>
       </nav>
       <p class="text-sm text-muted">
-        {{ t('shell.tenant') }}
+        {{ t('shell.tenant') }}: {{ session.tenantName }}
       </p>
       <h1 class="mb-4 text-2xl font-semibold">
         {{ t('clients.title') }}

@@ -268,6 +268,7 @@ onMounted(loadClients)
             color="neutral"
             variant="outline"
             size="xl"
+            :aria-label="`${t('clients.edit')}: ${row.original.name}`"
             @click="openEdit(row.original)"
           >
             {{ t('clients.edit') }}

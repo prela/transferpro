@@ -3,6 +3,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 
 loadEnvFile('.env')
+loadEnvFile('.env.migrate')
 
 /**
  * RLS seam: a fake cannot prove Tenant A is hidden from Tenant B.
@@ -12,21 +13,30 @@ const databaseUrl = process.env.DATABASE_URL
 if (!databaseUrl)
   throw new Error('DATABASE_URL is required (the transferpro_app role)')
 
+const migrateUrl = process.env.DATABASE_MIGRATE_URL
+if (!migrateUrl)
+  throw new Error('DATABASE_MIGRATE_URL is required (the transferpro_owner role)')
+
 const pool = new pg.Pool({ connectionString: databaseUrl })
+const ownerPool = new pg.Pool({ connectionString: migrateUrl })
 
 const tenantA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'
 const tenantB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2'
 
 beforeAll(async () => {
-  for (const tenantId of [tenantA, tenantB]) {
-    await withTenant(tenantId, async (session) => {
-      await session.query('delete from app.clients')
-    })
+  // transferpro_app has no DELETE on app.clients. The owner bypasses RLS and clears the fixture tenants.
+  const owner = await ownerPool.connect()
+  try {
+    await owner.query('delete from app.clients where tenant_id in ($1, $2)', [tenantA, tenantB])
+  }
+  finally {
+    owner.release()
   }
 })
 
 afterAll(async () => {
   await pool.end()
+  await ownerPool.end()
 })
 
 async function withTenant<T>(
@@ -87,6 +97,12 @@ it('tenant B cannot read or change Tenant A clients', async () => {
       `insert into app.clients (tenant_id, name, kind) values ($1, 'Hotel B', 'hotel')`,
       [tenantA],
     ))).rejects.toMatchObject({ code: '42501' })
+
+  // WITH CHECK refuses a row whose tenant_id is no longer this session's Tenant.
+  await expect(withTenant(tenantA, client => client.query('update app.clients set tenant_id = $1', [tenantB]))).rejects.toMatchObject({ code: '42501' })
+
+  // There is no delete route, and the app role is not granted DELETE.
+  await expect(withTenant(tenantA, client => client.query('delete from app.clients'))).rejects.toMatchObject({ code: '42501' })
 
   const seenByA = await withTenant(tenantA, async (client) => {
     return client.query('select name, kind from app.clients')
