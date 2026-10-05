@@ -55,6 +55,33 @@ it('records a wait or a time zone as from and to, and refuses a member, a name, 
   }).success).toBe(true)
 })
 
+it('records a Client by id and kind, and refuses the name', () => {
+  const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const created = {
+    action: 'client.created' as const,
+    subjectUserId: null,
+    data: { clientId, kind: 'agency' as const },
+  }
+  expect(auditFactSchema.parse(created)).toEqual(created)
+  expect(auditFactSchema.safeParse({ ...created, data: { ...created.data, name: 'Agencija Mora' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...created, subjectUserId: memberId }).success).toBe(false)
+
+  const renamed = { action: 'client.name_changed' as const, subjectUserId: null, data: { clientId } }
+  expect(auditFactSchema.parse(renamed)).toEqual(renamed)
+  expect(auditFactSchema.safeParse({
+    ...renamed,
+    data: { clientId, from: 'Mora', to: 'Mora d.o.o.' },
+  }).success).toBe(false)
+
+  const kind = {
+    action: 'client.kind_changed' as const,
+    subjectUserId: null,
+    data: { clientId, from: 'hotel' as const, to: 'agency' as const },
+  }
+  expect(auditFactSchema.parse(kind)).toEqual(kind)
+  expect(auditFactSchema.safeParse({ ...kind, data: { clientId, from: 'hotel', to: 'partner' } }).success).toBe(false)
+})
+
 it('lists an entry whose people are no longer members with null names', () => {
   const listed = auditEntryListSchema.parse({
     entries: [{

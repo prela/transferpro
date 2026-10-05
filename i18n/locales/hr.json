@@ -16,7 +16,8 @@
     "exampleTime": "Primjer vremena",
     "unavailable": "Zaslon se nije mogao učitati. Pokušajte ponovno.",
     "noAccess": "Niste član nijednog prijevoznika. Odjavite se ili zatražite novu pozivnicu.",
-    "saveFailed": "Promjena jezika nije spremljena. Pokušajte ponovno."
+    "saveFailed": "Promjena jezika nije spremljena. Pokušajte ponovno.",
+    "nav": "Odjeljci"
   },
   "locale": {
     "hr": "Hrvatski",
@@ -99,6 +100,11 @@
         "airport_wait_changed": "Promijenjeno čekanje na aerodromu",
         "elsewhere_wait_changed": "Promijenjeno čekanje izvan aerodroma",
         "time_zone_changed": "Promijenjena vremenska zona"
+      },
+      "client": {
+        "created": "Klijent dodan",
+        "name_changed": "Ime klijenta ispravljeno",
+        "kind_changed": "Vrsta klijenta ispravljena"
       }
     }
   },
@@ -116,5 +122,36 @@
     "saved": "Spremljeno.",
     "saveFailed": "Postavke se nisu mogle spremiti. Pokušajte ponovno.",
     "adminOnly": "Samo administrator može ovo promijeniti."
+  },
+  "clients": {
+    "nav": "Klijenti",
+    "home": "Početna",
+    "title": "Klijenti",
+    "add": "Dodaj klijenta",
+    "edit": "Ispravi klijenta",
+    "name": "Ime",
+    "kind": "Vrsta",
+    "chooseKind": "Odaberite vrstu",
+    "nameEmpty": "Unesite ime.",
+    "nameTooLong": "Ime može imati najviše 200 znakova.",
+    "kindInvalid": "Odaberite vrstu: agencija, hotel ili osoba.",
+    "submit": "Dodaj klijenta",
+    "submitting": "Dodavanje klijenta",
+    "save": "Spremi",
+    "saving": "Spremanje",
+    "cancel": "Odustani",
+    "loading": "Učitavanje klijenata",
+    "loadFailed": "Klijente nije bilo moguće učitati. Pokušajte ponovno.",
+    "empty": "Još nema klijenata.",
+    "rejected": "Ime ili vrsta nisu prihvaćeni.",
+    "notFound": "Taj klijent više nije na popisu.",
+    "forbidden": "Vozač ne može dodavati ni ispravljati klijente.",
+    "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
+    "saveFailed": "Klijent nije spremljen. Pokušajte ponovno.",
+    "kinds": {
+      "agency": "Agencija",
+      "hotel": "Hotel",
+      "individual": "Osoba"
+    }
   }
 }

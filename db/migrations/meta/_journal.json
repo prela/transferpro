@@ -50,6 +50,13 @@
       "when": 1791070967790,
       "tag": "0006_tenant_no_show_waits",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791164945318,
+      "tag": "0007_clients",
+      "breakpoints": true
     }
   ]
 }

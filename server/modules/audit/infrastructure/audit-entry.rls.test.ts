@@ -149,6 +149,10 @@ it('the table refuses data that does not match its action, for every writer', as
     ['settings.time_zone_changed', null, '{"from":"Europe/Zagreb","to":"Europe/Berlin","name":"Ana"}'],
     ['settings.time_zone_changed', null, '{"from":"","to":"Europe/Zagreb"}'],
     ['settings.time_zone_changed', subject, '{"from":"Europe/Zagreb","to":"Europe/Berlin"}'],
+    ['client.created', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","kind":"agency","name":"Mora"}'],
+    ['client.created', subject, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","kind":"agency"}'],
+    ['client.name_changed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","from":"Mora","to":"Mora d.o.o."}'],
+    ['client.kind_changed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","from":"hotel","to":"partner"}'],
   ]
   for (const values of mismatches) {
     expect(await refusal(appPool, tenant, append, [values[0], actor, ...values.slice(1)]), values.join(' ')).toMatchObject({ code: '23514' })
@@ -158,6 +162,31 @@ it('the table refuses data that does not match its action, for every writer', as
   expect(await refusal(ownerPool, null, `insert into app.audit_entry (tenant_id, action, actor_user_id, data)
     values ($1, 'member.invited', $2, '{"role":"driver","email":"ana@example.test"}')`, [tenant, actor])).toMatchObject({ code: '23514' })
   expect(await entriesOf(tenant)).toEqual([])
+})
+
+it('append_entry accepts a client action that carries the id and the kind, and not the name', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const append = `select audit.append_entry($1, $2, null, $3::jsonb)`
+  await inSession(appPool, tenant, client => client.query(append, [
+    'client.created',
+    actor,
+    JSON.stringify({ clientId, kind: 'agency' }),
+  ]))
+  await inSession(appPool, tenant, client => client.query(append, [
+    'client.name_changed',
+    actor,
+    JSON.stringify({ clientId }),
+  ]))
+  await inSession(appPool, tenant, client => client.query(append, [
+    'client.kind_changed',
+    actor,
+    JSON.stringify({ clientId, from: 'agency', to: 'hotel' }),
+  ]))
+  const rows = await entriesOf(tenant)
+  expect(rows.map(row => row.action).sort()).toEqual(['client.created', 'client.kind_changed', 'client.name_changed'])
+  expect(rows.every(row => row.data !== null && typeof row.data === 'object' && !Object.hasOwn(row.data, 'name'))).toBe(true)
 })
 
 it('the app role cannot insert, update, delete, or truncate an entry, even in its own Tenant, and the auth role cannot touch the table', async () => {

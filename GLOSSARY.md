@@ -55,7 +55,7 @@ A pending offer for one email to join a Tenant as admin, dispatcher, or driver. 
 _Avoid_: signup link
 
 **Audit entry**:
-One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to or the setting value that changed. It is written with the action and never changed or removed.
+One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to, the setting value that changed, or the Client (its id, and for a kind change the previous and next kind). A Client's name is not in the record. It is written with the action and never changed or removed.
 _Avoid_: history, event, activity
 
 **Driver**:
