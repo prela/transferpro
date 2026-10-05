@@ -1,8 +1,10 @@
 # Append-only audit log
 
-Status: accepted; partially superseded by ADR-0015
+Status: accepted; partially superseded by ADR-0015 and ADR-0019
 
 ADR-0015 amends "An entry stores user ids and roles." A settings change also stores the previous and next value. Names, emails, and invitation ids stay out of the row.
+
+ADR-0019 adds `audit.append_tenant_renamed`. It does not insert. It calls `append_entry` with action `tenant.renamed` and data `{}`. That is the platform role's only execute grant in schema `audit`. The app role and the auth role still execute `append_entry`.
 
 ## Context
 

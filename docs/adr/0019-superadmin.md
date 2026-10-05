@@ -58,7 +58,9 @@ Grants, and nothing else:
 - `USAGE` on schemas `auth`, `platform`, and `audit`. No `USAGE` on `app` or `pgboss`.
 - `SELECT (id, name, slug, created_at)` and `UPDATE (name)` on `auth.organization`.
 - `SELECT (organization_id)` on `platform.tenant_account`. No insert, update, or delete.
-- `EXECUTE` on `audit.append_entry(text, text, text, jsonb)`.
+- `EXECUTE` on `audit.append_tenant_renamed(text)`.
+
+`audit.append_entry` takes any action and any data. `0012_platform_audit` granted the platform role execute on it, so a leaked `PLATFORM_DATABASE_URL` could append a shaped row of any action for any Tenant whose id the caller puts in `app.tenant_id`. `0014_platform_rename_audit` revokes that grant. `audit.append_tenant_renamed(actor_user_id)` is `SECURITY DEFINER` with `search_path` pinned to `pg_catalog, pg_temp`, and `transferpro_platform` is the only role granted execute on it. The function owner can still call it; the operator lever does not. It takes no action and no data argument. It appends `tenant.renamed` with `{}` for the Tenant already in `app.tenant_id`, and nothing else. The operator lever still calls `audit.append_entry` as `transferpro_owner`.
 
 `transferpro_auth` may `SELECT (user_id)` on `platform.superadmin` and `SELECT (organization_id)` on `platform.tenant_account`. It cannot write either table. `transferpro_app` has no `USAGE` on schema `platform`.
 
@@ -87,6 +89,8 @@ A superadmin session lasts 8 hours from `createdAt` (`SUPERADMIN_SESSION_SECONDS
 `0011_platform_directory` grants the organization columns and creates `platform.tenant_account` with a select grant on `organization_id` for the platform and auth roles.
 
 `0012_platform_audit` adds `tenant.renamed`, `tenant.suspended`, and `tenant.reactivated`, extends the audit shape check with three empty-object branches, and grants `USAGE` on schema `audit` and `EXECUTE` on `audit.append_entry` to `transferpro_platform`.
+
+`0014_platform_rename_audit` revokes that execute grant and grants `EXECUTE` on `audit.append_tenant_renamed(text)` instead.
 
 ## Consequences
 

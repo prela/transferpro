@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { companyAccountListSchema, companyAccountSchema, parseRenameTenantAccount, PlatformInputError, platformShellSchema, resolveDisplayLocale, TENANT_TIME_ZONE_DEFAULT } from '../../../../shared'
 import { getLogger, loadAppEnv } from '../../../core/index'
 import { platformActorFromSession, readUserLocale, TenantAccessError } from '../../tenancy'
-import { appendPlatformAudit } from './audit'
+import { appendTenantRenamed } from './audit'
 import { writePlatformLog } from './log'
 
 /**
@@ -130,7 +130,7 @@ export async function renameTenantAccount(headers: Headers, rawId: string, body:
         throw new PlatformAccessError(404, actor.userId)
       // Transaction-local. The connection returns to the pool only after commit or rollback.
       await client.query(`select set_config('app.tenant_id', $1, true)`, [id])
-      await appendPlatformAudit(client, { action: 'tenant.renamed', actorUserId: actor.userId })
+      await appendTenantRenamed(client, actor.userId)
       await client.query('commit')
       return companyAccountSchema.parse({ ...account, name })
     }

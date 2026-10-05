@@ -5,16 +5,24 @@ import { auditFactSchema } from '../../../../shared'
 /**
  * Same check as appendAuditEntry (ADR-0014): Zod, then the table check.
  * These connections are not a tenant transaction, so they cannot call
- * appendAuditEntry. ADR-0019 has them execute audit.append_entry themselves.
+ * appendAuditEntry. The operator lever runs as transferpro_owner and executes
+ * audit.append_entry. Rename does not: the platform role has no execute on
+ * that function (ADR-0019).
  */
 const platformAuditSchema = z.intersection(
   auditFactSchema,
   z.object({ actorUserId: z.string().min(1) }),
 )
 
+/** The platform role's only audit write. Action and data are fixed in the database. */
+export async function appendTenantRenamed(client: pg.PoolClient, actorUserId: string): Promise<void> {
+  const actor = z.string().min(1).parse(actorUserId)
+  await client.query('select audit.append_tenant_renamed($1)', [actor])
+}
+
 export async function appendPlatformAudit(
   client: pg.PoolClient,
-  input: { action: 'tenant.renamed' | 'tenant.suspended' | 'tenant.reactivated', actorUserId: string },
+  input: { action: 'tenant.suspended' | 'tenant.reactivated', actorUserId: string },
 ): Promise<void> {
   const entry = platformAuditSchema.parse({
     action: input.action,

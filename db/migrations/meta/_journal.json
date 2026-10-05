@@ -99,6 +99,13 @@
       "when": 1791400003000,
       "tag": "0013_superadmin_session_cap",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791400004000,
+      "tag": "0014_platform_rename_audit",
+      "breakpoints": true
     }
   ]
 }

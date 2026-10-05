@@ -97,6 +97,26 @@ function codeOf(error: unknown): string | undefined {
   return undefined
 }
 
+/** One transaction. A refusal rolls back, so a missed check writes nothing. Null tenant leaves app.tenant_id unset. */
+async function platformAttempt(
+  platform: pg.PoolClient,
+  tenantId: string | null,
+  run: (client: pg.PoolClient) => Promise<unknown>,
+): Promise<unknown> {
+  try {
+    await platform.query('begin')
+    if (tenantId !== null)
+      await platform.query(`select set_config('app.tenant_id', $1, true)`, [tenantId])
+    await run(platform)
+    await platform.query('commit')
+    return null
+  }
+  catch (error) {
+    await platform.query('rollback')
+    return error
+  }
+}
+
 async function tenant(slug: string) {
   const adminEmail = `${slug}-admin@example.test`
   const created = await createTenant({
@@ -204,7 +224,7 @@ it('fails closed on the platform role grants', async () => {
     where grantee = 'transferpro_platform'
     order by 1
   `)
-  expect(routines.rows.map(row => row.grant)).toEqual(['audit.append_entry EXECUTE'])
+  expect(routines.rows.map(row => row.grant)).toEqual(['audit.append_tenant_renamed EXECUTE'])
 
   const deletes = await ownerPool.query<{ n: number }>(`
     select (
@@ -278,6 +298,61 @@ it('fails closed on the platform role grants', async () => {
   finally {
     auth.release()
   }
+})
+
+/**
+ * A leaked platform URL must not call the generic append. The wrapper has no
+ * action or data argument, so the only row it can leave is an empty rename.
+ */
+it('refuses audit.append_entry for the platform role and appends only an empty tenant.renamed row', async () => {
+  const tenantId = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const platform = await platformPool.connect()
+  try {
+    const forged = await platformAttempt(platform, tenantId, client => client.query(
+      `select audit.append_entry('member.removed', $1, $2, '{"role":"driver"}'::jsonb)`,
+      [actor, crypto.randomUUID()],
+    ))
+    expect(codeOf(forged)).toBe('42501')
+
+    const shapedRename = await platformAttempt(platform, tenantId, client => client.query(
+      `select audit.append_entry('tenant.renamed', $1, null, '{}'::jsonb)`,
+      [actor],
+    ))
+    expect(codeOf(shapedRename)).toBe('42501')
+
+    const withData = await platformAttempt(platform, tenantId, client => client.query(
+      `select audit.append_tenant_renamed($1, 'member.removed', '{"role":"driver"}'::jsonb)`,
+      [actor],
+    ))
+    expect(codeOf(withData)).toBe('42883')
+
+    const unset = await platformAttempt(platform, null, client => client.query(
+      'select audit.append_tenant_renamed($1)',
+      [actor],
+    ))
+    expect(codeOf(unset)).toBe('42501')
+
+    const appended = await platformAttempt(platform, tenantId, client => client.query(
+      'select audit.append_tenant_renamed($1)',
+      [actor],
+    ))
+    expect(appended).toBeNull()
+  }
+  finally {
+    platform.release()
+  }
+
+  const rows = await ownerPool.query<{ action: string, actor_user_id: string, subject_user_id: string | null, data: unknown }>(
+    `select action::text as action, actor_user_id, subject_user_id, data
+     from app.audit_entry
+     where tenant_id = $1
+     order by occurred_at`,
+    [tenantId],
+  )
+  expect(rows.rows).toEqual([
+    { action: 'tenant.renamed', actor_user_id: actor, subject_user_id: null, data: {} },
+  ])
 })
 
 it('refuses both directions of a superadmin who is also a member', async () => {
