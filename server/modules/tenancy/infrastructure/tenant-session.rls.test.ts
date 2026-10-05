@@ -1,14 +1,13 @@
-import type { IncomingMessage, ServerResponse } from 'node:http'
 import { spawnSync } from 'node:child_process'
-import { createRequire } from 'node:module'
 import { loadEnvFile } from 'node:process'
-import { Readable } from 'node:stream'
 import { sql } from 'drizzle-orm'
-import { createApp, createEvent, toWebHandler, toWebRequest } from 'h3'
+import { createApp, toWebHandler } from 'h3'
+import { ofetch } from 'ofetch'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
 import { closeTenantRuntime, readSessionShell, TenantAccessError, withTenantFromSession } from '..'
+import authRoute from '../../../api/auth/[...all]'
 import sessionRoute from '../../../api/session.get'
 import { handleLoggedError, parseAppEnv, runWithRequestId } from '../../../core/index'
 import { captureLogs } from '../../../core/testing'
@@ -485,36 +484,24 @@ async function signIn(email: string, handle: ReturnType<typeof createAuth> = cur
   return { cookie, token, headers }
 }
 
-interface PageFetch {
-  raw: (request: string, options: {
-    method: 'POST'
-    body?: Record<string, never>
-    headers: { origin: string, cookie: string }
-    ignoreResponseError: true
-  }) => Promise<Response>
-}
-
 /**
- * The shell posts sign-out with ofetch ($fetch). ofetch is Nuxt's fetch and
- * is not a direct dependency, so it is resolved from nuxt.
+ * The shell posts sign-out with ofetch ($fetch). This suite uses the same
+ * client against the real `server/api/auth/[...all].ts` handler: h3 turns
+ * the Request into a Node event, and that route calls `toWebRequest`.
  *
- * The auth route does not hand that request to Better Auth as-is. It calls
- * `toWebRequest` on the Node request. A POST with no bytes still gets a body
- * stream, and Better Auth answers 415 when that stream has no Content-Type.
- * `body: {}` makes ofetch send `{}` as application/json, which sign-out accepts.
+ * A POST with no bytes still gets a body stream, and Better Auth answers
+ * 415 when that stream has no Content-Type. `body: {}` makes ofetch send
+ * `{}` as application/json, which sign-out accepts.
  */
-function postSignOut(token: string, body?: Record<string, never>): Promise<Response> {
-  const { ofetch } = createRequire(import.meta.resolve('nuxt/package.json'))('ofetch') as {
-    ofetch: {
-      create: (defaults: Record<string, never>, globalOptions: { fetch: typeof fetch }) => PageFetch
-    }
-  }
-  const pageFetch = ofetch.create({}, {
-    fetch: async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-      const pageRequest = new Request(input, init)
-      return currentAuth().auth.handler(await nodeRequestAsWeb(pageRequest))
-    },
-  })
+const authApp = createApp()
+authApp.use(authRoute)
+const dispatchAuth = toWebHandler(authApp)
+
+const pageFetch = ofetch.create({}, {
+  fetch: (input, init) => dispatchAuth(new Request(input, init)),
+})
+
+function postSignOut(token: string, body?: Record<string, never>) {
   return pageFetch.raw(`${baseUrl}/api/auth/sign-out`, {
     method: 'POST',
     body,
@@ -524,33 +511,6 @@ function postSignOut(token: string, body?: Record<string, never>): Promise<Respo
     },
     ignoreResponseError: true,
   })
-}
-
-/** The conversion `server/api/auth/[...all].ts` applies before `auth.handler`. */
-async function nodeRequestAsWeb(pageRequest: Request): Promise<Request> {
-  const url = new URL(pageRequest.url)
-  const headers: Record<string, string> = { host: url.host }
-  pageRequest.headers.forEach((value, key) => {
-    headers[key] = value
-  })
-  if (url.protocol === 'https:')
-    headers['x-forwarded-proto'] = 'https'
-
-  const bytes = new Uint8Array(await pageRequest.arrayBuffer())
-  const req = new Readable({
-    read() {
-      this.push(bytes.byteLength > 0 ? bytes : null)
-      if (bytes.byteLength > 0)
-        this.push(null)
-    },
-  }) as Readable & IncomingMessage
-  req.method = pageRequest.method
-  req.url = `${url.pathname}${url.search}`
-  req.headers = headers
-  req.httpVersion = '1.1'
-  req.socket = { remoteAddress: '127.0.0.1' } as IncomingMessage['socket']
-
-  return toWebRequest(createEvent(req, {} as ServerResponse))
 }
 
 async function signOut(token: string): Promise<string> {
