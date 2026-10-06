@@ -4,7 +4,7 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { calendarDateInTimeZone } from '../../shared'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../../shared'
 import { createClient } from '../modules/clients'
 import { archiveLocation, createLocation } from '../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
@@ -159,6 +159,57 @@ async function tenantCounts(tenantId: string) {
   }
 }
 
+/** Inside the pickup window, so a later calendar does not turn a 403 or 404 into a 400. */
+function pickupInsideWindow(): string {
+  return new Date(Date.now() + 60 * 60 * 1000).toISOString()
+}
+
+/**
+ * 00:30 local, two days ahead. That instant is the listed Zagreb day, and the
+ * previous calendar day stays empty, in summer time and in winter time.
+ */
+function upcomingZagrebMidnight() {
+  const day = calendarDateInTimeZone('Europe/Zagreb', new Date(Date.now() + 2 * 24 * 60 * 60 * 1000))
+  return {
+    day,
+    previous: addCalendarDays(day, -1),
+    pickupAt: instantFromWallClock(`${day}T00:30`, 'Europe/Zagreb').toISOString(),
+  }
+}
+
+function zagrebInstant(wall: string): string {
+  return instantFromWallClock(wall, 'Europe/Zagreb').toISOString()
+}
+
+async function seedRide(
+  tenantId: string,
+  clientId: string,
+  startId: string,
+  endId: string,
+  pickupAt: string,
+  guestName: string,
+) {
+  const inserted = await ownerPool.query<{ id: string }>(
+    `insert into app.transfers (
+      tenant_id, client_id, pickup_at, start_location_id, end_location_id,
+      passenger_count, guest_name, price, payment, airport_mark, luggage_count, child_seat_count
+    ) values ($1, $2, $3, $4, $5, 1, $6, 10.00, 'cash', false, 0, 0)
+    returning id`,
+    [tenantId, clientId, pickupAt, startId, endId, guestName],
+  )
+  await ownerPool.query(
+    `insert into app.rides (tenant_id, transfer_id, state) values ($1, $2, 'unassigned')`,
+    [tenantId, inserted.rows[0]?.id],
+  )
+}
+
+async function listedGuests(session: Headers, day: string): Promise<string[]> {
+  const response = await call('GET', `/api/transfers?date=${day}`, session)
+  expect(response.status).toBe(200)
+  const body = await response.json() as { rides: Array<{ guestName: string }> }
+  return body.rides.map(ride => ride.guestName)
+}
+
 async function rideCount(tenantId: string, transferId?: string) {
   const result = await ownerPool.query<{ count: string }>(
     transferId
@@ -196,7 +247,7 @@ it('a driver cannot record or list a Transfer, and nothing is created', async ()
   const driver = await signIn('htr-driver-driver@example.test')
   const body = {
     clientId: '9e4b3f6d-5555-4555-8555-555555555555',
-    pickupAt: '2026-10-06T22:30:00.000Z',
+    pickupAt: pickupInsideWindow(),
     startLocationId: 'a1b2c3d4-5555-4555-8555-555555555555',
     endLocationId: 'b1b2c3d4-6666-4666-8666-666666666666',
     passengerCount: 1,
@@ -229,7 +280,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
 
   const blocked = await call('POST', '/api/transfers', dispatcher, {
     clientId: client.id,
-    pickupAt: '2026-10-06T12:00:00.000Z',
+    pickupAt: pickupInsideWindow(),
     startLocationId: archived.id,
     endLocationId: end.id,
     passengerCount: 1,
@@ -246,10 +297,11 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
   expect(await blocked.text()).not.toContain(guest)
   expect(await rideCount(created.tenantId)).toBe(0)
 
-  // 22:30 UTC on 6 October 2026 is 00:30 on 7 October in Zagreb (CEST, UTC+2).
+  // 00:30 in Zagreb is still the previous UTC date. The list uses the local day.
+  const sample = upcomingZagrebMidnight()
   const added = await call('POST', '/api/transfers', dispatcher, {
     clientId: client.id,
-    pickupAt: '2026-10-06T22:30:00.000Z',
+    pickupAt: sample.pickupAt,
     startLocationId: start.id,
     endLocationId: end.id,
     passengerCount: 2,
@@ -266,7 +318,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
   const row = await added.json()
   expect(row.transfer).toMatchObject({
     clientId: client.id,
-    pickupAt: '2026-10-06T22:30:00.000Z',
+    pickupAt: sample.pickupAt,
     startLocationId: start.id,
     endLocationId: end.id,
     passengerCount: 2,
@@ -288,14 +340,14 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
   })
   expect(await rideCount(created.tenantId, row.transfer.id)).toBe(1)
 
-  const sameDay = await call('GET', '/api/transfers?date=2026-10-06', admin)
+  const sameDay = await call('GET', `/api/transfers?date=${sample.previous}`, admin)
   expect(sameDay.status).toBe(200)
-  expect(await sameDay.json()).toEqual({ date: '2026-10-06', rides: [] })
+  expect(await sameDay.json()).toEqual({ date: sample.previous, rides: [] })
 
-  const nextDay = await call('GET', '/api/transfers?date=2026-10-07', dispatcher)
+  const nextDay = await call('GET', `/api/transfers?date=${sample.day}`, dispatcher)
   expect(nextDay.status).toBe(200)
   const listed = await nextDay.json()
-  expect(listed.date).toBe('2026-10-07')
+  expect(listed.date).toBe(sample.day)
   expect(listed.rides).toEqual([
     expect.objectContaining({
       rideId: row.ride.id,
@@ -348,7 +400,7 @@ it('an office user of Tenant B cannot record a Transfer that names Tenant A, and
   const beforeA = await tenantCounts(firmA.tenantId)
   const beforeB = await tenantCounts(firmB.tenantId)
   const body = {
-    pickupAt: '2026-10-06T22:30:00.000Z',
+    pickupAt: pickupInsideWindow(),
     passengerCount: 1,
     guestName: guest,
     price: 10,
@@ -385,4 +437,102 @@ it('an office user of Tenant B cannot record a Transfer that names Tenant A, and
 
   expect(await tenantCounts(firmA.tenantId)).toEqual(beforeA)
   expect(await tenantCounts(firmB.tenantId)).toEqual(beforeB)
+})
+
+it('refuses a pickup earlier than 30 days or later than 18 months, and writes nothing', async () => {
+  const created = await tenant('htr-window', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-window-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-window-dispatcher@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  const before = await tenantCounts(created.tenantId)
+  const body = {
+    clientId: client.id,
+    startLocationId: start.id,
+    endLocationId: end.id,
+    passengerCount: 1,
+    guestName: guest,
+    price: 10,
+    payment: 'cash' as const,
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 0,
+  }
+  const tooEarly = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString()
+  const tooLate = new Date(Date.now())
+  tooLate.setUTCMonth(tooLate.getUTCMonth() + 19)
+
+  const early = await call('POST', '/api/transfers', dispatcher, { ...body, pickupAt: tooEarly })
+  expect(early.status).toBe(400)
+  expect(await early.text()).not.toContain(guest)
+
+  const late = await call('POST', '/api/transfers', dispatcher, { ...body, pickupAt: tooLate.toISOString() })
+  expect(late.status).toBe(400)
+  expect(await late.text()).not.toContain(guest)
+  expect(await tenantCounts(created.tenantId)).toEqual(before)
+})
+
+it('refuses the same start and end place, and writes nothing', async () => {
+  const created = await tenant('htr-same', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-same-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-same-dispatcher@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const before = await tenantCounts(created.tenantId)
+
+  const refused = await call('POST', '/api/transfers', dispatcher, {
+    clientId: client.id,
+    pickupAt: pickupInsideWindow(),
+    startLocationId: start.id,
+    endLocationId: start.id,
+    passengerCount: 1,
+    guestName: guest,
+    price: 10,
+    payment: 'cash',
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 0,
+  })
+  expect(refused.status).toBe(400)
+  expect(await refused.text()).not.toContain(guest)
+  expect(await tenantCounts(created.tenantId)).toEqual(before)
+})
+
+it('lists a Zagreb local day, including the 23-hour and 25-hour days, and midnight starts the new day', async () => {
+  const created = await tenant('htr-dst', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-dst-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-dst-dispatcher@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  const seed = (pickupAt: string, guestName: string) => seedRide(
+    created.tenantId,
+    client.id,
+    start.id,
+    end.id,
+    pickupAt,
+    guestName,
+  )
+
+  await seed(zagrebInstant('2026-10-07T23:30'), 'Evening')
+  await seed(zagrebInstant('2026-10-08T00:00'), 'Midnight')
+  await seed(zagrebInstant('2026-03-28T23:30'), 'Short before')
+  await seed(zagrebInstant('2026-03-29T00:00'), 'Short start')
+  await seed(zagrebInstant('2026-03-29T23:30'), 'Short late')
+  // 22:30Z is 00:30 on 30 March, after the 23-hour day has ended.
+  await seed('2026-03-29T22:30:00.000Z', 'Short spill')
+  await seed(zagrebInstant('2026-03-30T00:00'), 'Short next')
+  await seed(zagrebInstant('2026-10-24T23:30'), 'Long before')
+  await seed(zagrebInstant('2026-10-25T00:00'), 'Long start')
+  // 00:30Z is the first 02:30, before the clocks fall back.
+  await seed('2026-10-25T00:30:00.000Z', 'Long first')
+  await seed(zagrebInstant('2026-10-25T02:30'), 'Long second')
+  await seed(zagrebInstant('2026-10-25T23:30'), 'Long late')
+  await seed(zagrebInstant('2026-10-26T00:00'), 'Long next')
+
+  expect(await listedGuests(dispatcher, '2026-10-07')).toEqual(['Evening'])
+  expect(await listedGuests(dispatcher, '2026-10-08')).toEqual(['Midnight'])
+  expect(await listedGuests(dispatcher, '2026-03-29')).toEqual(['Short start', 'Short late'])
+  expect(await listedGuests(dispatcher, '2026-10-25')).toEqual(['Long start', 'Long first', 'Long second', 'Long late'])
 })

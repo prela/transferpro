@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Client, DisplayLocale, Location, LocationKind, PaymentMethod, TransferDayRide } from '../../shared'
-import { calendarDateInTimeZone, childSeatCountError, clientListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, passengerCountError, priceError, priceFromInput, recordedTransferSchema, transferDaySchema } from '../../shared'
+import { calendarDateInTimeZone, childSeatCountError, clientListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, sameLocationError, transferDaySchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -47,7 +47,8 @@ const priceErrorKey = ref<'transfers.priceInvalid' | null>(null)
 const passengerErrorKey = ref<'transfers.countInvalid' | null>(null)
 const luggageErrorKey = ref<'transfers.countInvalid' | null>(null)
 const seatErrorKey = ref<'transfers.countInvalid' | null>(null)
-const pickupErrorKey = ref<'transfers.pickupInvalid' | null>(null)
+const pickupErrorKey = ref<'transfers.pickupInvalid' | 'transfers.pickupTooEarly' | 'transfers.pickupTooLate' | null>(null)
+const endErrorKey = ref<'transfers.samePlace' | null>(null)
 const placeNameErrorKey = ref<'locations.nameEmpty' | 'locations.nameTooLong' | null>(null)
 const placeKindErrorKey = ref<'locations.kindInvalid' | null>(null)
 
@@ -231,7 +232,10 @@ function formReady(): boolean {
   passengerErrorKey.value = passengerCountError(passengers.value) ? 'transfers.countInvalid' : null
   luggageErrorKey.value = luggageCountError(luggage.value) ? 'transfers.countInvalid' : null
   seatErrorKey.value = childSeatCountError(childSeats.value) ? 'transfers.countInvalid' : null
-  pickupErrorKey.value = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(pickupWall.value) ? null : 'transfers.pickupInvalid'
+  pickupErrorKey.value = pickupFieldError()
+  endErrorKey.value = startLocationId.value && endLocationId.value && sameLocationError(startLocationId.value, endLocationId.value)
+    ? 'transfers.samePlace'
+    : null
   return !guestErrorKey.value
     && !flightErrorKey.value
     && !noteErrorKey.value
@@ -240,10 +244,29 @@ function formReady(): boolean {
     && !luggageErrorKey.value
     && !seatErrorKey.value
     && !pickupErrorKey.value
+    && !endErrorKey.value
     && !!clientId.value
     && !!startLocationId.value
     && !!endLocationId.value
     && !!payment.value
+}
+
+function pickupFieldError(): 'transfers.pickupInvalid' | 'transfers.pickupTooEarly' | 'transfers.pickupTooLate' | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(pickupWall.value))
+    return 'transfers.pickupInvalid'
+  let instant: Date
+  try {
+    instant = instantFromWallClock(pickupWall.value.slice(0, 16), props.timeZone)
+  }
+  catch {
+    return 'transfers.pickupInvalid'
+  }
+  const error = pickupAtError(instant.toISOString(), new Date())
+  if (error === 'too-early')
+    return 'transfers.pickupTooEarly'
+  if (error === 'too-late')
+    return 'transfers.pickupTooLate'
+  return null
 }
 
 async function record() {
@@ -521,6 +544,7 @@ onMounted(loadAll)
         name="end"
         class="mb-4"
         size="xl"
+        :error="endErrorKey ? t(endErrorKey) : false"
       >
         <USelect
           id="transfer-end"
@@ -530,6 +554,9 @@ onMounted(loadAll)
           :placeholder="t('transfers.chooseLocation')"
           class="w-full"
         />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
       </UFormField>
       <UButton
         type="button"

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { calendarDateInTimeZone } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, signIn } from './fixtures/ui'
 
@@ -35,7 +35,28 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
   await page.getByRole('button', { name: 'Dodaj mjesto', exact: true }).click()
 
   const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
+  const tooEarly = addCalendarDays(day, -40)
   await chooseOption(page, page.getByRole('combobox', { name: 'Klijent' }), clientName)
+  await chooseOption(page, page.getByRole('combobox', { name: 'Polazište' }), startPlace)
+  await chooseOption(page, page.getByRole('combobox', { name: 'Odredište' }), startPlace)
+  await page.getByLabel('Vrijeme preuzimanja').fill(`${day}T12:00`)
+  await page.getByLabel('Ime gosta').fill(guest)
+  await page.getByLabel('Cijena (EUR)').fill('42,50')
+  await chooseOption(page, page.getByRole('combobox', { name: 'Plaćanje' }), 'Gotovina')
+  await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await expect(page.getByText('Polazište i odredište ne mogu biti isto mjesto.')).toBeVisible()
+  await expect(page.getByText('Zabilježeno.')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await expect(page.getByText('The start and the end cannot be the same place.')).toBeVisible()
+  await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
+
+  await chooseOption(page, page.getByRole('combobox', { name: 'Odredište' }), endPlace)
+  await page.getByLabel('Vrijeme preuzimanja').fill(`${tooEarly}T12:00`)
+  await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await expect(page.getByText('Preuzimanje ne može biti ranije od 30 dana unazad.')).toBeVisible()
+  await expect(page.getByText('Zabilježeno.')).toHaveCount(0)
+
   await page.getByLabel('Vrijeme preuzimanja').fill(`${day}T12:00`)
   await page.getByLabel('Ime gosta').fill(guest)
   await page.getByLabel('Broj leta').fill('OU 384')

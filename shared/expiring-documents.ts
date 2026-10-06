@@ -2,7 +2,9 @@ import type { Driver } from './driver'
 import type { TenantRole } from './tenant-role'
 import type { Vehicle } from './vehicle'
 import { z } from 'zod'
-import { isCalendarDate } from './date'
+import { addCalendarDays, isCalendarDate } from './date'
+
+export { addCalendarDays }
 
 /**
  * How far ahead the dashboard looks, in calendar days, including today.
@@ -73,18 +75,6 @@ interface DatedDocument {
   readonly subjectLabel: string
   readonly kind: ExpiringDocumentKind
   readonly expiresOn: string
-}
-
-/** Move a `YYYY-MM-DD` by whole calendar days. Month length and leap days are included. */
-export function addCalendarDays(isoDate: string, days: number): string {
-  if (!isCalendarDate(isoDate) || !Number.isInteger(days))
-    throw new RangeError('Not a calendar date.')
-  const [year, month, day] = isoDate.split('-').map(Number)
-  const shifted = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (day ?? 1) + days))
-  const y = shifted.getUTCFullYear()
-  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0')
-  const d = String(shifted.getUTCDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
 }
 
 /**

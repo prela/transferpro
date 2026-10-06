@@ -222,7 +222,7 @@ it('replaces a write failure so the log line does not keep the guest name', asyn
   expect(logLine(error)).not.toContain(note)
 })
 
-it('asks Postgres for the pickup calendar day in the Tenant time zone', async () => {
+it('loads the Zagreb day as a half-open range of local midnights and maps the ride', async () => {
   const pickup = new Date('2026-10-06T22:30:00.000Z')
   const { transaction, queries } = fakeTransaction({
     dayRows: [{
@@ -249,6 +249,14 @@ it('asks Postgres for the pickup calendar day in the Tenant time zone', async ()
   await expect(loadRidesForDay(transaction, '2026-10-07', 'Europe/Zagreb')).resolves.toMatchObject([
     { rideId, pickupAt: '2026-10-06T22:30:00.000Z', price: '42.00', airportMark: true },
   ])
-  expect(queries[0]?.sql.toLowerCase()).toContain('at time zone')
-  expect(queries[0]?.params).toEqual(['Europe/Zagreb', '2026-10-07'])
+  expect(queries[0]?.sql.toLowerCase()).not.toContain('::date')
+  expect(queries[0]?.sql.toLowerCase()).not.toContain('at time zone')
+  expect(queries[0]?.params).toEqual(['2026-10-06T22:00:00.000Z', '2026-10-07T22:00:00.000Z'])
+
+  await loadRidesForDay(transaction, '2026-03-29', 'Europe/Zagreb')
+  await loadRidesForDay(transaction, '2026-10-25', 'Europe/Zagreb')
+  expect(queries[1]?.params).toEqual(['2026-03-28T23:00:00.000Z', '2026-03-29T22:00:00.000Z'])
+  expect(queries[2]?.params).toEqual(['2026-10-24T22:00:00.000Z', '2026-10-25T23:00:00.000Z'])
+  expect(queries[1]?.sql.toLowerCase()).not.toContain('::date')
+  expect(queries[2]?.sql.toLowerCase()).not.toContain('::date')
 })
