@@ -75,6 +75,37 @@ export function instantFromWallClock(wall: string, timeZone: string): Date {
 }
 
 /**
+ * Move a `YYYY-MM-DD` by whole calendar days. Month length and leap days
+ * are included. A negative count steps backward.
+ */
+export function addCalendarDays(isoDate: string, days: number): string {
+  if (!isCalendarDate(isoDate) || !Number.isInteger(days))
+    throw new RangeError('Not a calendar date.')
+  const [year, month, day] = isoDate.split('-').map(Number)
+  const shifted = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, (day ?? 1) + days))
+  const y = shifted.getUTCFullYear()
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(shifted.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/**
+ * Half-open UTC instants `[start, end)` for one calendar day in an IANA zone.
+ * `start` is local midnight of `day`. `end` is local midnight of the next date,
+ * so a pickup at exactly that midnight belongs to the new day. A 23-hour or
+ * 25-hour local day stays one day because the bounds follow the zone, not a
+ * fixed 24 hours and not a `date` cast of the stored instant.
+ */
+export function localDayBounds(day: string, timeZone: string): { start: Date, end: Date } {
+  if (!isCalendarDate(day))
+    throw new RangeError('Day is not a calendar date.')
+  return {
+    start: instantFromWallClock(`${day}T00:00`, timeZone),
+    end: instantFromWallClock(`${addCalendarDays(day, 1)}T00:00`, timeZone),
+  }
+}
+
+/**
  * Milliseconds to add to this UTC instant to reach the same clock reading
  * in the zone. `hourCycle: 'h23'` can report midnight as 24, which is the
  * next calendar day.

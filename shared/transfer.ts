@@ -28,6 +28,12 @@ export const FLIGHT_NUMBER_MAX_LENGTH = 20
 /** A note for the office. Longer than that is a document, not a note. */
 export const NOTE_MAX_LENGTH = 1000
 
+/** A pickup older than this many days before now is refused. */
+export const PICKUP_PAST_DAYS = 30
+
+/** A pickup later than this many calendar months after now is refused. */
+export const PICKUP_FUTURE_MONTHS = 18
+
 /**
  * ADR-0005. This slice writes only `unassigned`. The other labels are reserved
  * so a later assignment does not have to widen the check first.
@@ -151,9 +157,39 @@ export const transferDaySchema = z.object({
 
 export type TransferDay = z.infer<typeof transferDaySchema>
 
+export type PickupAtError = 'too-early' | 'too-late'
+
+/**
+ * The pickup instant is allowed when it is not earlier than 30 days before
+ * `now` and not later than 18 calendar months after `now`. The edges are
+ * included. Months are UTC calendar months; a day that does not exist in the
+ * target month lands on the last day of that month.
+ */
+export function pickupAtError(pickupAt: string, now: Date): PickupAtError | null {
+  const instant = new Date(pickupAt)
+  if (Number.isNaN(instant.getTime()) || Number.isNaN(now.getTime()))
+    return 'too-early'
+  const earliest = now.getTime() - PICKUP_PAST_DAYS * 24 * 60 * 60 * 1000
+  const latest = addUtcMonths(now, PICKUP_FUTURE_MONTHS).getTime()
+  if (instant.getTime() < earliest)
+    return 'too-early'
+  if (instant.getTime() > latest)
+    return 'too-late'
+  return null
+}
+
+export type SameLocationError = 'same'
+
+/** Start and end are two places. The same Location id is not a Transfer. */
+export function sameLocationError(startLocationId: string, endLocationId: string): SameLocationError | null {
+  return startLocationId === endLocationId ? 'same' : null
+}
+
 /**
  * POST /api/transfers. The airport mark is required, so a flight number
- * cannot stand in for it. An unknown key is refused.
+ * cannot stand in for it. An unknown key is refused. The pickup window and
+ * the same-place rule are applied in {@link parseCreateTransfer}, which is
+ * the boundary the route calls, so a refused body never opens a session.
  */
 export const createTransferSchema = z.strictObject({
   clientId: z.uuid(),
@@ -197,9 +233,28 @@ export class TransferInputError extends Error {
   }
 }
 
-/** Accepts a new Transfer. Any other body throws first, so the caller does not open a session. */
-export function parseCreateTransfer(raw: unknown): CreateTransfer {
-  const parsed = createTransferSchema.safeParse(raw)
+/**
+ * Accepts a new Transfer. Any other body throws first, so the caller does not
+ * open a session. `now` is the clock for the pickup window. The route leaves
+ * it unset. Tests pass a fixed instant.
+ */
+export function parseCreateTransfer(raw: unknown, now: Date = new Date()): CreateTransfer {
+  const parsed = createTransferSchema.superRefine((value, ctx) => {
+    if (pickupAtError(value.pickupAt, now)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['pickupAt'],
+        message: 'Pickup is outside the allowed window.',
+      })
+    }
+    if (sameLocationError(value.startLocationId, value.endLocationId)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['endLocationId'],
+        message: 'Start and end are the same place.',
+      })
+    }
+  }).safeParse(raw)
   if (!parsed.success)
     throw new TransferInputError()
   const cents = priceCents(parsed.data.price)
@@ -302,6 +357,28 @@ function priceCents(value: number): number | null {
   if (Math.abs(value * 100 - cents) > 1e-6)
     return null
   return cents
+}
+
+/**
+ * The same clock time, `months` UTC calendar months later. 31 January plus
+ * one month is 28 or 29 February, not 2 or 3 March.
+ */
+function addUtcMonths(instant: Date, months: number): Date {
+  const year = instant.getUTCFullYear()
+  const monthIndex = instant.getUTCMonth()
+  const day = instant.getUTCDate()
+  const shifted = new Date(Date.UTC(
+    year,
+    monthIndex + months,
+    1,
+    instant.getUTCHours(),
+    instant.getUTCMinutes(),
+    instant.getUTCSeconds(),
+    instant.getUTCMilliseconds(),
+  ))
+  const lastDay = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 0)).getUTCDate()
+  shifted.setUTCDate(Math.min(day, lastDay))
+  return shifted
 }
 
 function formatPriceCents(cents: number): string {

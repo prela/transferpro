@@ -3,7 +3,7 @@ import type { CreateTransfer, Ride, Transfer, TransferDayRide, TransferField } f
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { paymentMethodSchema, rideStateSchema, TRANSFER_FIELDS, transferPriceSchema } from '../../../../shared'
+import { localDayBounds, paymentMethodSchema, rideStateSchema, TRANSFER_FIELDS, transferPriceSchema } from '../../../../shared'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
@@ -127,14 +127,17 @@ export async function recordTransfer(
 
 /**
  * Rides whose pickup falls on this calendar day in the Tenant time zone.
- * The day is `YYYY-MM-DD`. The zone is the Tenant's IANA name, bound as a
- * parameter. Pickup instants stay UTC on the row.
+ * The day is `YYYY-MM-DD`. The bounds are local midnight and the next local
+ * midnight, as UTC instants, so the `(tenant_id, pickup_at)` index can serve
+ * the list. A `date` cast of the stored instant cannot, and it would also
+ * miss the extra hour or keep the missing hour of a daylight-saving day.
  */
 export async function loadRidesForDay(
   transaction: TenantTransaction,
   day: string,
   timeZone: string,
 ): Promise<TransferDayRide[]> {
+  const bounds = localDayBounds(day, timeZone)
   const selected = z.object({ rows: z.array(dayRowSchema) }).parse(await transaction.execute(sql`
     select
       r.id as "rideId",
@@ -157,7 +160,7 @@ export async function loadRidesForDay(
       t.note
     from app.rides as r
     join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
-    where (t.pickup_at at time zone ${timeZone})::date = ${day}::date
+    where t.pickup_at >= ${bounds.start.toISOString()} and t.pickup_at < ${bounds.end.toISOString()}
     order by t.pickup_at, r.id
   `))
   return selected.rows.map(toDayRide)

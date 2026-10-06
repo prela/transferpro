@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, check, foreignKey, integer, numeric, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, check, foreignKey, index, integer, numeric, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { CHILD_SEAT_COUNT_MAX, CHILD_SEAT_COUNT_MIN, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, LUGGAGE_COUNT_MIN, NOTE_MAX_LENGTH, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, PAYMENT_METHODS, RIDE_STATES } from '../shared'
 import { clients } from './clients'
 import { locations } from './locations'
@@ -43,6 +43,8 @@ export const transfers = tenantTable('transfers', {
   note: text('note'),
 }, table => [
   uniqueIndex('transfers_tenant_id_id').on(table.tenantId, table.id),
+  // The day list reads one Tenant's pickups in instant order.
+  index('transfers_tenant_pickup_at').on(table.tenantId, table.pickupAt),
   foreignKey({
     name: 'transfers_client_fk',
     columns: [table.tenantId, table.clientId],
