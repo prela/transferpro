@@ -23,16 +23,25 @@ const ownerPool = new pg.Pool({ connectionString: migrateUrl })
 const tenantA = 'd1d1d1d1-d1d1-41d1-81d1-d1d1d1d1d1d1'
 const tenantB = 'd2d2d2d2-d2d2-42d2-82d2-d2d2d2d2d2d2'
 
+/**
+ * Rides go first. An assigned Ride names a Driver and a Vehicle, and a later
+ * migration refuses an assigned Ride that is missing either. The same deletes
+ * run after the file so a run cannot leave those rows behind.
+ */
+async function deleteTransferFixtures(owner: pg.PoolClient): Promise<void> {
+  await owner.query('delete from app.rides where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.roster where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.transfers where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.drivers where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.vehicles where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.locations where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.clients where tenant_id in ($1, $2)', [tenantA, tenantB])
+}
+
 beforeAll(async () => {
   const owner = await ownerPool.connect()
   try {
-    await owner.query('delete from app.rides where tenant_id in ($1, $2)', [tenantA, tenantB])
-    await owner.query('delete from app.roster where tenant_id in ($1, $2)', [tenantA, tenantB])
-    await owner.query('delete from app.transfers where tenant_id in ($1, $2)', [tenantA, tenantB])
-    await owner.query('delete from app.drivers where tenant_id in ($1, $2)', [tenantA, tenantB])
-    await owner.query('delete from app.vehicles where tenant_id in ($1, $2)', [tenantA, tenantB])
-    await owner.query('delete from app.locations where tenant_id in ($1, $2)', [tenantA, tenantB])
-    await owner.query('delete from app.clients where tenant_id in ($1, $2)', [tenantA, tenantB])
+    await deleteTransferFixtures(owner)
   }
   finally {
     owner.release()
@@ -40,8 +49,15 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await pool.end()
-  await ownerPool.end()
+  const owner = await ownerPool.connect()
+  try {
+    await deleteTransferFixtures(owner)
+  }
+  finally {
+    owner.release()
+    await pool.end()
+    await ownerPool.end()
+  }
 })
 
 async function withTenant<T>(

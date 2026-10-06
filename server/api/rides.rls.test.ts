@@ -4,7 +4,7 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { calendarDateInTimeZone } from '../../shared'
+import { addCalendarDays, calendarDateInTimeZone, localDayBounds } from '../../shared'
 import { createClient } from '../modules/clients'
 import { createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
@@ -236,6 +236,22 @@ async function office(slug: string) {
   const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
   const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
   return { ...created, dispatcherId, dispatcher, admin, client, start, end }
+}
+
+/**
+ * Local midnight of a Zagreb day a few days ahead, and one minute before it.
+ * `localDayBounds` reads the zone offset, so the boundary stays exact in CET
+ * and in CEST. Both instants stay inside the pickup window.
+ */
+function zagrebMidnightBoundary() {
+  const day = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 3)
+  const midnight = localDayBounds(day, 'Europe/Zagreb').start
+  return {
+    day,
+    previous: addCalendarDays(day, -1),
+    beforePickup: new Date(midnight.getTime() - 60 * 1000).toISOString(),
+    afterPickup: midnight.toISOString(),
+  }
 }
 
 function transferBody(world: Awaited<ReturnType<typeof office>>, pickupAt: string) {
@@ -475,12 +491,13 @@ it('pre-fills the roster Vehicle for the pickup local day, skips an archived one
   const beforeVehicle = await createVehicle(world.dispatcher, vehicleBody('ZG4001AA'))
   const afterVehicle = await createVehicle(world.dispatcher, vehicleBody('ZG4002AA'))
   const otherVehicle = await createVehicle(world.dispatcher, vehicleBody('ZG4003AA'))
-  const beforePickup = '2026-10-05T21:59:00.000Z'
-  const afterPickup = '2026-10-05T22:00:00.000Z'
+  const boundary = zagrebMidnightBoundary()
+  const beforePickup = boundary.beforePickup
+  const afterPickup = boundary.afterPickup
   const beforeDay = calendarDateInTimeZone('Europe/Zagreb', new Date(beforePickup))
   const afterDay = calendarDateInTimeZone('Europe/Zagreb', new Date(afterPickup))
-  expect(beforeDay).toBe('2026-10-05')
-  expect(afterDay).toBe('2026-10-06')
+  expect(beforeDay).toBe(boundary.previous)
+  expect(afterDay).toBe(boundary.day)
 
   await setRosterDay(world.dispatcher, { rosterDate: beforeDay, driverId: driver.id, vehicleId: beforeVehicle.id })
   await setRosterDay(world.dispatcher, { rosterDate: afterDay, driverId: driver.id, vehicleId: afterVehicle.id })
@@ -718,4 +735,85 @@ it('blocks on an open must-accept correction and copies the committed value', as
     holder.release()
     await pending?.catch(() => {})
   }
+})
+
+it('assigns when the Driver licences and the Vehicle expiry dates are already past', async () => {
+  const world = await office('hasg-expired')
+  // A calendar day, not a pickup instant. Yesterday in the Tenant zone stays in the past.
+  const expiredOn = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), -1)
+  const driver = await createDriver(world.dispatcher, {
+    ...driverBody,
+    phone: '+385911110077',
+    drivingLicenceExpiresOn: expiredOn,
+    transportLicenceExpiresOn: expiredOn,
+  })
+  const vehicle = await createVehicle(world.dispatcher, {
+    ...vehicleBody('ZG8001AA'),
+    registrationExpiresOn: expiredOn,
+    technicalInspectionExpiresOn: expiredOn,
+    insuranceExpiresOn: expiredOn,
+  })
+  expect(driver).toMatchObject({
+    drivingLicenceExpiresOn: expiredOn,
+    transportLicenceExpiresOn: expiredOn,
+    memberUserId: null,
+  })
+  expect(vehicle).toMatchObject({
+    registrationExpiresOn: expiredOn,
+    technicalInspectionExpiresOn: expiredOn,
+    insuranceExpiresOn: expiredOn,
+  })
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 10 * 60 * 60 * 1000).toISOString()))
+
+  const assigned = await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+  })
+  expect(assigned.status).toBe(200)
+  expect(await assigned.json()).toMatchObject({
+    id: recorded.ride.id,
+    state: 'assigned',
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+  })
+  expect(await rideRow(recorded.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: driver.id,
+    vehicle_id: vehicle.id,
+  })
+})
+
+it('assigns a Driver with no linked account and copies must-accept', async () => {
+  const world = await office('hasg-nolink')
+  const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911110066' })
+  expect(driver.memberUserId).toBeNull()
+  const corrected = await updateDriver(world.admin, driver.id, { mustAccept: true })
+  expect(corrected).toMatchObject({ memberUserId: null, mustAccept: true })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8002AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 11 * 60 * 60 * 1000).toISOString()))
+
+  const assigned = await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+  })
+  expect(assigned.status).toBe(200)
+  expect(await assigned.json()).toEqual({
+    id: recorded.ride.id,
+    transferId: recorded.transfer.id,
+    state: 'assigned',
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    mustAccept: true,
+  })
+  expect(await rideRow(recorded.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: true,
+  })
+  const linked = await ownerPool.query<{ member_user_id: string | null }>(
+    'select member_user_id from app.drivers where id = $1',
+    [driver.id],
+  )
+  expect(linked.rows).toEqual([{ member_user_id: null }])
 })

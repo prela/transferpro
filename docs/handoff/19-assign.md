@@ -58,6 +58,27 @@ or not exists (
 
 Do not run that delete on production. Run the check query first. A production row in the result needs a decision, not a blanket delete.
 
+Older `server/modules/transfers/infrastructure/transfer.rls.test.ts` runs left an assigned Ride with no Driver, no Vehicle, or no must-accept copy. `rides_assigned_pair` then fails with `23514` on such a development database.
+
+Run this read-only check as well. It lists Rides that are not `unassigned` and are missing a Driver, a Vehicle, or the must-accept copy:
+
+```sql
+select id, tenant_id, state from app.rides where state <> 'unassigned' and (driver_id is null or vehicle_id is null or must_accept is null);
+```
+
+For a local or development database only, return those rows to `unassigned` and clear the pair. `rides_unassigned_open` requires the Driver, the Vehicle, and the must-accept copy to be null together, so changing the state alone is refused:
+
+```sql
+update app.rides
+set state = 'unassigned', driver_id = null, vehicle_id = null, must_accept = null
+where state <> 'unassigned'
+  and (driver_id is null or vehicle_id is null or must_accept is null);
+```
+
+Deleting those test rows is the same local cleanup when they are leftovers from that file. Do not run either statement on production. A production row in the result needs a decision, not a blanket update.
+
+Every check in this section must run as the owner/migration role. Under the app role, FORCE RLS hides every row and the check falsely returns empty.
+
 ## Left for slice 2
 
 The screens, in Croatian and English, in light and dark, and the Playwright spec. Reassign, clear, vehicle-only change, and decline are later commands (ADR-0005, ADR-0006).
