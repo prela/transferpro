@@ -223,7 +223,7 @@ async function rideCount(tenantId: string, transferId?: string) {
 it('post answers 400 for a bad body and does not echo the guest name, and no session is 401', async () => {
   const refused = await call('POST', '/api/transfers', undefined, {
     clientId: '9e4b3f6d-5555-4555-8555-555555555555',
-    pickupAt: '2026-10-06T22:30:00.000Z',
+    pickupAt: pickupInsideWindow(),
     startLocationId: 'a1b2c3d4-5555-4555-8555-555555555555',
     endLocationId: 'b1b2c3d4-6666-4666-8666-666666666666',
     passengerCount: 0,

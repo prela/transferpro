@@ -37,7 +37,7 @@ Roles, grants, and the tenant session are ADR-0011. Working rules on top of that
 - In `db/migrations/meta/_journal.json`, set the new entry's `when` to the previous entry's `when` plus 1000. The values are synthetic. A smaller value is silently skipped.
 - drizzle-kit cannot emit `FORCE ROW LEVEL SECURITY`. The migration SQL does, as in `db/migrations/0000_tenant_settings.sql`. Declaration stays `tenantTable()` (ADR-0011).
 - `GRANT ... ON ALL TABLES IN SCHEMA auth` in `0001_auth_member_view.sql` covers tables that existed when it ran. There is no `ALTER DEFAULT PRIVILEGES`. A new `auth` table gets its grant in its own migration.
-- Instants are `timestamptz` UTC. A Tenant time zone is display only. Pickup times stay instants.
+- Instants are `timestamptz` UTC. A Tenant time zone is display only. Pickup times stay instants. The Transfer record window is 720 hours before now (not 30 Tenant-local calendar days) and 18 UTC calendar months after now.
 
 ## RLS and the tenant session
 

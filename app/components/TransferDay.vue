@@ -262,6 +262,8 @@ function pickupFieldError(): 'transfers.pickupInvalid' | 'transfers.pickupTooEar
     return 'transfers.pickupInvalid'
   }
   const error = pickupAtError(instant.toISOString(), new Date())
+  if (error === 'invalid')
+    return 'transfers.pickupInvalid'
   if (error === 'too-early')
     return 'transfers.pickupTooEarly'
   if (error === 'too-late')

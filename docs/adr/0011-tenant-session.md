@@ -22,7 +22,7 @@ Better Auth's tables are not tenant tables. The app role has no privilege on the
 
 Members are read through the view `app.tenant_member`. It is owned by `transferpro_owner`, `security_barrier` is on, and `security_invoker` is off. It selects schema-qualified `auth.member` and `auth.user`, returns only `user_id`, `name`, and `role`, and keeps rows whose organization id equals `app.current_tenant_id()`. The app role may `SELECT` the view and nothing else. An unset setting returns no rows. The view is not granted insert, update, or delete. A later Driver row may reference `auth.user` by id; the name on the board is read from this view inside the tenant transaction.
 
-The first tenant table is `app.tenant_settings`, with `default_locale` (`hr` or `en`) and an IANA time zone. There is no settings HTTP route in the foundation package. A user's locale is stored on the Better Auth user and read by the auth role when the actor is resolved. A null user locale means the Tenant's `default_locale`.
+The first tenant table is `app.tenant_settings`, with `default_locale` (`hr` or `en`) and an IANA time zone. The Tenant time zone is display only; the Transfer record window is 720 hours before now (not 30 Tenant-local calendar days) and 18 UTC calendar months after now. There is no settings HTTP route in the foundation package. A user's locale is stored on the Better Auth user and read by the auth role when the actor is resolved. A null user locale means the Tenant's `default_locale`.
 
 Enqueue uses the Drizzle transaction and pg-boss `fromDrizzle`. The job's Tenant comes from the context. Rollback removes the job. This package registers no production job.
 
