@@ -6,6 +6,7 @@
     "lint": "eslint .",
     "typecheck": "nuxi typecheck && tsc -p e2e/tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:agent-guard": "node --test .cursor/hooks/guard-shell.checks.mjs .cursor/hooks/agent-text.checks.mjs",
     "test:rls": "vitest run --config vitest.rls.config.ts",
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",

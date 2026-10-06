@@ -1,0 +1,6 @@
+---
+description: Transferpro agent rules live in AGENTS.md
+alwaysApply: true
+---
+
+Follow [AGENTS.md](../../AGENTS.md). It is the only source of agent rules for this repo.
