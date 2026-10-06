@@ -19,7 +19,7 @@ _Avoid_: trip, job, leg
 A Ride with no Driver and no Vehicle.
 
 **Assigned**:
-A Ride with both a Driver and a Vehicle. When it requires acceptance, it is waiting on acceptance, including after an earlier acceptance was cleared. The Vehicle on a new assignment starts as that Driver's roster Vehicle for the calendar day, and the office can still choose a different Vehicle for that one Ride. A roster change does not change a Ride already assigned.
+A Ride with both a Driver and a Vehicle. When it requires acceptance, it is waiting on acceptance, including after an earlier acceptance was cleared. Whether it requires acceptance is copied from the Driver at assignment and stays on the Ride. The Vehicle on a new assignment starts as that Driver's roster Vehicle for the calendar day, and the office can still choose a different Vehicle for that one Ride. A roster change does not change a Ride already assigned.
 _Avoid_: pending
 
 **Accepted**:
@@ -55,7 +55,7 @@ A pending offer for one email to join a Tenant as admin, dispatcher, or driver. 
 _Avoid_: signup link
 
 **Audit entry**:
-One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to, the setting value that changed, the Client (its id, and for a kind change the previous and next kind), the Driver fields that changed, or the Vehicle (its id and field names for created, field changed, and archived), or the roster (the calendar date and the Driver and Vehicle ids for a day assigned, changed, or cleared). A Client's name is not in the record. A Driver change does not record the phone or the licence dates. A Vehicle change does not record the plate or the dates. A roster change does not record a plate, a driver name, or a phone. A platform rename, deactivation, or reactivation stores an empty object and no person's name. It is written with the action and never changed or removed.
+One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to, the setting value that changed, the Client (its id, and for a kind change the previous and next kind), the Driver fields that changed, or the Vehicle (its id and field names for created, field changed, and archived), or the roster (the calendar date and the Driver and Vehicle ids for a day assigned, changed, or cleared), or the Ride assignment (the Ride id, the Driver id, the Vehicle id, and the field names). A Client's name is not in the record. A Driver change does not record the phone or the licence dates. A Vehicle change does not record the plate or the dates. A roster change does not record a plate, a driver name, or a phone. A Ride assignment does not record a plate, a phone, or the must-accept value. A platform rename, deactivation, or reactivation stores an empty object and no person's name. It is written with the action and never changed or removed.
 _Avoid_: history, event, activity
 
 **Driver**:

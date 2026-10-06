@@ -23,13 +23,25 @@ const ownerPool = new pg.Pool({ connectionString: migrateUrl })
 const tenantA = 'd1d1d1d1-d1d1-41d1-81d1-d1d1d1d1d1d1'
 const tenantB = 'd2d2d2d2-d2d2-42d2-82d2-d2d2d2d2d2d2'
 
+/**
+ * Rides go first. An assigned Ride names a Driver and a Vehicle, and a later
+ * migration refuses an assigned Ride that is missing either. The same deletes
+ * run after the file so a run cannot leave those rows behind.
+ */
+async function deleteTransferFixtures(owner: pg.PoolClient): Promise<void> {
+  await owner.query('delete from app.rides where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.roster where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.transfers where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.drivers where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.vehicles where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.locations where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.clients where tenant_id in ($1, $2)', [tenantA, tenantB])
+}
+
 beforeAll(async () => {
   const owner = await ownerPool.connect()
   try {
-    await owner.query('delete from app.rides where tenant_id in ($1, $2)', [tenantA, tenantB])
-    await owner.query('delete from app.transfers where tenant_id in ($1, $2)', [tenantA, tenantB])
-    await owner.query('delete from app.locations where tenant_id in ($1, $2)', [tenantA, tenantB])
-    await owner.query('delete from app.clients where tenant_id in ($1, $2)', [tenantA, tenantB])
+    await deleteTransferFixtures(owner)
   }
   finally {
     owner.release()
@@ -37,8 +49,15 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await pool.end()
-  await ownerPool.end()
+  const owner = await ownerPool.connect()
+  try {
+    await deleteTransferFixtures(owner)
+  }
+  finally {
+    owner.release()
+    await pool.end()
+    await ownerPool.end()
+  }
 })
 
 async function withTenant<T>(
@@ -229,6 +248,7 @@ it('reserves the Ride states and refuses a bad fare, a bad count, and a Driver o
       null,
     ]))).rejects.toMatchObject({ code: '23514' })
 
+  let assignedDriverId = ''
   const reserved = await withTenant(tenantA, async (client) => {
     const transfer = await client.query<{ id: string }>(
       `${transferInsert} returning id`,
@@ -252,8 +272,24 @@ it('reserves the Ride states and refuses a bad fare, a bad count, and a Driver o
       `insert into app.rides (transfer_id, state) values ($1, 'unassigned') returning id`,
       [transfer.rows[0]?.id],
     )
-    await client.query(`update app.rides set state = 'assigned' where id = $1`, [ride.rows[0]?.id])
+    // `assigned` requires a same-tenant Driver, Vehicle, and must-accept copy.
+    const driver = await client.query<{ id: string }>(
+      `insert into app.drivers (name, kind, phone, driving_licence_expires_on, transport_licence_expires_on)
+       values ('Marko Vozač', 'own', '+385910000001', '2030-01-01', '2030-01-01') returning id`,
+    )
+    const vehicle = await client.query<{ id: string }>(
+      `insert into app.vehicles (
+         registration_plate, kind, registration_expires_on, technical_inspection_expires_on, insurance_expires_on
+       ) values ('ST1234AA', 'fixed', '2030-01-01', '2030-01-01', '2030-01-01') returning id`,
+    )
+    await client.query(
+      `update app.rides
+       set state = 'assigned', driver_id = $2, vehicle_id = $3, must_accept = false
+       where id = $1`,
+      [ride.rows[0]?.id, driver.rows[0]?.id, vehicle.rows[0]?.id],
+    )
     const state = await client.query<{ state: string }>(`select state from app.rides where id = $1`, [ride.rows[0]?.id])
+    assignedDriverId = driver.rows[0]?.id ?? ''
     return state.rows[0]?.state
   })
   expect(reserved).toBe('assigned')
@@ -263,7 +299,8 @@ it('reserves the Ride states and refuses a bad fare, a bad count, and a Driver o
 
   await expect(withTenant(tenantA, client =>
     client.query(
-      `update app.rides set state = 'unassigned', driver_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' where state = 'unassigned'`,
+      `update app.rides set state = 'unassigned', driver_id = $1 where state = 'unassigned'`,
+      [assignedDriverId],
     ))).rejects.toMatchObject({ code: '23514' })
 })
 

@@ -31,6 +31,7 @@ const rideRowSchema = z.object({
   state: rideStateSchema,
   driverId: z.uuid().nullable(),
   vehicleId: z.uuid().nullable(),
+  mustAccept: z.boolean().nullable(),
 })
 
 const dayRowSchema = transferRowSchema.omit({ id: true }).extend({
@@ -39,6 +40,7 @@ const dayRowSchema = transferRowSchema.omit({ id: true }).extend({
   state: rideStateSchema,
   driverId: z.uuid().nullable(),
   vehicleId: z.uuid().nullable(),
+  mustAccept: z.boolean().nullable(),
 })
 
 const transferColumns = sql`
@@ -102,7 +104,7 @@ export async function recordTransfer(
   const rideInserted = z.object({ rows: z.array(rideRowSchema) }).parse(await writeTransfer(transaction, sql`
     insert into app.rides (transfer_id, state)
     values (${transfer.id}, 'unassigned')
-    returning id, transfer_id as "transferId", state, driver_id as "driverId", vehicle_id as "vehicleId"
+    returning id, transfer_id as "transferId", state, driver_id as "driverId", vehicle_id as "vehicleId", must_accept as "mustAccept"
   `))
   const rideRow = rideInserted.rows[0]
   if (!rideRow)
@@ -145,6 +147,7 @@ export async function loadRidesForDay(
       r.state,
       r.driver_id as "driverId",
       r.vehicle_id as "vehicleId",
+      r.must_accept as "mustAccept",
       t.client_id as "clientId",
       t.pickup_at as "pickupAt",
       t.start_location_id as "startLocationId",
@@ -210,6 +213,7 @@ function toDayRide(row: z.infer<typeof dayRowSchema>): TransferDayRide {
     state: row.state,
     driverId: row.driverId,
     vehicleId: row.vehicleId,
+    mustAccept: row.mustAccept,
     clientId: row.clientId,
     pickupAt: toInstant(row.pickupAt),
     startLocationId: row.startLocationId,

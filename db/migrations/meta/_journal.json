@@ -134,6 +134,13 @@
       "when": 1791400008000,
       "tag": "0018_transfers_pickup_index",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791400009000,
+      "tag": "0019_ride_assignment",
+      "breakpoints": true
     }
   ]
 }

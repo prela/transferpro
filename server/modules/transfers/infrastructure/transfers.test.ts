@@ -92,6 +92,7 @@ function fakeTransaction(options: {
             state: 'unassigned',
             driverId: null,
             vehicleId: null,
+            mustAccept: null,
           }],
         }
       }
@@ -154,6 +155,7 @@ it('records one unassigned Ride and names fields, not the guest, the flight, the
       state: 'unassigned',
       driverId: null,
       vehicleId: null,
+      mustAccept: null,
     },
   })
   const payload = auditPayloads(queries)
@@ -231,6 +233,7 @@ it('loads the Zagreb day as a half-open range of local midnights and maps the ri
       state: 'unassigned',
       driverId: null,
       vehicleId: null,
+      mustAccept: null,
       clientId,
       pickupAt: pickup,
       startLocationId,

@@ -127,6 +127,9 @@
       "transfer": {
         "created": "Transfer zabilježen"
       },
+      "ride": {
+        "assigned": "Vožnja dodijeljena"
+      },
       "roster": {
         "assigned": "Vozilo dodijeljeno za dan",
         "changed": "Vozilo za dan promijenjeno",
@@ -431,6 +434,10 @@
     "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
     "saveFailed": "Raspored nije spremljen. Pokušajte ponovno.",
     "vehicle": "Vozilo"
+  },
+  "ride": {
+    "vehicleArchived": "Arhivirano vozilo ne može se dodijeliti.",
+    "notUnassigned": "Dodijeliti se može samo vožnja koja još nema vozača i vozilo."
   },
   "expiringDocuments": {
     "title": "Dokumenti koji istječu",

@@ -250,6 +250,32 @@ it('records a Transfer by ids and field names, and refuses the guest name, the f
   expect(auditFactSchema.safeParse({ ...created, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records an assignment by ids and field names, and refuses a plate, a phone, or the must-accept value', () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
+  const assigned = {
+    action: 'ride.assigned' as const,
+    subjectUserId: null,
+    data: {
+      rideId,
+      driverId,
+      vehicleId,
+      fields: ['state', 'driverId', 'vehicleId', 'mustAccept'] as const,
+    },
+  }
+  expect(auditFactSchema.parse(assigned)).toEqual(assigned)
+  expect(auditFactSchema.safeParse({
+    ...assigned,
+    data: { ...assigned.data, registrationPlate: 'ZG1001AA', phone: '+38591111', mustAccept: true },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...assigned,
+    data: { ...assigned.data, fields: ['mustAccept', 'true'] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...assigned, subjectUserId: memberId }).success).toBe(false)
+})
+
 it('records a roster day as ids and a calendar date, and refuses a plate, a name, or a phone', () => {
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
   const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'

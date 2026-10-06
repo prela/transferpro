@@ -14,8 +14,10 @@ import { tenantTable } from './tenant-table'
  * A trigger in the migration refuses a member who is not a driver of this
  * Tenant. The view `app.tenant_member` only returns the session's Tenant,
  * so a member of another Tenant fails that check.
- * There is no delete in this ticket. FORCE RLS is in the migration;
- * drizzle-kit cannot emit it.
+ * `(tenant_id, id)` is unique so a Ride and a roster row can reference this
+ * Driver and another Tenant's id in the same breath (migration 0019).
+ * There is no archived or inactive column. There is no delete in this ticket.
+ * FORCE RLS is in the migration; drizzle-kit cannot emit it.
  */
 
 const kinds = sql.raw(DRIVER_KINDS.map(kind => `'${kind}'`).join(', '))
@@ -51,4 +53,5 @@ export const drivers = tenantTable('drivers', {
   ),
   // Null member ids are outside the index, so more than one unlinked Driver is allowed.
   uniqueIndex('drivers_one_member').on(table.tenantId, table.memberUserId).where(sql`${table.memberUserId} is not null`),
+  uniqueIndex('drivers_tenant_id_id').on(table.tenantId, table.id),
 ], { oneRowPerTenant: false })

@@ -82,24 +82,60 @@ const vehicleColumns = sql`
  * `archived` stays readable on a roster row already stored; a new assignment
  * still refuses it. A missing id and another Tenant's id are the same result.
  * The roster module calls this through the Vehicles index, by id.
+ * This read does not lock. Assignment uses `vehiclePresenceForAssign`.
  */
 export type VehiclePresence = 'active' | 'archived' | 'missing'
 
+const vehiclePresenceRows = z.object({
+  rows: z.array(z.object({
+    id: z.uuid(),
+    archivedAt: z.unknown().nullable(),
+  })),
+})
+
 export async function vehiclePresence(transaction: TenantTransaction, vehicleId: string): Promise<VehiclePresence> {
-  const selected = z.object({
-    rows: z.array(z.object({
-      id: z.uuid(),
-      archivedAt: z.unknown().nullable(),
-    })),
-  }).parse(await transaction.execute(sql`
+  return presenceOf(await transaction.execute(sql`
     select id, archived_at as "archivedAt"
     from app.vehicles
     where id = ${vehicleId}
   `))
-  const row = selected.rows[0]
+}
+
+/**
+ * The same answer as `vehiclePresence`, and a `for share` lock on the row.
+ * Archive takes `for update`, so it cannot commit between this read and the
+ * Ride update on the caller's transaction. The roster pre-fill does not use
+ * this read: a suggestion does not write a Ride.
+ */
+export async function vehiclePresenceForAssign(transaction: TenantTransaction, vehicleId: string): Promise<VehiclePresence> {
+  return presenceOf(await readVehicleForAssign(transaction, sql`
+    select id, archived_at as "archivedAt"
+    from app.vehicles
+    where id = ${vehicleId}
+    for share
+  `))
+}
+
+function presenceOf(selected: unknown): VehiclePresence {
+  const row = vehiclePresenceRows.parse(selected).rows[0]
   if (!row)
     return 'missing'
   return row.archivedAt === null ? 'active' : 'archived'
+}
+
+/**
+ * Run the assign read. Every failure becomes a fixed message.
+ * Drizzle copies the bound parameters into `Error.message`, and that text
+ * is not redacted, so the original error is never rethrown. A vehicle id
+ * in that text would otherwise land in the log.
+ */
+async function readVehicleForAssign(transaction: TenantTransaction, query: SQL): Promise<unknown> {
+  try {
+    return await transaction.execute(query)
+  }
+  catch {
+    throw new Error('Vehicle read failed')
+  }
 }
 
 /** This Tenant's Vehicles, by plate, so the office can find one. */

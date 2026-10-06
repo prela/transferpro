@@ -36,6 +36,14 @@ beforeAll(async () => {
   const owner = await ownerPool.connect()
   const auth = await authPool.connect()
   try {
+    // Rides and roster rows reference drivers. Clear them before the driver rows.
+    await owner.query('delete from app.roster where tenant_id in ($1, $2)', [tenantA, tenantB])
+    await owner.query(
+      `update app.rides
+          set state = 'unassigned', driver_id = null, vehicle_id = null, must_accept = null
+        where tenant_id in ($1, $2)`,
+      [tenantA, tenantB],
+    )
     await owner.query('delete from app.drivers where tenant_id in ($1, $2)', [tenantA, tenantB])
     await auth.query('begin')
     await auth.query('delete from auth.member where organization_id = any($1::text[])', [[tenantA, tenantB]])

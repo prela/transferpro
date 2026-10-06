@@ -27,10 +27,36 @@ const driverB = 'f1580012-0000-4000-8000-000000000058'
 const vehicleA = 'f1580021-0000-4000-8000-000000000058'
 const vehicleB = 'f1580022-0000-4000-8000-000000000058'
 
+/**
+ * Roster rows go first. `roster_driver_fk` and `roster_vehicle_fk` refuse a
+ * driver or vehicle delete while a roster row still names it, and a later
+ * run must not leave those rows behind as orphans.
+ */
+async function deleteRosterFixtures(owner: pg.PoolClient): Promise<void> {
+  await owner.query('delete from app.roster where tenant_id in ($1, $2)', [tenantA, tenantB])
+  await owner.query('delete from app.drivers where id in ($1, $2)', [driverA, driverB])
+  await owner.query('delete from app.vehicles where id in ($1, $2)', [vehicleA, vehicleB])
+}
+
 beforeAll(async () => {
   const owner = await ownerPool.connect()
   try {
-    await owner.query('delete from app.roster where tenant_id in ($1, $2)', [tenantA, tenantB])
+    await deleteRosterFixtures(owner)
+    // The composite foreign keys need real rows. The ids stay the ones the assertions name.
+    // Both Drivers and both Vehicles are Tenant A's: the uniqueness cases use them together.
+    await owner.query(
+      `insert into app.drivers (tenant_id, id, name, kind, phone, driving_licence_expires_on, transport_licence_expires_on)
+       values ($1, $2, 'Roster A', 'own', '+385910000011', '2030-01-01', '2030-01-01'),
+              ($1, $3, 'Roster B', 'own', '+385910000012', '2030-01-01', '2030-01-01')`,
+      [tenantA, driverA, driverB],
+    )
+    await owner.query(
+      `insert into app.vehicles (
+         tenant_id, id, registration_plate, kind, registration_expires_on, technical_inspection_expires_on, insurance_expires_on
+       ) values ($1, $2, 'RS58AAA', 'fixed', '2030-01-01', '2030-01-01', '2030-01-01'),
+                ($1, $3, 'RS58BBB', 'fixed', '2030-01-01', '2030-01-01', '2030-01-01')`,
+      [tenantA, vehicleA, vehicleB],
+    )
   }
   finally {
     owner.release()
@@ -38,8 +64,15 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await pool.end()
-  await ownerPool.end()
+  const owner = await ownerPool.connect()
+  try {
+    await deleteRosterFixtures(owner)
+  }
+  finally {
+    owner.release()
+    await pool.end()
+    await ownerPool.end()
+  }
 })
 
 async function withTenant<T>(

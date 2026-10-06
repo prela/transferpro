@@ -337,6 +337,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
     state: 'unassigned',
     driverId: null,
     vehicleId: null,
+    mustAccept: null,
   })
   expect(await rideCount(created.tenantId, row.transfer.id)).toBe(1)
 
@@ -355,6 +356,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
       state: 'unassigned',
       driverId: null,
       vehicleId: null,
+      mustAccept: null,
       guestName: guest,
       airportMark: false,
       price: '42.50',
