@@ -54,6 +54,7 @@ const wallClock = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/
  * The Transfer form collects the pickup in the Tenant time zone. The row
  * stores the instant. Two passes, because the first offset can sit on the
  * other side of a daylight-saving change.
+ * A skipped hour is read one hour later; a repeated hour is read at the standard-time offset.
  */
 export function instantFromWallClock(wall: string, timeZone: string): Date {
   const match = wallClock.exec(wall)

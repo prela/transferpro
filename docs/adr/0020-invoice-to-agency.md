@@ -1,6 +1,8 @@
 # Invoice to agency is a recorded payment
 
-Status: proposed
+Status: accepted
+
+The owner decided this on 2026-10-05.
 
 ## Context
 

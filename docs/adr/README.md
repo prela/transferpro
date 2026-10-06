@@ -35,4 +35,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0017 | A Client keeps its name off the audit log | accepted |
 | ADR-0018 | Module boundaries | accepted |
 | ADR-0019 | Superadmin | accepted |
-| ADR-0020 | Invoice to agency is a recorded payment | proposed |
+| ADR-0020 | Invoice to agency is a recorded payment | accepted |

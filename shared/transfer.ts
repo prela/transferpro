@@ -36,7 +36,7 @@ export const RIDE_STATES = ['unassigned', 'assigned', 'accepted', 'done', 'no-sh
 
 /**
  * How the Transfer will be paid. `invoice_to_agency` is a recorded choice.
- * Invoicing is not v1. ADR-0020 (proposed) extends ADR-0009: the Driver
+ * Invoicing is not v1. ADR-0020 extends ADR-0009: the Driver
  * sees the price and the payment method only for cash. Card and invoice
  * to agency hide both. That phone rule is not this slice.
  */

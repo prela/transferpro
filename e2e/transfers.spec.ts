@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { calendarDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { chooseOption, signIn } from './fixtures/ui'
 
 const guest = 'Ana Anić'
 const clientName = 'Agencija Mora'
@@ -15,8 +15,7 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
 
   await page.getByRole('link', { name: 'Klijenti' }).click()
   await page.getByLabel('Ime').fill(clientName)
-  await page.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Agencija', exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Agencija')
   await page.getByRole('button', { name: 'Dodaj klijenta', exact: true }).click()
   await expect(page.getByRole('cell', { name: clientName, exact: true })).toBeVisible()
 
@@ -27,25 +26,21 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
 
   await page.getByRole('button', { name: 'Dodaj mjesto za polazište' }).click()
   await page.getByLabel('Ime', { exact: true }).fill(startPlace)
-  await page.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Aerodrom', exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Aerodrom')
   await page.getByRole('button', { name: 'Dodaj mjesto', exact: true }).click()
 
   await page.getByRole('button', { name: 'Dodaj mjesto za odredište' }).click()
   await page.getByLabel('Ime', { exact: true }).fill(endPlace)
-  await page.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Hotel', exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
   await page.getByRole('button', { name: 'Dodaj mjesto', exact: true }).click()
 
   const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
-  await page.getByRole('combobox', { name: 'Klijent' }).click()
-  await page.getByRole('option', { name: clientName, exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Klijent' }), clientName)
   await page.getByLabel('Vrijeme preuzimanja').fill(`${day}T12:00`)
   await page.getByLabel('Ime gosta').fill(guest)
   await page.getByLabel('Broj leta').fill('OU 384')
   await page.getByLabel('Cijena (EUR)').fill('42,50')
-  await page.getByRole('combobox', { name: 'Plaćanje' }).click()
-  await page.getByRole('option', { name: 'Gotovina', exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Plaćanje' }), 'Gotovina')
   await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
 
   await expect(page.getByText('Zabilježeno.')).toBeVisible()

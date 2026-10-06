@@ -266,3 +266,88 @@ it('reserves the Ride states and refuses a bad fare, a bad count, and a Driver o
       `update app.rides set state = 'unassigned', driver_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' where state = 'unassigned'`,
     ))).rejects.toMatchObject({ code: '23514' })
 })
+
+it('refuses a Transfer that names another Tenant\'s Client or Location, and a Ride that names another Tenant\'s Transfer', async () => {
+  const foreign = await withTenant(tenantA, async (client) => {
+    const clientRow = await client.query<{ id: string }>(`select id from app.clients limit 1`)
+    const locations = await client.query<{ id: string }>(`select id from app.locations order by name`)
+    // No Ride on this Transfer. rides.transfer_id is unique, so a second Ride
+    // would fail 23505 before the composite foreign key could.
+    const transfer = await client.query<{ id: string }>(
+      `${transferInsert} returning id`,
+      [
+        clientRow.rows[0]?.id,
+        '2026-10-06T18:00:00.000Z',
+        locations.rows[0]?.id,
+        locations.rows[1]?.id,
+        1,
+        'Ana Anić',
+        null,
+        '10.00',
+        'cash',
+        false,
+        0,
+        0,
+        null,
+      ],
+    )
+    return {
+      clientId: clientRow.rows[0]?.id,
+      startLocationId: locations.rows[0]?.id,
+      endLocationId: locations.rows[1]?.id,
+      transferId: transfer.rows[0]?.id,
+    }
+  })
+
+  const own = await withTenant(tenantB, async (client) => {
+    const clientRow = await client.query<{ id: string }>(
+      `insert into app.clients (name, kind) values ('Hotel Sunce', 'hotel') returning id`,
+    )
+    const start = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Zračna luka Split', 'airport') returning id`,
+    )
+    const end = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Hotel More', 'hotel') returning id`,
+    )
+    return {
+      clientId: clientRow.rows[0]?.id,
+      startLocationId: start.rows[0]?.id,
+      endLocationId: end.rows[0]?.id,
+    }
+  })
+
+  const row = (
+    clientId: string | undefined,
+    startLocationId: string | undefined,
+    endLocationId: string | undefined,
+  ) => [
+    clientId,
+    '2026-10-06T18:00:00.000Z',
+    startLocationId,
+    endLocationId,
+    1,
+    'Ana Anić',
+    null,
+    '10.00',
+    'cash',
+    false,
+    0,
+    0,
+    null,
+  ]
+
+  await expect(withTenant(tenantB, client =>
+    client.query(transferInsert, row(foreign.clientId, own.startLocationId, own.endLocationId)))).rejects.toMatchObject({ code: '23503' })
+
+  await expect(withTenant(tenantB, client =>
+    client.query(transferInsert, row(own.clientId, foreign.startLocationId, own.endLocationId)))).rejects.toMatchObject({ code: '23503' })
+
+  await expect(withTenant(tenantB, client =>
+    client.query(transferInsert, row(own.clientId, own.startLocationId, foreign.endLocationId)))).rejects.toMatchObject({ code: '23503' })
+
+  await expect(withTenant(tenantB, client =>
+    client.query(
+      `insert into app.rides (transfer_id, state) values ($1, 'unassigned')`,
+      [foreign.transferId],
+    ))).rejects.toMatchObject({ code: '23503' })
+})

@@ -143,6 +143,22 @@ function call(method: string, path: string, session?: Headers, body?: unknown) {
   }))
 }
 
+async function tenantCounts(tenantId: string) {
+  const result = await ownerPool.query<{ transfers: string, rides: string, audit: string }>(
+    `select
+       (select count(*) from app.transfers where tenant_id = $1) as transfers,
+       (select count(*) from app.rides where tenant_id = $1) as rides,
+       (select count(*) from app.audit_entry where tenant_id = $1) as audit`,
+    [tenantId],
+  )
+  const row = result.rows[0]
+  return {
+    transfers: Number(row?.transfers),
+    rides: Number(row?.rides),
+    audit: Number(row?.audit),
+  }
+}
+
 async function rideCount(tenantId: string, transferId?: string) {
   const result = await ownerPool.query<{ count: string }>(
     transferId
@@ -314,4 +330,59 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
     startLocationId: start.id,
     endLocationId: end.id,
   })
+})
+
+it('an office user of Tenant B cannot record a Transfer that names Tenant A, and nothing is written', async () => {
+  const firmA = await tenant('htr-cross-a', 'Ana Admin')
+  const firmB = await tenant('htr-cross-b', 'Boris Admin')
+  await addMember(firmB.tenantId, 'htr-cross-b-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const officeA = await signIn('htr-cross-a-admin@example.test')
+  const officeB = await signIn('htr-cross-b-dispatcher@example.test')
+  const client = await createClient(officeA, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(officeA, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(officeA, { name: 'Hotel Park', kind: 'hotel' })
+  const ownClient = await createClient(officeB, { name: 'Hotel Sunce', kind: 'hotel' })
+  const ownStart = await createLocation(officeB, { name: 'Zračna luka Split', kind: 'airport' })
+  const ownEnd = await createLocation(officeB, { name: 'Hotel More', kind: 'hotel' })
+
+  const beforeA = await tenantCounts(firmA.tenantId)
+  const beforeB = await tenantCounts(firmB.tenantId)
+  const body = {
+    pickupAt: '2026-10-06T22:30:00.000Z',
+    passengerCount: 1,
+    guestName: guest,
+    price: 10,
+    payment: 'cash',
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 0,
+  }
+
+  const foreignClient = await call('POST', '/api/transfers', officeB, {
+    ...body,
+    clientId: client.id,
+    startLocationId: ownStart.id,
+    endLocationId: ownEnd.id,
+  })
+  expect(foreignClient.status).toBe(404)
+  expect(await foreignClient.text()).not.toContain(guest)
+
+  const foreignStart = await call('POST', '/api/transfers', officeB, {
+    ...body,
+    clientId: ownClient.id,
+    startLocationId: start.id,
+    endLocationId: ownEnd.id,
+  })
+  expect(foreignStart.status).toBe(404)
+
+  const foreignEnd = await call('POST', '/api/transfers', officeB, {
+    ...body,
+    clientId: ownClient.id,
+    startLocationId: ownStart.id,
+    endLocationId: end.id,
+  })
+  expect(foreignEnd.status).toBe(404)
+
+  expect(await tenantCounts(firmA.tenantId)).toEqual(beforeA)
+  expect(await tenantCounts(firmB.tenantId)).toEqual(beforeB)
 })
