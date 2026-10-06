@@ -276,6 +276,38 @@ it('records an assignment by ids and field names, and refuses a plate, a phone, 
   expect(auditFactSchema.safeParse({ ...assigned, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('lists an assignment with the Driver name and Vehicle plate resolved at read time', () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
+  const listed = auditEntryListSchema.parse({
+    entries: [{
+      id: '8d3a2e5c-4444-4444-8444-444444444444',
+      occurredAt: '2026-10-03T18:42:00.000Z',
+      actorUserId: adminId,
+      actorName: 'Ana Admin',
+      action: 'ride.assigned',
+      subjectUserId: null,
+      subjectName: null,
+      driverName: 'Ana Happy',
+      vehiclePlate: 'DU100AA',
+      data: {
+        rideId,
+        driverId,
+        vehicleId,
+        fields: ['state', 'driverId', 'vehicleId', 'mustAccept'],
+      },
+    }],
+  })
+  expect(listed.entries[0]).toMatchObject({ driverName: 'Ana Happy', vehiclePlate: 'DU100AA' })
+  expect(auditEntryListSchema.safeParse({
+    entries: [{
+      ...listed.entries[0],
+      data: { ...listed.entries[0]!.data, driverName: 'Ana Happy' },
+    }],
+  }).success).toBe(false)
+})
+
 it('records a roster day as ids and a calendar date, and refuses a plate, a name, or a phone', () => {
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
   const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'

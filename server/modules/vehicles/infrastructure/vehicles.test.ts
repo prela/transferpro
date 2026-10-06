@@ -6,7 +6,7 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
 import { VehicleInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
-import { addVehicle, archiveStoredVehicle, correctVehicle, loadVehicles, VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError } from './vehicles'
+import { addVehicle, archiveStoredVehicle, correctVehicle, loadVehicles, VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError, vehiclePresenceForAssign } from './vehicles'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const vehicleId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -26,7 +26,7 @@ const stored: Vehicle = {
 
 function fakeTransaction(
   vehicles: Vehicle[],
-  fail?: { code: string, message: string, constraint?: string },
+  fail?: { code: string, message: string, constraint?: string, sql?: string },
 ) {
   const queries: Array<{ sql: string, params: unknown[] }> = []
   const transaction: TenantTransaction = {
@@ -34,13 +34,16 @@ function fakeTransaction(
       const compiled = dialect.sqlToQuery(query)
       queries.push(compiled)
       const text = compiled.sql
-      if (fail && (text.includes('insert') || (text.includes('update') && !text.includes('for update')))) {
-        const cause = Object.assign(new Error('duplicate'), {
-          code: fail.code,
-          constraint: fail.constraint,
-          detail: `Failing row contains (${plate})`,
-        })
-        throw Object.assign(new Error(fail.message), { cause })
+      if (fail) {
+        const matchesWrite = text.includes('insert') || (text.includes('update') && !text.includes('for update'))
+        if (fail.sql ? text.includes(fail.sql) : matchesWrite) {
+          const cause = Object.assign(new Error('duplicate'), {
+            code: fail.code,
+            constraint: fail.constraint,
+            detail: `Failing row contains (${plate})`,
+          })
+          throw Object.assign(new Error(fail.message), { cause })
+        }
       }
       if (text.includes('insert')) {
         return {
@@ -244,4 +247,16 @@ it('records a description by field name, not the text', async () => {
   })
   expect(auditPayloads(queries)[0]).toContain('description')
   expect(JSON.stringify(auditPayloads(queries))).not.toContain(note)
+})
+
+it('replaces an assign read failure so the log line does not keep the vehicle id', async () => {
+  const { transaction } = fakeTransaction([stored], {
+    code: '57014',
+    message: `cancel ${vehicleId}`,
+    sql: 'for share',
+  })
+  const error = await vehiclePresenceForAssign(transaction, vehicleId).catch(caught => caught)
+  expect(error).toMatchObject({ message: 'Vehicle read failed' })
+  expect(String(error)).not.toContain(vehicleId)
+  expect(logLine(error)).not.toContain(vehicleId)
 })

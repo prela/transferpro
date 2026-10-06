@@ -8,6 +8,7 @@ const otherDriverName = 'Marko Roster'
 const plate = 'DU123AB'
 const otherPlate = 'ZG111AA'
 const phone = '+38591111222'
+const farExpiry = '2099-01-01'
 
 async function addDriver(page: Page, name: string) {
   const response = await page.request.post('/api/drivers', {
@@ -15,8 +16,8 @@ async function addDriver(page: Page, name: string) {
       name,
       kind: 'own',
       phone,
-      drivingLicenceExpiresOn: '2027-06-01',
-      transportLicenceExpiresOn: '2028-01-31',
+      drivingLicenceExpiresOn: farExpiry,
+      transportLicenceExpiresOn: farExpiry,
     },
   })
   expect(response.ok()).toBeTruthy()
@@ -27,9 +28,9 @@ async function addVehicle(page: Page, registrationPlate: string) {
     data: {
       registrationPlate,
       kind: 'fixed',
-      registrationExpiresOn: '2027-06-01',
-      technicalInspectionExpiresOn: '2028-01-31',
-      insuranceExpiresOn: '2029-03-03',
+      registrationExpiresOn: farExpiry,
+      technicalInspectionExpiresOn: farExpiry,
+      insuranceExpiresOn: farExpiry,
     },
   })
   expect(response.ok()).toBeTruthy()

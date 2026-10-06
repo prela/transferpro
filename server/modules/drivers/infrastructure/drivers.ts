@@ -4,6 +4,7 @@ import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { DRIVER_FIELDS, driverDateSchema, DriverInputError, driverKindSchema, driverSchema } from '../../../../shared'
+import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { TenantAccessError } from '../../tenancy'
 
@@ -272,13 +273,8 @@ function toDriver(row: z.infer<typeof driverRowSchema>): Driver {
  * is not redacted, so the original error is never rethrown. A driver id
  * in that text would otherwise land in the log.
  */
-async function readDriverForAssign(transaction: TenantTransaction, query: SQL): Promise<unknown> {
-  try {
-    return await transaction.execute(query)
-  }
-  catch {
-    throw new Error('Driver read failed')
-  }
+function readDriverForAssign(transaction: TenantTransaction, query: SQL): Promise<unknown> {
+  return hideDatabaseError(() => transaction.execute(query), 'Driver read failed')
 }
 
 /**

@@ -12,7 +12,7 @@ import { createAuth } from './auth'
 import { acceptInvitation, parseInviteInput, previewInvitation, repairInvitationCookies, sendInvitation } from './invitation'
 import { mailerForApp } from './mailer'
 import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, removeMember as removeMemberImpl } from './member-management'
-import { changeTenantSettings, loadTenantSettings } from './tenant-settings'
+import { changeTenantSettings, loadTenantSettings, TenantSettingsMissingError } from './tenant-settings'
 
 /**
  * A session with no user is 401. A user with no single membership, or with
@@ -141,7 +141,7 @@ export async function readSessionShell(headers: Headers): Promise<SessionShell> 
     `))
     const settings = selected.rows.length === 1 ? selected.rows[0] : undefined
     if (!settings)
-      throw new Error('Tenant settings are missing.')
+      throw new TenantSettingsMissingError()
 
     const membership = memberships.find(item => item.organizationId === context.tenantId)
     const role = tenantRoleSchema.safeParse(membership?.role)
@@ -178,7 +178,7 @@ export async function inviteMember(headers: Headers, raw: unknown) {
     `))
     const settings = selected.rows.length === 1 ? selected.rows[0] : undefined
     if (!settings)
-      throw new Error('Tenant settings are missing.')
+      throw new TenantSettingsMissingError()
     return sendInvitation(handle, headers, {
       email: input.email,
       role: input.role,

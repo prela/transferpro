@@ -94,6 +94,7 @@
     "minutesChange": "{from} → {to} min",
     "formerMember": "Bivši član",
     "refresh": "Osvježi",
+    "rideAssignedDetail": "{driver} · {vehicle}",
     "actions": {
       "member": {
         "invited": "Član pozvan",

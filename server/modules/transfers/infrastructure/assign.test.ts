@@ -3,7 +3,9 @@ import type { TenantTransaction } from '../../../core/index'
 import { Writable } from 'node:stream'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
+import { RosterInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
+import { TenantSettingsMissingError } from '../../tenancy'
 import { assignUnassignedRide, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError, suggestRosterVehicle } from './assign'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
@@ -23,7 +25,8 @@ interface Script {
   rosterVehicleId?: string | null
   rosterVehicle?: 'active' | 'archived' | 'missing'
   /** Throw this message when the statement text includes `failSql`. The bound ids stay in that message. */
-  fail?: { sql: string, message: string }
+  fail?: { sql: string, message: string, code?: string }
+  missingSettings?: boolean
 }
 
 function fakeTransaction(script: Script) {
@@ -33,8 +36,13 @@ function fakeTransaction(script: Script) {
       const compiled = dialect.sqlToQuery(query)
       queries.push(compiled)
       const text = compiled.sql
-      if (script.fail && text.includes(script.fail.sql))
+      if (script.fail && text.includes(script.fail.sql)) {
+        if (script.fail.code) {
+          const cause = Object.assign(new Error('pg'), { code: script.fail.code, detail: script.fail.message })
+          throw Object.assign(new Error(script.fail.message), { cause })
+        }
         throw new Error(script.fail.message)
+      }
       if (text.includes('for update') && text.includes('from app.rides')) {
         if (script.rideState === 'missing')
           return { rows: [] }
@@ -89,6 +97,8 @@ function fakeTransaction(script: Script) {
         return { rows: [{ id: rideId, pickupAt: script.pickupAt }] }
       }
       if (text.includes('from app.tenant_settings')) {
+        if (script.missingSettings)
+          return { rows: [] }
         return { rows: [{ airport_wait_minutes: 90, elsewhere_wait_minutes: 25, time_zone: 'Europe/Zagreb' }] }
       }
       if (text.includes('from app.roster')) {
@@ -253,6 +263,39 @@ it('replaces a pre-fill catalog failure so the log line does not keep the bound 
   expect(vehicleError).toMatchObject({ message: 'Ride read failed' })
   expect(String(vehicleError)).not.toContain(vehicleId)
   expect(logLine(vehicleError)).not.toContain(vehicleId)
+})
+
+it('keeps a missing-settings error by type, and wraps a generic error with the same message', async () => {
+  const pickupAt = new Date('2026-10-05T21:59:00.000Z')
+  const missing = fakeTransaction({ pickupAt, missingSettings: true })
+  await expect(suggestRosterVehicle(missing.transaction, rideId, driverId)).rejects.toBeInstanceOf(TenantSettingsMissingError)
+
+  const sameWords = fakeTransaction({
+    pickupAt,
+    fail: { sql: 'from app.tenant_settings', message: 'Tenant settings are missing.' },
+  })
+  const wrapped = await suggestRosterVehicle(sameWords.transaction, rideId, driverId).catch(caught => caught)
+  expect(wrapped).toMatchObject({ message: 'Ride read failed' })
+  expect(wrapped).not.toBeInstanceOf(TenantSettingsMissingError)
+})
+
+it('keeps a roster input error from the pre-fill', async () => {
+  const pickupAt = new Date('2026-10-05T21:59:00.000Z')
+  const { transaction } = fakeTransaction({ pickupAt })
+  transaction.execute = vi.fn(async (query: SQL) => {
+    const compiled = dialect.sqlToQuery(query)
+    const text = compiled.sql
+    if (text.includes('from app.rides'))
+      return { rows: [{ id: rideId, pickupAt }] }
+    if (text.includes('from app.drivers'))
+      return { rows: [{ id: driverId }] }
+    if (text.includes('from app.tenant_settings'))
+      return { rows: [{ airport_wait_minutes: 90, elsewhere_wait_minutes: 25, time_zone: 'Europe/Zagreb' }] }
+    if (text.includes('from app.roster'))
+      throw new RosterInputError()
+    return { rows: [] }
+  })
+  await expect(suggestRosterVehicle(transaction, rideId, driverId)).rejects.toBeInstanceOf(RosterInputError)
 })
 
 it('treats a lost update as a conflict and appends nothing', async () => {

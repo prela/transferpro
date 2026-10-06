@@ -8,6 +8,7 @@ import process from 'node:process'
 import { z } from 'zod'
 import { configureLogger, logLevels } from './logger'
 
+export { hideDatabaseError, postgresErrorCode } from './database-error'
 export { configureLogger, createLogger, currentRequestId, currentTenantId, endRequestLog, getLogger, handleLoggedError, openRequestLog, resolveRequestId, runWithRequestId } from './logger'
 export type { Logger, LogLevel } from './logger'
 
