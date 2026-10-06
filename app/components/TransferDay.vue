@@ -17,6 +17,7 @@ const locations = ref<Location[]>([])
 const drivers = ref<Driver[]>([])
 const vehicles = ref<Vehicle[]>([])
 const assigning = ref<{ rideId: string, guestName: string } | null>(null)
+const dayListRegion = ref<HTMLElement | null>(null)
 
 const clientId = ref<string | undefined>()
 const pickupWall = ref(`${today}T12:00`)
@@ -128,6 +129,10 @@ function assignButtonId(rideId: string): string {
   return `assign-ride-${rideId}`
 }
 
+function focusAssignButton(rideId: string) {
+  document.getElementById(assignButtonId(rideId))?.focus()
+}
+
 function openAssign(ride: TransferDayRide) {
   assigning.value = { rideId: ride.rideId, guestName: ride.guestName }
 }
@@ -138,13 +143,34 @@ function closeAssign() {
   if (!rideId)
     return
   void nextTick(() => {
-    document.getElementById(assignButtonId(rideId))?.focus()
+    focusAssignButton(rideId)
   })
 }
 
-function onAssigned() {
+/**
+ * Next unassigned Ride after `afterRideId` in list order, wrapping to the first.
+ * The assigned Ride is no longer unassigned, so it is skipped.
+ */
+function nextUnassignedRideId(afterRideId: string): string | null {
+  const order = rides.value
+  const start = order.findIndex(ride => ride.rideId === afterRideId)
+  const from = start === -1 ? 0 : start + 1
+  const wrapped = [...order.slice(from), ...order.slice(0, from)]
+  return wrapped.find(ride => ride.state === 'unassigned')?.rideId ?? null
+}
+
+async function onAssigned() {
+  const assignedRideId = assigning.value?.rideId
   assigning.value = null
-  void loadDay()
+  await loadDay()
+  if (loadError.value || !assignedRideId)
+    return
+  await nextTick()
+  const nextId = nextUnassignedRideId(assignedRideId)
+  if (nextId)
+    focusAssignButton(nextId)
+  else
+    dayListRegion.value?.focus()
 }
 
 function httpStatus(error: unknown): number | undefined {
@@ -205,13 +231,17 @@ function applyCatalogs(catalogs: Awaited<ReturnType<typeof fetchCatalogs>>) {
   vehicles.value = catalogs.vehicles
 }
 
+async function fetchTransferDay(date: string) {
+  return transferDaySchema.parse(await $fetch('/api/transfers', { query: { date } }))
+}
+
 async function loadDay(ticket = ++loadTicket) {
   if (!isCalendarDate(day.value))
     return
   loading.value = true
   loadError.value = false
   try {
-    const listed = transferDaySchema.parse(await $fetch('/api/transfers', { query: { date: day.value } }))
+    const listed = await fetchTransferDay(day.value)
     if (ticket !== loadTicket)
       return
     rides.value = listed.rides
@@ -233,7 +263,7 @@ async function loadAll() {
   loadError.value = false
   try {
     const dayPromise = isCalendarDate(day.value)
-      ? $fetch('/api/transfers', { query: { date: day.value } }).then(data => transferDaySchema.parse(data))
+      ? fetchTransferDay(day.value)
       : Promise.resolve(null)
     const [catalogs, listed] = await Promise.all([fetchCatalogs(), dayPromise])
     if (ticket !== loadTicket)
@@ -437,6 +467,7 @@ onMounted(loadAll)
     </p>
     <div
       v-else
+      ref="dayListRegion"
       class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
       role="region"
       :aria-label="t('transfers.title')"
@@ -488,7 +519,7 @@ onMounted(loadAll)
             color="neutral"
             variant="outline"
             size="xl"
-            :aria-label="`${t('ride.assign')}: ${row.original.guestName}`"
+            :aria-label="t('ride.assignFor', { guest: row.original.guestName })"
             @click="openAssign(row.original)"
           >
             {{ t('ride.assign') }}

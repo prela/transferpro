@@ -94,8 +94,12 @@ function errorCode(error: unknown): string | undefined {
 
 watch(driverId, (next) => {
   const ticket = ++fillTicket
+  // Capture before rosterVehicleId is cleared: fromRoster depends on it.
+  // A roster pre-fill belongs to the previous driver, so drop it. A hand-picked
+  // vehicle stays until the new roster answers, as before.
+  if (fromRoster.value)
+    vehicleId.value = undefined
   const snapshot = vehicleId.value
-  // A new driver is not this hint. Keep the chosen vehicle until the roster answers.
   rosterVehicleId.value = null
   formErrorKey.value = null
   if (!next)
