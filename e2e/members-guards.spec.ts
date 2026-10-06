@@ -8,7 +8,7 @@ test('an admin cannot change or remove themselves, and can cancel a removal', as
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
 
   const selfRow = page.getByRole('row', { name: tenant.adminName })
-  await expect(selfRow).toContainText('vi')
+  await expect(selfRow.getByText('(vi)', { exact: true })).toBeVisible()
   await expect(selfRow.getByRole('combobox', { name: 'Uloga' })).toHaveCount(0)
   await expect(selfRow.getByRole('button', { name: 'Ukloni člana', exact: true })).toHaveCount(0)
   await expect(selfRow).toContainText('Administrator')
