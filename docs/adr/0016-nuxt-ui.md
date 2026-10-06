@@ -14,7 +14,7 @@ The theme already follows the system unless this browser has stored `light` or `
 
 We will use Nuxt UI v4 (`@nuxt/ui`) with Tailwind CSS v4. It is the only UI library. We will not mix in shadcn-vue or any other kit. When Nuxt UI lacks a component, we will build it from the Reka UI primitives Nuxt UI already depends on, and style it with Nuxt UI theme tokens.
 
-`@nuxt/ui` 4.11.3 accepts this repo's Nuxt 4.6 (`@nuxt/schema` ^4.6.0), TypeScript ^6, Zod ^4, and Vue Router ^5. `@nuxtjs/i18n` 10 stays beside it. The module registers `@nuxtjs/color-mode`, `@nuxt/icon`, and `@nuxt/fonts`.
+`@nuxt/ui` 4.11.3 accepts this repo's Nuxt 4.5 (`@nuxt/schema` ^4.5.2), TypeScript ^6, Zod ^4, and Vue Router ^5. `@nuxtjs/i18n` 10 stays beside it. The module registers `@nuxtjs/color-mode`, `@nuxt/icon`, and `@nuxt/fonts`.
 
 The theme uses `@nuxtjs/color-mode`, not the hand-written head script. `preference` is `system`, `fallback` is `light`, and `storageKey` is `transferpro-theme`. A stored `light` or `dark` value is the same string the previous script wrote, so an existing choice still applies. The module's head script sets the `light` or `dark` class on `html` before paint. A toggle writes only `light` or `dark`, never `system`. The button keeps both labels in the DOM, and the class shows one of them, so the label does not wait on hydration.
 

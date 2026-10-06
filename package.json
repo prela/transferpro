@@ -1,9 +1,9 @@
 {
   "type": "module",
-  "packageManager": "pnpm@12.10.0",
+  "packageManager": "pnpm@11.28.2",
   "engines": {
-    "node": "^22.22.3 || ^24.15.0 || >=26.0.0",
-    "pnpm": "12.10.x"
+    "node": "^22.19.0 || ^24.11.0 || >=26.0.0",
+    "pnpm": ">=11.28.0 <12"
   },
   "scripts": {
     "prepare": "husky",
@@ -30,7 +30,7 @@
     "better-auth": "^1.7.7",
     "drizzle-orm": "^0.45.3",
     "h3": "^1.15.11",
-    "nuxt": "^4.6.0",
+    "nuxt": "^4.5.2",
     "pg-boss": "^12.35.1",
     "pino": "^10.3.1",
     "tailwindcss": "^4.3.3",

@@ -1,48 +1,8 @@
 minimumReleaseAgeExcludePrune: true
-minimumReleaseAgeExclude:
-  - '@nuxt/cli@4.0.0'
-  - '@nuxt/kit@4.6.0'
-  - '@nuxt/nitro-server@4.6.0'
-  - '@nuxt/schema@4.6.0'
-  - '@nuxt/vite-builder@4.6.0'
-  - '@nuxt/vite-server@4.6.0'
-  - nuxt@4.6.0
 # Babel still depends on semver 6.3.1, which this policy flags as a trust downgrade.
-# Nuxt 4.6 (@nuxt/vite-builder) still depends on cssnano 9.2.2 and its postcss plugin set, which this policy flags as a trust downgrade.
 trustPolicy: no-downgrade
 trustPolicyExclude:
   - semver
-  - stylehacks
-  - cssnano
-  - cssnano-preset-default
-  - cssnano-utils
-  - postcss-calc
-  - postcss-svgo
-  - postcss-colormin
-  - postcss-merge-rules
-  - postcss-discard-empty
-  - postcss-minify-params
-  - postcss-normalize-url
-  - postcss-convert-values
-  - postcss-merge-longhand
-  - postcss-ordered-values
-  - postcss-reduce-initial
-  - postcss-discard-comments
-  - postcss-minify-gradients
-  - postcss-minify-selectors
-  - postcss-normalize-string
-  - postcss-unique-selectors
-  - postcss-normalize-charset
-  - postcss-normalize-unicode
-  - postcss-reduce-transforms
-  - postcss-discard-duplicates
-  - postcss-discard-overridden
-  - postcss-minify-font-values
-  - postcss-normalize-positions
-  - postcss-normalize-whitespace
-  - postcss-normalize-repeat-style
-  - postcss-normalize-display-values
-  - postcss-normalize-timing-functions
 
 shellEmulator: true
 
