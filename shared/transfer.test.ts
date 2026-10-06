@@ -91,6 +91,12 @@ it('accepts a pickup on the 30-day and 18-month edges and refuses one millisecon
   expect(() => parseCreateTransfer({ ...body, pickupAt: new Date(latest.getTime() + 1).toISOString() }, now)).toThrow(TransferInputError)
 })
 
+it('treats an unparseable pickup as invalid, not too-early', () => {
+  expect(pickupAtError('not-a-date', now)).toBe('invalid')
+  expect(pickupAtError('', now)).toBe('invalid')
+  expect(pickupAtError('2026-10-06T22:30:00.000Z', new Date('not-a-date'))).toBe('invalid')
+})
+
 it('refuses a Transfer whose start and end are the same place', () => {
   expect(sameLocationError(startLocationId, endLocationId)).toBeNull()
   expect(sameLocationError(startLocationId, startLocationId)).toBe('same')

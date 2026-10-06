@@ -28,10 +28,15 @@ export const FLIGHT_NUMBER_MAX_LENGTH = 20
 /** A note for the office. Longer than that is a document, not a note. */
 export const NOTE_MAX_LENGTH = 1000
 
-/** A pickup older than this many days before now is refused. */
+/**
+ * Look-back for a pickup instant: 30 × 24 hours from `now` (720 hours), not
+ * 30 calendar days in the Tenant time zone. DST and local midnight do not
+ * move the edge. The forward bound is {@link PICKUP_FUTURE_MONTHS} UTC
+ * calendar months (see {@link addUtcMonths}).
+ */
 export const PICKUP_PAST_DAYS = 30
 
-/** A pickup later than this many calendar months after now is refused. */
+/** A pickup later than this many UTC calendar months after now is refused. */
 export const PICKUP_FUTURE_MONTHS = 18
 
 /**
@@ -157,18 +162,20 @@ export const transferDaySchema = z.object({
 
 export type TransferDay = z.infer<typeof transferDaySchema>
 
-export type PickupAtError = 'too-early' | 'too-late'
+export type PickupAtError = 'invalid' | 'too-early' | 'too-late'
 
 /**
- * The pickup instant is allowed when it is not earlier than 30 days before
- * `now` and not later than 18 calendar months after `now`. The edges are
- * included. Months are UTC calendar months; a day that does not exist in the
- * target month lands on the last day of that month.
+ * The pickup instant is allowed when it is not earlier than 30 × 24 hours
+ * before `now` and not later than 18 UTC calendar months after `now`. The
+ * edges are included. Months are UTC calendar months; a day that does not
+ * exist in the target month lands on the last day of that month. An
+ * unparseable instant is `invalid`, not `too-early`.
  */
 export function pickupAtError(pickupAt: string, now: Date): PickupAtError | null {
   const instant = new Date(pickupAt)
   if (Number.isNaN(instant.getTime()) || Number.isNaN(now.getTime()))
-    return 'too-early'
+    return 'invalid'
+  // 720 hours from `now`, not 30 Tenant-local calendar days.
   const earliest = now.getTime() - PICKUP_PAST_DAYS * 24 * 60 * 60 * 1000
   const latest = addUtcMonths(now, PICKUP_FUTURE_MONTHS).getTime()
   if (instant.getTime() < earliest)

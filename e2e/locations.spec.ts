@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { chooseOption, signIn } from './fixtures/ui'
 
 const place = 'Zračna luka Dubrovnik'
 const address = 'Dobrota bb, Čilipi'
@@ -19,8 +19,7 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   await expect(page.getByRole('alert')).toContainText('Odaberite vrstu: aerodrom, hotel, adresa ili ostalo.')
 
   await page.getByLabel('Ime').fill(' ')
-  await page.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Aerodrom', exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Aerodrom')
   await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Unesite ime.')
 
@@ -38,8 +37,7 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   await page.getByRole('button', { name: `Ispravi lokaciju: ${place}` }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Ime').fill(nextPlace)
-  await dialog.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Hotel', exact: true }).click()
+  await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
   await dialog.getByLabel('Adresa').fill(nextAddress)
   await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
   await expect(dialog).toBeHidden()
@@ -79,8 +77,7 @@ test('dispatcher adds a location and the screen shows the tenant name', async ({
   await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
 
   await page.getByLabel('Ime').fill('Hotel Park')
-  await page.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Hotel', exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
   await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Ispravi lokaciju: Hotel Park' })).toBeVisible()
 })
