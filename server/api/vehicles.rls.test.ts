@@ -223,7 +223,8 @@ it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and
   const duplicateText = await duplicate.text()
   expect(duplicateText).not.toContain(plate)
   expect(duplicateText).not.toContain('DU 123 AB')
-  expect(JSON.parse(duplicateText)).toMatchObject({ statusCode: 409, code: 'vehicle_plate_taken' })
+  expect(duplicateText).toContain('vehicle_plate_taken')
+  expect(JSON.parse(duplicateText)).toMatchObject({ statusCode: 409, data: { code: 'vehicle_plate_taken' } })
 
   const corrected = await call('PATCH', `/api/vehicles/${row.id}`, admin, {
     registrationPlate: 'ZG111AA',
@@ -250,7 +251,8 @@ it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and
   expect(frozen.status).toBe(409)
   const frozenText = await frozen.text()
   expect(frozenText).not.toContain('ZG111AA')
-  expect(JSON.parse(frozenText)).toMatchObject({ statusCode: 409, code: 'vehicle_archived' })
+  expect(frozenText).toContain('vehicle_archived')
+  expect(JSON.parse(frozenText)).toMatchObject({ statusCode: 409, data: { code: 'vehicle_archived' } })
 
   const hidden = await call('GET', '/api/vehicles', dispatcher)
   expect(await hidden.json()).toEqual({ vehicles: [] })
@@ -272,7 +274,8 @@ it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and
   expect(archivedPlate.status).toBe(409)
   const archivedPlateText = await archivedPlate.text()
   expect(archivedPlateText).not.toContain('ZG111AA')
-  expect(JSON.parse(archivedPlateText)).toMatchObject({ statusCode: 409, code: 'vehicle_archived_plate' })
+  expect(archivedPlateText).toContain('vehicle_archived_plate')
+  expect(JSON.parse(archivedPlateText)).toMatchObject({ statusCode: 409, data: { code: 'vehicle_archived_plate' } })
 
   const again = await call('POST', `/api/vehicles/${row.id}/archive`, admin)
   expect(again.status).toBe(200)
