@@ -11,9 +11,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   assigned: []
+  cancel: []
 }>()
 
 const { t } = useI18n()
+const toast = useToast()
 const { notifyAuditChanged } = useAuditRefresh()
 const titleId = useId()
 
@@ -21,6 +23,9 @@ const driverId = ref<string | undefined>()
 const vehicleId = ref<string | undefined>()
 const pending = ref(false)
 const formErrorKey = ref<RideFailure | null>(null)
+const rosterVehicleId = ref<string | null>(null)
+
+const fromRoster = computed(() => rosterVehicleId.value !== null && vehicleId.value === rosterVehicleId.value)
 
 // A slower roster read must not fill a vehicle for a driver the dispatcher has left.
 let fillTicket = 0
@@ -89,15 +94,16 @@ function errorCode(error: unknown): string | undefined {
 
 watch(driverId, (next) => {
   const ticket = ++fillTicket
-  // The previous driver's vehicle is not this driver's roster. A null roster stays empty.
-  vehicleId.value = undefined
+  const snapshot = vehicleId.value
+  // A new driver is not this hint. Keep the chosen vehicle until the roster answers.
+  rosterVehicleId.value = null
   formErrorKey.value = null
   if (!next)
     return
-  void prefillVehicle(next, ticket)
+  void prefillVehicle(next, ticket, snapshot)
 })
 
-async function prefillVehicle(nextDriverId: string, ticket: number) {
+async function prefillVehicle(nextDriverId: string, ticket: number, snapshot: string | undefined) {
   try {
     const suggestion = rosterVehicleSuggestionSchema.parse(await $fetch(`/api/rides/${props.rideId}/roster-vehicle`, {
       query: { driverId: nextDriverId },
@@ -105,16 +111,16 @@ async function prefillVehicle(nextDriverId: string, ticket: number) {
     if (ticket !== fillTicket)
       return
     // A vehicle chosen while this read was in flight stays. The roster is only the pre-fill.
-    if (vehicleId.value)
+    if (vehicleId.value !== snapshot)
       return
     const offered = vehicleItems.value.some(item => item.value === suggestion.vehicleId)
-    if (offered && suggestion.vehicleId !== null)
+    if (offered && suggestion.vehicleId !== null) {
       vehicleId.value = suggestion.vehicleId
+      rosterVehicleId.value = suggestion.vehicleId
+    }
   }
-  catch (error) {
-    if (ticket !== fillTicket)
-      return
-    formErrorKey.value = failureKey(error)
+  catch {
+    // A failed pre-fill leaves the chosen vehicle and does not raise an error.
   }
 }
 
@@ -131,6 +137,7 @@ async function assign() {
       body: { driverId: chosenDriver, vehicleId: chosenVehicle },
     }))
     notifyAuditChanged()
+    toast.add({ title: t('ride.assigned'), color: 'success' })
     emit('assigned')
   }
   catch (error) {
@@ -177,6 +184,8 @@ async function assign() {
         name="assign-driver"
         :items="driverItems"
         :placeholder="t('ride.chooseDriver')"
+        :disabled="pending"
+        autofocus
         class="w-full"
       />
     </UFormField>
@@ -192,16 +201,35 @@ async function assign() {
         name="assign-vehicle"
         :items="vehicleItems"
         :placeholder="t('ride.chooseVehicle')"
+        :disabled="pending"
         class="w-full"
       />
     </UFormField>
-    <UButton
-      type="submit"
-      size="xl"
-      :disabled="pending || !canSubmit"
-      :loading="pending"
+    <p
+      v-if="fromRoster"
+      class="mb-4 text-sm text-muted"
     >
-      {{ pending ? t('ride.submitting') : t('ride.submit') }}
-    </UButton>
+      {{ t('ride.fromRoster') }}
+    </p>
+    <div class="flex flex-wrap gap-2">
+      <UButton
+        type="submit"
+        size="xl"
+        :disabled="pending || !canSubmit"
+        :loading="pending"
+      >
+        {{ pending ? t('ride.submitting') : t('ride.submit') }}
+      </UButton>
+      <UButton
+        type="button"
+        color="neutral"
+        variant="outline"
+        size="xl"
+        :disabled="pending"
+        @click="emit('cancel')"
+      >
+        {{ t('ride.cancel') }}
+      </UButton>
+    </div>
   </form>
 </template>

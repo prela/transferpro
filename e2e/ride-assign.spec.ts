@@ -1,11 +1,11 @@
 import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { seedMember, seedTenant, seedVehicleRecord } from './fixtures/seed'
 import { chooseOption, signIn, signOut, useTheme } from './fixtures/ui'
 
 const phone = '+385911112233'
-const licence = '2027-06-01'
+const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
 
 async function createdId(response: APIResponse): Promise<string> {
   if (!response.ok())
@@ -73,9 +73,13 @@ async function recordTodayRide(page: Page, guest: string): Promise<{ day: string
   return { day }
 }
 
+function assignButton(page: Page, guest: string) {
+  return page.getByRole('row', { name: guest }).getByRole('button', { name: `Dodijeli: ${guest}` })
+}
+
 async function openAssign(page: Page, guest: string) {
   await page.getByRole('link', { name: 'Transferi' }).click()
-  await page.getByRole('row', { name: guest }).getByRole('button', { name: 'Dodijeli', exact: true }).click()
+  await assignButton(page, guest).click()
   await expect(page.getByRole('heading', { level: 2, name: 'Dodjela vožnje' })).toBeVisible()
 }
 
@@ -95,10 +99,12 @@ test('an admin assigns a ride and the audit log names the actor', async ({ page 
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), plate)
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
 
+  await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
+  await expect(page.getByRole('listitem').filter({ hasText: 'Dodijeljeno' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: driverName, exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: plate, exact: true })).toBeVisible()
-  await expect(page.getByRole('row', { name: guest }).getByRole('button', { name: 'Dodijeli', exact: true })).toHaveCount(0)
+  await expect(assignButton(page, guest)).toHaveCount(0)
 
   await page.getByRole('link', { name: 'Početna' }).click()
   await expect(page.getByRole('row', { name: 'Vožnja dodijeljena' })).toContainText(tenant.adminName)
@@ -127,20 +133,24 @@ test('the roster pre-fill picks the rostered vehicle, and an override is saved',
   await openAssign(page, guest)
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), driverName)
   await expect(page.getByRole('combobox', { name: 'Vozilo' })).toContainText(rosterPlate)
+  await expect(page.getByText('Iz rasporeda za taj dan')).toBeVisible()
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), otherPlate)
+  await expect(page.getByText('Iz rasporeda za taj dan')).toHaveCount(0)
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
 
+  await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
+  await expect(page.getByRole('listitem').filter({ hasText: 'Dodijeljeno' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: driverName, exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: otherPlate, exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: rosterPlate, exact: true })).toHaveCount(0)
 })
 
-test('submit stays disabled with only a driver or only a vehicle', async ({ page }) => {
-  const tenant = await seedTenant('assign-disabled')
+test('a driver with no roster keeps the chosen vehicle and shows no hint', async ({ page }) => {
+  const tenant = await seedTenant('assign-keep')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
-  const guest = 'Iva Disabled'
-  const driverName = 'Ana Disabled'
+  const guest = 'Iva Keep'
+  const driverName = 'Ana Keep'
   const plate = 'DU300AA'
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
   await addDriver(page, driverName)
@@ -158,38 +168,104 @@ test('submit stays disabled with only a driver or only a vehicle', async ({ page
   const prefill = page.waitForResponse(response => response.url().includes('/roster-vehicle'))
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), driverName)
   await prefill
-  await expect(vehicle).not.toContainText(plate)
+  await expect(vehicle).toContainText(plate)
+  await expect(page.getByText('Iz rasporeda za taj dan')).toHaveCount(0)
+  await expect(submit).toBeEnabled()
+})
+
+test('submit stays disabled with only a driver', async ({ page }) => {
+  const tenant = await seedTenant('assign-driver-only')
+  const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
+  const guest = 'Iva DriverOnly'
+  const driverName = 'Ana DriverOnly'
+  await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
+  await addDriver(page, driverName)
+  await addVehicle(page, 'DU320AA')
+  await recordTodayRide(page, guest)
+
+  await openAssign(page, guest)
+  const submit = page.getByRole('button', { name: 'Dodijeli vožnju', exact: true })
+  const prefill = page.waitForResponse(response => response.url().includes('/roster-vehicle'))
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), driverName)
+  await prefill
+  await expect(page.getByText('Iz rasporeda za taj dan')).toHaveCount(0)
   await expect(submit).toBeDisabled()
 })
 
-test('a second assign of the same ride shows the not-unassigned message', async ({ page }) => {
+test('assigning from the form after the ride is already assigned shows the not-unassigned message', async ({ page }) => {
   const tenant = await seedTenant('assign-again')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   const guest = 'Iva Again'
   const driverName = 'Ana Again'
   const plate = 'DU400AA'
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
+  const driverId = await addDriver(page, driverName)
+  const vehicleId = await addVehicle(page, plate)
+  const { day } = await recordTodayRide(page, guest)
+  const listed = await page.request.get('/api/transfers', { params: { date: day } })
+  expect(listed.ok()).toBeTruthy()
+  const body = await listed.json() as { rides: { rideId: string, guestName: string }[] }
+  const rideId = body.rides.find(ride => ride.guestName === guest)?.rideId
+  expect(rideId).toBeTruthy()
+
+  await openAssign(page, guest)
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), driverName)
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), plate)
+  const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
+    data: { driverId, vehicleId },
+  })
+  expect(assigned.ok()).toBeTruthy()
+  await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('Dodijeliti se može samo vožnja koja još nema vozača i vozilo.')
+  await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toBeVisible()
+})
+
+test('a failed roster pre-fill leaves the chosen vehicle and shows no error', async ({ page }) => {
+  const tenant = await seedTenant('assign-prefill-fail')
+  const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
+  const guest = 'Iva PrefillFail'
+  const driverName = 'Ana PrefillFail'
+  const plate = 'DU310AA'
+  await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
   await addDriver(page, driverName)
   await addVehicle(page, plate)
   await recordTodayRide(page, guest)
 
   await openAssign(page, guest)
-  await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), driverName)
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), plate)
-  const submit = page.getByRole('button', { name: 'Dodijeli vožnju', exact: true })
-  await submit.click()
-  await expect(page.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
-
-  await submit.click()
-  await expect(page.getByRole('alert')).toContainText('Dodijeliti se može samo vožnja koja još nema vozača i vozilo.')
-  await expect(page.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
+  await page.route('**/roster-vehicle**', async (route) => {
+    await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' })
+  })
+  const prefill = page.waitForResponse(response => response.url().includes('/roster-vehicle'))
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), driverName)
+  await prefill
+  await expect(page.getByRole('combobox', { name: 'Vozilo' })).toContainText(plate)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByText('Iz rasporeda za taj dan')).toHaveCount(0)
 })
 
-test('an archived vehicle is not offered', async ({ page }) => {
+test('cancel closes the form and returns focus to assign', async ({ page }) => {
+  const tenant = await seedTenant('assign-cancel')
+  const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
+  const guest = 'Iva Cancel'
+  await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
+  await recordTodayRide(page, guest)
+
+  await openAssign(page, guest)
+  await expect(page.getByRole('combobox', { name: 'Vozač' })).toBeFocused()
+  await page.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
+  await expect(assignButton(page, guest)).toBeFocused()
+})
+
+test('an assigned archived vehicle keeps its plate with a badge, and the picker omits it', async ({ page }) => {
   const tenant = await seedTenant('assign-archived')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
-  const guest = 'Iva Archived'
+  const assignedGuest = 'Iva AssignedArchived'
+  const openGuest = 'Iva OpenArchived'
+  const driverName = 'Ana Archived'
   const livePlate = 'DU500AA'
+  const otherPlate = 'DU500BB'
   const archivedPlate = 'ARH500X'
   await seedVehicleRecord(tenant.tenantId, {
     registrationPlate: archivedPlate,
@@ -199,15 +275,32 @@ test('an archived vehicle is not offered', async ({ page }) => {
     archived: true,
   })
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
-  await addVehicle(page, livePlate)
-  await recordTodayRide(page, guest)
+  await addDriver(page, driverName)
+  const liveVehicleId = await addVehicle(page, livePlate)
+  await addVehicle(page, otherPlate)
+  await recordTodayRide(page, assignedGuest)
+  await recordTodayRide(page, openGuest)
 
-  await openAssign(page, guest)
+  await openAssign(page, assignedGuest)
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), driverName)
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), livePlate)
+  await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
+  await expect(page.getByRole('cell', { name: livePlate, exact: true })).toBeVisible()
+
+  const archived = await page.request.post(`/api/vehicles/${liveVehicleId}/archive`)
+  expect(archived.ok()).toBeTruthy()
+  await page.reload()
+  const assignedRow = page.getByRole('row', { name: assignedGuest })
+  await expect(assignedRow).toContainText(livePlate)
+  await expect(assignedRow).toContainText('Arhivirano')
+
+  await assignButton(page, openGuest).click()
   await page.getByRole('combobox', { name: 'Vozilo' }).click()
   const listbox = page.getByRole('listbox')
-  await expect(listbox).toBeVisible()
+  await expect(listbox.getByRole('option', { name: otherPlate, exact: true })).toBeVisible()
   await expect(listbox.getByRole('option', { name: archivedPlate, exact: true })).toHaveCount(0)
-  await expect(listbox.getByRole('option', { name: livePlate, exact: true })).toBeVisible()
+  await expect(listbox.getByRole('option', { name: livePlate, exact: true })).toHaveCount(0)
 })
 
 test('a driver sees no assign action', async ({ page }) => {
@@ -221,7 +314,7 @@ test('a driver sees no assign action', async ({ page }) => {
 
   await page.goto('/transfers')
   await expect(page.getByRole('alert')).toContainText('Vozač ne može zabilježiti transfer ni vidjeti dnevni popis.')
-  await expect(page.getByRole('button', { name: 'Dodijeli', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Dodijeli/ })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
 })
 
@@ -235,11 +328,13 @@ test('the assign form uses English copy', async ({ page }) => {
   await page.getByRole('button', { name: 'English', exact: true }).click()
   await expect(page.getByRole('columnheader', { name: 'Driver' })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Vehicle' })).toBeVisible()
-  await page.getByRole('row', { name: guest }).getByRole('button', { name: 'Assign', exact: true }).click()
+  await expect(page.getByRole('columnheader', { name: 'Actions' })).toBeAttached()
+  await page.getByRole('row', { name: guest }).getByRole('button', { name: `Assign: ${guest}` }).click()
   await expect(page.getByRole('heading', { level: 2, name: 'Assign the ride' })).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Driver' })).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Vehicle' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Assign ride', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Unassigned', exact: true })).toBeVisible()
 })
 
