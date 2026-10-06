@@ -61,6 +61,23 @@ export async function driverIsInTenant(transaction: TenantTransaction, driverId:
 }
 
 /**
+ * The must-accept flag of this Tenant's Driver, or null when the id is absent.
+ * Assignment copies this boolean onto the Ride. The phone and the licence
+ * dates stay unread. Another Tenant's id is null: the select runs under the
+ * session's row security.
+ */
+export async function driverMustAccept(transaction: TenantTransaction, driverId: string): Promise<boolean | null> {
+  const selected = z.object({
+    rows: z.array(z.object({ mustAccept: z.boolean() })),
+  }).parse(await transaction.execute(sql`
+    select must_accept as "mustAccept"
+    from app.drivers
+    where id = ${driverId}
+  `))
+  return selected.rows[0]?.mustAccept ?? null
+}
+
+/**
  * This Tenant's Drivers, by name, so the office can find one.
  * There is no inactive or archived Driver column, so this is every row.
  */

@@ -106,6 +106,9 @@ function detailText(entry: AuditEntry): string {
     case 'transfer.created':
       // Field names only. The guest name, the flight, the note, and the price stay on the Transfer.
       return entry.data.fields.map(field => t(`transfers.fields.${field}`)).join(', ')
+    case 'ride.assigned':
+      // The actor column names who assigned. Field labels are the assignment screen.
+      return ''
     case 'roster.assigned':
     case 'roster.changed':
     case 'roster.cleared':

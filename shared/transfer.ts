@@ -35,8 +35,8 @@ export const PICKUP_PAST_DAYS = 30
 export const PICKUP_FUTURE_MONTHS = 18
 
 /**
- * ADR-0005. This slice writes only `unassigned`. The other labels are reserved
- * so a later assignment does not have to widen the check first.
+ * ADR-0005. Creating a Transfer writes `unassigned`. Assignment writes
+ * `assigned`. The other labels stay reserved for later commands.
  */
 export const RIDE_STATES = ['unassigned', 'assigned', 'accepted', 'done', 'no-show', 'cancelled'] as const
 
@@ -121,13 +121,17 @@ export const transferSchema = z.object({
 
 export type Transfer = z.infer<typeof transferSchema>
 
-/** The one Ride this slice creates. Driver and Vehicle stay null until #19. */
+/**
+ * One Ride. `mustAccept` is null while unassigned: the copy is taken at
+ * assignment and is not a live link to the Driver.
+ */
 export const rideSchema = z.object({
   id: z.uuid(),
   transferId: z.uuid(),
   state: rideStateSchema,
   driverId: z.uuid().nullable(),
   vehicleId: z.uuid().nullable(),
+  mustAccept: z.boolean().nullable(),
 })
 
 export type Ride = z.infer<typeof rideSchema>
@@ -146,6 +150,7 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   state: rideStateSchema,
   driverId: z.uuid().nullable(),
   vehicleId: z.uuid().nullable(),
+  mustAccept: z.boolean().nullable(),
 })
 
 export type TransferDayRide = z.infer<typeof transferDayRideSchema>

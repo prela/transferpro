@@ -13,6 +13,8 @@ import { tenantTable } from './tenant-table'
  * delete. FORCE RLS is in the migration; drizzle-kit cannot emit it.
  * The partial unique index is one live plate per Tenant; an archived plate
  * may be reused.
+ * `(tenant_id, id)` is unique so a Ride and a roster row can reference this
+ * Vehicle and another Tenant's id in the same breath (migration 0019).
  */
 
 const kinds = sql.raw(VEHICLE_KINDS.map(kind => `'${kind}'`).join(', '))
@@ -42,4 +44,5 @@ export const vehicles = tenantTable('vehicles', {
     sql`${table.description} is null or (${table.description} = btrim(${table.description}) and length(${table.description}) between 1 and ${descriptionMax})`,
   ),
   uniqueIndex('vehicles_plate_active').on(table.tenantId, table.registrationPlate).where(sql`${table.archivedAt} is null`),
+  uniqueIndex('vehicles_tenant_id_id').on(table.tenantId, table.id),
 ], { oneRowPerTenant: false })

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { clientKindSchema } from './client'
 import { driverFieldSchema } from './driver'
 import { locationFieldSchema } from './location'
+import { RIDE_ASSIGNMENT_FIELDS, rideAssignmentFieldSchema } from './ride-assignment'
 import { rosterDateSchema } from './roster'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
@@ -32,6 +33,7 @@ export const auditActions = [
   'location.field_changed',
   'location.archived',
   'transfer.created',
+  'ride.assigned',
   'roster.assigned',
   'roster.changed',
   'roster.cleared',
@@ -233,6 +235,23 @@ const transferCreated = z.object({
 })
 
 /*
+ * An assignment is not a member. The ids say which rows. The field list
+ * names what was written. The must-accept value stays on the Ride: a boolean
+ * copied from the Driver would still be a value, and this row is never deleted.
+ * A plate, a phone, or a name is not a key. The actor is the entry's actor, not a field.
+ */
+const rideAssigned = z.object({
+  action: z.literal('ride.assigned'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    driverId,
+    vehicleId,
+    fields: z.array(rideAssignmentFieldSchema).min(1).max(RIDE_ASSIGNMENT_FIELDS.length),
+  }),
+})
+
+/*
  * A roster row is not a member. The data names the day and the ids.
  * A plate, a driver name, or a phone would stay forever on a row that
  * is never deleted, so none of those keys exist.
@@ -304,6 +323,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   locationFieldChanged,
   locationArchived,
   transferCreated,
+  rideAssigned,
   rosterAssigned,
   rosterChanged,
   rosterCleared,
@@ -345,6 +365,7 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   locationFieldChanged.extend(listed),
   locationArchived.extend(listed),
   transferCreated.extend(listed),
+  rideAssigned.extend(listed),
   rosterAssigned.extend(listed),
   rosterChanged.extend(listed),
   rosterCleared.extend(listed),

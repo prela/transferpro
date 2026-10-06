@@ -31,6 +31,23 @@ beforeAll(async () => {
   const owner = await ownerPool.connect()
   try {
     await owner.query('delete from app.roster where tenant_id in ($1, $2)', [tenantA, tenantB])
+    await owner.query('delete from app.drivers where id in ($1, $2)', [driverA, driverB])
+    await owner.query('delete from app.vehicles where id in ($1, $2)', [vehicleA, vehicleB])
+    // The composite foreign keys need real rows. The ids stay the ones the assertions name.
+    // Both Drivers and both Vehicles are Tenant A's: the uniqueness cases use them together.
+    await owner.query(
+      `insert into app.drivers (tenant_id, id, name, kind, phone, driving_licence_expires_on, transport_licence_expires_on)
+       values ($1, $2, 'Roster A', 'own', '+385910000011', '2030-01-01', '2030-01-01'),
+              ($1, $3, 'Roster B', 'own', '+385910000012', '2030-01-01', '2030-01-01')`,
+      [tenantA, driverA, driverB],
+    )
+    await owner.query(
+      `insert into app.vehicles (
+         tenant_id, id, registration_plate, kind, registration_expires_on, technical_inspection_expires_on, insurance_expires_on
+       ) values ($1, $2, 'RS58AAA', 'fixed', '2030-01-01', '2030-01-01', '2030-01-01'),
+                ($1, $3, 'RS58BBB', 'fixed', '2030-01-01', '2030-01-01', '2030-01-01')`,
+      [tenantA, vehicleA, vehicleB],
+    )
   }
   finally {
     owner.release()

@@ -127,6 +127,9 @@
       "transfer": {
         "created": "Transfer recorded"
       },
+      "ride": {
+        "assigned": "Ride assigned"
+      },
       "roster": {
         "assigned": "Vehicle given for the day",
         "changed": "Day's vehicle changed",
@@ -431,6 +434,10 @@
     "signedOut": "You are signed out. Sign in and try again.",
     "saveFailed": "The roster could not be saved. Try again.",
     "vehicle": "Vehicle"
+  },
+  "ride": {
+    "vehicleArchived": "An archived vehicle cannot be assigned.",
+    "notUnassigned": "Only an unassigned ride can be assigned."
   },
   "expiringDocuments": {
     "title": "Expiring documents",

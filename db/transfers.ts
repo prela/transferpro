@@ -2,8 +2,10 @@ import { sql } from 'drizzle-orm'
 import { boolean, check, foreignKey, index, integer, numeric, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { CHILD_SEAT_COUNT_MAX, CHILD_SEAT_COUNT_MIN, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, LUGGAGE_COUNT_MIN, NOTE_MAX_LENGTH, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, PAYMENT_METHODS, RIDE_STATES } from '../shared'
 import { clients } from './clients'
+import { drivers } from './drivers'
 import { locations } from './locations'
 import { tenantTable } from './tenant-table'
+import { vehicles } from './vehicles'
 
 /**
  * One Transfer, many per Tenant.
@@ -74,9 +76,14 @@ export const transfers = tenantTable('transfers', {
  * The execution of one Transfer. v1 has exactly one Ride, created with it,
  * in `unassigned`, with no Driver and no Vehicle. The row is never deleted.
  * `transfer_id` is unique, so a second Ride cannot be inserted.
- * The state check lists every ADR-0005 state. This slice writes `unassigned`
- * only, and that state has neither a Driver nor a Vehicle.
- * Driver and Vehicle columns stay null until #19 adds the composite keys.
+ * The state check lists every ADR-0005 state. Assignment (#19) is the first
+ * writer of `assigned`. That state has both a Driver and a Vehicle, and a
+ * copy of the Driver's must-accept setting. `unassigned` has neither, and
+ * the copy is null because there is no Driver yet.
+ * There is no `assigned_at` or `assigned_by`. The audit entry records the
+ * actor and the time (ADR-0014). Later states are not constrained here:
+ * this slice does not write them.
+ * The composite foreign keys refuse another Tenant's Driver or Vehicle.
  */
 
 const states = sql.raw(RIDE_STATES.map(state => `'${state}'`).join(', '))
@@ -87,6 +94,8 @@ export const rides = tenantTable('rides', {
   state: text('state').notNull(),
   driverId: uuid('driver_id'),
   vehicleId: uuid('vehicle_id'),
+  // Null until assignment copies the Driver's setting. A later change to the Driver does not rewrite this.
+  mustAccept: boolean('must_accept'),
 }, table => [
   uniqueIndex('rides_transfer_id').on(table.transferId),
   foreignKey({
@@ -94,6 +103,17 @@ export const rides = tenantTable('rides', {
     columns: [table.tenantId, table.transferId],
     foreignColumns: [transfers.tenantId, transfers.id],
   }),
+  foreignKey({
+    name: 'rides_driver_fk',
+    columns: [table.tenantId, table.driverId],
+    foreignColumns: [drivers.tenantId, drivers.id],
+  }),
+  foreignKey({
+    name: 'rides_vehicle_fk',
+    columns: [table.tenantId, table.vehicleId],
+    foreignColumns: [vehicles.tenantId, vehicles.id],
+  }),
   check('rides_state', sql`${table.state} in (${states})`),
-  check('rides_unassigned_open', sql`${table.state} <> 'unassigned' or (${table.driverId} is null and ${table.vehicleId} is null)`),
+  check('rides_unassigned_open', sql`${table.state} <> 'unassigned' or (${table.driverId} is null and ${table.vehicleId} is null and ${table.mustAccept} is null)`),
+  check('rides_assigned_pair', sql`${table.state} <> 'assigned' or (${table.driverId} is not null and ${table.vehicleId} is not null and ${table.mustAccept} is not null)`),
 ], { oneRowPerTenant: false })
