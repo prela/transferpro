@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { expect } from '@playwright/test'
 
 export async function signIn(page: Page, email: string, password: string, tenantName: string) {
@@ -22,15 +22,33 @@ export async function signOut(page: Page) {
   await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
 }
 
+export type InviteRole = 'Administrator' | 'Dispečer' | 'Vozač'
+
+/**
+ * Open the role select and confirm the named option with the keyboard. A
+ * pointer click on the option misses when the home column clips the list
+ * (the option is attached but outside the viewport).
+ */
+async function chooseInviteRole(page: Page, select: Locator, role: InviteRole) {
+  await select.click()
+  const listbox = page.getByRole('listbox')
+  await expect(listbox).toBeVisible()
+  const option = listbox.getByRole('option', { name: role, exact: true })
+  await expect(option).toBeAttached()
+  await option.scrollIntoViewIfNeeded()
+  await option.press('Enter')
+  await expect(select).toContainText(role)
+}
+
 /**
  * The invite link is on the screen. The server is the fake mailer, so this
  * does not read a Resend response.
  */
-export async function invite(page: Page, email: string, role: 'Administrator' | 'Dispečer' | 'Vozač'): Promise<string> {
+export async function invite(page: Page, email: string, role: InviteRole): Promise<string> {
   const region = page.getByRole('region', { name: 'Pozovi člana' })
   await region.getByLabel('E-pošta').fill(email)
-  await region.getByRole('combobox', { name: 'Uloga' }).click()
-  await page.getByRole('option', { name: role, exact: true }).click()
+  const select = region.getByRole('combobox', { name: 'Uloga' })
+  await chooseInviteRole(page, select, role)
   await region.getByRole('button', { name: 'Pošalji pozivnicu', exact: true }).click()
   const link = region.getByLabel('Poveznica pozivnice')
   await expect(link).toBeVisible()
