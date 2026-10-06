@@ -7,7 +7,7 @@ import { expect, it, vi } from 'vitest'
 import { DriverInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
 import { TenantAccessError } from '../../tenancy'
-import { addDriver, correctDriver, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers } from './drivers'
+import { addDriver, correctDriver, driverMustAcceptForAssign, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers } from './drivers'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const driverId = '9e4b3f6d-5555-4555-8555-555555555555'
@@ -29,7 +29,7 @@ const stored: Driver = {
 function fakeTransaction(
   drivers: Driver[],
   members: Array<{ userId: string, role: string }> = [],
-  fail?: { code: string, message: string },
+  fail?: { code: string, message: string, sql?: string },
 ) {
   const queries: Array<{ sql: string, params: unknown[] }> = []
   const transaction: TenantTransaction = {
@@ -37,7 +37,7 @@ function fakeTransaction(
       const compiled = dialect.sqlToQuery(query)
       queries.push(compiled)
       const text = compiled.sql
-      if (fail && text.includes('insert')) {
+      if (fail && text.includes(fail.sql ?? 'insert')) {
         // Drizzle puts the bound parameters on the outer error and the code on the cause.
         const cause = Object.assign(new Error('duplicate'), { code: fail.code, detail: `Failing row contains (${phone})` })
         throw Object.assign(new Error(fail.message), { cause })
@@ -250,4 +250,16 @@ it('does not find a Driver the session cannot see', async () => {
   const { transaction, queries } = fakeTransaction([])
   await expect(correctDriver(transaction, actorUserId, 'admin', driverId, { kind: 'external' })).rejects.toBeInstanceOf(DriverNotFoundError)
   expect(auditPayloads(queries)).toEqual([])
+})
+
+it('replaces an assign read failure so the log line does not keep the driver id', async () => {
+  const { transaction } = fakeTransaction([], [], {
+    code: '57014',
+    message: `cancel ${driverId}`,
+    sql: 'for share',
+  })
+  const error = await driverMustAcceptForAssign(transaction, driverId).catch(caught => caught)
+  expect(error).toMatchObject({ message: 'Driver read failed' })
+  expect(String(error)).not.toContain(driverId)
+  expect(logLine(error)).not.toContain(driverId)
 })

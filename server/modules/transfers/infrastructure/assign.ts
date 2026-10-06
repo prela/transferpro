@@ -4,10 +4,11 @@ import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { assignTransitionAllowed, calendarDateInTimeZone, RIDE_ASSIGNMENT_FIELDS, rideStateSchema, RosterInputError } from '../../../../shared'
+import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { driverIsInTenant, driverMustAcceptForAssign } from '../../drivers'
 import { vehicleIdForDriverOnDate } from '../../roster'
-import { loadTenantSettings } from '../../tenancy'
+import { loadTenantSettings, TenantSettingsMissingError } from '../../tenancy'
 import { vehiclePresence, vehiclePresenceForAssign } from '../../vehicles'
 
 const rideStateRows = z.object({
@@ -188,26 +189,17 @@ function runRideStep(transaction: TenantTransaction, query: SQL, failure: string
   return hideDatabaseError(() => transaction.execute(query), failure)
 }
 
+function keepRideReadError(error: unknown): boolean {
+  return error instanceof RosterInputError || error instanceof TenantSettingsMissingError
+}
+
 /**
  * Run one module read on the pre-fill. A database failure becomes a fixed
  * message, for the same reason as `runRideStep`. A roster input error and a
  * missing settings row already use fixed messages, so those stay.
  */
 function runRideRead<T>(step: () => Promise<T>): Promise<T> {
-  return hideDatabaseError(step, 'Ride read failed')
-}
-
-async function hideDatabaseError<T>(step: () => Promise<T>, failure: string): Promise<T> {
-  try {
-    return await step()
-  }
-  catch (error) {
-    if (error instanceof RosterInputError)
-      throw error
-    if (error instanceof Error && error.message === 'Tenant settings are missing.')
-      throw error
-    throw new Error(failure)
-  }
+  return hideDatabaseError(step, 'Ride read failed', { passthrough: keepRideReadError })
 }
 
 /** node-pg may return a Date or a timestamp string. The day is read from the instant. */

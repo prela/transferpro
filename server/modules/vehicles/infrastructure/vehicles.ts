@@ -4,6 +4,7 @@ import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { VEHICLE_FIELDS, vehicleDateSchema, vehicleKindSchema, vehicleSchema } from '../../../../shared'
+import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 
 const vehicleRowSchema = z.object({
@@ -129,13 +130,8 @@ function presenceOf(selected: unknown): VehiclePresence {
  * is not redacted, so the original error is never rethrown. A vehicle id
  * in that text would otherwise land in the log.
  */
-async function readVehicleForAssign(transaction: TenantTransaction, query: SQL): Promise<unknown> {
-  try {
-    return await transaction.execute(query)
-  }
-  catch {
-    throw new Error('Vehicle read failed')
-  }
+function readVehicleForAssign(transaction: TenantTransaction, query: SQL): Promise<unknown> {
+  return hideDatabaseError(() => transaction.execute(query), 'Vehicle read failed')
 }
 
 /** This Tenant's Vehicles, by plate, so the office can find one. */

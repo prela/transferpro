@@ -107,10 +107,11 @@ test('an admin assigns a ride and the audit log names the actor', async ({ page 
   await expect(assignButton(page, guest)).toHaveCount(0)
 
   await page.getByRole('link', { name: 'Početna' }).click()
-  await expect(page.getByRole('row', { name: 'Vožnja dodijeljena' })).toContainText(tenant.adminName)
+  const assigned = page.getByRole('row', { name: 'Vožnja dodijeljena' })
+  await expect(assigned).toContainText(tenant.adminName)
+  await expect(assigned).toContainText(driverName)
+  await expect(assigned).toContainText(plate)
   await expect(page.getByText(guest)).toHaveCount(0)
-  await expect(page.getByText(driverName)).toHaveCount(0)
-  await expect(page.getByText(plate)).toHaveCount(0)
 })
 
 test('the roster pre-fill picks the rostered vehicle, and an override is saved', async ({ page }) => {

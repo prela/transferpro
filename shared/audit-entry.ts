@@ -337,6 +337,7 @@ export type AuditFact = z.infer<typeof auditFactSchema>
 /**
  * GET /api/audit-entries, newest first. Names come from the Tenant's current
  * members; a person who is no longer a member has a null name.
+ * `ride.assigned` also carries the current Driver name and Vehicle plate.
  */
 const listed = {
   id: z.uuid(),
@@ -365,7 +366,12 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   locationFieldChanged.extend(listed),
   locationArchived.extend(listed),
   transferCreated.extend(listed),
-  rideAssigned.extend(listed),
+  rideAssigned.extend({
+    ...listed,
+    // Resolved at read time. The stored data keeps ids only (ADR-0014).
+    driverName: z.string().nullable(),
+    vehiclePlate: z.string().nullable(),
+  }),
   rosterAssigned.extend(listed),
   rosterChanged.extend(listed),
   rosterCleared.extend(listed),

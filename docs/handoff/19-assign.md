@@ -58,26 +58,50 @@ or not exists (
 
 Do not run that delete on production. Run the check query first. A production row in the result needs a decision, not a blanket delete.
 
-Older `server/modules/transfers/infrastructure/transfer.rls.test.ts` runs left an assigned Ride with no Driver, no Vehicle, or no must-accept copy. `rides_assigned_pair` then fails with `23514` on such a development database.
+## Connecting as the owner role
 
-Run this read-only check as well. It lists Rides that are not `unassigned` and are missing a Driver, a Vehicle, or the must-accept copy:
+Every check in this section must run as `transferpro_owner`. That role is `DATABASE_MIGRATE_URL` in gitignored `.env.migrate`. Under the app role, FORCE RLS hides every row and the check falsely returns empty.
 
-```sql
-select id, tenant_id, state from app.rides where state <> 'unassigned' and (driver_id is null or vehicle_id is null or must_accept is null);
+```bash
+set -a && . ./.env.migrate && set +a
+psql "$DATABASE_MIGRATE_URL"
 ```
 
-For a local or development database only, return those rows to `unassigned` and clear the pair. `rides_unassigned_open` requires the Driver, the Vehicle, and the must-accept copy to be null together, so changing the state alone is refused:
+Older `server/modules/transfers/infrastructure/transfer.rls.test.ts` runs left an assigned Ride with no Driver, no Vehicle, or no must-accept copy. `rides_assigned_pair` then fails with `23514` on such a development database. That check only refuses `assigned`. Later states are not constrained in migration 0019.
+
+`must_accept` does not exist before 0019. Use the pre-migration statements until that column is there.
+
+Read-only check before 0019:
+
+```sql
+select id, tenant_id, state from app.rides where state = 'assigned' and (driver_id is null or vehicle_id is null);
+```
+
+Local or development cleanup before 0019. `rides_unassigned_open` requires the Driver and the Vehicle to be null together, so changing the state alone is refused:
+
+```sql
+update app.rides
+set state = 'unassigned', driver_id = null, vehicle_id = null
+where state = 'assigned'
+  and (driver_id is null or vehicle_id is null);
+```
+
+Read-only check after 0019:
+
+```sql
+select id, tenant_id, state from app.rides where state = 'assigned' and (driver_id is null or vehicle_id is null or must_accept is null);
+```
+
+Local or development cleanup after 0019. `rides_unassigned_open` also requires `must_accept` to be null with the pair:
 
 ```sql
 update app.rides
 set state = 'unassigned', driver_id = null, vehicle_id = null, must_accept = null
-where state <> 'unassigned'
+where state = 'assigned'
   and (driver_id is null or vehicle_id is null or must_accept is null);
 ```
 
 Deleting those test rows is the same local cleanup when they are leftovers from that file. Do not run either statement on production. A production row in the result needs a decision, not a blanket update.
-
-Every check in this section must run as the owner/migration role. Under the app role, FORCE RLS hides every row and the check falsely returns empty.
 
 ## Left for slice 2
 

@@ -13,6 +13,17 @@ const settingsRows = z.object({
   })),
 })
 
+/**
+ * The session's Tenant has no settings row. The message has no ids.
+ * Callers detect this by type, not by comparing `Error.message`.
+ */
+export class TenantSettingsMissingError extends Error {
+  constructor() {
+    super('Tenant settings are missing.')
+    this.name = 'TenantSettingsMissingError'
+  }
+}
+
 /** The session's row. The caller has already opened the tenant session. */
 export async function loadTenantSettings(transaction: TenantTransaction): Promise<TenantSettings> {
   return readRow(transaction, false)
@@ -93,7 +104,7 @@ async function readRow(transaction: TenantTransaction, lock: boolean): Promise<T
   const selected = settingsRows.parse(await transaction.execute(query))
   const row = selected.rows.length === 1 ? selected.rows[0] : undefined
   if (!row)
-    throw new Error('Tenant settings are missing.')
+    throw new TenantSettingsMissingError()
   return {
     airportWaitMinutes: waitMinutesSchema.parse(row.airport_wait_minutes),
     elsewhereWaitMinutes: waitMinutesSchema.parse(row.elsewhere_wait_minutes),

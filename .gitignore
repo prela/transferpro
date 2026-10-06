@@ -10,6 +10,7 @@ dist/
 # Env files
 .env*
 !.env.example
+!.env.migrate.example
 
 # Test coverage
 coverage/
