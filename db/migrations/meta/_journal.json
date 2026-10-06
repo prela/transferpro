@@ -120,6 +120,13 @@
       "when": 1791400006000,
       "tag": "0016_locations",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791400007000,
+      "tag": "0017_transfers",
+      "breakpoints": true
     }
   ]
 }

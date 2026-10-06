@@ -8,7 +8,7 @@ Dispatch for a transfer company: take a booking, assign the Ride, and record how
 A transfer company using Transferpro. The company and its Better Auth organization are the same Tenant.
 
 **Transfer**:
-The booking.
+The booking. It names the Client, the pickup time, the start and end Locations, the passenger count, the guest name, an optional flight number, a price in EUR, the payment (`cash`, `card`, or `invoice_to_agency`), whether the pickup is an airport, the luggage count, the child-seat count, and an optional note. Creating a Transfer creates one Ride in `unassigned`. The airport mark is stored as entered and is not inferred from the flight number. `invoice_to_agency` is a recorded choice; invoicing is not v1. The Driver sees the price and the payment method only for cash; card and invoice to agency hide both (ADR-0009, extended by proposed ADR-0020). That phone rule is not on the office screen.
 _Avoid_: Ride, job
 
 **Ride**:

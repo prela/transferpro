@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, LOCATION_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, LOCATION_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -143,6 +143,17 @@ function locationFieldsArray(data: AnyPgColumn) {
   return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${locationFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${locationFieldsJson}`
 }
 
+const transferFieldsJson = sql.raw(`'${JSON.stringify([...TRANSFER_FIELDS])}'::jsonb`)
+const transferFieldCount = sql.raw(String(TRANSFER_FIELDS.length))
+
+/**
+ * `fields` names what was written on the Transfer. Containment refuses a
+ * guest name, a flight number, a note, or a price sitting in the array.
+ */
+function transferFieldsArray(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${transferFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${transferFieldsJson}`
+}
+
 /** An id stored as text. Same RFC 4122 shape as a Driver id. A plate cannot sit here. */
 function uuidText(data: AnyPgColumn, key: string) {
   const name = sql.raw(`'${key}'`)
@@ -201,6 +212,7 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'location.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'locationId', 'fields')} and ${locationIdText(table.data)} and ${locationFieldsArray(table.data)}
     when 'location.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'locationId', 'field')} and ${locationIdText(table.data)} and ${locationFieldText(table.data)}
     when 'location.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'locationId')} and ${locationIdText(table.data)}
+    when 'transfer.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'transferId', 'rideId', 'clientId', 'startLocationId', 'endLocationId', 'fields')} and ${uuidText(table.data, 'transferId')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'clientId')} and ${uuidText(table.data, 'startLocationId')} and ${uuidText(table.data, 'endLocationId')} and ${transferFieldsArray(table.data)}
     when 'roster.assigned' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'vehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')}
     when 'roster.changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'fromVehicleId', 'toVehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'fromVehicleId')} and ${uuidText(table.data, 'toVehicleId')}
     when 'roster.cleared' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'vehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')}

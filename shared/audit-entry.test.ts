@@ -220,6 +220,36 @@ it('records a Location by id and field names, and refuses the name and the addre
   }).success).toBe(false)
 })
 
+it('records a Transfer by ids and field names, and refuses the guest name, the flight, the note, and the price', () => {
+  const transferId = 'd1d1d1d1-1111-4111-8111-111111111111'
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
+  const endLocationId = 'b1b2c3d4-6666-4666-8666-666666666666'
+  const created = {
+    action: 'transfer.created' as const,
+    subjectUserId: null,
+    data: {
+      transferId,
+      rideId,
+      clientId,
+      startLocationId,
+      endLocationId,
+      fields: ['pickupAt', 'passengerCount', 'guestName', 'price', 'payment', 'airportMark', 'luggageCount', 'childSeatCount'] as const,
+    },
+  }
+  expect(auditFactSchema.parse(created)).toEqual(created)
+  expect(auditFactSchema.safeParse({
+    ...created,
+    data: { ...created.data, guestName: 'Ana Anić', flightNumber: 'OU 384', note: 'terminal', price: '42.50' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...created,
+    data: { ...created.data, fields: ['guestName', 'Ana Anić'] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...created, subjectUserId: memberId }).success).toBe(false)
+})
+
 it('records a roster day as ids and a calendar date, and refuses a plate, a name, or a phone', () => {
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
   const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'

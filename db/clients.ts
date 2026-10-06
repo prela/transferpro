@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { check, text, uuid } from 'drizzle-orm/pg-core'
+import { check, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { CLIENT_KINDS, CLIENT_NAME_MAX_LENGTH } from '../shared'
 import { tenantTable } from './tenant-table'
 
@@ -9,6 +9,8 @@ import { tenantTable } from './tenant-table'
  * refuses a row that still has surrounding spaces, an empty name, or a name
  * longer than 200 characters. Kind is a check, not a Postgres enum, so a
  * later kind is a constraint change. There is no delete in this ticket.
+ * `(tenant_id, id)` is unique so a Transfer can reference this row and
+ * another Tenant's id in the same breath (migration 0017).
  * FORCE RLS is in the migration; drizzle-kit cannot emit it.
  */
 
@@ -28,4 +30,5 @@ export const clients = tenantTable('clients', {
     'clients_kind',
     sql`${table.kind} in (${kinds})`,
   ),
+  uniqueIndex('clients_tenant_id_id').on(table.tenantId, table.id),
 ], { oneRowPerTenant: false })

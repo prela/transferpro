@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { check, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { check, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH } from '../shared'
 import { tenantTable } from './tenant-table'
 
@@ -9,6 +9,8 @@ import { tenantTable } from './tenant-table'
  * writer; the checks refuse a row that still has surrounding spaces.
  * Kind is a check, not a Postgres enum, so a later kind is a constraint change.
  * Archive is `archived_at`: null means on the picker. There is no delete.
+ * `(tenant_id, id)` is unique so a Transfer can reference this row and
+ * another Tenant's id in the same breath (migration 0017).
  * FORCE RLS is in the migration; drizzle-kit cannot emit it.
  */
 
@@ -35,4 +37,5 @@ export const locations = tenantTable('locations', {
     'locations_address',
     sql`${table.address} is null or (${table.address} = btrim(${table.address}) and length(${table.address}) between 1 and ${addressMax})`,
   ),
+  uniqueIndex('locations_tenant_id_id').on(table.tenantId, table.id),
 ], { oneRowPerTenant: false })
