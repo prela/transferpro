@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Client, DisplayLocale, Location, LocationKind, PaymentMethod, TransferDayRide } from '../../shared'
-import { calendarDateInTimeZone, childSeatCountError, clientListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, sameLocationError, transferDaySchema } from '../../shared'
+import type { Client, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
+import { calendarDateInTimeZone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, sameLocationError, transferDaySchema, vehicleListSchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -14,6 +14,9 @@ const day = ref(today)
 const rides = ref<TransferDayRide[]>([])
 const clients = ref<Client[]>([])
 const locations = ref<Location[]>([])
+const drivers = ref<Driver[]>([])
+const vehicles = ref<Vehicle[]>([])
+const assigning = ref<{ rideId: string, guestName: string } | null>(null)
 
 const clientId = ref<string | undefined>()
 const pickupWall = ref(`${today}T12:00`)
@@ -92,10 +95,56 @@ const columns = computed(() => [
   { id: 'start', header: t('transfers.start') },
   { id: 'end', header: t('transfers.end') },
   { id: 'state', header: t('transfers.status') },
+  { id: 'driver', header: t('ride.driver') },
+  { id: 'vehicle', header: t('ride.vehicle') },
+  { id: 'actions', header: t('ride.actions') },
 ])
 
 function placeLabel(id: string): string {
   return locations.value.find(location => location.id === id)?.name ?? t('transfers.unknownPlace')
+}
+
+/** The day list stores ids. The screen shows the name or the plate, never the id. */
+function driverLabel(id: string | null): string {
+  if (id === null)
+    return ''
+  return drivers.value.find(driver => driver.id === id)?.name ?? t('ride.unknownDriver')
+}
+
+function vehicleLabel(id: string | null): string {
+  if (id === null)
+    return ''
+  return vehicles.value.find(vehicle => vehicle.id === id)?.registrationPlate ?? t('ride.unknownVehicle')
+}
+
+function vehicleArchived(id: string | null): boolean {
+  if (id === null)
+    return false
+  const vehicle = vehicles.value.find(item => item.id === id)
+  return vehicle !== undefined && vehicle.archivedAt !== null
+}
+
+function assignButtonId(rideId: string): string {
+  return `assign-ride-${rideId}`
+}
+
+function openAssign(ride: TransferDayRide) {
+  assigning.value = { rideId: ride.rideId, guestName: ride.guestName }
+}
+
+function closeAssign() {
+  const rideId = assigning.value?.rideId
+  assigning.value = null
+  if (!rideId)
+    return
+  void nextTick(() => {
+    document.getElementById(assignButtonId(rideId))?.focus()
+  })
+}
+
+function onAssigned() {
+  assigning.value = null
+  void loadDay()
 }
 
 function httpStatus(error: unknown): number | undefined {
@@ -129,15 +178,31 @@ function failureKey(error: unknown): TransferFailure {
   }
 }
 
-async function loadCatalogs() {
-  const [clientList, locationList] = await Promise.all([
-    clientListSchema.parse(await $fetch('/api/clients')),
+async function fetchCatalogs() {
+  // Each $fetch is a Promise.all item. Awaiting inside the array would run them one after another.
+  const [clientList, locationList, driverList, vehicleList] = await Promise.all([
+    $fetch('/api/clients').then(data => clientListSchema.parse(data)),
     // Archived rows stay in the catalog so a Ride keeps its place name.
     // The record form still offers only places that are not archived.
-    locationListSchema.parse(await $fetch('/api/locations', { query: { includeArchived: 'true' } })),
+    $fetch('/api/locations', { query: { includeArchived: 'true' } }).then(data => locationListSchema.parse(data)),
+    $fetch('/api/drivers').then(data => driverListSchema.parse(data)),
+    // Archived Vehicles stay in the catalog so an assigned Ride keeps its plate.
+    // The assign picker still offers only Vehicles that are not archived.
+    $fetch('/api/vehicles', { query: { includeArchived: 'true' } }).then(data => vehicleListSchema.parse(data)),
   ])
-  clients.value = clientList.clients
-  locations.value = locationList.locations
+  return {
+    clients: clientList.clients,
+    locations: locationList.locations,
+    drivers: driverList.drivers,
+    vehicles: vehicleList.vehicles,
+  }
+}
+
+function applyCatalogs(catalogs: Awaited<ReturnType<typeof fetchCatalogs>>) {
+  clients.value = catalogs.clients
+  locations.value = catalogs.locations
+  drivers.value = catalogs.drivers
+  vehicles.value = catalogs.vehicles
 }
 
 async function loadDay(ticket = ++loadTicket) {
@@ -163,15 +228,28 @@ async function loadDay(ticket = ++loadTicket) {
 }
 
 async function loadAll() {
+  const ticket = ++loadTicket
   loading.value = true
   loadError.value = false
   try {
-    await loadCatalogs()
-    await loadDay()
+    const dayPromise = isCalendarDate(day.value)
+      ? $fetch('/api/transfers', { query: { date: day.value } }).then(data => transferDaySchema.parse(data))
+      : Promise.resolve(null)
+    const [catalogs, listed] = await Promise.all([fetchCatalogs(), dayPromise])
+    if (ticket !== loadTicket)
+      return
+    applyCatalogs(catalogs)
+    if (listed)
+      rides.value = listed.rides
   }
   catch {
+    if (ticket !== loadTicket)
+      return
     loadError.value = true
-    loading.value = false
+  }
+  finally {
+    if (ticket === loadTicket)
+      loading.value = false
   }
 }
 
@@ -316,6 +394,7 @@ async function record() {
 }
 
 watch(day, () => {
+  assigning.value = null
   void loadDay()
 })
 
@@ -382,8 +461,52 @@ onMounted(loadAll)
         <template #state-cell="{ row }">
           {{ t(`transfers.states.${row.original.state}`) }}
         </template>
+        <template #driver-cell="{ row }">
+          {{ driverLabel(row.original.driverId) }}
+        </template>
+        <template #vehicle-cell="{ row }">
+          <span>
+            {{ vehicleLabel(row.original.vehicleId) }}
+            <UBadge
+              v-if="vehicleArchived(row.original.vehicleId)"
+              color="neutral"
+              variant="subtle"
+              class="ml-2"
+            >
+              {{ t('vehicles.archived') }}
+            </UBadge>
+          </span>
+        </template>
+        <template #actions-header>
+          <span class="sr-only">{{ t('ride.actions') }}</span>
+        </template>
+        <template #actions-cell="{ row }">
+          <UButton
+            v-if="row.original.state === 'unassigned'"
+            :id="assignButtonId(row.original.rideId)"
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="xl"
+            :aria-label="`${t('ride.assign')}: ${row.original.guestName}`"
+            @click="openAssign(row.original)"
+          >
+            {{ t('ride.assign') }}
+          </UButton>
+        </template>
       </UTable>
     </div>
+
+    <RideAssign
+      v-if="assigning"
+      :key="assigning.rideId"
+      :ride-id="assigning.rideId"
+      :guest-name="assigning.guestName"
+      :drivers="drivers"
+      :vehicles="vehicles"
+      @assigned="onAssigned"
+      @cancel="closeAssign"
+    />
 
     <h2 class="mt-6 mb-4 text-xl font-semibold">
       {{ t('transfers.add') }}

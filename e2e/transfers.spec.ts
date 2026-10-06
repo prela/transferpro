@@ -65,7 +65,7 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
   await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
 
   await expect(page.getByText('Zabilježeno.')).toBeVisible()
-  await expect(page.getByRole('cell', { name: guest })).toBeVisible()
+  await expect(page.getByRole('cell', { name: guest, exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: startPlace })).toBeVisible()
   await expect(page.getByRole('cell', { name: endPlace })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Nedodijeljeno' })).toBeVisible()
@@ -73,6 +73,6 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
   await page.getByRole('button', { name: 'English', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Transfers' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Record transfer', exact: true })).toBeVisible()
-  await expect(page.getByRole('cell', { name: guest })).toBeVisible()
+  await expect(page.getByRole('cell', { name: guest, exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Unassigned' })).toBeVisible()
 })
