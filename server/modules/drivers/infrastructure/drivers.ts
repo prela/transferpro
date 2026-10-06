@@ -61,18 +61,22 @@ export async function driverIsInTenant(transaction: TenantTransaction, driverId:
 }
 
 /**
- * The must-accept flag of this Tenant's Driver, or null when the id is absent.
- * Assignment copies this boolean onto the Ride. The phone and the licence
- * dates stay unread. Another Tenant's id is null: the select runs under the
- * session's row security.
+ * The must-accept flag of this Tenant's Driver, or null when the id is absent,
+ * and a `for share` lock on that row.
+ * Assignment copies this boolean onto the Ride. A correction of must-accept
+ * takes `for update`, so it cannot commit a different value before the Ride
+ * update on this transaction. The phone and the licence dates stay unread.
+ * Another Tenant's id is null: the select runs under the session's row security.
+ * `loadDrivers` does not lock. This read is only for the assign transaction.
  */
-export async function driverMustAccept(transaction: TenantTransaction, driverId: string): Promise<boolean | null> {
+export async function driverMustAcceptForAssign(transaction: TenantTransaction, driverId: string): Promise<boolean | null> {
   const selected = z.object({
     rows: z.array(z.object({ mustAccept: z.boolean() })),
-  }).parse(await transaction.execute(sql`
+  }).parse(await readDriverForAssign(transaction, sql`
     select must_accept as "mustAccept"
     from app.drivers
     where id = ${driverId}
+    for share
   `))
   return selected.rows[0]?.mustAccept ?? null
 }
@@ -260,6 +264,21 @@ async function lockDriver(transaction: TenantTransaction, driverId: string): Pro
 
 function toDriver(row: z.infer<typeof driverRowSchema>): Driver {
   return driverSchema.parse(row)
+}
+
+/**
+ * Run the assign read. Every failure becomes a fixed message.
+ * Drizzle copies the bound parameters into `Error.message`, and that text
+ * is not redacted, so the original error is never rethrown. A driver id
+ * in that text would otherwise land in the log.
+ */
+async function readDriverForAssign(transaction: TenantTransaction, query: SQL): Promise<unknown> {
+  try {
+    return await transaction.execute(query)
+  }
+  catch {
+    throw new Error('Driver read failed')
+  }
 }
 
 /**

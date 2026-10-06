@@ -1,13 +1,14 @@
+import type { SQL } from 'drizzle-orm'
 import type { AssignRide, Ride, RosterVehicleSuggestion } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { assignTransitionAllowed, calendarDateInTimeZone, copiedMustAccept, RIDE_ASSIGNMENT_FIELDS, rideStateSchema } from '../../../../shared'
+import { assignTransitionAllowed, calendarDateInTimeZone, RIDE_ASSIGNMENT_FIELDS, rideStateSchema, RosterInputError } from '../../../../shared'
 import { appendAuditEntry } from '../../audit'
-import { driverIsInTenant, driverMustAccept } from '../../drivers'
+import { driverIsInTenant, driverMustAcceptForAssign } from '../../drivers'
 import { vehicleIdForDriverOnDate } from '../../roster'
 import { loadTenantSettings } from '../../tenancy'
-import { vehiclePresence } from '../../vehicles'
+import { vehiclePresence, vehiclePresenceForAssign } from '../../vehicles'
 
 const rideStateRows = z.object({
   rows: z.array(z.object({
@@ -75,6 +76,9 @@ export class RideNotUnassignedError extends Error {
  * field names. It does not store a plate, a phone, or the must-accept value.
  * The copy is the Driver's setting at this call. A later change to the Driver
  * does not update this Ride: this statement does not join `app.drivers` on write.
+ * The Driver row and the Vehicle row are read `for share` on this transaction.
+ * A must-accept correction and archive take `for update`, so neither can commit
+ * between the read and the Ride update.
  * Drivers have no archived or inactive column, so a Driver in this Tenant is assignable.
  * The caller has already required a dispatcher or an admin.
  */
@@ -83,29 +87,30 @@ export async function assignUnassignedRide(
   actorUserId: string,
   input: AssignRide,
 ): Promise<Ride> {
-  const current = rideStateRows.parse(await transaction.execute(sql`
+  const current = rideStateRows.parse(await runRideStep(transaction, sql`
     select id, state
     from app.rides
     where id = ${input.rideId}
     for update
-  `)).rows[0]
+  `, 'Ride assignment failed')).rows[0]
   if (!current)
     throw new RideNotFoundError()
   if (!assignTransitionAllowed(current.state))
     throw new RideNotUnassignedError()
 
-  const driverFlag = await driverMustAccept(transaction, input.driverId)
+  const driverFlag = await driverMustAcceptForAssign(transaction, input.driverId)
   if (driverFlag === null)
     throw new RideNotFoundError()
 
-  const presence = await vehiclePresence(transaction, input.vehicleId)
+  const presence = await vehiclePresenceForAssign(transaction, input.vehicleId)
   if (presence === 'missing')
     throw new RideNotFoundError()
   if (presence === 'archived')
     throw new RideVehicleArchivedError()
 
-  const mustAccept = copiedMustAccept(driverFlag)
-  const updated = assignedRows.parse(await transaction.execute(sql`
+  // The share lock held this boolean. The update does not read the Driver again.
+  const mustAccept = driverFlag
+  const updated = assignedRows.parse(await runRideStep(transaction, sql`
     update app.rides
     set state = 'assigned',
         driver_id = ${input.driverId},
@@ -120,12 +125,12 @@ export async function assignUnassignedRide(
       driver_id as "driverId",
       vehicle_id as "vehicleId",
       must_accept as "mustAccept"
-  `)).rows[0]
+  `, 'Ride assignment failed')).rows[0]
   // The locked row was unassigned. Zero rows means a concurrent assign committed first.
   if (!updated)
     throw new RideNotUnassignedError()
 
-  await appendAuditEntry(transaction, {
+  await hideDatabaseError(() => appendAuditEntry(transaction, {
     action: 'ride.assigned',
     actorUserId,
     subjectUserId: null,
@@ -135,7 +140,7 @@ export async function assignUnassignedRide(
       vehicleId: updated.vehicleId,
       fields: [...RIDE_ASSIGNMENT_FIELDS],
     },
-  })
+  }), 'Ride assignment failed')
   return updated
 }
 
@@ -150,27 +155,59 @@ export async function suggestRosterVehicle(
   rideId: string,
   driverId: string,
 ): Promise<RosterVehicleSuggestion> {
-  const ride = pickupRows.parse(await transaction.execute(sql`
+  const ride = pickupRows.parse(await runRideStep(transaction, sql`
     select r.id, t.pickup_at as "pickupAt"
     from app.rides as r
     join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
     where r.id = ${rideId}
-  `)).rows[0]
+  `, 'Ride read failed')).rows[0]
   if (!ride)
     throw new RideNotFoundError()
 
-  if (!await driverIsInTenant(transaction, driverId))
+  if (!await runRideRead(() => driverIsInTenant(transaction, driverId)))
     throw new RideNotFoundError()
 
-  const settings = await loadTenantSettings(transaction)
+  const settings = await runRideRead(() => loadTenantSettings(transaction))
   const day = calendarDateInTimeZone(settings.timeZone, toInstantDate(ride.pickupAt))
-  const vehicleId = await vehicleIdForDriverOnDate(transaction, driverId, day)
+  const vehicleId = await runRideRead(() => vehicleIdForDriverOnDate(transaction, driverId, day))
   if (vehicleId === null)
     return { vehicleId: null }
   // A row already stored can name a Vehicle archived later. The suggestion skips it.
-  if (await vehiclePresence(transaction, vehicleId) !== 'active')
+  if (await runRideRead(() => vehiclePresence(transaction, vehicleId)) !== 'active')
     return { vehicleId: null }
   return { vehicleId }
+}
+
+/**
+ * Run one statement on this Ride. Every failure becomes a fixed message.
+ * Drizzle copies the bound parameters into `Error.message`, and that text
+ * is not redacted, so the original error is never rethrown. A ride id in
+ * that text would otherwise land in the log.
+ */
+function runRideStep(transaction: TenantTransaction, query: SQL, failure: string): Promise<unknown> {
+  return hideDatabaseError(() => transaction.execute(query), failure)
+}
+
+/**
+ * Run one module read on the pre-fill. A database failure becomes a fixed
+ * message, for the same reason as `runRideStep`. A roster input error and a
+ * missing settings row already use fixed messages, so those stay.
+ */
+function runRideRead<T>(step: () => Promise<T>): Promise<T> {
+  return hideDatabaseError(step, 'Ride read failed')
+}
+
+async function hideDatabaseError<T>(step: () => Promise<T>, failure: string): Promise<T> {
+  try {
+    return await step()
+  }
+  catch (error) {
+    if (error instanceof RosterInputError)
+      throw error
+    if (error instanceof Error && error.message === 'Tenant settings are missing.')
+      throw error
+    throw new Error(failure)
+  }
 }
 
 /** node-pg may return a Date or a timestamp string. The day is read from the instant. */

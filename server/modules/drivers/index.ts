@@ -4,4 +4,4 @@
  * account. This module does not import Rides (ADR-0018).
  */
 export { createDriver, DriverNotFoundError, listDrivers, loadDriverLinkedToMember, loadDrivers, updateDriver } from './infrastructure/driver-access'
-export { driverIsInTenant, driverMustAccept } from './infrastructure/drivers'
+export { driverIsInTenant, driverMustAcceptForAssign } from './infrastructure/drivers'

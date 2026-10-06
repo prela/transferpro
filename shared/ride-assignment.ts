@@ -83,14 +83,5 @@ export function assignTransitionAllowed(state: string): boolean {
   return parsed.data === 'unassigned'
 }
 
-/**
- * The boolean stored on the Ride. It is the Driver's setting at this call.
- * A later change to the Driver is a different call and does not alter a
- * value this function already returned (ADR-0006).
- */
-export function copiedMustAccept(driverMustAccept: boolean): boolean {
-  return driverMustAccept
-}
-
 /** Every ADR-0005 state except `unassigned` refuses assignment. */
 export const ASSIGNMENT_REFUSED_STATES = RIDE_STATES.filter(state => state !== 'unassigned')

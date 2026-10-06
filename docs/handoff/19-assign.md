@@ -13,6 +13,50 @@ Slice 1 is the database, the assign command, and the roster pre-fill. Slice 2 is
 - `GET /api/rides/:id/roster-vehicle?driverId=` returns `{ vehicleId }` or `{ vehicleId: null }` when that local day has no row or the Vehicle is archived. It does not write. Assign still accepts any same-tenant Vehicle that is not archived. Changing the roster does not update a Ride.
 - The pickup day is `calendarDateInTimeZone` of `pickup_at` in the Tenant time zone, the same instant the day list uses. It is not a `date` cast of the stored instant.
 - Copy for the new codes: `ride.vehicleArchived` and `ride.notUnassigned`, in Croatian and English. The audit screen label is `audit.actions.ride.assigned`.
+- The assign transaction reads the Driver and the Vehicle `for share`. A must-accept correction and archive take `for update`, so they cannot commit between that read and the Ride update. The roster pre-fill still uses the unlocked Vehicle presence read.
+
+## Applying 0019 on an existing database
+
+Older `server/modules/roster/infrastructure/roster.rls.test.ts` runs left `app.roster` rows whose driver or vehicle no longer exists. `roster_driver_fk` and `roster_vehicle_fk` then fail with `23503`.
+
+Run this read-only check before deploying to production. It lists roster rows whose `(tenant_id, driver_id)` or `(tenant_id, vehicle_id)` has no match:
+
+```sql
+select r.tenant_id, r.id, r.roster_date, r.driver_id, r.vehicle_id
+from app.roster as r
+where not exists (
+  select 1
+  from app.drivers as d
+  where d.tenant_id = r.tenant_id
+    and d.id = r.driver_id
+)
+or not exists (
+  select 1
+  from app.vehicles as v
+  where v.tenant_id = r.tenant_id
+    and v.id = r.vehicle_id
+);
+```
+
+For a local or development database only, delete those orphans and then apply the migration:
+
+```sql
+delete from app.roster as r
+where not exists (
+  select 1
+  from app.drivers as d
+  where d.tenant_id = r.tenant_id
+    and d.id = r.driver_id
+)
+or not exists (
+  select 1
+  from app.vehicles as v
+  where v.tenant_id = r.tenant_id
+    and v.id = r.vehicle_id
+);
+```
+
+Do not run that delete on production. Run the check query first. A production row in the result needs a decision, not a blanket delete.
 
 ## Left for slice 2
 

@@ -288,8 +288,15 @@ it('a driver cannot assign, and a dispatcher assign copies must-accept and names
   const driver = await createDriver(world.dispatcher, driverBody)
   await updateDriver(world.admin, driver.id, { mustAccept: true })
   const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG1002AA'))
-  const first = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()))
+  const firstPickup = new Date(Date.now() + 2 * 60 * 60 * 1000)
+  const first = await createTransfer(world.dispatcher, transferBody(world, firstPickup.toISOString()))
   const second = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString()))
+  // A dispatcher pre-fill would return this Vehicle. The driver must not.
+  await setRosterDay(world.dispatcher, {
+    rosterDate: calendarDateInTimeZone('Europe/Zagreb', firstPickup),
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+  })
 
   const refused = await call('POST', `/api/rides/${first.ride.id}/assign`, driverSession, {
     driverId: driver.id,
@@ -299,6 +306,11 @@ it('a driver cannot assign, and a dispatcher assign copies must-accept and names
   expect(await refused.text()).not.toContain(phone)
   expect(await rideRow(first.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null, vehicle_id: null })
   expect(await assignmentAudits(world.tenantId)).toEqual([])
+
+  const rosterRead = await call('GET', `/api/rides/${first.ride.id}/roster-vehicle?driverId=${driver.id}`, driverSession)
+  expect(rosterRead.status).toBe(403)
+  expect(await rosterRead.text()).not.toContain(vehicle.id)
+  expect(await rideRow(first.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null, vehicle_id: null })
 
   const assigned = await call('POST', `/api/rides/${first.ride.id}/assign`, world.dispatcher, {
     driverId: driver.id,
@@ -371,6 +383,10 @@ it('refuses another Tenant\'s Driver or Vehicle, and that Tenant cannot read or 
 
   const read = await call('GET', `/api/rides/${rideA.ride.id}/roster-vehicle?driverId=${driverB.id}`, firmB.dispatcher)
   expect(read.status).toBe(404)
+  const ownRideForeignDriver = await call('GET', `/api/rides/${rideA.ride.id}/roster-vehicle?driverId=${driverB.id}`, firmA.dispatcher)
+  expect(ownRideForeignDriver.status).toBe(404)
+  expect(await ownRideForeignDriver.text()).not.toContain('+385911110088')
+  expect(await rideRow(rideA.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null })
   const change = await call('POST', `/api/rides/${rideA.ride.id}/assign`, firmB.dispatcher, {
     driverId: driverB.id,
     vehicleId: vehicleB.id,
@@ -522,4 +538,184 @@ it('lets exactly one of two concurrent assigns win', async () => {
   const audits = await assignmentAudits(world.tenantId)
   expect(audits).toHaveLength(1)
   expect(audits[0]?.data.rideId).toBe(recorded.ride.id)
+})
+
+it('refuses a malformed driver or vehicle id, and a Ride that is not unassigned', async () => {
+  const world = await office('hasg-shape')
+  const driver = await createDriver(world.dispatcher, driverBody)
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG7001AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()))
+  const path = `/api/rides/${recorded.ride.id}/assign`
+
+  const badDriver = await call('POST', path, world.dispatcher, { driverId: 'not-a-driver', vehicleId: vehicle.id })
+  expect(badDriver.status).toBe(400)
+  expect(await badDriver.text()).not.toContain(phone)
+
+  const badVehicle = await call('POST', path, world.dispatcher, { driverId: driver.id, vehicleId: 'not-a-vehicle' })
+  expect(badVehicle.status).toBe(400)
+  expect(await rideRow(recorded.ride.id)).toEqual({
+    state: 'unassigned',
+    driver_id: null,
+    vehicle_id: null,
+    must_accept: null,
+  })
+  expect(await assignmentAudits(world.tenantId)).toEqual([])
+
+  // `cancelled` is a stored state this slice does not write. The check allows it with an open pair.
+  const moved = await withAppTenant(world.tenantId, client => client.query(
+    `update app.rides set state = 'cancelled' where id = $1 and state = 'unassigned'`,
+    [recorded.ride.id],
+  ))
+  expect(moved.rowCount).toBe(1)
+  const refused = await call('POST', path, world.dispatcher, { driverId: driver.id, vehicleId: vehicle.id })
+  expect(refused.status).toBe(409)
+  expect(await refused.text()).toContain('ride_not_unassigned')
+  expect(await rideRow(recorded.ride.id)).toEqual({
+    state: 'cancelled',
+    driver_id: null,
+    vehicle_id: null,
+    must_accept: null,
+  })
+  expect(await assignmentAudits(world.tenantId)).toEqual([])
+})
+
+it('refuses an assigned Ride that is missing a Driver, a Vehicle, or the must-accept copy', async () => {
+  const world = await office('hasg-pair')
+  const driver = await createDriver(world.dispatcher, driverBody)
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG7002AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString()))
+
+  await expect(withAppTenant(world.tenantId, client => client.query(
+    `update app.rides
+     set state = 'assigned', driver_id = null, vehicle_id = $2, must_accept = false
+     where id = $1`,
+    [recorded.ride.id, vehicle.id],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'rides_assigned_pair' })
+
+  await expect(withAppTenant(world.tenantId, client => client.query(
+    `update app.rides
+     set state = 'assigned', driver_id = $2, vehicle_id = null, must_accept = false
+     where id = $1`,
+    [recorded.ride.id, driver.id],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'rides_assigned_pair' })
+
+  await expect(withAppTenant(world.tenantId, client => client.query(
+    `update app.rides
+     set state = 'assigned', driver_id = $2, vehicle_id = $3, must_accept = null
+     where id = $1`,
+    [recorded.ride.id, driver.id, vehicle.id],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'rides_assigned_pair' })
+
+  expect(await rideRow(recorded.ride.id)).toEqual({
+    state: 'unassigned',
+    driver_id: null,
+    vehicle_id: null,
+    must_accept: null,
+  })
+})
+
+/**
+ * Poll until another backend of this role is waiting on a share lock of `table`.
+ * The holder stays open until this returns, so the assign result is the one
+ * taken after that lock. A plain select would finish without waiting.
+ */
+async function waitForShareLock(table: 'app.drivers' | 'app.vehicles'): Promise<void> {
+  const watcher = await appPool.connect()
+  const deadline = Date.now() + 8_000
+  try {
+    while (Date.now() < deadline) {
+      const waiting = await watcher.query(
+        `select pid
+         from pg_stat_activity
+         where pid <> pg_backend_pid()
+           and wait_event_type = 'Lock'
+           and query ilike '%for share%'
+           and query ilike $1`,
+        [`%${table}%`],
+      )
+      if ((waiting.rowCount ?? 0) > 0)
+        return
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    throw new Error(`assign did not wait on ${table} for share`)
+  }
+  finally {
+    watcher.release()
+  }
+}
+
+it('blocks on an open vehicle archive and then refuses the archived Vehicle', async () => {
+  const world = await office('hasg-vlock')
+  const driver = await createDriver(world.dispatcher, driverBody)
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG6001AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString()))
+  const holder = await appPool.connect()
+  let pending: Promise<Response> | undefined
+  try {
+    await holder.query('begin')
+    await holder.query('select set_config(\'app.tenant_id\', $1, true)', [world.tenantId])
+    // The row lock archive takes, then the archive write, left uncommitted.
+    const locked = await holder.query('select id from app.vehicles where id = $1 for update', [vehicle.id])
+    expect(locked.rowCount).toBe(1)
+    const archived = await holder.query('update app.vehicles set archived_at = now() where id = $1', [vehicle.id])
+    expect(archived.rowCount).toBe(1)
+
+    pending = call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+    })
+    await waitForShareLock('app.vehicles')
+    await holder.query('commit')
+
+    const response = await pending
+    expect(response.status).toBe(409)
+    expect(await response.text()).toContain('ride_vehicle_archived')
+    expect(await rideRow(recorded.ride.id)).toEqual({
+      state: 'unassigned',
+      driver_id: null,
+      vehicle_id: null,
+      must_accept: null,
+    })
+    expect(await assignmentAudits(world.tenantId)).toEqual([])
+  }
+  finally {
+    await holder.query('rollback').catch(() => {})
+    holder.release()
+    await pending?.catch(() => {})
+  }
+})
+
+it('blocks on an open must-accept correction and copies the committed value', async () => {
+  const world = await office('hasg-dlock')
+  const driver = await createDriver(world.dispatcher, driverBody)
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG6002AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString()))
+  const holder = await appPool.connect()
+  let pending: Promise<Response> | undefined
+  try {
+    await holder.query('begin')
+    await holder.query('select set_config(\'app.tenant_id\', $1, true)', [world.tenantId])
+    // The row lock a must-accept correction takes, then the new flag, left uncommitted.
+    const locked = await holder.query('select id from app.drivers where id = $1 for update', [driver.id])
+    expect(locked.rowCount).toBe(1)
+    const corrected = await holder.query('update app.drivers set must_accept = true where id = $1', [driver.id])
+    expect(corrected.rowCount).toBe(1)
+
+    pending = call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+    })
+    await waitForShareLock('app.drivers')
+    await holder.query('commit')
+
+    const response = await pending
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ mustAccept: true, state: 'assigned' })
+    expect(await rideRow(recorded.ride.id)).toMatchObject({ must_accept: true, state: 'assigned' })
+  }
+  finally {
+    await holder.query('rollback').catch(() => {})
+    holder.release()
+    await pending?.catch(() => {})
+  }
 })

@@ -21,7 +21,7 @@ export type { ChangeMemberRoleBody, Member, MemberErrorKey, MemberList } from '.
 export { companyAccountListSchema, companyAccountSchema, parseRenameTenantAccount, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './platform-account'
 export type { CompanyAccount, CompanyAccountList, PlatformActor, PlatformShell } from './platform-account'
 export { includeArchivedQuerySchema, parseIncludeArchivedQuery, QueryParamError } from './query'
-export { ASSIGNMENT_REFUSED_STATES, AssignRideInputError, assignRideSchema, assignTransitionAllowed, copiedMustAccept, parseAssignRide, parseRosterVehicleRead, RIDE_ASSIGNMENT_FIELDS, rideAssignmentFieldSchema, rosterVehicleSuggestionSchema } from './ride-assignment'
+export { ASSIGNMENT_REFUSED_STATES, AssignRideInputError, assignRideSchema, assignTransitionAllowed, parseAssignRide, parseRosterVehicleRead, RIDE_ASSIGNMENT_FIELDS, rideAssignmentFieldSchema, rosterVehicleSuggestionSchema } from './ride-assignment'
 export type { AssignRide, RideAssignmentField, RosterVehicleSuggestion } from './ride-assignment'
 export { parseRosterDate, parseSetRoster, rosterAssignmentSchema, rosterDateSchema, rosterDaySchema, RosterInputError, setRosterResultSchema, setRosterSchema } from './roster'
 export type { RosterAssignment, RosterDay, SetRoster, SetRosterResult } from './roster'

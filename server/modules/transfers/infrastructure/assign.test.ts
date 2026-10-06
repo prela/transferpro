@@ -1,7 +1,9 @@
 import type { SQL } from 'drizzle-orm'
 import type { TenantTransaction } from '../../../core/index'
+import { Writable } from 'node:stream'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
+import { createLogger, handleLoggedError } from '../../../core/index'
 import { assignUnassignedRide, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError, suggestRosterVehicle } from './assign'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
@@ -20,6 +22,8 @@ interface Script {
   pickupAt?: Date
   rosterVehicleId?: string | null
   rosterVehicle?: 'active' | 'archived' | 'missing'
+  /** Throw this message when the statement text includes `failSql`. The bound ids stay in that message. */
+  fail?: { sql: string, message: string }
 }
 
 function fakeTransaction(script: Script) {
@@ -29,6 +33,8 @@ function fakeTransaction(script: Script) {
       const compiled = dialect.sqlToQuery(query)
       queries.push(compiled)
       const text = compiled.sql
+      if (script.fail && text.includes(script.fail.sql))
+        throw new Error(script.fail.message)
       if (text.includes('for update') && text.includes('from app.rides')) {
         if (script.rideState === 'missing')
           return { rows: [] }
@@ -100,6 +106,18 @@ function wroteAssignment(queries: Array<{ sql: string }>): boolean {
   return queries.some(query => query.sql.includes('update app.rides') || query.sql.includes('audit.append_entry'))
 }
 
+function logLine(error: unknown): string {
+  let line = ''
+  const destination: Writable = new Writable({
+    write(chunk, _encoding, callback) {
+      line += String(chunk)
+      callback()
+    },
+  })
+  handleLoggedError(createLogger({ level: 'debug', destination }), error, 'req-assign')
+  return line
+}
+
 it('assigns only from unassigned, copies must-accept, and names fields not a plate or a phone', async () => {
   const { transaction, queries } = fakeTransaction({ driverMustAccept: true })
   await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).resolves.toEqual({
@@ -112,7 +130,10 @@ it('assigns only from unassigned, copies must-accept, and names fields not a pla
   })
   const driverQuery = queries.find(query => query.sql.includes('from app.drivers'))
   expect(driverQuery?.sql).toContain('must_accept')
+  expect(driverQuery?.sql).toContain('for share')
   expect(driverQuery?.sql).not.toContain('phone')
+  const vehicleQuery = queries.find(query => query.sql.includes('from app.vehicles'))
+  expect(vehicleQuery?.sql).toContain('for share')
   const update = queries.find(query => query.sql.includes('update app.rides'))
   expect(update?.sql).toContain('state = \'unassigned\'')
   expect(update?.params).toEqual([driverId, vehicleId, true, rideId])
@@ -170,6 +191,70 @@ it('refuses a Vehicle that is not in this Tenant, and writes nothing', async () 
   expect(wroteAssignment(queries)).toBe(false)
 })
 
+it('replaces a database failure so the log line does not keep the bound ids', async () => {
+  const leaked = `duplicate ${driverId} ${vehicleId} ${rideId}`
+  const update = fakeTransaction({ fail: { sql: 'update app.rides', message: leaked } })
+  const updateError = await assignUnassignedRide(update.transaction, actorUserId, { rideId, driverId, vehicleId }).catch(caught => caught)
+  expect(updateError).toMatchObject({ message: 'Ride assignment failed' })
+  expect(String(updateError)).not.toContain(driverId)
+  expect(logLine(updateError)).not.toContain(vehicleId)
+  expect(update.queries.some(query => query.sql.includes('audit.append_entry'))).toBe(false)
+
+  const driver = fakeTransaction({ fail: { sql: 'from app.drivers', message: leaked } })
+  const driverError = await assignUnassignedRide(driver.transaction, actorUserId, { rideId, driverId, vehicleId }).catch(caught => caught)
+  expect(driverError).toMatchObject({ message: 'Driver read failed' })
+  expect(String(driverError)).not.toContain(driverId)
+  expect(logLine(driverError)).not.toContain(rideId)
+  expect(wroteAssignment(driver.queries)).toBe(false)
+
+  const vehicle = fakeTransaction({ fail: { sql: 'from app.vehicles', message: leaked } })
+  const vehicleError = await assignUnassignedRide(vehicle.transaction, actorUserId, { rideId, driverId, vehicleId }).catch(caught => caught)
+  expect(vehicleError).toMatchObject({ message: 'Vehicle read failed' })
+  expect(String(vehicleError)).not.toContain(vehicleId)
+  expect(logLine(vehicleError)).not.toContain(driverId)
+  expect(wroteAssignment(vehicle.queries)).toBe(false)
+})
+
+it('replaces a pre-fill read failure so the log line does not keep the ride id', async () => {
+  const leaked = `pickup ${rideId}`
+  const { transaction } = fakeTransaction({
+    pickupAt: new Date('2026-10-05T21:59:00.000Z'),
+    fail: { sql: 'pickup_at', message: leaked },
+  })
+  const error = await suggestRosterVehicle(transaction, rideId, driverId).catch(caught => caught)
+  expect(error).toMatchObject({ message: 'Ride read failed' })
+  expect(String(error)).not.toContain(rideId)
+  expect(logLine(error)).not.toContain(rideId)
+})
+
+it('replaces a pre-fill catalog failure so the log line does not keep the bound ids', async () => {
+  const leaked = `bound ${driverId} ${vehicleId} ${rideId}`
+  const pickupAt = new Date('2026-10-05T21:59:00.000Z')
+
+  const driver = fakeTransaction({ pickupAt, fail: { sql: 'from app.drivers', message: leaked } })
+  const driverError = await suggestRosterVehicle(driver.transaction, rideId, driverId).catch(caught => caught)
+  expect(driverError).toMatchObject({ message: 'Ride read failed' })
+  expect(String(driverError)).not.toContain(driverId)
+  expect(logLine(driverError)).not.toContain(driverId)
+
+  const roster = fakeTransaction({ pickupAt, fail: { sql: 'from app.roster', message: leaked } })
+  const rosterError = await suggestRosterVehicle(roster.transaction, rideId, driverId).catch(caught => caught)
+  expect(rosterError).toMatchObject({ message: 'Ride read failed' })
+  expect(String(rosterError)).not.toContain(driverId)
+  expect(logLine(rosterError)).not.toContain(rideId)
+
+  const vehicle = fakeTransaction({
+    pickupAt,
+    rosterVehicleId: vehicleId,
+    rosterVehicle: 'active',
+    fail: { sql: 'from app.vehicles', message: leaked },
+  })
+  const vehicleError = await suggestRosterVehicle(vehicle.transaction, rideId, driverId).catch(caught => caught)
+  expect(vehicleError).toMatchObject({ message: 'Ride read failed' })
+  expect(String(vehicleError)).not.toContain(vehicleId)
+  expect(logLine(vehicleError)).not.toContain(vehicleId)
+})
+
 it('treats a lost update as a conflict and appends nothing', async () => {
   const { transaction, queries } = fakeTransaction({ updateWins: false })
   await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideNotUnassignedError)
@@ -184,6 +269,9 @@ it('suggests the roster Vehicle for the pickup local day, and skips an archived 
   })
   await expect(suggestRosterVehicle(beforeMidnight.transaction, rideId, driverId)).resolves.toEqual({ vehicleId })
   expect(beforeMidnight.queries.find(query => query.sql.includes('from app.roster'))?.params).toEqual([driverId, '2026-10-05'])
+  // The pre-fill does not take the assign share locks. It does not write a Ride.
+  expect(beforeMidnight.queries.find(query => query.sql.includes('from app.drivers'))?.sql).not.toContain('for share')
+  expect(beforeMidnight.queries.find(query => query.sql.includes('from app.vehicles'))?.sql).not.toContain('for share')
 
   const afterMidnight = fakeTransaction({
     pickupAt: new Date('2026-10-05T22:00:00.000Z'),
