@@ -436,8 +436,23 @@
     "vehicle": "Vozilo"
   },
   "ride": {
+    "title": "Dodjela vožnje",
+    "assign": "Dodijeli",
+    "driver": "Vozač",
+    "vehicle": "Vozilo",
+    "chooseDriver": "Odaberite vozača",
+    "chooseVehicle": "Odaberite vozilo",
+    "submit": "Dodijeli vožnju",
+    "submitting": "Dodjeljivanje",
     "vehicleArchived": "Arhivirano vozilo ne može se dodijeliti.",
-    "notUnassigned": "Dodijeliti se može samo vožnja koja još nema vozača i vozilo."
+    "notUnassigned": "Dodijeliti se može samo vožnja koja još nema vozača i vozilo.",
+    "notFound": "Ta vožnja nije na popisu.",
+    "rejected": "Dodjela nije prihvaćena.",
+    "forbidden": "Vozač ne može dodijeliti vožnju.",
+    "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
+    "saveFailed": "Vožnja nije dodijeljena. Pokušajte ponovno.",
+    "unknownDriver": "Nepoznat vozač",
+    "unknownVehicle": "Nepoznato vozilo"
   },
   "expiringDocuments": {
     "title": "Dokumenti koji istječu",

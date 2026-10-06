@@ -436,8 +436,23 @@
     "vehicle": "Vehicle"
   },
   "ride": {
+    "title": "Assign the ride",
+    "assign": "Assign",
+    "driver": "Driver",
+    "vehicle": "Vehicle",
+    "chooseDriver": "Choose a driver",
+    "chooseVehicle": "Choose a vehicle",
+    "submit": "Assign ride",
+    "submitting": "Assigning",
     "vehicleArchived": "An archived vehicle cannot be assigned.",
-    "notUnassigned": "Only an unassigned ride can be assigned."
+    "notUnassigned": "Only an unassigned ride can be assigned.",
+    "notFound": "That ride is not on the list.",
+    "rejected": "The assignment was not accepted.",
+    "forbidden": "A driver cannot assign a ride.",
+    "signedOut": "You are signed out. Sign in and try again.",
+    "saveFailed": "The ride was not assigned. Try again.",
+    "unknownDriver": "Unknown driver",
+    "unknownVehicle": "Unknown vehicle"
   },
   "expiringDocuments": {
     "title": "Expiring documents",

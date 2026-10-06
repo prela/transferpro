@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Client, DisplayLocale, Location, LocationKind, PaymentMethod, TransferDayRide } from '../../shared'
-import { calendarDateInTimeZone, childSeatCountError, clientListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, sameLocationError, transferDaySchema } from '../../shared'
+import type { Client, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
+import { calendarDateInTimeZone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, sameLocationError, transferDaySchema, vehicleListSchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -14,6 +14,9 @@ const day = ref(today)
 const rides = ref<TransferDayRide[]>([])
 const clients = ref<Client[]>([])
 const locations = ref<Location[]>([])
+const drivers = ref<Driver[]>([])
+const vehicles = ref<Vehicle[]>([])
+const assigning = ref<{ rideId: string, guestName: string } | null>(null)
 
 const clientId = ref<string | undefined>()
 const pickupWall = ref(`${today}T12:00`)
@@ -92,10 +95,34 @@ const columns = computed(() => [
   { id: 'start', header: t('transfers.start') },
   { id: 'end', header: t('transfers.end') },
   { id: 'state', header: t('transfers.status') },
+  { id: 'driver', header: t('ride.driver') },
+  { id: 'vehicle', header: t('ride.vehicle') },
+  { id: 'actions', header: '' },
 ])
 
 function placeLabel(id: string): string {
   return locations.value.find(location => location.id === id)?.name ?? t('transfers.unknownPlace')
+}
+
+/** The day list stores ids. The screen shows the name or the plate, never the id. */
+function driverLabel(id: string | null): string {
+  if (id === null)
+    return ''
+  return drivers.value.find(driver => driver.id === id)?.name ?? t('ride.unknownDriver')
+}
+
+function vehicleLabel(id: string | null): string {
+  if (id === null)
+    return ''
+  return vehicles.value.find(vehicle => vehicle.id === id)?.registrationPlate ?? t('ride.unknownVehicle')
+}
+
+function openAssign(ride: TransferDayRide) {
+  assigning.value = { rideId: ride.rideId, guestName: ride.guestName }
+}
+
+function onAssigned() {
+  void loadDay()
 }
 
 function httpStatus(error: unknown): number | undefined {
@@ -130,14 +157,19 @@ function failureKey(error: unknown): TransferFailure {
 }
 
 async function loadCatalogs() {
-  const [clientList, locationList] = await Promise.all([
+  const [clientList, locationList, driverList, vehicleList] = await Promise.all([
     clientListSchema.parse(await $fetch('/api/clients')),
     // Archived rows stay in the catalog so a Ride keeps its place name.
     // The record form still offers only places that are not archived.
     locationListSchema.parse(await $fetch('/api/locations', { query: { includeArchived: 'true' } })),
+    driverListSchema.parse(await $fetch('/api/drivers')),
+    // Archived Vehicles stay out of this list, so the assign picker cannot offer one.
+    vehicleListSchema.parse(await $fetch('/api/vehicles')),
   ])
   clients.value = clientList.clients
   locations.value = locationList.locations
+  drivers.value = driverList.drivers
+  vehicles.value = vehicleList.vehicles
 }
 
 async function loadDay(ticket = ++loadTicket) {
@@ -316,6 +348,7 @@ async function record() {
 }
 
 watch(day, () => {
+  assigning.value = null
   void loadDay()
 })
 
@@ -382,8 +415,35 @@ onMounted(loadAll)
         <template #state-cell="{ row }">
           {{ t(`transfers.states.${row.original.state}`) }}
         </template>
+        <template #driver-cell="{ row }">
+          {{ driverLabel(row.original.driverId) }}
+        </template>
+        <template #vehicle-cell="{ row }">
+          {{ vehicleLabel(row.original.vehicleId) }}
+        </template>
+        <template #actions-cell="{ row }">
+          <UButton
+            v-if="row.original.state === 'unassigned'"
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="xl"
+            @click="openAssign(row.original)"
+          >
+            {{ t('ride.assign') }}
+          </UButton>
+        </template>
       </UTable>
     </div>
+
+    <RideAssign
+      v-if="assigning"
+      :ride-id="assigning.rideId"
+      :guest-name="assigning.guestName"
+      :drivers="drivers"
+      :vehicles="vehicles"
+      @assigned="onAssigned"
+    />
 
     <h2 class="mt-6 mb-4 text-xl font-semibold">
       {{ t('transfers.add') }}
