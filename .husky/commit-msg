@@ -1,0 +1,3 @@
+# Reject a message that names a model or contains a "Model:" line.
+# The checker is the same list the pull-request workflow uses.
+exec node .cursor/hooks/check-commit-msg.mjs "$1"

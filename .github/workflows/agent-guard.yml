@@ -1,0 +1,40 @@
+# Separate from ci.yml so the app pipeline stays unchanged.
+# pull_request payload carries the title and body; this job uses no extra token.
+name: agent-guard
+
+on:
+  push:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+
+      - name: Shell guard and text checks
+        run: node --test .cursor/hooks/guard-shell.checks.mjs .cursor/hooks/agent-text.checks.mjs
+
+  pr-text:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+
+      - name: Reject banned names and agent footers in the PR text
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node .cursor/hooks/check-pr-text.mjs
