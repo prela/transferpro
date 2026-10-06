@@ -38,7 +38,12 @@ test('correcting a plate to an archived plate shows the archived-conflict messag
   await expect(dialog.getByRole('alert')).not.toContainText('Vozilo s tom registarskom oznakom već postoji.')
   await expect(dialog.getByRole('alert')).not.toContainText(archivedPlate)
 
+  await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await expect(dialog).toBeHidden()
   await page.getByRole('button', { name: 'English', exact: true }).click()
+  await page.getByRole('button', { name: `Correct vehicle: ${livePlate}` }).click()
+  await dialog.getByLabel('Registration plate', { exact: true }).fill(archivedPlate)
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText(
     'A vehicle with this registration plate is archived. Show archived vehicles or restore the archived vehicle before adding or correcting.',
   )
