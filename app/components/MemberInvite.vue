@@ -21,6 +21,21 @@ const roleItems = computed(() => [
   { label: t('invite.roles.driver'), value: 'driver' as const },
 ])
 
+// The invite control sits in the lower half of a long home page. After the
+// trigger is scrolled into view it sits near the bottom of a 720px (or
+// phone) viewport. USelect's default side is bottom + popper (fixed). The
+// last options then sit outside the viewport; document scroll does not move
+// a fixed list, so a pointer click times out. Popper + collision keeps the
+// list in the viewport (it opens upward here and flips if needed).
+const roleSelectContent = {
+  position: 'popper' as const,
+  side: 'top' as const,
+  sideOffset: 8,
+  align: 'start' as const,
+  avoidCollisions: true,
+  collisionPadding: 16,
+}
+
 async function invite() {
   // Before the role check: a missing role returns early, and a previous
   // "invite was not sent" alert would otherwise stay on screen.
@@ -130,6 +145,8 @@ async function copyLink() {
           name="role"
           :items="roleItems"
           :placeholder="t('invite.chooseRole')"
+          :portal="true"
+          :content="roleSelectContent"
           class="w-full"
           @update:model-value="roleMissing = false"
         />
