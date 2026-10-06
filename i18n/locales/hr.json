@@ -438,6 +438,7 @@
   "ride": {
     "title": "Dodjela vožnje",
     "assign": "Dodijeli",
+    "assignFor": "Dodijeli: {guest}",
     "driver": "Vozač",
     "vehicle": "Vozilo",
     "chooseDriver": "Odaberite vozača",

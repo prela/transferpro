@@ -438,6 +438,7 @@
   "ride": {
     "title": "Assign the ride",
     "assign": "Assign",
+    "assignFor": "Assign: {guest}",
     "driver": "Driver",
     "vehicle": "Vehicle",
     "chooseDriver": "Choose a driver",
