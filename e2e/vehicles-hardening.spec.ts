@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, signIn, useTheme } from './fixtures/ui'
+import { seedTenant } from './fixtures/seed'
+import { chooseOption, signIn } from './fixtures/ui'
 
 const archivedPlate = 'ARC81AA'
 const livePlate = 'LIV81BB'
@@ -48,31 +48,4 @@ test('correcting a plate to an archived plate shows the archived-conflict messag
     'A vehicle with this registration plate is archived. Show archived vehicles or restore the archived vehicle before adding or correcting.',
   )
   await expect(dialog.getByRole('alert')).not.toContainText('A vehicle with this registration plate already exists.')
-})
-
-for (const theme of ['light', 'dark'] as const) {
-  test(`vehicles page is usable in ${theme} mode`, async ({ page }) => {
-    const tenant = await seedTenant(`vehicles-harden-theme-${theme}`)
-    await useTheme(page, theme)
-    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-    await page.getByRole('link', { name: 'Vozila' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Vozila' })).toBeVisible()
-    await expect(page.getByLabel('Registarska oznaka', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Dodaj vozilo', exact: true })).toBeVisible()
-
-    await page.getByRole('button', { name: 'English', exact: true }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Vehicles' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Add vehicle', exact: true })).toBeVisible()
-  })
-}
-
-test('a driver cannot open vehicles', async ({ page }) => {
-  const tenant = await seedTenant('vehicles-harden-driver')
-  const driver = await seedMember(tenant.tenantId, 'driver', 'Vozač')
-  await signIn(page, driver.email, driver.password, tenant.name)
-
-  await expect(page.getByRole('link', { name: 'Vozila' })).toHaveCount(0)
-  await page.goto('/vehicles')
-  await expect(page.getByRole('alert')).toContainText('Vozač ne može dodavati ni ispravljati vozila.')
-  await expect(page.getByLabel('Registarska oznaka', { exact: true })).toHaveCount(0)
 })

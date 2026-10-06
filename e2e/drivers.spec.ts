@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { chooseOption, signIn } from './fixtures/ui'
 
 const phone = '+385981112233'
 const nextPhone = '+385981112244'
@@ -13,8 +13,7 @@ test('admin adds a driver, corrects it, and the audit log does not show the phon
   await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
 
   // Other required fields are filled so the empty name is the only alert.
-  await page.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Vlastiti', exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Vlastiti')
   await page.getByLabel('Telefon').fill(phone)
   await page.getByLabel('Vozačka dozvola vrijedi do').fill('2027-06-01')
   await page.getByLabel('Dozvola za prijevoz vrijedi do').fill('2028-01-31')
@@ -27,8 +26,7 @@ test('admin adds a driver, corrects it, and the audit log does not show the phon
 
   await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
   await page.getByLabel('Ime').fill('Marko Marić')
-  await page.getByRole('combobox', { name: 'Član' }).click()
-  await page.getByRole('option', { name: linked.name, exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Član' }), linked.name)
   await page.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Ispravi vozača: Marko Marić' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vlastiti' })).toBeVisible()
@@ -40,8 +38,7 @@ test('admin adds a driver, corrects it, and the audit log does not show the phon
   await page.getByRole('button', { name: 'Ispravi vozača: Marko Marić' }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Ime').fill('Mara Marić')
-  await dialog.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Vanjski', exact: true }).click()
+  await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Vanjski')
   await dialog.getByLabel('Telefon').fill(nextPhone)
   await dialog.getByLabel('Vozačka dozvola vrijedi do').fill('2029-03-03')
   await dialog.getByRole('checkbox', { name: 'Mora prihvatiti' }).check()
@@ -76,8 +73,7 @@ test('dispatcher adds a driver and cannot turn on must-accept', async ({ page })
   await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
 
   await page.getByLabel('Ime').fill('Ivo Ivić')
-  await page.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Vanjski', exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Vanjski')
   await page.getByLabel('Telefon').fill('+385911100200')
   await page.getByLabel('Vozačka dozvola vrijedi do').fill('2030-04-04')
   await page.getByLabel('Dozvola za prijevoz vrijedi do').fill('2030-05-05')
