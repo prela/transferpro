@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { memberPassword, seedTenant } from './fixtures/seed'
-import { expectNoInvitationCookie, invite, signIn, signOut } from './fixtures/ui'
+import { chooseOption, expectNoInvitationCookie, invite, signIn, signOut } from './fixtures/ui'
 
 test('a failed send shows the message and the copyable invite link', async ({ page }) => {
   const tenant = await seedTenant('invite-mail-fail')
@@ -41,16 +41,7 @@ test('inviting an existing member shows the already-member message', async ({ pa
   const region = page.getByRole('region', { name: 'Pozovi člana' })
   await region.getByLabel('E-pošta').fill(tenant.adminEmail)
   // This path never shows an invite link, so invite() cannot wait for one.
-  // Same keyboard confirm as chooseInviteRole in fixtures/ui.ts (do not edit that file).
-  const select = region.getByRole('combobox', { name: 'Uloga' })
-  await select.click()
-  const listbox = page.getByRole('listbox')
-  await expect(listbox).toBeVisible()
-  const option = listbox.getByRole('option', { name: 'Vozač', exact: true })
-  await expect(option).toBeAttached()
-  await option.scrollIntoViewIfNeeded()
-  await option.press('Enter')
-  await expect(select).toContainText('Vozač')
+  await chooseOption(page, region.getByRole('combobox', { name: 'Uloga' }), 'Vozač')
   await region.getByRole('button', { name: 'Pošalji pozivnicu', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Ova osoba je već član ili već ima pozivnicu na čekanju.')
 })
