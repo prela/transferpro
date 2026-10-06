@@ -168,6 +168,37 @@ it('rejects a Locations import of the transfers module', async () => {
   expect(await locationsTransfersImport('server/modules/vehicles/index.ts', source)).toEqual([])
 })
 
+async function clientsTransfersImport(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? []).filter(message =>
+    message.ruleId === 'transferpro/no-clients-transfers-import',
+  )
+}
+
+it('rejects a Clients import of the transfers module', async () => {
+  const source = `import { bookRide } from '../../transfers'\n`
+  const dynamic = `await import('../transfers/index')\n`
+  expect(await clientsTransfersImport('server/modules/clients/infrastructure/clients.ts', source)).not.toEqual([])
+  expect(await clientsTransfersImport('server/modules/clients/index.ts', dynamic)).not.toEqual([])
+  expect(await clientsTransfersImport('server/modules/locations/index.ts', source)).toEqual([])
+})
+
+async function transfersCatalogDeepImport(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? []).filter(message =>
+    message.ruleId === 'transferpro/no-transfers-catalog-deep-import',
+  )
+}
+
+it('rejects a Transfers deep import of Clients or Locations', async () => {
+  const clients = `import { loadClients } from '../../clients/infrastructure/clients'\n`
+  const locations = `await import('../locations/infrastructure/locations')\n`
+  expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', clients)).not.toEqual([])
+  expect(await transfersCatalogDeepImport('server/modules/transfers/index.ts', locations)).not.toEqual([])
+  expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', `import { loadClients } from '../../clients'\n`)).toEqual([])
+  expect(await transfersCatalogDeepImport('server/modules/locations/infrastructure/locations.ts', clients)).toEqual([])
+})
+
 it('rejects a Roster import of the transfers module', async () => {
   const source = `import { bookRide } from '../../transfers'\n`
   const dynamic = `await import('../transfers/index')\n`

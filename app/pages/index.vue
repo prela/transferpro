@@ -183,6 +183,14 @@ const loadMessage = computed(() => {
         :aria-label="t('shell.nav')"
       >
         <UButton
+          to="/transfers"
+          color="neutral"
+          variant="outline"
+          size="xl"
+        >
+          {{ t('transfers.nav') }}
+        </UButton>
+        <UButton
           to="/clients"
           color="neutral"
           variant="outline"

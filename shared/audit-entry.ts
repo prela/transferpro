@@ -5,6 +5,7 @@ import { locationFieldSchema } from './location'
 import { rosterDateSchema } from './roster'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
+import { TRANSFER_FIELDS, transferFieldSchema } from './transfer'
 import { vehicleFieldSchema } from './vehicle'
 
 /**
@@ -30,6 +31,7 @@ export const auditActions = [
   'location.created',
   'location.field_changed',
   'location.archived',
+  'transfer.created',
   'roster.assigned',
   'roster.changed',
   'roster.cleared',
@@ -209,6 +211,28 @@ const locationArchived = z.object({
 })
 
 /*
+ * A Transfer is not a member. The ids say which rows. The field list names
+ * what was written and nothing else: a guest name, a flight number, a note,
+ * or a price would stay forever on a row that is never deleted. The Ride id
+ * is here because creating the Transfer creates that one Ride.
+ */
+const transferId = z.uuid()
+const rideId = z.uuid()
+
+const transferCreated = z.object({
+  action: z.literal('transfer.created'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    transferId,
+    rideId,
+    clientId,
+    startLocationId: locationId,
+    endLocationId: locationId,
+    fields: z.array(transferFieldSchema).min(1).max(TRANSFER_FIELDS.length),
+  }),
+})
+
+/*
  * A roster row is not a member. The data names the day and the ids.
  * A plate, a driver name, or a phone would stay forever on a row that
  * is never deleted, so none of those keys exist.
@@ -279,6 +303,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   locationCreated,
   locationFieldChanged,
   locationArchived,
+  transferCreated,
   rosterAssigned,
   rosterChanged,
   rosterCleared,
@@ -319,6 +344,7 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   locationCreated.extend(listed),
   locationFieldChanged.extend(listed),
   locationArchived.extend(listed),
+  transferCreated.extend(listed),
   rosterAssigned.extend(listed),
   rosterChanged.extend(listed),
   rosterCleared.extend(listed),

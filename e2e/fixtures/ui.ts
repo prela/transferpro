@@ -25,19 +25,19 @@ export async function signOut(page: Page) {
 export type InviteRole = 'Administrator' | 'Dispečer' | 'Vozač'
 
 /**
- * Open the role select and confirm the named option with the keyboard. A
- * pointer click on the option misses when the home column clips the list
- * (the option is attached but outside the viewport).
+ * Open a combobox and confirm the named option with the keyboard. A pointer
+ * click on the option misses when the list is clipped (the option is attached
+ * but outside the viewport).
  */
-async function chooseInviteRole(page: Page, select: Locator, role: InviteRole) {
-  await select.click()
+export async function chooseOption(page: Page, combobox: Locator, name: string) {
+  await combobox.click()
   const listbox = page.getByRole('listbox')
   await expect(listbox).toBeVisible()
-  const option = listbox.getByRole('option', { name: role, exact: true })
+  const option = listbox.getByRole('option', { name, exact: true })
   await expect(option).toBeAttached()
   await option.scrollIntoViewIfNeeded()
   await option.press('Enter')
-  await expect(select).toContainText(role)
+  await expect(combobox).toContainText(name)
 }
 
 /**
@@ -48,7 +48,7 @@ export async function invite(page: Page, email: string, role: InviteRole): Promi
   const region = page.getByRole('region', { name: 'Pozovi člana' })
   await region.getByLabel('E-pošta').fill(email)
   const select = region.getByRole('combobox', { name: 'Uloga' })
-  await chooseInviteRole(page, select, role)
+  await chooseOption(page, select, role)
   await region.getByRole('button', { name: 'Pošalji pozivnicu', exact: true }).click()
   const link = region.getByLabel('Poveznica pozivnice')
   await expect(link).toBeVisible()

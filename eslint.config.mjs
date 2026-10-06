@@ -226,6 +226,96 @@ const locationsTransfersImport = {
   },
 }
 
+const clientsTransfersImport = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      banned: 'The Clients module does not import the transfers module (ADR-0018).',
+    },
+  },
+  create(context) {
+    /**
+     * @param {import('estree').Node} node
+     * @param {unknown} source
+     */
+    function check(node, source) {
+      if (typeof source !== 'string' || !(/(?:^|\/)transfers(?:\/|$)/).test(source))
+        return
+      const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
+      if (!filename.includes('/server/modules/clients/'))
+        return
+      context.report({ node, messageId: 'banned' })
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ImportExpression(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source?.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportAllDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+    }
+  },
+}
+
+/**
+ * Transfers may name a Client or a Location only through that module's index.
+ * A deep import of infrastructure would couple the booking to the catalog's internals.
+ */
+const transfersCatalogDeepImport = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      banned: 'Transfers reach Clients and Locations through their index.ts only (ADR-0018).',
+    },
+  },
+  create(context) {
+    /**
+     * @param {import('estree').Node} node
+     * @param {unknown} source
+     */
+    function check(node, source) {
+      if (typeof source !== 'string' || !/(?:^|\/)(?:clients|locations)\/infrastructure(?:\/|$)/.test(source))
+        return
+      const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
+      if (!filename.includes('/server/modules/transfers/'))
+        return
+      context.report({ node, messageId: 'banned' })
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ImportExpression(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source?.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportAllDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+    }
+  },
+}
+
 const rosterTransfersImport = {
   meta: {
     type: 'problem',
@@ -423,6 +513,8 @@ export default antfu(
           'no-drivers-transfers-import': driversTransfersImport,
           'no-vehicles-transfers-import': vehiclesTransfersImport,
           'no-locations-transfers-import': locationsTransfersImport,
+          'no-clients-transfers-import': clientsTransfersImport,
+          'no-transfers-catalog-deep-import': transfersCatalogDeepImport,
           'no-roster-transfers-import': rosterTransfersImport,
           'no-expiring-documents-transfers-import': expiringDocumentsTransfersImport,
           'no-platform-boundary-import': platformBoundaryImport,
@@ -436,6 +528,8 @@ export default antfu(
       'transferpro/no-drivers-transfers-import': 'error',
       'transferpro/no-vehicles-transfers-import': 'error',
       'transferpro/no-locations-transfers-import': 'error',
+      'transferpro/no-clients-transfers-import': 'error',
+      'transferpro/no-transfers-catalog-deep-import': 'error',
       'transferpro/no-roster-transfers-import': 'error',
       'transferpro/no-expiring-documents-transfers-import': 'error',
       'transferpro/no-platform-boundary-import': 'error',

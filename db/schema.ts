@@ -11,6 +11,7 @@ export { locations } from './locations'
 export { roster } from './roster'
 export { tenantInvitation } from './tenant-invitation'
 export { tenantMember } from './tenant-member'
+export { rides, transfers } from './transfers'
 export { vehicles } from './vehicles'
 
 /**
