@@ -176,6 +176,8 @@ it('post answers 400 for a bad body and does not echo the phone, and no session 
   expect((await call('GET', '/api/drivers?includeArchived=false')).status).toBe(401)
   expect((await call('GET', '/api/drivers?includeArchived=1')).status).toBe(400)
   expect((await call('GET', '/api/drivers?includeArchived=')).status).toBe(400)
+  expect((await call('GET', '/api/drivers?includeArchived=null')).status).toBe(400)
+  expect((await call('GET', '/api/drivers?includeArchived=True')).status).toBe(400)
 })
 
 it('a dispatcher and an admin can add, correct, and list a Driver, and a driver is refused', async () => {

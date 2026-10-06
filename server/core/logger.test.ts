@@ -212,6 +212,29 @@ it('logs a refused request at warn and a failure at error, with the same body sh
   expect(logs.lines().map(line => line.level)).toEqual([40, 50])
 })
 
+it('forwards a safe client error code on a 409 so the UI can tell conflicts apart', () => {
+  const logs = captureLogs()
+  const refused = Object.assign(new Error('Conflict'), {
+    statusCode: 409,
+    data: { code: 'vehicle_archived_plate' },
+  })
+  expect(handleLoggedError(logs.logger, refused, requestId)).toEqual({
+    statusCode: 409,
+    message: 'Request failed',
+    request_id: requestId,
+    code: 'vehicle_archived_plate',
+  })
+  const dropped = Object.assign(new Error('Conflict'), {
+    statusCode: 409,
+    data: { code: 'Vehicle Archived!' },
+  })
+  expect(handleLoggedError(logs.logger, dropped, requestId)).toEqual({
+    statusCode: 409,
+    message: 'Request failed',
+    request_id: requestId,
+  })
+})
+
 it('returns the request id for the response header and keeps it on later async work', async () => {
   const logs = captureLogs()
   expect(openRequestLog(requestId)).toBe(requestId)
