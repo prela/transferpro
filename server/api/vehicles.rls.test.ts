@@ -178,6 +178,8 @@ it('post answers 400 for a bad body and does not echo the plate, and no session 
   expect((await call('POST', '/api/vehicles/a1b2c3d4-5555-4555-8555-555555555555/archive')).status).toBe(401)
   expect((await call('GET', '/api/vehicles?includeArchived=1')).status).toBe(400)
   expect((await call('GET', '/api/vehicles?includeArchived=')).status).toBe(400)
+  expect((await call('GET', '/api/vehicles?includeArchived=null')).status).toBe(400)
+  expect((await call('GET', '/api/vehicles?includeArchived=True')).status).toBe(400)
   expect((await call('GET', '/api/vehicles?includeArchived=false')).status).toBe(401)
 })
 
@@ -221,6 +223,7 @@ it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and
   const duplicateText = await duplicate.text()
   expect(duplicateText).not.toContain(plate)
   expect(duplicateText).not.toContain('DU 123 AB')
+  expect(JSON.parse(duplicateText)).toMatchObject({ statusCode: 409, code: 'vehicle_plate_taken' })
 
   const corrected = await call('PATCH', `/api/vehicles/${row.id}`, admin, {
     registrationPlate: 'ZG111AA',
@@ -245,7 +248,9 @@ it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and
 
   const frozen = await call('PATCH', `/api/vehicles/${row.id}`, admin, { kind: 'fixed' })
   expect(frozen.status).toBe(409)
-  expect(await frozen.text()).not.toContain('ZG111AA')
+  const frozenText = await frozen.text()
+  expect(frozenText).not.toContain('ZG111AA')
+  expect(JSON.parse(frozenText)).toMatchObject({ statusCode: 409, code: 'vehicle_archived' })
 
   const hidden = await call('GET', '/api/vehicles', dispatcher)
   expect(await hidden.json()).toEqual({ vehicles: [] })
@@ -265,7 +270,9 @@ it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and
   const otherRow = await other.json()
   const archivedPlate = await call('PATCH', `/api/vehicles/${otherRow.id}`, admin, { registrationPlate: 'ZG111AA' })
   expect(archivedPlate.status).toBe(409)
-  expect(await archivedPlate.text()).not.toContain('ZG111AA')
+  const archivedPlateText = await archivedPlate.text()
+  expect(archivedPlateText).not.toContain('ZG111AA')
+  expect(JSON.parse(archivedPlateText)).toMatchObject({ statusCode: 409, code: 'vehicle_archived_plate' })
 
   const again = await call('POST', `/api/vehicles/${row.id}/archive`, admin)
   expect(again.status).toBe(200)

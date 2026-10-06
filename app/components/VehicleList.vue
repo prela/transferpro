@@ -87,13 +87,13 @@ function failureKey(error: unknown): VehicleFailure {
 }
 
 function vehicleErrorCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null)
+  // $fetch puts the JSON body on error.data. The handler forwards { code }.
+  if (typeof error !== 'object' || error === null || !('data' in error))
     return undefined
-  if ('data' in error && typeof error.data === 'object' && error.data !== null && 'code' in error.data) {
-    const code = error.data.code
-    return typeof code === 'string' ? code : undefined
-  }
-  return undefined
+  const data = error.data
+  if (typeof data !== 'object' || data === null || !('code' in data))
+    return undefined
+  return typeof data.code === 'string' ? data.code : undefined
 }
 
 function plateKey(value: string): PlateErrorKey | null {

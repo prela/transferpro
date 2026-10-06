@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { chooseOption, signIn } from './fixtures/ui'
 
 const plate = 'DU123AB'
 const nextPlate = 'ZG111AA'
@@ -12,8 +12,7 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
 
   // Other required fields are filled so the empty plate is the only alert.
-  await page.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Stalno', exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Stalno')
   await page.getByLabel('Registracija vrijedi do').fill('2027-06-01')
   await page.getByLabel('Tehnički pregled vrijedi do').fill('2028-01-31')
   await page.getByLabel('Osiguranje vrijedi do').fill('2029-03-03')
@@ -37,8 +36,7 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await page.getByRole('button', { name: 'Ispravi vozilo: DU123AB' }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Registarska oznaka', { exact: true }).fill(nextPlate)
-  await dialog.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Povremeno', exact: true }).click()
+  await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Povremeno')
   await dialog.getByLabel('Osiguranje vrijedi do').fill('2030-04-04')
   await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
   await expect(dialog).toBeHidden()
@@ -78,8 +76,7 @@ test('dispatcher adds a vehicle and lists it', async ({ page }) => {
   await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
 
   await page.getByLabel('Registarska oznaka', { exact: true }).fill('ST222CC')
-  await page.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Povremeno', exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Povremeno')
   await page.getByLabel('Registracija vrijedi do').fill('2030-04-04')
   await page.getByLabel('Tehnički pregled vrijedi do').fill('2030-05-05')
   await page.getByLabel('Osiguranje vrijedi do').fill('2030-06-06')
@@ -88,8 +85,7 @@ test('dispatcher adds a vehicle and lists it', async ({ page }) => {
   await expect(page.getByRole('cell', { name: 'Povremeno' })).toBeVisible()
 
   await page.getByLabel('Registarska oznaka', { exact: true }).fill('st 222 cc')
-  await page.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Stalno', exact: true }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Stalno')
   await page.getByLabel('Registracija vrijedi do').fill('2031-01-01')
   await page.getByLabel('Tehnički pregled vrijedi do').fill('2031-02-02')
   await page.getByLabel('Osiguranje vrijedi do').fill('2031-03-03')
