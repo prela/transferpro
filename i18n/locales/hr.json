@@ -308,6 +308,19 @@
       "note": "Napomena"
     }
   },
+  "driverRides": {
+    "title": "Moje vožnje",
+    "loading": "Učitavanje vožnji",
+    "loadFailed": "Vožnje se nisu mogle učitati. Pokušajte ponovno.",
+    "empty": "Nemate nadolazećih vožnji.",
+    "from": "Od",
+    "to": "Do",
+    "passengers": "Putnici",
+    "flight": "Let",
+    "airport": "Zračna luka",
+    "price": "Cijena",
+    "cash": "Gotovina"
+  },
   "drivers": {
     "nav": "Vozači",
     "home": "Početna",

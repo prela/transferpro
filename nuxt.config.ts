@@ -23,6 +23,30 @@ export default defineNuxtConfig({
     },
   },
   css: ['~/assets/css/main.css'],
+  app: {
+    head: {
+      link: [
+        { rel: 'manifest', href: '/manifest.webmanifest' },
+        { rel: 'apple-touch-icon', href: '/icons/icon-192.png', sizes: '192x192' },
+      ],
+      meta: [
+        { name: 'mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-title', content: 'Transferpro' },
+        { name: 'theme-color', content: '#0f766e' },
+      ],
+    },
+  },
+  // The manifest must be served as a manifest. The worker is not cached, so
+  // a later change is picked up. Ride responses are not part of this.
+  routeRules: {
+    '/manifest.webmanifest': {
+      headers: { 'content-type': 'application/manifest+json; charset=utf-8' },
+    },
+    '/sw.js': {
+      headers: { 'cache-control': 'no-cache' },
+    },
+  },
   // System until the user picks light or dark. The stored string is the same
   // `transferpro-theme` key as before, applied before paint (ADR-0016).
   colorMode: {
