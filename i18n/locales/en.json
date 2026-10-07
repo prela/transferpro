@@ -308,6 +308,19 @@
       "note": "Note"
     }
   },
+  "driverRides": {
+    "title": "My rides",
+    "loading": "Loading rides",
+    "loadFailed": "The rides could not be loaded. Try again.",
+    "empty": "You have no upcoming rides.",
+    "from": "From",
+    "to": "To",
+    "passengers": "Passengers",
+    "flight": "Flight",
+    "airport": "Airport",
+    "price": "Price",
+    "cash": "Cash"
+  },
   "drivers": {
     "nav": "Drivers",
     "home": "Home",

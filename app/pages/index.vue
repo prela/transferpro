@@ -168,15 +168,22 @@ const loadMessage = computed(() => {
       <h1 class="mb-4 text-2xl font-semibold">
         {{ session.tenantName }}
       </h1>
-      <p class="text-sm text-muted">
-        {{ t('shell.exampleTime') }}
-      </p>
-      <time
-        class="mt-1 block"
-        :datetime="exampleInstant.toISOString()"
-      >
-        {{ formatInstant(exampleInstant, session.timeZone, session.locale) }}
-      </time>
+      <DriverRides
+        v-if="session.role === 'driver'"
+        :time-zone="session.timeZone"
+        :locale="session.locale"
+      />
+      <template v-if="session.role !== 'driver'">
+        <p class="text-sm text-muted">
+          {{ t('shell.exampleTime') }}
+        </p>
+        <time
+          class="mt-1 block"
+          :datetime="exampleInstant.toISOString()"
+        >
+          {{ formatInstant(exampleInstant, session.timeZone, session.locale) }}
+        </time>
+      </template>
       <nav
         v-if="session.role !== 'driver'"
         class="mt-4 flex flex-wrap gap-2"

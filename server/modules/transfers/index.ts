@@ -7,4 +7,5 @@
  */
 export { RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
 export { assignRide, rosterVehicleForRide } from './infrastructure/assign-access'
+export { listUpcomingRides } from './infrastructure/driver-ride-access'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'
