@@ -173,7 +173,7 @@ const loadMessage = computed(() => {
         :time-zone="session.timeZone"
         :locale="session.locale"
       />
-      <template v-if="session.role !== 'driver'">
+      <template v-else>
         <p class="text-sm text-muted">
           {{ t('shell.exampleTime') }}
         </p>

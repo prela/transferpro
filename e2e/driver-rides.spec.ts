@@ -36,6 +36,7 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
   const cardAt = instantFromWallClock(`${day}T09:00`, 'Europe/Zagreb')
   const cashAt = instantFromWallClock(`${day}T15:30`, 'Europe/Zagreb')
+  const invoiceAt = instantFromWallClock(`${day}T18:00`, 'Europe/Zagreb')
 
   await useTheme(page, 'light')
   await page.setViewportSize({ width: 390, height: 844 })
@@ -82,7 +83,7 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
     data: { name: 'Hotel Park', kind: 'hotel' },
   }))
 
-  async function record(guest: string, pickupAt: Date, payment: 'cash' | 'card', price: number, extra?: { flightNumber?: string, airportMark?: boolean, passengerCount?: number }) {
+  async function record(guest: string, pickupAt: Date, payment: 'cash' | 'card' | 'invoice_to_agency', price: number, extra?: { flightNumber?: string, airportMark?: boolean, passengerCount?: number }) {
     const recorded = await page.request.post('/api/transfers', {
       data: {
         clientId,
@@ -121,6 +122,8 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
     passengerCount: 3,
   })
   await assign(cashRide, ownDriverId)
+  const invoiceRide = await record('Nika Agencija', invoiceAt, 'invoice_to_agency', 80)
+  await assign(invoiceRide, ownDriverId)
   const otherRide = await record('Nika Druga', cashAt, 'cash', 15)
   await assign(otherRide, otherDriverId)
   const doneRide = await record('Nika Kraj', cashAt, 'cash', 11)
@@ -133,8 +136,10 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(page.getByRole('heading', { name: 'Moje vožnje' })).toBeVisible()
   const cashCard = page.locator('article').filter({ hasText: 'Nika Sunce' })
   const cardCard = page.locator('article').filter({ hasText: 'Nika Plastika' })
+  const invoiceCard = page.locator('article').filter({ hasText: 'Nika Agencija' })
   await expect(cashCard.getByRole('heading', { name: 'Nika Sunce' })).toBeVisible()
   await expect(cardCard.getByRole('heading', { name: 'Nika Plastika' })).toBeVisible()
+  await expect(invoiceCard.getByRole('heading', { name: 'Nika Agencija' })).toBeVisible()
   await expect(page.getByText('Nika Druga')).toHaveCount(0)
   await expect(page.getByText('Nika Kraj')).toHaveCount(0)
   await expect(cashCard.getByText(formatInstant(cashAt, 'Europe/Zagreb', 'hr'))).toBeVisible()
@@ -151,6 +156,10 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(cardCard.getByText('Gotovina')).toHaveCount(0)
   await expect(cardCard.getByText('Kartica')).toHaveCount(0)
   await expect(cardCard.getByText('Card')).toHaveCount(0)
+  await expect(invoiceCard.getByText('80,00 EUR')).toHaveCount(0)
+  await expect(invoiceCard.getByText('80.00')).toHaveCount(0)
+  await expect(invoiceCard.getByText('Račun agenciji')).toHaveCount(0)
+  await expect(invoiceCard.getByText('Gotovina')).toHaveCount(0)
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
   expect(overflow).toBe(false)
@@ -162,6 +171,9 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(cashCard.getByText('Airport')).toBeVisible()
   await expect(cardCard.getByText('99.00')).toHaveCount(0)
   await expect(cardCard.getByText('Card')).toHaveCount(0)
+  await expect(invoiceCard.getByText('80.00')).toHaveCount(0)
+  await expect(invoiceCard.getByText('Invoice to agency')).toHaveCount(0)
+  await expect(invoiceCard.getByText('Cash')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Dark theme' }).click()
   await expect(page.locator('html')).toHaveClass(/dark/)

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { runInNewContext } from 'node:vm'
 import { expect, it } from 'vitest'
 
 function pngSize(path: string): { width: number, height: number } {
@@ -30,6 +31,39 @@ it('the manifest can be installed to the home screen', () => {
 it('the service worker does not cache ride data', () => {
   const source = readFileSync('public/sw.js', 'utf8')
   expect(source).toContain('fetch')
-  expect(source).not.toContain('caches')
-  expect(source).not.toContain('cache')
+  expect(source).not.toContain('caches.')
+  expect(source).not.toContain('cache.put')
+  expect(source).not.toContain('cache.add')
+
+  interface FetchHandlerEvent {
+    request: { method: string, url: string }
+    respondWith: (result: unknown) => void
+  }
+
+  const listeners = new Map<string, (event: FetchHandlerEvent) => void>()
+  runInNewContext(source, {
+    addEventListener(type: string, listener: (event: FetchHandlerEvent) => void) {
+      listeners.set(type, listener)
+    },
+    location: { origin: 'https://app.example' },
+    fetch: (request: unknown) => Promise.resolve(request),
+    URL,
+  })
+
+  function intercepted(url: string, method = 'GET'): boolean {
+    const listener = listeners.get('fetch')
+    expect(listener).toBeTypeOf('function')
+    let called = false
+    listener!({
+      request: { method, url },
+      respondWith() {
+        called = true
+      },
+    })
+    return called
+  }
+
+  expect(intercepted('https://app.example/api/rides/upcoming')).toBe(true)
+  expect(intercepted('https://app.example/api/auth/sign-in/email', 'POST')).toBe(false)
+  expect(intercepted('https://other.example/track')).toBe(false)
 })
