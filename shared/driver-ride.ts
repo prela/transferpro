@@ -6,6 +6,9 @@ import { GUEST_NAME_MAX_LENGTH, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, transf
  * One Ride on the Driver's phone. The price and the method are present only
  * for cash. Card and invoice to agency carry neither (ADR-0009, ADR-0020).
  * A null pair is how the payload says "not cash" without naming the method.
+ * `state` is only `assigned` or `accepted`: finished Rides are not on this
+ * list. `mustAccept` is the copy taken at assignment. An accepted Ride
+ * always requires acceptance, the same pair the table check stores.
  */
 export const driverUpcomingRideSchema = z.object({
   rideId: z.uuid(),
@@ -18,12 +21,20 @@ export const driverUpcomingRideSchema = z.object({
   airportMark: z.boolean(),
   price: transferPriceSchema.nullable(),
   payment: z.literal('cash').nullable(),
+  state: z.enum(['assigned', 'accepted']),
+  mustAccept: z.boolean(),
 }).superRefine((row, ctx) => {
   const showsFare = row.payment === 'cash'
   if (showsFare !== (row.price !== null)) {
     ctx.addIssue({
       code: 'custom',
       message: 'A cash Ride has a price. Any other Ride has neither.',
+    })
+  }
+  if (row.state === 'accepted' && !row.mustAccept) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'An accepted Ride requires acceptance.',
     })
   }
 })
@@ -51,6 +62,8 @@ export interface DriverRideSource {
   readonly airportMark: boolean
   readonly price: string
   readonly payment: PaymentMethod
+  readonly state: 'assigned' | 'accepted'
+  readonly mustAccept: boolean
 }
 
 /**
@@ -70,5 +83,7 @@ export function presentDriverRide(source: DriverRideSource): DriverUpcomingRide 
     airportMark: source.airportMark,
     price: cash ? source.price : null,
     payment: cash ? 'cash' : null,
+    state: source.state,
+    mustAccept: source.mustAccept,
   })
 }

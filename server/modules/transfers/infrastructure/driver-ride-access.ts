@@ -57,6 +57,8 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
           airportMark: row.airportMark,
           price: row.price,
           payment: row.payment,
+          state: row.state,
+          mustAccept: row.mustAccept,
         }))
       }
       return { rides }

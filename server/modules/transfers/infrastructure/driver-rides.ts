@@ -20,6 +20,8 @@ export interface UpcomingRideRow {
   readonly airportMark: boolean
   readonly price: string
   readonly payment: PaymentMethod
+  readonly state: 'assigned' | 'accepted'
+  readonly mustAccept: boolean
 }
 
 const upcomingRowSchema = z.object({
@@ -33,14 +35,17 @@ const upcomingRowSchema = z.object({
   airportMark: z.boolean(),
   price: z.union([z.string(), z.number()]),
   payment: paymentMethodSchema,
+  state: z.enum(['assigned', 'accepted']),
+  mustAccept: z.boolean(),
 })
 
 /**
  * Upcoming Rides for one Driver: `assigned` or `accepted`, soonest pickup
  * first. There is no horizon. A past Ride that is still assigned stays on
- * the phone, and so does one far ahead. RLS is tenant-only, so this `where`
- * is what hides another Driver. The caller passes the Driver linked to the
- * session, never an id from the request.
+ * the phone, and so does one far ahead. Each row carries `state` and the
+ * must-accept copy. RLS is tenant-only, so this `where` is what hides
+ * another Driver. The caller passes the Driver linked to the session, never
+ * an id from the request.
  */
 const upcomingRows = z.object({ rows: z.array(upcomingRowSchema) })
 
@@ -60,7 +65,9 @@ export async function loadUpcomingRidesForDriver(
         t.flight_number as "flightNumber",
         t.airport_mark as "airportMark",
         t.price,
-        t.payment
+        t.payment,
+        r.state,
+        r.must_accept as "mustAccept"
       from app.rides as r
       join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
       where r.driver_id = ${driverId}
@@ -84,6 +91,8 @@ function toUpcomingRide(row: z.infer<typeof upcomingRowSchema>): UpcomingRideRow
     airportMark: row.airportMark,
     price: toPrice(row.price),
     payment: row.payment,
+    state: row.state,
+    mustAccept: row.mustAccept,
   }
 }
 

@@ -12,6 +12,8 @@ const ride = {
   airportMark: true,
   price: '42.50',
   payment: 'cash' as const,
+  state: 'assigned' as const,
+  mustAccept: false,
 }
 
 it('shows the price and cash when the Ride is cash', () => {
@@ -26,13 +28,46 @@ it('shows the price and cash when the Ride is cash', () => {
     airportMark: true,
     price: '42.50',
     payment: 'cash',
+    state: 'assigned',
+    mustAccept: false,
   })
+})
+
+it('keeps a Ride that is waiting on acceptance, and still hides a card fare', () => {
+  const waiting = presentDriverRide({
+    ...ride,
+    price: '99.00',
+    payment: 'card',
+    state: 'assigned',
+    mustAccept: true,
+  })
+  expect(waiting.state).toBe('assigned')
+  expect(waiting.mustAccept).toBe(true)
+  expect(waiting.price).toBeNull()
+  expect(waiting.payment).toBeNull()
+  expect(JSON.stringify(waiting)).not.toContain('99.00')
+  expect(JSON.stringify(waiting)).not.toContain('card')
+})
+
+it('keeps an accepted Ride, including the cash price', () => {
+  expect(presentDriverRide({ ...ride, state: 'accepted', mustAccept: true })).toMatchObject({
+    state: 'accepted',
+    mustAccept: true,
+    price: '42.50',
+    payment: 'cash',
+  })
+})
+
+it('refuses an accepted Ride that does not require acceptance', () => {
+  expect(() => presentDriverRide({ ...ride, state: 'accepted', mustAccept: false })).toThrow()
 })
 
 it('hides the price and the method when the Ride is card', () => {
   const card = presentDriverRide({ ...ride, price: '99.00', payment: 'card' })
   expect(card.price).toBeNull()
   expect(card.payment).toBeNull()
+  expect(card.state).toBe('assigned')
+  expect(card.mustAccept).toBe(false)
   expect(JSON.stringify(card)).not.toContain('99.00')
   expect(JSON.stringify(card)).not.toContain('card')
 })

@@ -257,9 +257,10 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     return recorded
   }
 
-  // `accepted` stores the copied flag as true. This Driver's default is false, so turn it on for this Ride only.
+  // `accepted` stores the copied flag as true. This Driver's default is false, so turn it on for these Rides only.
   await updateDriver(admin, mine.id, { mustAccept: true })
   await ride({ guest: 'Iva Card', pickupAt: at('10:00'), price: 99, payment: 'card', airportMark: false, passengerCount: 1, assign: mine.id, state: 'accepted' })
+  await ride({ guest: 'Iva Waiting', pickupAt: at('10:30'), price: 21, payment: 'cash', airportMark: false, passengerCount: 1, assign: mine.id })
   await updateDriver(admin, mine.id, { mustAccept: false })
   const cashRide = await ride({ guest: 'Iva Cash', pickupAt: at('11:00'), price: 42.5, payment: 'cash', airportMark: true, flightNumber: 'OU 384', passengerCount: 3, assign: mine.id })
   await ride({ guest: 'Iva Invoice', pickupAt: at('12:00'), price: 80, payment: 'invoice_to_agency', airportMark: false, passengerCount: 2, assign: mine.id })
@@ -288,9 +289,18 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
   expect(listed.rides.map(row => row.guestName)).toEqual([
     'Iva Past',
     'Iva Card',
+    'Iva Waiting',
     'Iva Cash',
     'Iva Invoice',
     'Iva Later',
+  ])
+  expect(listed.rides.map(row => ({ state: row.state, mustAccept: row.mustAccept }))).toEqual([
+    { state: 'assigned', mustAccept: false },
+    { state: 'accepted', mustAccept: true },
+    { state: 'assigned', mustAccept: true },
+    { state: 'assigned', mustAccept: false },
+    { state: 'assigned', mustAccept: false },
+    { state: 'assigned', mustAccept: false },
   ])
   expect(listed.rides.map(row => row.guestName)).not.toContain('Iva Other')
   expect(listed.rides.map(row => row.guestName)).not.toContain('Iva Done')
@@ -306,6 +316,15 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     flightNumber: 'OU 384',
     airportMark: true,
     price: '42.50',
+    payment: 'cash',
+    state: 'assigned',
+    mustAccept: false,
+  })
+  const waiting = listed.rides.find(row => row.guestName === 'Iva Waiting')
+  expect(waiting).toMatchObject({
+    state: 'assigned',
+    mustAccept: true,
+    price: '21.00',
     payment: 'cash',
   })
   const card = listed.rides.find(row => row.guestName === 'Iva Card')
