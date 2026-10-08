@@ -57,6 +57,10 @@ The auth URL is `transferpro_auth` (no grant on schema `app`). The migrate URL i
 
 `disableSignUp` stays on. The operator script and `POST /api/invitations/accept` are the only account-creation paths in the app (ADR-0013). Tests and `e2e/` may insert credential rows through `server/modules/tenancy/testing.ts`. `server/api` and `app` must not import that file. Accepting creates an account only for a pending, unexpired, unused invitation, and the email is copied from that row. An email that already has an account signs in and then accepts; the route does not change that password. An invitation lasts 7 days. The link keeps the id in the URL hash. Only an admin may invite. `POST /api/invitations/accept` uses the same production limit as email sign-in. Resend sends from `noreply@transfers.prela.net` through the mailer port. Production requires `MAILER=resend` and `RESEND_API_KEY`. The Resend key is not required to boot. A failed send still returns the copyable invite link and `invite.emailFailed` in both locales. The domain region is `eu-west-1`; Resend stores account logs in the US. Invitations are read in a tenant session through `app.tenant_invitation`, which does not return the email.
 
+## Sign-in
+
+Sign-in and sign-out are Better Auth at `/api/auth/*`. Keep the session cookie `httpOnly` and `SameSite=Lax`, with `Secure` and the `__Secure-` prefix when `NODE_ENV` is `production`. One failure message for every status except 429. Keep the production limit on `/sign-in/email` (3 requests per 10 seconds, `signInRateLimit`). Changing any of these needs an ADR.
+
 ## Superadmin
 
 ADR-0019. A superadmin is a Better Auth user with a row in `platform.superadmin` and no membership. `pnpm superadmin:create --name --email` and `pnpm superadmin:revoke --email` are the only writers of that row. The password is read like `tenant:create`. `--password` is refused. A duplicate email, an existing membership, or an existing grant exits 1 with a fixed sentence that omits the email.
@@ -79,7 +83,7 @@ An admin changes them with `PATCH /api/tenant-settings`. A dispatcher and a driv
 
 ## i18n and theme
 
-A null user locale follows the Tenant default. `POST /api/locale` accepts `hr` or `en`. Ship both locales for every UI change. Ship both light and dark. `nuxt.config.ts` holds the locale strategy and the `transferpro-theme` key.
+A null user locale follows the Tenant default. `POST /api/locale` accepts `hr` or `en`. Ship both locales for every UI change. Ship both light and dark. `nuxt.config.ts` holds the locale strategy and the `transferpro-theme` key. Render instants with `formatInstant` (`shared/format-instant.ts`); do not add another date formatter.
 
 Screens are Nuxt UI components. Nuxt UI is the only UI library. When it lacks a component, build it from the Reka UI primitives Nuxt UI already uses, and style it with Nuxt UI theme tokens. Do not add shadcn-vue or another kit. Icons come from the installed `@iconify-json/lucide` set. `icon.fallbackToApi` stays false, so an icon is not fetched from a CDN at runtime. Inputs are labeled, 16px, and submit with Enter.
 
