@@ -18,7 +18,7 @@ async function createdId(response: APIResponse): Promise<string> {
 
 /**
  * Records an assigned Ride whose copied flag is on, then the office accepts it by phone.
- * There is no day-list button yet. The audit sentence is what this screen shows.
+ * This screen is the audit log. The day-list button is covered separately.
  */
 async function acceptByPhone(page: Page): Promise<void> {
   const driverId = await createdId(await page.request.post('/api/drivers', {
