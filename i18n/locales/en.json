@@ -321,7 +321,10 @@
     "airport": "Airport",
     "price": "Price",
     "cash": "Cash",
-    "waiting": "Waiting on acceptance"
+    "waiting": "Waiting on acceptance",
+    "accept": "Accept ride",
+    "accepting": "Accepting",
+    "conflict": "This ride can no longer be accepted."
   },
   "drivers": {
     "nav": "Drivers",

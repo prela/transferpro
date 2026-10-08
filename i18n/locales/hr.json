@@ -321,7 +321,10 @@
     "airport": "Zračna luka",
     "price": "Cijena",
     "cash": "Gotovina",
-    "waiting": "Čeka na prihvat"
+    "waiting": "Čeka na prihvat",
+    "accept": "Prihvati vožnju",
+    "accepting": "Prihvaćanje",
+    "conflict": "Ovu vožnju više nije moguće prihvatiti."
   },
   "drivers": {
     "nav": "Vozači",

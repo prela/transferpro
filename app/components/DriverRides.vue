@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayLocale, DriverUpcomingRide } from '../../shared'
-import { driverUpcomingListSchema, formatInstant } from '../../shared'
+import { driverUpcomingListSchema, formatInstant, rideSchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -14,12 +14,20 @@ const rides = ref<DriverUpcomingRide[]>([])
 // Start true so the empty copy does not flash before the first read.
 const loading = ref(true)
 const loadError = ref(false)
+// One accept at a time. The id stays set until the list has caught up,
+// so the control cannot flash back onto a Ride that just left `assigned`.
+const acceptingId = ref<string | null>(null)
+// A 409 means the list the Driver tapped was already stale.
+const conflict = ref(false)
 // A slower reload must not replace the rows from a newer one.
 let loadTicket = 0
 
-async function loadRides() {
+async function loadRides(refresh = false) {
   const ticket = ++loadTicket
-  loading.value = true
+  // A refresh keeps the cards on screen. The first read still shows loading
+  // so the empty copy does not flash.
+  if (!refresh)
+    loading.value = true
   loadError.value = false
   try {
     const next = driverUpcomingListSchema.parse(await $fetch('/api/rides/upcoming')).rides
@@ -35,6 +43,55 @@ async function loadRides() {
   finally {
     if (ticket === loadTicket)
       loading.value = false
+  }
+}
+
+/**
+ * The copied flag and `assigned` are both required. An accepted Ride still
+ * has the flag, and an assigned Ride that does not require acceptance has
+ * no control.
+ */
+function canAccept(ride: DriverUpcomingRide): boolean {
+  return ride.state === 'assigned' && ride.mustAccept
+}
+
+function httpStatus(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null)
+    return undefined
+  if ('statusCode' in error && typeof error.statusCode === 'number')
+    return error.statusCode
+  if ('status' in error && typeof error.status === 'number')
+    return error.status
+  return undefined
+}
+
+/**
+ * POST /api/rides/:id/accept with an empty body. Success and a 409 both
+ * reload the list: the Ride stays, and the control follows the new row.
+ * Any other failure leaves the control so the Driver can try again.
+ * This action does not send mail.
+ */
+async function accept(rideId: string) {
+  if (acceptingId.value !== null)
+    return
+  acceptingId.value = rideId
+  conflict.value = false
+  try {
+    rideSchema.parse(await $fetch(`/api/rides/${rideId}/accept`, {
+      method: 'POST',
+      body: {},
+    }))
+    await loadRides(true)
+  }
+  catch (error) {
+    // 409 is ride_not_acceptable: the flag is off, or the Ride is no longer assigned.
+    if (httpStatus(error) === 409) {
+      conflict.value = true
+      await loadRides(true)
+    }
+  }
+  finally {
+    acceptingId.value = null
   }
 }
 
@@ -69,17 +126,25 @@ onMounted(loadRides)
       role="alert"
       :description="t('driverRides.loadFailed')"
     />
+    <UAlert
+      v-if="conflict"
+      color="error"
+      variant="subtle"
+      role="alert"
+      class="mb-3"
+      :description="t('driverRides.conflict')"
+    />
     <p
-      v-else-if="loading"
+      v-if="!loadError && loading"
       role="status"
     >
       {{ t('driverRides.loading') }}
     </p>
-    <p v-else-if="rides.length === 0">
+    <p v-else-if="!loadError && rides.length === 0">
       {{ t('driverRides.empty') }}
     </p>
     <ul
-      v-else
+      v-else-if="!loadError"
       class="flex flex-col gap-3"
     >
       <li
@@ -93,7 +158,8 @@ onMounted(loadRides)
           <!--
             Accepted uses the office label. Waiting is only an assigned Ride
             that still requires acceptance. A Ride that does not require
-            acceptance has no status line. There is no accept control here.
+            acceptance has no status line. The control uses the same pair:
+            `assigned` and the copied flag.
           -->
           <p
             v-if="ride.state === 'accepted'"
@@ -156,6 +222,17 @@ onMounted(loadRides)
           >
             {{ t('driverRides.airport') }}
           </p>
+          <UButton
+            v-if="canAccept(ride)"
+            type="button"
+            size="xl"
+            class="mt-4 w-full justify-center"
+            :loading="acceptingId === ride.rideId"
+            :disabled="acceptingId !== null"
+            @click="accept(ride.rideId)"
+          >
+            {{ acceptingId === ride.rideId ? t('driverRides.accepting') : t('driverRides.accept') }}
+          </UButton>
         </article>
       </li>
     </ul>
