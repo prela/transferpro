@@ -9,16 +9,38 @@
  * socket. The path is not taken from the environment, and the socket is not
  * read. A worker id counts only together with a conversation id from hook
  * stdin that starts with `bc-`. A shell export cannot set that field.
- * The same gate allows commit, push, and `git checkout -b` / `git switch -c`.
- * A prefix on the command does not count: the agent could add it itself.
+ * A cloud agent may commit, push, and `git checkout -b` / `git switch -c`.
+ * A local agent may `git add`, `git commit`, and `git push` only for a
+ * `feature/*`, `fix/*`, or `chore/*` branch, including `git push -u origin <branch>`.
+ * Force, a `+refspec`, a push to any other branch, and deleting a remote
+ * branch stay denied locally. A prefix on the command does not count:
+ * the agent could add it itself.
+ * Local add, commit, and push also refuse `git -c`, `--config-env`, and a
+ * GIT_CONFIG_PARAMETERS / GIT_CONFIG_COUNT / GIT_CONFIG_KEY_* prefix, because
+ * those retarget the push without a refspec the parser can see. Commit
+ * refuses `--no-verify` and `-n`, and push refuses `--no-verify`, so husky
+ * still runs. `git config` writes are refused locally; `--get` and `--list`
+ * stay allowed. `CI=1 pnpm` and `pnpm install` / `pnpm i` are refused
+ * locally. A cloud agent is not subject to these local refusals.
  */
 import { Buffer } from 'node:buffer'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 
 const ALWAYS_BLOCKED_GIT = new Set(['reset', 'checkout', 'stash', 'switch', 'restore'])
-const COMMIT_OR_PUSH = new Set(['commit', 'push'])
+const LOCAL_BRANCH_WRITES = new Set(['add', 'commit', 'push'])
+/** Ticket branches an agent may commit on and push to. `feature/` alone is not one. */
+const WORK_BRANCH = /^(?:feature|fix|chore)\/.+/
+const PUSH_OPTIONS_WITH_VALUE = new Set([
+  '--receive-pack',
+  '--exec',
+  '--repo',
+  '--push-option',
+  '-o',
+  '--recurse-submodules',
+])
 const GIT_OPTIONS_WITH_VALUE = new Set([
   '-C',
   '-c',
@@ -38,6 +60,85 @@ const ENV_OPTIONS_WITH_VALUE = new Set([
   '--default-signal',
   '--ignore-signal',
 ])
+/** pnpm flags whose next word is a value, so it is not the subcommand. */
+const PNPM_OPTIONS_WITH_VALUE = new Set([
+  '-C',
+  '--dir',
+  '-F',
+  '--filter',
+  '--filter-prod',
+  '--loglevel',
+  '--reporter',
+  '--global-dir',
+  '--store-dir',
+  '--virtual-store-dir',
+  '--lockfile-dir',
+  '--modules-dir',
+  '--registry',
+  '--test-pattern',
+  '--changed-files-ignore-pattern',
+  '--access',
+  '--audit-level',
+  '--bump',
+  '--child-concurrency',
+  '--cpu',
+  '--depth',
+  '--format',
+  '--hoist-pattern',
+  '--ignore',
+  '--init-type',
+  '--libc',
+  '--location',
+  '--message',
+  '--network-concurrency',
+  '--os',
+  '--out',
+  '--pack-destination',
+  '--preid',
+  '--public-hoist-pattern',
+  '--sbom-authors',
+  '--sbom-format',
+  '--sbom-spec-version',
+  '--sbom-supplier',
+  '--sbom-type',
+  '--scope',
+  '--search-limit',
+  '--summary',
+  '--tag',
+  '--tag-version-prefix',
+  '--trust-policy-exclude',
+  '--trust-policy-ignore-after',
+  '--workspace-concurrency',
+])
+const CONFIG_WRITE_FLAGS = new Set([
+  '--add',
+  '--replace-all',
+  '--unset',
+  '--unset-all',
+  '--rename-section',
+  '--remove-section',
+  '--edit',
+  '-e',
+])
+const CONFIG_READ_FLAGS = new Set([
+  '--get',
+  '--get-all',
+  '--get-regexp',
+  '--get-urlmatch',
+  '--list',
+  '-l',
+  '--get-color',
+  '--get-colorbool',
+])
+const CONFIG_OPTIONS_WITH_VALUE = new Set([
+  '-f',
+  '--file',
+  '--blob',
+  '--default',
+  '--comment',
+  '-t',
+  '--type',
+])
 const WRAPPERS = new Set(['command', 'exec', 'time', 'nice', 'nohup'])
 const SHELLS = new Set(['sh', 'bash', 'dash', 'zsh', 'ksh', 'ash'])
 const READERS = new Set(['cat', 'less', 'more', 'head', 'tail', 'grep', 'egrep', 'fgrep'])
@@ -52,7 +153,7 @@ const FIXED_METADATA_SOCKET = '/run/cursor/api.sock'
  * @param {string} command
  * @param {NodeJS.ProcessEnv} [env]
  * @param {number} [depth]
- * @param {{ isSocket?: (path: string) => boolean, conversationId?: string }} [deps]
+ * @param {{ isSocket?: (path: string) => boolean, conversationId?: string, currentBranch?: string, remotes?: string[] }} [deps]
  */
 export function decide(command, env = process.env, depth = 0, deps = {}) {
   if (depth > MAX_DEPTH) {
@@ -62,10 +163,15 @@ export function decide(command, env = process.env, depth = 0, deps = {}) {
     )
   }
 
+  // Exports stick for later statements in this shell. Prefix assignments do not.
+  // A nested `sh -c` inherits a copy so its exports do not leak back out.
+  const shell = deps.shell ?? { ci: false, gitConfigNames: new Set() }
+
   for (const statement of splitStatements(command)) {
-    const verdict = inspectStatement(statement, env, depth, deps)
+    const verdict = inspectStatement(statement, env, depth, deps, shell)
     if (verdict.permission === 'deny')
       return verdict
+    recordExports(statement, shell)
   }
   return allow()
 }
@@ -196,12 +302,14 @@ function tokenize(statement) {
  * @param {string} statement
  * @param {NodeJS.ProcessEnv} env
  * @param {number} depth
- * @param {{ isSocket?: (path: string) => boolean, conversationId?: string }} deps
+ * @param {{ isSocket?: (path: string) => boolean, conversationId?: string, currentBranch?: string, remotes?: string[], shell?: { ci: boolean, gitConfigNames: Set<string> } }} deps
+ * @param {{ ci: boolean, gitConfigNames: Set<string> }} shell
  */
-function inspectStatement(statement, env, depth, deps) {
+function inspectStatement(statement, env, depth, deps, shell) {
   const unwrapped = unwrap(tokenize(statement))
+  const effective = shellAfterAssignments(shell, unwrapped.assignments)
   if (unwrapped.script)
-    return decide(unwrapped.script, env, depth + 1, deps)
+    return decide(unwrapped.script, env, depth + 1, { ...deps, shell: effective })
   if (unwrapped.envDump)
     return deny('do not dump the environment with env.', statement)
 
@@ -215,25 +323,42 @@ function inspectStatement(statement, env, depth, deps) {
 
   const inline = shellInlineScript(argv)
   if (inline !== null)
-    return decide(inline, env, depth + 1, deps)
+    return decide(inline, env, depth + 1, { ...deps, shell: effective })
 
+  const cloud = gitWritesAllowed(env, deps)
   const git = gitSubcommand(argv)
   if (git.invoked) {
     // checkout -b and switch -c create a branch. -B and -C reset one that
-    // already exists, so they stay denied. Same gate as commit and push.
-    const creating = createsNewBranch(git.name, git.args) && gitWritesAllowed(env, deps)
+    // already exists, so they stay denied. Only a cloud agent may create.
+    const creating = createsNewBranch(git.name, git.args) && cloud
     if (ALWAYS_BLOCKED_GIT.has(git.name) && !creating) {
       return deny(
-        `do not run git ${git.name}. The human does that.`,
+        `do not run git ${git.name}. It can discard local changes.`,
         statement,
       )
     }
-    if (COMMIT_OR_PUSH.has(git.name) && !gitWritesAllowed(env, deps)) {
+    // Local only. A cloud agent keeps the previous policy, which allows this.
+    if (git.name === 'branch' && !cloud && forceDeletesLocalBranch(git.args)) {
       return deny(
-        'do not run git commit or git push. The human commits. A cloud agent may commit and push.',
+        'do not run git branch -D.',
         statement,
       )
     }
+    if (git.name === 'config' && !cloud && gitConfigWrites(git.args)) {
+      return deny('do not write git config.', statement)
+    }
+    if (LOCAL_BRANCH_WRITES.has(git.name) && !cloud) {
+      const problem = localWriteProblem(git, deps, effective)
+      if (problem)
+        return deny(problem, statement)
+    }
+  }
+
+  if (!cloud && name === 'pnpm') {
+    if (effective.ci)
+      return deny('do not run pnpm with CI=1.', statement)
+    if (isPnpmInstall(pnpmCommandName(argv)))
+      return deny('do not run pnpm install.', statement)
   }
 
   if (removesProtected(argv)) {
@@ -259,11 +384,15 @@ function inspectStatement(statement, env, depth, deps) {
 function unwrap(tokens) {
   /** @type {string[]} */
   let argv = tokens
+  /** @type {string[]} */
+  const assignments = []
   for (let hop = 0; hop < 8; hop++) {
-    while (argv.length > 0 && isAssignment(argv[0]))
+    while (argv.length > 0 && isAssignment(argv[0])) {
+      assignments.push(argv[0])
       argv = argv.slice(1)
+    }
     if (argv.length === 0)
-      return { argv, script: null, envDump: false }
+      return { argv, script: null, envDump: false, assignments }
 
     const name = baseName(argv[0])
     if (name === 'sudo') {
@@ -277,15 +406,22 @@ function unwrap(tokens) {
     if (name === 'env') {
       const parsed = parseEnv(argv)
       if (parsed.kind === 'dump')
-        return { argv: [], script: null, envDump: true }
-      if (parsed.kind === 'script')
-        return { argv: [], script: parsed.script, envDump: false }
+        return { argv: [], script: null, envDump: true, assignments }
+      if (parsed.kind === 'script') {
+        return {
+          argv: [],
+          script: parsed.script,
+          envDump: false,
+          assignments: [...assignments, ...parsed.assignments],
+        }
+      }
+      assignments.push(...parsed.assignments)
       argv = parsed.argv
       continue
     }
-    return { argv, script: null, envDump: false }
+    return { argv, script: null, envDump: false, assignments }
   }
-  return { argv, script: null, envDump: false }
+  return { argv, script: null, envDump: false, assignments }
 }
 
 /**
@@ -325,9 +461,11 @@ function stripLeadingFlags(tokens) {
 
 /**
  * @param {string[]} tokens
- * @returns {{ kind: 'dump' } | { kind: 'script', script: string } | { kind: 'command', argv: string[] }} dump, inline script, or the remaining command
+ * @returns {{ kind: 'dump', assignments: string[] } | { kind: 'script', script: string, assignments: string[] } | { kind: 'command', argv: string[], assignments: string[] }} dump, inline script, or the remaining command
  */
 function parseEnv(tokens) {
+  /** @type {string[]} */
+  const assignments = []
   let i = 1
   while (i < tokens.length) {
     const token = tokens[i]
@@ -336,11 +474,12 @@ function parseEnv(tokens) {
       break
     }
     if (isAssignment(token)) {
+      assignments.push(token)
       i++
       continue
     }
     if (token === '-S' || token === '--split-string') {
-      return { kind: 'script', script: tokens[i + 1] ?? '' }
+      return { kind: 'script', script: tokens[i + 1] ?? '', assignments }
     }
     if (token.startsWith('-')) {
       const opt = token.includes('=') ? token.slice(0, token.indexOf('=')) : token
@@ -350,9 +489,9 @@ function parseEnv(tokens) {
         i++
       continue
     }
-    return { kind: 'command', argv: tokens.slice(i) }
+    return { kind: 'command', argv: tokens.slice(i), assignments }
   }
-  return { kind: 'dump' }
+  return { kind: 'dump', assignments }
 }
 
 /**
@@ -385,23 +524,261 @@ function shellInlineScript(argv) {
  */
 function gitSubcommand(argv) {
   if (baseName(argv[0]) !== 'git')
-    return { invoked: false, name: '', args: [] }
+    return { invoked: false, name: '', args: [], cwd: '', configOverride: false }
   let i = 1
+  let cwd = ''
+  let configOverride = false
   while (i < argv.length) {
     const token = argv[i]
     if (token === '--')
-      return { invoked: true, name: '', args: [] }
+      return { invoked: true, name: '', args: [], cwd, configOverride }
     if (token.startsWith('-')) {
       const opt = token.includes('=') ? token.slice(0, token.indexOf('=')) : token
+      // -c and --config-env set config for this invocation. -C is a directory.
+      if (opt === '-c' || opt === '--config-env' || (token.startsWith('-c') && !token.startsWith('-C')))
+        configOverride = true
+      if (opt === '-C' && !token.includes('='))
+        cwd = argv[i + 1] ?? ''
       if (!token.includes('=') && GIT_OPTIONS_WITH_VALUE.has(opt))
         i += 2
       else
         i++
       continue
     }
-    return { invoked: true, name: token, args: argv.slice(i + 1) }
+    return { invoked: true, name: token, args: argv.slice(i + 1), cwd, configOverride }
   }
-  return { invoked: true, name: '', args: [] }
+  return { invoked: true, name: '', args: [], cwd, configOverride }
+}
+
+/**
+ * Local commit and push. Null means the command may run.
+ * A cloud agent never reaches this; its commit and push stay unrestricted.
+ * @param {{ name: string, args: string[], cwd: string, configOverride: boolean }} git
+ * @param {{ currentBranch?: string, remotes?: string[], upstreamBranch?: string }} deps
+ * @param {{ ci: boolean, gitConfigNames: Set<string> }} shell
+ * @returns {string | null} denial text, or null when the write may run
+ */
+function localWriteProblem(git, deps, shell) {
+  if (git.configOverride)
+    return 'do not pass git -c or --config-env on git add, commit, or push.'
+  if (shell.gitConfigNames.size > 0)
+    return 'do not set GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT, or GIT_CONFIG_KEY_* for git add, commit, or push.'
+  if (git.name === 'commit' && commitSkipsHooks(git.args))
+    return 'do not skip git hooks with --no-verify or -n.'
+  if (git.name === 'push' && pushSkipsHooks(git.args))
+    return 'do not skip git hooks with --no-verify.'
+  if (git.name === 'add' || git.name === 'commit') {
+    const branch = resolveCurrentBranch(git.cwd, deps)
+    if (!isWorkBranch(branch))
+      return `git ${git.name} is allowed only on a feature/*, fix/*, or chore/* branch.`
+    return null
+  }
+  if (git.name === 'push')
+    return localPushProblem(git.args, git.cwd, deps)
+  return null
+}
+
+/**
+ * @param {string} branch
+ */
+function isWorkBranch(branch) {
+  return WORK_BRANCH.test(branch)
+}
+
+/**
+ * `git branch -D` and `git branch --delete --force`. Plain `-d` stays allowed.
+ * @param {string[]} args
+ */
+function forceDeletesLocalBranch(args) {
+  let deleting = false
+  let force = false
+  for (const token of args) {
+    if (token === '--')
+      break
+    // -Dname is still a force delete. `--delete` starts with `--`, so it does not match.
+    if (token === '-D' || /^-[A-Za-z]*D/.test(token))
+      return true
+    if (token === '-d' || token === '--delete')
+      deleting = true
+    if (token === '-f' || token === '--force')
+      force = true
+  }
+  return deleting && force
+}
+
+/**
+ * @param {string[]} args
+ * @param {string} gitCwd
+ * @param {{ currentBranch?: string, remotes?: string[], upstreamBranch?: string }} deps
+ * @returns {string | null} denial text, or null when the push may run
+ */
+function localPushProblem(args, gitCwd, deps) {
+  const refused = 'git push is allowed only to a feature/*, fix/*, or chore/* branch, and not with force or a remote delete.'
+  /** @type {string[]} */
+  const positionals = []
+  for (let i = 0; i < args.length; i++) {
+    const token = args[i]
+    if (token === '--') {
+      positionals.push(...args.slice(i + 1))
+      break
+    }
+    if (isForcePushFlag(token) || isBroadPushFlag(token))
+      return refused
+    if (token.startsWith('--')) {
+      const opt = token.includes('=') ? token.slice(0, token.indexOf('=')) : token
+      if (!token.includes('=') && PUSH_OPTIONS_WITH_VALUE.has(opt))
+        i++
+      continue
+    }
+    // Short cluster: -u is upstream, -f is force, -d deletes a remote branch.
+    // -o takes a value, like --push-option. Letters after o are that value
+    // (`-oci.skip`). Letters before o are flags (`-uo value`).
+    if (token.startsWith('-')) {
+      const cluster = token.slice(1)
+      const optionAt = cluster.indexOf('o')
+      const flags = optionAt === -1 ? cluster : cluster.slice(0, optionAt)
+      if (/[fd]/i.test(flags))
+        return refused
+      if (optionAt !== -1 && cluster.slice(optionAt + 1) === '')
+        i++
+      continue
+    }
+    positionals.push(token)
+  }
+
+  const remotes = resolveRemotes(gitCwd, deps)
+  let refspecs = positionals
+  if (refspecs.length > 0 && remotes.includes(refspecs[0]))
+    refspecs = refspecs.slice(1)
+
+  if (refspecs.length === 0) {
+    // No refspec: git updates the upstream branch when one exists, which can
+    // differ from the local name. With no upstream, the current name is the
+    // destination under the usual push.default.
+    const upstream = resolveUpstreamBranch(gitCwd, deps)
+    const destination = upstream || resolveCurrentBranch(gitCwd, deps)
+    return isWorkBranch(destination) ? null : refused
+  }
+
+  for (const spec of refspecs) {
+    if (!pushRefspecAllowed(spec, resolveCurrentBranch(gitCwd, deps)))
+      return refused
+  }
+  return null
+}
+
+/**
+ * @param {string} token
+ */
+function isForcePushFlag(token) {
+  return token === '-f'
+    || token === '--force'
+    || token === '--force-if-includes'
+    || token.startsWith('--force-with-lease')
+}
+
+/**
+ * Pushes that are not one named work branch: every branch, tags, or a remote delete.
+ * @param {string} token
+ */
+function isBroadPushFlag(token) {
+  return token === '--all'
+    || token === '--mirror'
+    || token === '--tags'
+    || token === '--follow-tags'
+    || token === '--prune'
+    || token === '--delete'
+    || token.startsWith('--delete=')
+    || token === '-d'
+}
+
+/**
+ * @param {string} spec
+ * @param {string} currentBranch
+ */
+function pushRefspecAllowed(spec, currentBranch) {
+  if (spec.startsWith('+'))
+    return false
+  const colon = spec.indexOf(':')
+  const src = colon === -1 ? spec : spec.slice(0, colon)
+  const dst = colon === -1 ? spec : spec.slice(colon + 1)
+  // An empty side deletes the remote branch (`:name` or `name:`).
+  if (src === '' || dst === '')
+    return false
+  return destinationIsWorkBranch(dst, currentBranch)
+}
+
+/**
+ * @param {string} dst
+ * @param {string} currentBranch
+ */
+function destinationIsWorkBranch(dst, currentBranch) {
+  if (dst === 'HEAD')
+    return isWorkBranch(currentBranch)
+  if (dst.startsWith('refs/heads/'))
+    return isWorkBranch(dst.slice('refs/heads/'.length))
+  if (dst.startsWith('refs/'))
+    return false
+  return isWorkBranch(dst)
+}
+
+/**
+ * Tests pass `currentBranch` so they do not depend on this checkout.
+ * Otherwise ask git. A failure denies the write (empty name is not a work branch).
+ * @param {string} gitCwd
+ * @param {{ currentBranch?: string }} deps
+ */
+function resolveCurrentBranch(gitCwd, deps) {
+  if (typeof deps.currentBranch === 'string')
+    return deps.currentBranch
+  return readGitLine(gitCwd, ['rev-parse', '--abbrev-ref', 'HEAD'])
+}
+
+/**
+ * Branch name on the remote, without the remote prefix. Empty when unset.
+ * Tests pass `upstreamBranch` so they do not read this checkout's tracking ref.
+ * @param {string} gitCwd
+ * @param {{ upstreamBranch?: string }} deps
+ */
+function resolveUpstreamBranch(gitCwd, deps) {
+  if (typeof deps.upstreamBranch === 'string')
+    return deps.upstreamBranch
+  const text = readGitLine(gitCwd, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'])
+  if (!text)
+    return ''
+  const slash = text.indexOf('/')
+  return slash === -1 ? text : text.slice(slash + 1)
+}
+
+/**
+ * @param {string} gitCwd
+ * @param {{ remotes?: string[] }} deps
+ */
+function resolveRemotes(gitCwd, deps) {
+  if (Array.isArray(deps.remotes))
+    return deps.remotes
+  const text = readGitText(gitCwd, ['remote'])
+  return text.split('\n').map(line => line.trim()).filter(Boolean)
+}
+
+/**
+ * @param {string} gitCwd
+ * @param {string[]} args
+ */
+function readGitLine(gitCwd, args) {
+  return readGitText(gitCwd, args).trim()
+}
+
+/**
+ * @param {string} gitCwd
+ * @param {string[]} args
+ */
+function readGitText(gitCwd, args) {
+  const gitArgs = gitCwd ? ['-C', gitCwd, ...args] : args
+  const result = spawnSync('git', gitArgs, { encoding: 'utf8' })
+  if (result.status !== 0)
+    return ''
+  return result.stdout ?? ''
 }
 
 /**
@@ -513,6 +890,182 @@ function isProtectedPath(token) {
  */
 function isAssignment(token) {
   return /^[A-Z_]\w*=/i.test(token)
+}
+
+/**
+ * Git's env override of config. A prefix or an earlier `export` both count.
+ * @param {string} name
+ */
+function isGitConfigEnv(name) {
+  return name === 'GIT_CONFIG_PARAMETERS'
+    || name === 'GIT_CONFIG_COUNT'
+    || name.startsWith('GIT_CONFIG_KEY_')
+}
+
+/**
+ * Prefix assignments apply to this command only. The parent shell is copied.
+ * @param {{ ci: boolean, gitConfigNames: Set<string> }} shell
+ * @param {string[]} assignments
+ */
+function shellAfterAssignments(shell, assignments) {
+  const next = {
+    ci: shell.ci,
+    gitConfigNames: new Set(shell.gitConfigNames),
+  }
+  for (const token of assignments)
+    applyConfigAssignment(next, token)
+  return next
+}
+
+/**
+ * @param {{ ci: boolean, gitConfigNames: Set<string> }} shell
+ * @param {string} token
+ */
+function applyConfigAssignment(shell, token) {
+  const eq = token.indexOf('=')
+  const key = token.slice(0, eq)
+  const value = token.slice(eq + 1)
+  if (key === 'CI')
+    shell.ci = value === '1'
+  if (isGitConfigEnv(key))
+    shell.gitConfigNames.add(key)
+}
+
+/**
+ * `export` lasts for the rest of this shell. `unset` clears it.
+ * A bare assignment in front of a command does not reach here.
+ * @param {string} statement
+ * @param {{ ci: boolean, gitConfigNames: Set<string> }} shell
+ */
+function recordExports(statement, shell) {
+  const tokens = tokenize(statement)
+  if (tokens.length === 0)
+    return
+  const name = baseName(tokens[0])
+  if (name === 'export') {
+    for (const token of tokens.slice(1)) {
+      if (!isAssignment(token))
+        continue
+      applyConfigAssignment(shell, token)
+    }
+    return
+  }
+  if (name !== 'unset')
+    return
+  for (const key of tokens.slice(1)) {
+    if (key === '--')
+      break
+    if (key.startsWith('-'))
+      continue
+    if (key === 'CI')
+      shell.ci = false
+    if (isGitConfigEnv(key))
+      shell.gitConfigNames.delete(key)
+  }
+}
+
+/**
+ * Commit `-n` is `--no-verify`. A message attached to `-m` is not that flag.
+ * @param {string[]} args
+ */
+function commitSkipsHooks(args) {
+  const messageOptions = new Set(['--message', '--file', '--author', '--date', '--template'])
+  for (let i = 0; i < args.length; i++) {
+    const token = args[i]
+    if (token === '--')
+      break
+    if (token === '--no-verify' || token.startsWith('--no-verify='))
+      return true
+    // The next word is the message, even when it looks like --no-verify.
+    if (messageOptions.has(token)) {
+      i++
+      continue
+    }
+    if (!token.startsWith('-') || token.startsWith('--'))
+      continue
+    const cluster = token.slice(1)
+    // -m, -F, -C, -c, and -t take a message. Letters after the first of those are the message.
+    const valueAt = cluster.search(/[mFCct]/)
+    const flags = valueAt === -1 ? cluster : cluster.slice(0, valueAt)
+    if (flags.includes('n'))
+      return true
+    if (valueAt !== -1 && cluster.slice(valueAt + 1) === '')
+      i++
+  }
+  return false
+}
+
+/**
+ * Push `-n` is dry-run. Only the long flag skips the pre-push hook.
+ * @param {string[]} args
+ */
+function pushSkipsHooks(args) {
+  for (const token of args) {
+    if (token === '--')
+      break
+    if (token === '--no-verify' || token.startsWith('--no-verify='))
+      return true
+  }
+  return false
+}
+
+/**
+ * `git config name` reads. `git config name value` writes. So does --unset / --edit.
+ * A read flag such as `--get` wins unless a write flag is also present.
+ * @param {string[]} args
+ */
+function gitConfigWrites(args) {
+  /** @type {string[]} */
+  const positionals = []
+  let read = false
+  for (let i = 0; i < args.length; i++) {
+    const token = args[i]
+    if (token === '--') {
+      positionals.push(...args.slice(i + 1))
+      break
+    }
+    if (token.startsWith('-')) {
+      const opt = token.includes('=') ? token.slice(0, token.indexOf('=')) : token
+      if (CONFIG_WRITE_FLAGS.has(opt))
+        return true
+      if (CONFIG_READ_FLAGS.has(opt))
+        read = true
+      if (!token.includes('=') && CONFIG_OPTIONS_WITH_VALUE.has(opt))
+        i++
+      continue
+    }
+    positionals.push(token)
+  }
+  if (read)
+    return false
+  return positionals.length >= 2
+}
+
+/**
+ * @param {string} commandName
+ */
+function isPnpmInstall(commandName) {
+  return commandName === 'install' || commandName === 'i'
+}
+
+/**
+ * The pnpm subcommand, after flags. Empty when the line is only flags.
+ * @param {string[]} argv
+ */
+function pnpmCommandName(argv) {
+  for (let i = 1; i < argv.length; i++) {
+    const token = argv[i]
+    if (token === '--')
+      return argv[i + 1] ?? ''
+    if (token.startsWith('-')) {
+      const opt = token.includes('=') ? token.slice(0, token.indexOf('=')) : token
+      if (!token.includes('=') && PNPM_OPTIONS_WITH_VALUE.has(opt))
+        i++
+      continue
+    }
+    return token
+  }
+  return ''
 }
 
 /**

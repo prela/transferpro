@@ -66,7 +66,7 @@ test('pull request text check reads the event payload from the environment', () 
     encoding: 'utf8',
     env: {
       ...process.env,
-      PR_TITLE: 'chore: agent rules, tp-implement skill and guard hooks',
+      PR_TITLE: 'chore: agent rules and guard hooks',
       PR_BODY: 'What changed and why.\n\nHow to test the hooks locally.\n',
     },
   })

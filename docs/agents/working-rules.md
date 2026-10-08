@@ -20,13 +20,13 @@ Longer notes for agents. `AGENTS.md` is the short source and wins if a line here
 - **Module boundaries:** when adding a module, follow ADR-0018.
 - **Tests first.** Red before green for domain and application code. Lint and typecheck 0 errors; coverage 80% global, 95% domain + application services. Never weaken or remove a test; flag any that you did.
 - **Zod at every runtime boundary** (env, request bodies, query params, imported bookings).
-- **One WP = one `feature/<wp>-<slug>` branch = one PR into `develop`.** Never commit to `develop` or `main`. Claim a WP only when its dependencies are merged.
+- **One WP = one `feature/*`, `fix/*`, or `chore/*` branch.** Never commit to `develop` or `main`. Do not open a PR. Claim a WP only when its dependencies are merged.
 - **Conventional Commits.** Do not hand-edit `CHANGELOG.md`; it is generated. The message does not name a model and does not contain a `Model:` line. `.husky/commit-msg` rejects those.
 - **Blocked? Stop.** Write what blocks you on the ticket; do not start another WP, do not guess.
 - **Never edit `CHARTER.md`** without owner approval: propose a diff, reason, and impact, then wait.
 - Stay inside v1 scope. Non-goals in the Charter are out of bounds unless a WP says so.
 - No global installs; use repo scripts only.
-- One slice per chat. Stop after the slice and `/code-review`. The human commits.
+- One slice per chat. Start with `/implement #N`. Commit and push on the ticket's `feature/*`, `fix/*`, or `chore/*` branch. Never open a PR. Stop after the slice and `/code-review`.
 
 ## Database roles and migrations
 
@@ -117,7 +117,7 @@ Sign-in and sign-out are Better Auth at `/api/auth/*`. The session cookie is `ht
 
 ## Commit and branch flow
 
-`.husky/pre-commit` refuses a commit on `develop` or `main` unless `ALLOW_PROTECTED_BRANCH=1`, then runs lint-staged, `pnpm typecheck`, and `pnpm test`. `.husky/commit-msg` runs `.cursor/hooks/check-commit-msg.mjs` and rejects a message that names a model or contains a `Model:` line. The human commits. An agent does not `git commit`, `git push`, `git reset`, `git checkout`, `git stash`, `git switch`, or `git restore`. New files are owned by the repo user.
+`.husky/pre-commit` refuses a commit on `develop` or `main` unless `ALLOW_PROTECTED_BRANCH=1`, then runs lint-staged, `pnpm typecheck`, and `pnpm test`. `.husky/commit-msg` runs `.cursor/hooks/check-commit-msg.mjs` and rejects a message that names a model or contains a `Model:` line. An agent commits and pushes only on a `feature/*`, `fix/*`, or `chore/*` branch. It does not push to `develop` or `main`, force-push, `git reset --hard`, `git branch -D`, or discard changes with `git checkout`, `git restore`, or `git stash`. New files are owned by the repo user.
 
 Formatting is Antfu ESLint via lint-staged (`eslint --fix`). Prettier stays uninstalled (ADR-0011); the setup-pre-commit skill would install it.
 
@@ -133,7 +133,9 @@ The guard needs `sh` and `node`. On Windows, run Cursor in WSL or Git Bash.
 
 Cursor docs: project hooks in `.cursor/hooks.json` run in cloud agents, including `beforeShellExecution`, once the VM is writable. They do not run during an early read-only turn. User hooks in `~/.cursor/hooks.json` are not loaded in a cloud VM, so a stop hook there does not run beside this project hook and does not clash with it.
 
-`git commit` and `git push` are denied for a local agent. They are allowed when the guard sees a cloud agent:
+A local agent may `git add`, `git commit`, and `git push` only for a `feature/*`, `fix/*`, or `chore/*` branch. `git push -u origin <branch>` is included. A bare `git push` is allowed only when the upstream branch is one of those names, or, when there is no upstream, when the current branch is. The hook refuses a push to `develop`, `main`, or any other branch, `--force`, `--force-with-lease`, a `+refspec`, `--delete`, and a refspec that deletes a remote branch (`:name`). `git reset --hard`, `git branch -D`, and a checkout, restore, or stash that discards changes stay denied for a local agent. `git checkout -b` and `git switch -c` stay denied for a local agent. Cloud agents still may `git branch -D`; that denial is local.
+
+Cloud-agent behaviour is unchanged. `git commit` and `git push` are allowed when the guard sees a cloud agent:
 
 - `/run/cursor/api.sock` is a unix socket. The guard stats that fixed path and does not read the socket. `CURSOR_AGENT_SOCKET` is ignored, so a shell export cannot point the check at another file.
 - `CURSOR_AGENT_WORKER_ID` is set and the hook input `conversation_id` starts with `bc-`. Cursor puts that id on stdin. A shell export cannot set it. The worker id alone is not enough.
@@ -142,7 +144,7 @@ Cursor docs: project hooks in `.cursor/hooks.json` run in cloud agents, includin
 
 Cursor's hooks page (https://cursor.com/docs/hooks, Environment Variables and `sessionStart`) lists the variables a hook receives, and says a `sessionStart` hook may return an `env` object that later hooks in that session see. It does not say the hook process inherits variables an agent `export`s in a shell, and it does not say hooks are spawned from the terminal session. The guard therefore treats a command prefix and `export` as text, not as its own environment. The worker id stays a residual risk if a hook runner both inherited the shell and already had a `bc-` conversation id. On a managed VM the fixed socket allows commit and push without that variable.
 
-The same gate allows `git checkout -b <name>` and `git switch -c <name>` (a start-point after the name is fine). `git checkout -B` and `git switch -C` stay denied, because those reset a branch that already exists. Plain `checkout` or `switch` of an existing branch or of files stays denied everywhere, including cloud agents. Local branch creation stays denied. `git reset`, `git stash`, and `git restore` stay denied everywhere. So do deletions of `node_modules` or `.modules.yaml`, and reading `.env` files (`cat`, `less`, `more`, `head`, `tail`, `grep`) other than `.env.example`. `printenv` and a bare `env` dump are denied. `env pnpm test` is allowed.
+The same cloud gate allows `git checkout -b <name>` and `git switch -c <name>` (a start-point after the name is fine). `git checkout -B` and `git switch -C` stay denied, because those reset a branch that already exists. Plain `checkout` or `switch` of an existing branch or of files stays denied everywhere, including cloud agents. Local branch creation stays denied. `git reset`, `git stash`, and `git restore` stay denied everywhere. So do deletions of `node_modules` or `.modules.yaml`, and reading `.env` files (`cat`, `less`, `more`, `head`, `tail`, `grep`) other than `.env.example`. `printenv` and a bare `env` dump are denied. `env pnpm test` is allowed.
 
 Check it locally:
 
@@ -153,17 +155,21 @@ printf '%s\n' '{"command":"cat .env","cwd":"/workspace"}' | .cursor/hooks/guard-
 
 The checks are `.cursor/hooks/*.checks.mjs` and use `node:test`. A `*.test.*` name makes ESLint rewrite that import to vitest.
 
-The guard does not see past the command string. It will not catch a runtime read (`node -e` with a file read), `sed` or `awk` on `.env`, `eval`, a variable that expands to `.env`, `git show` of a secret path, or deleting `node_modules` by renaming it first. `pnpm install` stays a written rule, not a hook denial.
+A local agent also may not skip husky (`git commit --no-verify`, `git commit -n`, `git push --no-verify`), pass `git -c` or `--config-env` on `git add`, `git commit`, or `git push`, set `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, or `GIT_CONFIG_KEY_*` for those commands, or write `git config`. `git config --get` and `git config --list` stay allowed. `CI=1 pnpm` (`env CI=1`, `export CI=1; pnpm`) and `pnpm install` / `pnpm i` are denied for a local agent. A cloud agent is not subject to these local refusals.
+
+`.cursor/hooks.json` also registers `beforeReadFile` as `.cursor/hooks/guard-read.sh` (`failClosed: true`). It denies `.env` and `.env.*` except names ending in `.example`, `*.pem`, `*.key`, and anything under `~/.ssh`.
+
+The guard does not see past the command string. It will not catch a runtime read (`node -e` with a file read), `sed` or `awk` on `.env`, `eval`, a variable that expands to `.env`, `git show` of a secret path, deleting `node_modules` by renaming it first, or `corepack pnpm` / `npx pnpm`.
 
 ## Skill workflow
 
 1. **Wayfinder** — project → WPs as GitHub issues (done once, refreshed when scope changes).
 2. **grill-with-docs** — per piece; update `GLOSSARY.md` and write/update ADRs.
 3. **architect** (pstack) — per WP: types, signatures, module structure. **Owner approves before code.**
-4. **tdd** — implement red–green–refactor. An agent follows `tp-implement` (`.agents/skills/tp-implement/SKILL.md`) and does not commit. The human opens the PR.
+4. **tdd** — implement red–green–refactor with `/implement #N`. Commit and push on the ticket branch. Do not open a PR.
 5. **blast-radius** — before merging anything touching auth, RLS, migrations, jobs, or shared schemas.
 
-Cursor discovers skills from `.agents/skills/<name>/SKILL.md`. `tp-implement` is this repo's skill. The other skills under that directory are the third-party pack and stay as they are. `skills-lock.json` tracks that pack only.
+Cursor discovers skills from `.agents/skills/<name>/SKILL.md`. The skills under that directory are the third-party pack. `skills-lock.json` tracks that pack only.
 
 ## Commands
 
@@ -184,7 +190,7 @@ pnpm exec nuxi build # the app Playwright starts
 
 ## Report
 
-Follow `AGENTS.md`: what changed, tests added or changed (flag any weakened or removed test), migrations, open questions. Then `Context summarized: yes/no`. The last line is `REVIEW_READY`.
+Follow `AGENTS.md`: commit SHA, branch, what changed, tests added or changed (flag any weakened or removed test), migrations, decisions, open questions. Then `Context summarized: yes/no`. The last line is `REVIEW_READY`.
 
 ## Agent skills
 
