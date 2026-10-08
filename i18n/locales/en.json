@@ -129,7 +129,8 @@
         "created": "Transfer recorded"
       },
       "ride": {
-        "assigned": "Ride assigned"
+        "assigned": "Ride assigned",
+        "accepted": "Ride accepted"
       },
       "roster": {
         "assigned": "Vehicle given for the day",

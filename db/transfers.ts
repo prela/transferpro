@@ -81,8 +81,8 @@ export const transfers = tenantTable('transfers', {
  * copy of the Driver's must-accept setting. `unassigned` has neither, and
  * the copy is null because there is no Driver yet.
  * `accepted` has the same pair, and the copy is true: a Ride that does not
- * require acceptance is never stored as `accepted`. This slice only adds
- * that check. It does not write `accepted`.
+ * require acceptance is never stored as `accepted`. The accept command
+ * writes that state. This check only requires the pair.
  * There is no `assigned_at` or `assigned_by`. The audit entry records the
  * actor and the time (ADR-0014). `done`, `no-show`, and `cancelled` are
  * not constrained here.

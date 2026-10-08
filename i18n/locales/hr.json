@@ -129,7 +129,8 @@
         "created": "Transfer zabilježen"
       },
       "ride": {
-        "assigned": "Vožnja dodijeljena"
+        "assigned": "Vožnja dodijeljena",
+        "accepted": "Vožnja prihvaćena"
       },
       "roster": {
         "assigned": "Vozilo dodijeljeno za dan",

@@ -19,6 +19,8 @@ async function restrictedImports(filePath: string, source: string) {
   )
 }
 
+// The first ESLint load in this file is the slow one. After typecheck the
+// default 5s limit is not enough, and the assertions are unchanged.
 it('rejects driver and kernel-adapter imports outside infrastructure and tests', async () => {
   const domainFile = 'server/modules/tenancy/domain/leak.ts'
   const forbidden = [
@@ -49,7 +51,7 @@ it('rejects driver and kernel-adapter imports outside infrastructure and tests',
     `await import('pg')\n`,
   )
   expect(dynamicPgFromKernel).not.toEqual([])
-})
+}, 20_000)
 
 it('allows those imports from infrastructure files and tests', async () => {
   const allowed: Array<[filePath: string, source: string]> = [

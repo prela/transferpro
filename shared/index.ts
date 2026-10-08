@@ -1,4 +1,4 @@
-export { auditActions, auditActionSchema, auditEntryListSchema, auditEntrySchema, auditFactSchema } from './audit-entry'
+export { auditActions, auditActionSchema, auditEntryListSchema, auditEntrySchema, auditFactSchema, RIDE_ACCEPTED_FIELDS, rideAcceptedFieldSchema } from './audit-entry'
 export type { AuditAction, AuditEntry, AuditEntryList, AuditFact } from './audit-entry'
 export { CLIENT_KINDS, CLIENT_NAME_MAX_LENGTH, ClientInputError, clientKindError, clientKindSchema, clientListSchema, clientNameError, clientNameSchema, clientPatchSchema, clientSchema, createClientSchema, parseClientPatch, parseCreateClient } from './client'
 export type { Client, ClientKind, ClientKindError, ClientList, ClientNameError, ClientPatch, CreateClient } from './client'

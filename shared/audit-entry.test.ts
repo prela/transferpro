@@ -276,6 +276,69 @@ it('records an assignment by ids and field names, and refuses a plate, a phone, 
   expect(auditFactSchema.safeParse({ ...assigned, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records an acceptance by the Ride id, the Driver id, and the field name state', () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const accepted = {
+    action: 'ride.accepted' as const,
+    subjectUserId: null,
+    data: {
+      rideId,
+      driverId,
+      fields: ['state'] as const,
+    },
+  }
+  expect(auditFactSchema.parse(accepted)).toEqual(accepted)
+  expect(auditFactSchema.safeParse({
+    ...accepted,
+    data: { ...accepted.data, name: 'Marko Vozač', phone: '+38591111', registrationPlate: 'ZG1001AA', guestName: 'Ana Anić', mustAccept: true },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...accepted,
+    data: { ...accepted.data, vehicleId: 'c1c1c1c1-1111-4111-8111-111111111111' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...accepted,
+    data: { ...accepted.data, fields: ['state', 'mustAccept'] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...accepted,
+    data: { ...accepted.data, fields: [] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...accepted, subjectUserId: memberId }).success).toBe(false)
+})
+
+it('lists an acceptance with the Driver name and without a plate', () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const listed = auditEntryListSchema.parse({
+    entries: [{
+      id: '8d3a2e5c-4444-4444-8444-444444444444',
+      occurredAt: '2026-10-03T18:42:00.000Z',
+      actorUserId: adminId,
+      actorName: 'Drago Driver',
+      action: 'ride.accepted',
+      subjectUserId: null,
+      subjectName: null,
+      driverName: 'Marko Vozač',
+      vehiclePlate: null,
+      data: {
+        rideId,
+        driverId,
+        fields: ['state'],
+      },
+    }],
+  })
+  expect(listed.entries[0]).toMatchObject({ driverName: 'Marko Vozač' })
+  expect(listed.entries[0]).not.toHaveProperty('vehiclePlate')
+  expect(auditEntryListSchema.safeParse({
+    entries: [{
+      ...listed.entries[0],
+      data: { ...listed.entries[0]!.data, registrationPlate: 'ZG1001AA' },
+    }],
+  }).success).toBe(false)
+})
+
 it('lists an assignment with the Driver name and Vehicle plate resolved at read time', () => {
   const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'

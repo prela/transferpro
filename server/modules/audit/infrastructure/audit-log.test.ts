@@ -122,6 +122,35 @@ it('lists a ride.assigned entry with the Driver name and Vehicle plate from the 
   expect(queries[0]?.sql).not.toContain('phone')
 })
 
+it('lists a ride.accepted entry with the Driver name and does not join the plate', async () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const stored = {
+    id: '8d3a2e5c-4444-4444-8444-444444444444',
+    occurredAt: '2026-10-03T18:43:00.000Z',
+    action: 'ride.accepted' as const,
+    actorUserId: adminId,
+    actorName: 'Drago Driver',
+    subjectUserId: null,
+    subjectName: null,
+    driverName: 'Marko Vozač',
+    data: {
+      rideId,
+      driverId,
+      fields: ['state'],
+    },
+  }
+  // The select still returns the plate column. Acceptance does not use it.
+  const { transaction, queries } = fakeTransaction([{ ...stored, vehiclePlate: null }])
+  expect(await listAuditEntries(transaction)).toEqual({ entries: [stored] })
+  const text = queries[0]?.sql ?? ''
+  const vehicleJoin = text.slice(text.indexOf('left join app.vehicles'))
+  expect(text).toContain('ride.accepted')
+  expect(text).toContain('as "driverName"')
+  expect(vehicleJoin).not.toContain('ride.accepted')
+  expect(text).not.toContain('phone')
+})
+
 it('fails the read on a row whose data does not match its action', async () => {
   const { transaction } = fakeTransaction([{
     id: '8d3a2e5c-4444-4444-8444-444444444444',
