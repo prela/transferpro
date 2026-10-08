@@ -34,6 +34,7 @@ export const auditActions = [
   'location.archived',
   'transfer.created',
   'ride.assigned',
+  'ride.accepted',
   'roster.assigned',
   'roster.changed',
   'roster.cleared',
@@ -251,6 +252,30 @@ const rideAssigned = z.object({
   }),
 })
 
+/**
+ * The only field name an acceptance may store. The Driver, the Vehicle, and
+ * the copied flag stay on the Ride. A name, a phone, a plate, or the flag
+ * value would sit forever on a row that is never deleted.
+ */
+export const RIDE_ACCEPTED_FIELDS = ['state'] as const
+
+export const rideAcceptedFieldSchema = z.enum(RIDE_ACCEPTED_FIELDS)
+
+/*
+ * An acceptance is not a member. The ids say which Ride and which Driver.
+ * `fields` is only `state`: the transition is the state change. The actor
+ * is the entry's actor. `subjectUserId` stays null.
+ */
+const rideAccepted = z.object({
+  action: z.literal('ride.accepted'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    driverId,
+    fields: z.array(rideAcceptedFieldSchema).length(RIDE_ACCEPTED_FIELDS.length),
+  }),
+})
+
 /*
  * A roster row is not a member. The data names the day and the ids.
  * A plate, a driver name, or a phone would stay forever on a row that
@@ -324,6 +349,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   locationArchived,
   transferCreated,
   rideAssigned,
+  rideAccepted,
   rosterAssigned,
   rosterChanged,
   rosterCleared,
@@ -338,6 +364,7 @@ export type AuditFact = z.infer<typeof auditFactSchema>
  * GET /api/audit-entries, newest first. Names come from the Tenant's current
  * members; a person who is no longer a member has a null name.
  * `ride.assigned` also carries the current Driver name and Vehicle plate.
+ * `ride.accepted` carries the Driver name only. The plate is not joined.
  */
 const listed = {
   id: z.uuid(),
@@ -371,6 +398,11 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
     // Resolved at read time. The stored data keeps ids only (ADR-0014).
     driverName: z.string().nullable(),
     vehiclePlate: z.string().nullable(),
+  }),
+  rideAccepted.extend({
+    ...listed,
+    // The Driver name is joined from `driverId`. The plate is not.
+    driverName: z.string().nullable(),
   }),
   rosterAssigned.extend(listed),
   rosterChanged.extend(listed),

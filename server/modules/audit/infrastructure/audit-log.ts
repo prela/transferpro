@@ -33,7 +33,8 @@ const listLimit = 100
  * Names come from `app.tenant_member`, so someone who has left the Tenant
  * has a null name rather than one read from `auth.user`.
  * A `ride.assigned` row stores ids only. The Driver name and Vehicle plate
- * are joined here for the screen.
+ * are joined here for the screen. A `ride.accepted` row joins the Driver
+ * name and does not join the plate.
  * Drizzle hands timestamptz back as Postgres text, so the instant is
  * formatted as UTC ISO here rather than parsed in JavaScript.
  */
@@ -53,7 +54,7 @@ export async function listAuditEntries(transaction: TenantTransaction): Promise<
     left join app.tenant_member as actor on actor.user_id = e.actor_user_id
     left join app.tenant_member as subject on subject.user_id = e.subject_user_id
     left join app.drivers as assigned_driver
-      on e.action = 'ride.assigned'
+      on e.action in ('ride.assigned', 'ride.accepted')
       and assigned_driver.tenant_id = e.tenant_id
       and assigned_driver.id = (e.data->>'driverId')::uuid
     left join app.vehicles as assigned_vehicle

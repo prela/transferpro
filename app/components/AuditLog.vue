@@ -111,6 +111,9 @@ function detailText(entry: AuditEntry): string {
         driver: entry.driverName ?? '',
         vehicle: entry.vehiclePlate ?? '',
       })
+    case 'ride.accepted':
+      // The name is joined from the Driver id. The plate is not on this action.
+      return entry.driverName ?? ''
     case 'roster.assigned':
     case 'roster.changed':
     case 'roster.cleared':

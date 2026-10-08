@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RideNotUnassignedError, RideVehicleArchivedError } from '../../modules/transfers'
+import { RideNotAcceptableError, RideNotUnassignedError, RideVehicleArchivedError } from '../../modules/transfers'
 import { rideHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -26,6 +26,14 @@ describe('rideHttpError', () => {
     expect(error).toMatchObject({
       statusCode: 409,
       data: { code: 'ride_not_unassigned' },
+    })
+  })
+
+  it('returns a distinct code when the ride cannot be accepted', () => {
+    const error = thrown(() => rideHttpError(new RideNotAcceptableError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'ride_not_acceptable' },
     })
   })
 })

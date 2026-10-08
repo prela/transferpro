@@ -12,13 +12,15 @@ import { setRosterDay } from '../modules/roster'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
 import { createTransfer } from '../modules/transfers'
 import { archiveVehicle, createVehicle } from '../modules/vehicles'
+import postAccept from './rides/[id]/accept.post'
 import postAssign from './rides/[id]/assign.post'
 import getRosterVehicle from './rides/[id]/roster-vehicle.get'
 
 /**
- * POST /api/rides/:id/assign and GET /api/rides/:id/roster-vehicle.
- * An invalid body is answered before a session exists. The role cases use
- * a real sign-in. The composite foreign key is also tried as the app role.
+ * POST /api/rides/:id/assign, GET /api/rides/:id/roster-vehicle, and
+ * POST /api/rides/:id/accept. An invalid body is answered before a session
+ * exists. The role cases use a real sign-in. The composite foreign key is
+ * also tried as the app role.
  */
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
@@ -53,6 +55,8 @@ app.use('/api/rides', (event) => {
   event.context.params = { id: id ?? '' }
   if (action === 'assign' && event.method === 'POST')
     return postAssign(event)
+  if (action === 'accept' && event.method === 'POST')
+    return postAccept(event)
   if (action === 'roster-vehicle' && event.method === 'GET')
     return getRosterVehicle(event)
   return new Response('Not Found', { status: 404 })
@@ -865,4 +869,261 @@ it('assigns a Driver with no linked account and copies must-accept', async () =>
     [driver.id],
   )
   expect(linked.rows).toEqual([{ member_user_id: null }])
+})
+
+async function acceptanceAudits(tenantId: string) {
+  const result = await ownerPool.query<{
+    actor_user_id: string
+    subject_user_id: string | null
+    data: { rideId?: string, driverId?: string, fields?: string[] }
+  }>(
+    `select actor_user_id, subject_user_id, data from app.audit_entry
+     where tenant_id = $1 and action::text = 'ride.accepted'
+     order by occurred_at, id`,
+    [tenantId],
+  )
+  return result.rows
+}
+
+async function linkedDriver(
+  world: Awaited<ReturnType<typeof office>>,
+  email: string,
+  name: string,
+  phoneNumber: string,
+) {
+  const userId = await addMember(world.tenantId, email, name, 'driver')
+  const session = await signIn(email)
+  const driver = await createDriver(world.dispatcher, {
+    ...driverBody,
+    name,
+    phone: phoneNumber,
+    memberUserId: userId,
+  })
+  return { userId, session, driver }
+}
+
+it('refuses an accept body that has a key before a session opens', async () => {
+  const world = await office('hasg-acc-body')
+  const linked = await linkedDriver(world, 'hasg-acc-body-driver@example.test', 'Drago Driver', phone)
+  await updateDriver(world.admin, linked.driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8101AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 11 * 60 * 60 * 1000).toISOString()))
+  const assigned = await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })
+  expect(assigned.status).toBe(200)
+  const before = await acceptanceAudits(world.tenantId)
+
+  const keyed = await call('POST', `/api/rides/${recorded.ride.id}/accept`, undefined, { note: phone })
+  expect(keyed.status).toBe(400)
+  expect(await keyed.text()).not.toContain(phone)
+
+  const keyedSession = await call('POST', `/api/rides/${recorded.ride.id}/accept`, linked.session, { driverId: linked.driver.id })
+  expect(keyedSession.status).toBe(400)
+  expect(await keyedSession.text()).not.toContain(phone)
+
+  expect((await call('POST', '/api/rides/not-a-ride/accept', linked.session, {})).status).toBe(400)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/accept`, undefined, {})).status).toBe(401)
+
+  expect(await rideRow(recorded.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: linked.driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: true,
+  })
+  expect(await acceptanceAudits(world.tenantId)).toEqual(before)
+})
+
+it('lets the linked Driver accept, and refuses a dispatcher, an admin, and a second accept', async () => {
+  const world = await office('hasg-acc-ok')
+  const linked = await linkedDriver(world, 'hasg-acc-ok-driver@example.test', 'Drago Driver', phone)
+  await updateDriver(world.admin, linked.driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8102AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  const path = `/api/rides/${recorded.ride.id}/accept`
+
+  const dispatcher = await call('POST', path, world.dispatcher, {})
+  expect(dispatcher.status).toBe(403)
+  const admin = await call('POST', path, world.admin, {})
+  expect(admin.status).toBe(403)
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'assigned', must_accept: true })
+  expect(await acceptanceAudits(world.tenantId)).toEqual([])
+
+  const accepted = await call('POST', path, linked.session, {})
+  expect(accepted.status).toBe(200)
+  expect(await accepted.json()).toEqual({
+    id: recorded.ride.id,
+    transferId: recorded.transfer.id,
+    state: 'accepted',
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+    mustAccept: true,
+  })
+  expect(await rideRow(recorded.ride.id)).toEqual({
+    state: 'accepted',
+    driver_id: linked.driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: true,
+  })
+  const audits = await acceptanceAudits(world.tenantId)
+  expect(audits).toEqual([{
+    actor_user_id: linked.userId,
+    subject_user_id: null,
+    data: {
+      rideId: recorded.ride.id,
+      driverId: linked.driver.id,
+      fields: ['state'],
+    },
+  }])
+  expect(JSON.stringify(audits[0]?.data)).not.toContain(phone)
+  expect(JSON.stringify(audits[0]?.data)).not.toContain(guest)
+  expect(JSON.stringify(audits[0]?.data)).not.toContain('ZG8102AA')
+
+  const again = await call('POST', path, linked.session, {})
+  expect(again.status).toBe(409)
+  expect(await again.text()).toContain('ride_not_acceptable')
+  expect(await acceptanceAudits(world.tenantId)).toHaveLength(1)
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'accepted', driver_id: linked.driver.id })
+})
+
+it('refuses acceptance when the copied flag is off and from every state other than assigned', async () => {
+  const world = await office('hasg-acc-state')
+  const linked = await linkedDriver(world, 'hasg-acc-state-driver@example.test', 'Drago Driver', phone)
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8103AA'))
+  const pickup = (hours: number) => new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
+
+  const flaggedOff = await createTransfer(world.dispatcher, transferBody(world, pickup(13)))
+  expect((await call('POST', `/api/rides/${flaggedOff.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  const off = await call('POST', `/api/rides/${flaggedOff.ride.id}/accept`, linked.session, {})
+  expect(off.status).toBe(409)
+  expect(await off.text()).toContain('ride_not_acceptable')
+  expect(await rideRow(flaggedOff.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: linked.driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: false,
+  })
+
+  await updateDriver(world.admin, linked.driver.id, { mustAccept: true })
+  const stillOff = await call('POST', `/api/rides/${flaggedOff.ride.id}/accept`, linked.session, {})
+  expect(stillOff.status).toBe(409)
+  expect(await rideRow(flaggedOff.ride.id)).toMatchObject({ state: 'assigned', must_accept: false })
+
+  const open = await createTransfer(world.dispatcher, transferBody(world, pickup(14)))
+  const unassigned = await call('POST', `/api/rides/${open.ride.id}/accept`, linked.session, {})
+  expect(unassigned.status).toBe(409)
+  expect(await unassigned.text()).toContain('ride_not_acceptable')
+  expect(await rideRow(open.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null, must_accept: null })
+
+  for (const [index, state] of (['done', 'no-show', 'cancelled', 'accepted'] as const).entries()) {
+    const recorded = await createTransfer(world.dispatcher, transferBody(world, pickup(15 + index)))
+    expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+      driverId: linked.driver.id,
+      vehicleId: vehicle.id,
+    })).status).toBe(200)
+    const moved = await withAppTenant(world.tenantId, client => client.query(
+      `update app.rides set state = $2 where id = $1 and state = 'assigned'`,
+      [recorded.ride.id, state],
+    ))
+    expect(moved.rowCount).toBe(1)
+    const refused = await call('POST', `/api/rides/${recorded.ride.id}/accept`, linked.session, {})
+    expect(refused.status).toBe(409)
+    expect(await refused.text()).toContain('ride_not_acceptable')
+    expect(await rideRow(recorded.ride.id)).toMatchObject({
+      state,
+      driver_id: linked.driver.id,
+      vehicle_id: vehicle.id,
+      must_accept: true,
+    })
+  }
+
+  expect(await acceptanceAudits(world.tenantId)).toEqual([])
+})
+
+it('refuses another Driver, a Driver with no link, and another Tenant', async () => {
+  const world = await office('hasg-acc-own')
+  const otherFirm = await office('hasg-acc-own-b')
+  const owner = await linkedDriver(world, 'hasg-acc-own-driver@example.test', 'Drago Driver', phone)
+  const other = await linkedDriver(world, 'hasg-acc-own-other@example.test', 'Neda Neno', '+385911110077')
+  const foreign = await linkedDriver(otherFirm, 'hasg-acc-own-b-driver@example.test', 'Boris Borić', '+385911110066')
+  await updateDriver(world.admin, owner.driver.id, { mustAccept: true })
+  await addMember(world.tenantId, 'hasg-acc-own-none@example.test', 'Lara Linkless', 'driver')
+  const unlinked = await signIn('hasg-acc-own-none@example.test')
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8104AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 20 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: owner.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  const path = `/api/rides/${recorded.ride.id}/accept`
+
+  const otherDriver = await call('POST', path, other.session, {})
+  expect(otherDriver.status).toBe(404)
+  expect(await otherDriver.text()).not.toContain(phone)
+
+  const noLink = await call('POST', path, unlinked, {})
+  expect(noLink.status).toBe(404)
+
+  const foreignRide = await call('POST', path, foreign.session, {})
+  expect(foreignRide.status).toBe(404)
+  expect(await foreignRide.text()).not.toContain(phone)
+
+  expect(await rideRow(recorded.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: owner.driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: true,
+  })
+  expect(await acceptanceAudits(world.tenantId)).toEqual([])
+  expect(await acceptanceAudits(otherFirm.tenantId)).toEqual([])
+})
+
+it('lets exactly one of two concurrent accepts win', async () => {
+  const world = await office('hasg-acc-race')
+  const linked = await linkedDriver(world, 'hasg-acc-race-driver@example.test', 'Drago Driver', phone)
+  await updateDriver(world.admin, linked.driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8105AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 21 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+
+  const [first, second] = await Promise.all([
+    call('POST', `/api/rides/${recorded.ride.id}/accept`, linked.session, {}),
+    call('POST', `/api/rides/${recorded.ride.id}/accept`, linked.session, {}),
+  ])
+  const statuses = [first.status, second.status].sort()
+  expect(statuses).toEqual([200, 409])
+  const winner = first.status === 200 ? first : second
+  expect(await winner.json()).toEqual({
+    id: recorded.ride.id,
+    transferId: recorded.transfer.id,
+    state: 'accepted',
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+    mustAccept: true,
+  })
+  expect(await rideRow(recorded.ride.id)).toEqual({
+    state: 'accepted',
+    driver_id: linked.driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: true,
+  })
+  const audits = await acceptanceAudits(world.tenantId)
+  expect(audits).toHaveLength(1)
+  expect(audits[0]?.actor_user_id).toBe(linked.userId)
+  expect(audits[0]?.data).toEqual({
+    rideId: recorded.ride.id,
+    driverId: linked.driver.id,
+    fields: ['state'],
+  })
 })
