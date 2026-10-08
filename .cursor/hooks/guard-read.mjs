@@ -20,7 +20,8 @@ import { pathToFileURL } from 'node:url'
 export function decideRead(filePath, deps = {}) {
   if (typeof filePath !== 'string' || filePath === '')
     return deny()
-  const normalized = path.posix.normalize(filePath.replaceAll('\\', '/'))
+  // normalize keeps a trailing slash, which would hide the basename.
+  const normalized = path.posix.normalize(filePath.replaceAll('\\', '/')).replace(/\/+$/, '') || '/'
   const home = path.posix.normalize((deps.home ?? os.homedir()).replaceAll('\\', '/'))
   if (isSecretFile(normalized, home))
     return deny()

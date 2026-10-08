@@ -386,6 +386,8 @@ test('a local agent cannot skip husky with --no-verify', () => {
   denied('git commit -n -m "chore: test"', /do not skip git hooks/, localEnv(), work)
   denied('git push --no-verify origin chore/90-workflow', /do not skip git hooks/, localEnv(), work)
   allowed('git commit -m "chore: test"', localEnv(), work)
+  // The word after -m is the message, even when it looks like a flag.
+  allowed('git commit -m --no-verify', localEnv(), work)
   allowed('git push origin chore/90-workflow', localEnv(), work)
   // push -n is dry-run, not --no-verify.
   allowed('git push -n origin chore/90-workflow', localEnv(), work)
@@ -424,6 +426,7 @@ test('a local agent cannot retarget add, commit, or push with git config', () =>
   allowed('git config -l', localEnv(), work)
   allowed('git config user.name', localEnv(), work)
   allowed('git config --global --get user.email', localEnv(), work)
+  allowed('git config --fixed-value --get user.name x', localEnv(), work)
 
   for (const command of [
     'git config user.name hidden',

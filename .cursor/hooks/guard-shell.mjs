@@ -119,7 +119,6 @@ const CONFIG_WRITE_FLAGS = new Set([
   '--remove-section',
   '--edit',
   '-e',
-  '--fixed-value',
 ])
 const CONFIG_READ_FLAGS = new Set([
   '--get',
@@ -970,19 +969,28 @@ function recordExports(statement, shell) {
  * @param {string[]} args
  */
 function commitSkipsHooks(args) {
-  for (const token of args) {
+  const messageOptions = new Set(['--message', '--file', '--author', '--date', '--template'])
+  for (let i = 0; i < args.length; i++) {
+    const token = args[i]
     if (token === '--')
       break
     if (token === '--no-verify' || token.startsWith('--no-verify='))
       return true
+    // The next word is the message, even when it looks like --no-verify.
+    if (messageOptions.has(token)) {
+      i++
+      continue
+    }
     if (!token.startsWith('-') || token.startsWith('--'))
       continue
     const cluster = token.slice(1)
-    // -m, -F, -C, and -c take a message. Letters after the first of those are the message.
-    const valueAt = cluster.search(/[mFCc]/)
+    // -m, -F, -C, -c, and -t take a message. Letters after the first of those are the message.
+    const valueAt = cluster.search(/[mFCct]/)
     const flags = valueAt === -1 ? cluster : cluster.slice(0, valueAt)
     if (flags.includes('n'))
       return true
+    if (valueAt !== -1 && cluster.slice(valueAt + 1) === '')
+      i++
   }
   return false
 }

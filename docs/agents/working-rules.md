@@ -155,7 +155,11 @@ printf '%s\n' '{"command":"cat .env","cwd":"/workspace"}' | .cursor/hooks/guard-
 
 The checks are `.cursor/hooks/*.checks.mjs` and use `node:test`. A `*.test.*` name makes ESLint rewrite that import to vitest.
 
-The guard does not see past the command string. It will not catch a runtime read (`node -e` with a file read), `sed` or `awk` on `.env`, `eval`, a variable that expands to `.env`, `git show` of a secret path, or deleting `node_modules` by renaming it first. `pnpm install` stays a written rule, not a hook denial.
+A local agent also may not skip husky (`git commit --no-verify`, `git commit -n`, `git push --no-verify`), pass `git -c` or `--config-env` on `git add`, `git commit`, or `git push`, set `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, or `GIT_CONFIG_KEY_*` for those commands, or write `git config`. `git config --get` and `git config --list` stay allowed. `CI=1 pnpm` (`env CI=1`, `export CI=1; pnpm`) and `pnpm install` / `pnpm i` are denied for a local agent. A cloud agent is not subject to these local refusals.
+
+`.cursor/hooks.json` also registers `beforeReadFile` as `.cursor/hooks/guard-read.sh` (`failClosed: true`). It denies `.env` and `.env.*` except names ending in `.example`, `*.pem`, `*.key`, and anything under `~/.ssh`.
+
+The guard does not see past the command string. It will not catch a runtime read (`node -e` with a file read), `sed` or `awk` on `.env`, `eval`, a variable that expands to `.env`, `git show` of a secret path, deleting `node_modules` by renaming it first, or `corepack pnpm` / `npx pnpm`.
 
 ## Skill workflow
 
