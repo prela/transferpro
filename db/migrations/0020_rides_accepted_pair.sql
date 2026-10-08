@@ -1,0 +1,1 @@
+ALTER TABLE "app"."rides" ADD CONSTRAINT "rides_accepted_pair" CHECK ("app"."rides"."state" <> 'accepted' or ("app"."rides"."driver_id" is not null and "app"."rides"."vehicle_id" is not null and "app"."rides"."must_accept" is true));

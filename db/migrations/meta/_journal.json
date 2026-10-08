@@ -141,6 +141,13 @@
       "when": 1791400009000,
       "tag": "0019_ride_assignment",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791400010000,
+      "tag": "0020_rides_accepted_pair",
+      "breakpoints": true
     }
   ]
 }
