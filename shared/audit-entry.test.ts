@@ -308,6 +308,35 @@ it('records an acceptance by the Ride id, the Driver id, and the field name stat
   expect(auditFactSchema.safeParse({ ...accepted, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records an office acceptance by phone as the Ride id, the Driver id, and the field name state', () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const accepted = {
+    action: 'ride.accepted_by_phone' as const,
+    subjectUserId: null,
+    data: {
+      rideId,
+      driverId,
+      fields: ['state'] as const,
+    },
+  }
+  expect(auditFactSchema.parse(accepted)).toEqual(accepted)
+  // An extra key is how a phone number would sit forever on an append-only row.
+  expect(auditFactSchema.safeParse({
+    ...accepted,
+    data: { ...accepted.data, phone: '+38591111' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...accepted,
+    data: { ...accepted.data, fields: ['state', 'mustAccept'] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...accepted,
+    data: { driverId, fields: ['state'] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...accepted, subjectUserId: memberId }).success).toBe(false)
+})
+
 it('lists an acceptance with the Driver name and without a plate', () => {
   const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'

@@ -189,6 +189,46 @@ it('append_entry accepts a client action that carries the id and the kind, and n
   expect(rows.every(row => row.data !== null && typeof row.data === 'object' && !Object.hasOwn(row.data, 'name'))).toBe(true)
 })
 
+it('append_entry accepts an office acceptance by phone with the Ride id, the Driver id, and the field name state, and refuses an extra key or other fields', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const append = `select audit.append_entry($1, $2, $3, $4::jsonb)`
+  const valid = { rideId, driverId, fields: ['state'] }
+  await inSession(appPool, tenant, client => client.query(append, [
+    'ride.accepted_by_phone',
+    actor,
+    null,
+    JSON.stringify(valid),
+  ]))
+  expect(await entriesOf(tenant)).toEqual([{
+    tenant_id: tenant,
+    action: 'ride.accepted_by_phone',
+    actor_user_id: actor,
+    subject_user_id: null,
+    data: valid,
+  }])
+
+  const extraKey = await refusal(appPool, tenant, append, [
+    'ride.accepted_by_phone',
+    actor,
+    null,
+    JSON.stringify({ ...valid, phone: '+38591111' }),
+  ])
+  expect(extraKey).toMatchObject({ code: '23514' })
+
+  const otherFields = await refusal(appPool, tenant, append, [
+    'ride.accepted_by_phone',
+    actor,
+    null,
+    JSON.stringify({ ...valid, fields: ['state', 'mustAccept'] }),
+  ])
+  expect(otherFields).toMatchObject({ code: '23514' })
+
+  expect(await entriesOf(tenant)).toHaveLength(1)
+})
+
 it('the app role cannot insert, update, delete, or truncate an entry, even in its own Tenant, and the auth role cannot touch the table', async () => {
   const tenant = crypto.randomUUID()
   const actor = crypto.randomUUID()

@@ -35,6 +35,7 @@ export const auditActions = [
   'transfer.created',
   'ride.assigned',
   'ride.accepted',
+  'ride.accepted_by_phone',
   'roster.assigned',
   'roster.changed',
   'roster.cleared',
@@ -277,6 +278,23 @@ const rideAccepted = z.object({
 })
 
 /*
+ * The office records that the Driver accepted by phone. The action name is
+ * the fact; the phone number is not a key, because this row is never deleted.
+ * The ids say which Ride and which Driver. `fields` is only `state`. A name,
+ * a plate, a guest, or the must-accept value stays off the row. The actor is
+ * the office member. `subjectUserId` stays null.
+ */
+const rideAcceptedByPhone = z.object({
+  action: z.literal('ride.accepted_by_phone'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    driverId,
+    fields: z.array(rideAcceptedFieldSchema).length(RIDE_ACCEPTED_FIELDS.length),
+  }),
+})
+
+/*
  * A roster row is not a member. The data names the day and the ids.
  * A plate, a driver name, or a phone would stay forever on a row that
  * is never deleted, so none of those keys exist.
@@ -350,6 +368,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   transferCreated,
   rideAssigned,
   rideAccepted,
+  rideAcceptedByPhone,
   rosterAssigned,
   rosterChanged,
   rosterCleared,
