@@ -20,13 +20,42 @@ async function createdId(response: { ok: () => boolean, status: () => number, te
 }
 
 /**
- * The owner role. The app has no command for done or accepted yet, so the
- * spec sets the state. `accepted` still needs the copied must-accept flag.
+ * The owner role. Done has no phone command, so the spec sets that state.
+ * Accepted is set the same way when a card must start accepted. The copied
+ * flag stays as assignment wrote it unless a conflict test turns it off.
  */
 async function setRideState(rideId: string, state: 'done' | 'accepted') {
   const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
   try {
     await pool.query(`update app.rides set state = $2 where id = $1`, [rideId, state])
+  }
+  finally {
+    await pool.end()
+  }
+}
+
+/** The copy taken at assignment. Turning it off makes the next accept a 409. */
+async function setCopiedMustAccept(rideId: string, mustAccept: boolean) {
+  const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
+  try {
+    await pool.query(`update app.rides set must_accept = $2 where id = $1`, [rideId, mustAccept])
+  }
+  finally {
+    await pool.end()
+  }
+}
+
+async function rideRow(rideId: string): Promise<{ state: string, must_accept: boolean | null }> {
+  const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
+  try {
+    const result = await pool.query<{ state: string, must_accept: boolean | null }>(
+      `select state, must_accept from app.rides where id = $1`,
+      [rideId],
+    )
+    const row = result.rows[0]
+    if (!row)
+      throw new Error('ride is missing')
+    return row
   }
   finally {
     await pool.end()
@@ -323,13 +352,14 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
   await expect(plain.getByText('Gotovina')).toBeVisible()
   await expect(plain.getByText('Prihvaćeno')).toHaveCount(0)
   await expect(plain.getByText('Čeka na prihvat')).toHaveCount(0)
-  await expect(waiting.getByRole('button')).toHaveCount(0)
+  await expect(waiting.getByRole('button', { name: 'Prihvati vožnju', exact: true })).toBeVisible()
   await expect(accepted.getByRole('button')).toHaveCount(0)
   await expect(plain.getByRole('button')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Tamna tema' }).click()
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(waiting.getByText('Čeka na prihvat')).toBeVisible()
+  await expect(waiting.getByRole('button', { name: 'Prihvati vožnju', exact: true })).toBeVisible()
   await expect(accepted.getByText('Prihvaćeno')).toBeVisible()
   await expect(plain.getByText('Čeka na prihvat')).toHaveCount(0)
   await expect(plain.getByText('Prihvaćeno')).toHaveCount(0)
@@ -347,6 +377,9 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
   await expect(plain.getByText('Cash')).toBeVisible()
   await expect(plain.getByText('Accepted')).toHaveCount(0)
   await expect(plain.getByText('Waiting on acceptance')).toHaveCount(0)
+  await expect(waiting.getByRole('button', { name: 'Accept ride', exact: true })).toBeVisible()
+  await expect(accepted.getByRole('button')).toHaveCount(0)
+  await expect(plain.getByRole('button')).toHaveCount(0)
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
   expect(overflow).toBe(false)
@@ -354,8 +387,153 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
   await page.getByRole('button', { name: 'Light theme' }).click()
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   await expect(waiting.getByText('Waiting on acceptance')).toBeVisible()
+  await expect(waiting.getByRole('button', { name: 'Accept ride', exact: true })).toBeVisible()
   await expect(accepted.getByText('Accepted')).toBeVisible()
   await expect(plain.getByText('Waiting on acceptance')).toHaveCount(0)
+})
+
+test('a driver accepts a waiting ride, and a conflict reloads the list', async ({ page }) => {
+  const tenant = await seedTenant('driver-accept')
+  const driver = await seedMember(tenant.tenantId, 'driver', 'Prihvat')
+  const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
+  const acceptAt = instantFromWallClock(`${day}T10:00`, 'Europe/Zagreb')
+  const conflictAt = instantFromWallClock(`${day}T13:00`, 'Europe/Zagreb')
+  const mail: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('resend.com'))
+      mail.push(request.url())
+  })
+
+  await useTheme(page, 'light')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+
+  const licence = '2031-01-01'
+  const ownDriverId = await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Marko Prihvat',
+      kind: 'own',
+      phone: '+385911110501',
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+      memberUserId: driver.userId,
+    },
+  }))
+  const vehicleId = await createdId(await page.request.post('/api/vehicles', {
+    data: {
+      registrationPlate: 'DU302AA',
+      kind: 'fixed',
+      registrationExpiresOn: licence,
+      technicalInspectionExpiresOn: licence,
+      insuranceExpiresOn: licence,
+    },
+  }))
+  const clientId = await createdId(await page.request.post('/api/clients', {
+    data: { name: 'Klijent Prihvat', kind: 'agency' },
+  }))
+  const startLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Polazak Prihvat', kind: 'address' },
+  }))
+  const endLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Hotel Prihvat', kind: 'hotel' },
+  }))
+
+  async function record(guest: string, pickupAt: Date) {
+    const recorded = await page.request.post('/api/transfers', {
+      data: {
+        clientId,
+        pickupAt: pickupAt.toISOString(),
+        startLocationId,
+        endLocationId,
+        passengerCount: 1,
+        guestName: guest,
+        flightNumber: null,
+        price: 20,
+        payment: 'card',
+        airportMark: false,
+        luggageCount: 0,
+        childSeatCount: 0,
+      },
+    })
+    if (!recorded.ok())
+      throw new Error(`${recorded.status()} ${await recorded.text()}`)
+    const body = await recorded.json() as { ride: { id: string } }
+    return body.ride.id
+  }
+
+  async function assign(rideId: string) {
+    const response = await page.request.post(`/api/rides/${rideId}/assign`, {
+      data: { driverId: ownDriverId, vehicleId },
+    })
+    if (!response.ok())
+      throw new Error(`${response.status()} ${await response.text()}`)
+  }
+
+  const mustAccept = await page.request.patch(`/api/drivers/${ownDriverId}`, {
+    data: { mustAccept: true },
+  })
+  if (!mustAccept.ok())
+    throw new Error(`${mustAccept.status()} ${await mustAccept.text()}`)
+  const acceptRide = await record('Nika Prihvat', acceptAt)
+  await assign(acceptRide)
+  const conflictRide = await record('Nika Sukob', conflictAt)
+  await assign(conflictRide)
+
+  await signOut(page)
+  await signIn(page, driver.email, driver.password, tenant.name)
+
+  const accepted = page.locator('article').filter({ hasText: 'Nika Prihvat' })
+  const conflicted = page.locator('article').filter({ hasText: 'Nika Sukob' })
+  await expect(accepted.getByRole('button', { name: 'Prihvati vožnju', exact: true })).toBeVisible()
+  await expect(conflicted.getByRole('button', { name: 'Prihvati vožnju', exact: true })).toBeVisible()
+  await expect(accepted.getByText('Čeka na prihvat')).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+
+  const acceptedResponse = page.waitForResponse(response =>
+    response.url().includes(`/api/rides/${acceptRide}/accept`) && response.request().method() === 'POST',
+  )
+  await accepted.getByRole('button', { name: 'Prihvati vožnju', exact: true }).click()
+  expect((await acceptedResponse).status()).toBe(200)
+  await expect(accepted.getByRole('heading', { name: 'Nika Prihvat' })).toBeVisible()
+  await expect(accepted.getByText('Prihvaćeno')).toBeVisible()
+  await expect(accepted.getByText('Čeka na prihvat')).toHaveCount(0)
+  await expect(accepted.getByRole('button')).toHaveCount(0)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(await rideRow(acceptRide)).toMatchObject({ state: 'accepted', must_accept: true })
+  expect(mail).toEqual([])
+
+  await setCopiedMustAccept(conflictRide, false)
+  const conflictResponse = page.waitForResponse(response =>
+    response.url().includes(`/api/rides/${conflictRide}/accept`) && response.request().method() === 'POST',
+  )
+  await conflicted.getByRole('button', { name: 'Prihvati vožnju', exact: true }).click()
+  expect((await conflictResponse).status()).toBe(409)
+  await expect(page.getByRole('alert')).toContainText('Ovu vožnju više nije moguće prihvatiti.')
+  await expect(conflicted.getByRole('heading', { name: 'Nika Sukob' })).toBeVisible()
+  await expect(conflicted.getByText('Čeka na prihvat')).toHaveCount(0)
+  await expect(conflicted.getByText('Prihvaćeno')).toHaveCount(0)
+  await expect(conflicted.getByRole('button')).toHaveCount(0)
+  expect(await rideRow(conflictRide)).toMatchObject({ state: 'assigned', must_accept: false })
+  expect(mail).toEqual([])
+
+  await page.getByRole('button', { name: 'Tamna tema' }).click()
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(accepted.getByText('Prihvaćeno')).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('Ovu vožnju više nije moguće prihvatiti.')
+
+  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await expect(accepted.getByText('Accepted')).toBeVisible()
+  await expect(accepted.getByRole('button')).toHaveCount(0)
+  await expect(conflicted.getByRole('button')).toHaveCount(0)
+  await expect(page.getByRole('alert')).toContainText('This ride can no longer be accepted.')
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
+  expect(overflow).toBe(false)
+
+  await page.getByRole('button', { name: 'Light theme' }).click()
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await expect(accepted.getByText('Accepted')).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('This ride can no longer be accepted.')
 })
 
 test('a driver with no linked Driver sees an empty list', async ({ page }) => {
