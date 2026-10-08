@@ -319,7 +319,8 @@
     "flight": "Flight",
     "airport": "Airport",
     "price": "Price",
-    "cash": "Cash"
+    "cash": "Cash",
+    "waiting": "Waiting on acceptance"
   },
   "drivers": {
     "nav": "Drivers",

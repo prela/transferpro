@@ -90,6 +90,23 @@ onMounted(loadRides)
           <h3 class="text-lg font-semibold">
             {{ ride.guestName }}
           </h3>
+          <!--
+            Accepted uses the office label. Waiting is only an assigned Ride
+            that still requires acceptance. A Ride that does not require
+            acceptance has no status line. There is no accept control here.
+          -->
+          <p
+            v-if="ride.state === 'accepted'"
+            class="mt-1"
+          >
+            {{ t('transfers.states.accepted') }}
+          </p>
+          <p
+            v-else-if="ride.mustAccept"
+            class="mt-1"
+          >
+            {{ t('driverRides.waiting') }}
+          </p>
           <time
             class="mt-1 block"
             :datetime="ride.pickupAt"

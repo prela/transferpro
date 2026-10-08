@@ -319,7 +319,8 @@
     "flight": "Let",
     "airport": "Zračna luka",
     "price": "Cijena",
-    "cash": "Gotovina"
+    "cash": "Gotovina",
+    "waiting": "Čeka na prihvat"
   },
   "drivers": {
     "nav": "Vozači",

@@ -19,11 +19,14 @@ async function createdId(response: { ok: () => boolean, status: () => number, te
   return body.id
 }
 
-/** The owner role. The app has no command for done yet, so the spec sets it. */
-async function markDone(rideId: string) {
+/**
+ * The owner role. The app has no command for done or accepted yet, so the
+ * spec sets the state. `accepted` still needs the copied must-accept flag.
+ */
+async function setRideState(rideId: string, state: 'done' | 'accepted') {
   const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
   try {
-    await pool.query(`update app.rides set state = 'done' where id = $1`, [rideId])
+    await pool.query(`update app.rides set state = $2 where id = $1`, [rideId, state])
   }
   finally {
     await pool.end()
@@ -128,7 +131,7 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await assign(otherRide, otherDriverId)
   const doneRide = await record('Nika Kraj', cashAt, 'cash', 11)
   await assign(doneRide, ownDriverId)
-  await markDone(doneRide)
+  await setRideState(doneRide, 'done')
 
   await signOut(page)
   await signIn(page, driver.email, driver.password, tenant.name)
@@ -160,6 +163,12 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(invoiceCard.getByText('80.00')).toHaveCount(0)
   await expect(invoiceCard.getByText('Račun agenciji')).toHaveCount(0)
   await expect(invoiceCard.getByText('Gotovina')).toHaveCount(0)
+  await expect(cashCard.getByText('Prihvaćeno')).toHaveCount(0)
+  await expect(cashCard.getByText('Čeka na prihvat')).toHaveCount(0)
+  await expect(cardCard.getByText('Prihvaćeno')).toHaveCount(0)
+  await expect(cardCard.getByText('Čeka na prihvat')).toHaveCount(0)
+  await expect(invoiceCard.getByText('Prihvaćeno')).toHaveCount(0)
+  await expect(invoiceCard.getByText('Čeka na prihvat')).toHaveCount(0)
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
   expect(overflow).toBe(false)
@@ -174,6 +183,12 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(invoiceCard.getByText('80.00')).toHaveCount(0)
   await expect(invoiceCard.getByText('Invoice to agency')).toHaveCount(0)
   await expect(invoiceCard.getByText('Cash')).toHaveCount(0)
+  await expect(cashCard.getByText('Accepted')).toHaveCount(0)
+  await expect(cashCard.getByText('Waiting on acceptance')).toHaveCount(0)
+  await expect(cardCard.getByText('Accepted')).toHaveCount(0)
+  await expect(cardCard.getByText('Waiting on acceptance')).toHaveCount(0)
+  await expect(invoiceCard.getByText('Accepted')).toHaveCount(0)
+  await expect(invoiceCard.getByText('Waiting on acceptance')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Dark theme' }).click()
   await expect(page.locator('html')).toHaveClass(/dark/)
@@ -195,6 +210,152 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
     const registration = await navigator.serviceWorker.getRegistration()
     return registration !== undefined
   })
+})
+
+test('a driver sees which rides are waiting on acceptance and which are accepted', async ({ page }) => {
+  const tenant = await seedTenant('driver-waiting')
+  const driver = await seedMember(tenant.tenantId, 'driver', 'Cekanje')
+  const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
+  const waitingAt = instantFromWallClock(`${day}T09:00`, 'Europe/Zagreb')
+  const acceptedAt = instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb')
+  const plainAt = instantFromWallClock(`${day}T16:00`, 'Europe/Zagreb')
+
+  await useTheme(page, 'light')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+
+  const licence = '2031-01-01'
+  const ownDriverId = await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Marko Ceka',
+      kind: 'own',
+      phone: '+385911110401',
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+      memberUserId: driver.userId,
+    },
+  }))
+  const vehicleId = await createdId(await page.request.post('/api/vehicles', {
+    data: {
+      registrationPlate: 'DU301AA',
+      kind: 'fixed',
+      registrationExpiresOn: licence,
+      technicalInspectionExpiresOn: licence,
+      insuranceExpiresOn: licence,
+    },
+  }))
+  const clientId = await createdId(await page.request.post('/api/clients', {
+    data: { name: 'Klijent Cekanje', kind: 'agency' },
+  }))
+  const startLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Polazak Cekanje', kind: 'address' },
+  }))
+  const endLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Hotel Cekanje', kind: 'hotel' },
+  }))
+
+  async function record(guest: string, pickupAt: Date, payment: 'cash' | 'card', price: number) {
+    const recorded = await page.request.post('/api/transfers', {
+      data: {
+        clientId,
+        pickupAt: pickupAt.toISOString(),
+        startLocationId,
+        endLocationId,
+        passengerCount: 1,
+        guestName: guest,
+        flightNumber: null,
+        price,
+        payment,
+        airportMark: false,
+        luggageCount: 0,
+        childSeatCount: 0,
+      },
+    })
+    if (!recorded.ok())
+      throw new Error(`${recorded.status()} ${await recorded.text()}`)
+    const body = await recorded.json() as { ride: { id: string } }
+    return body.ride.id
+  }
+
+  async function assign(rideId: string) {
+    const response = await page.request.post(`/api/rides/${rideId}/assign`, {
+      data: { driverId: ownDriverId, vehicleId },
+    })
+    if (!response.ok())
+      throw new Error(`${response.status()} ${await response.text()}`)
+  }
+
+  async function setMustAccept(mustAccept: boolean) {
+    const response = await page.request.patch(`/api/drivers/${ownDriverId}`, {
+      data: { mustAccept },
+    })
+    if (!response.ok())
+      throw new Error(`${response.status()} ${await response.text()}`)
+  }
+
+  await setMustAccept(true)
+  const waitingRide = await record('Nika Ceka', waitingAt, 'card', 33)
+  await assign(waitingRide)
+  const acceptedRide = await record('Nika Da', acceptedAt, 'cash', 18.5)
+  await assign(acceptedRide)
+  await setRideState(acceptedRide, 'accepted')
+  await setMustAccept(false)
+  const plainRide = await record('Nika Ne', plainAt, 'cash', 7)
+  await assign(plainRide)
+
+  await signOut(page)
+  await signIn(page, driver.email, driver.password, tenant.name)
+
+  const waiting = page.locator('article').filter({ hasText: 'Nika Ceka' })
+  const accepted = page.locator('article').filter({ hasText: 'Nika Da' })
+  const plain = page.locator('article').filter({ hasText: 'Nika Ne' })
+  await expect(waiting.getByText('Čeka na prihvat')).toBeVisible()
+  await expect(waiting.getByText('Prihvaćeno')).toHaveCount(0)
+  await expect(waiting.getByText('33,00 EUR')).toHaveCount(0)
+  await expect(waiting.getByText('33.00')).toHaveCount(0)
+  await expect(waiting.getByText('Kartica')).toHaveCount(0)
+  await expect(waiting.getByText('Gotovina')).toHaveCount(0)
+  await expect(accepted.getByText('Prihvaćeno')).toBeVisible()
+  await expect(accepted.getByText('Čeka na prihvat')).toHaveCount(0)
+  await expect(accepted.getByText('18,50 EUR')).toBeVisible()
+  await expect(accepted.getByText('Gotovina')).toBeVisible()
+  await expect(plain.getByText('7,00 EUR')).toBeVisible()
+  await expect(plain.getByText('Gotovina')).toBeVisible()
+  await expect(plain.getByText('Prihvaćeno')).toHaveCount(0)
+  await expect(plain.getByText('Čeka na prihvat')).toHaveCount(0)
+  await expect(waiting.getByRole('button')).toHaveCount(0)
+  await expect(accepted.getByRole('button')).toHaveCount(0)
+  await expect(plain.getByRole('button')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Tamna tema' }).click()
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(waiting.getByText('Čeka na prihvat')).toBeVisible()
+  await expect(accepted.getByText('Prihvaćeno')).toBeVisible()
+  await expect(plain.getByText('Čeka na prihvat')).toHaveCount(0)
+  await expect(plain.getByText('Prihvaćeno')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await expect(waiting.getByText('Waiting on acceptance')).toBeVisible()
+  await expect(waiting.getByText('Accepted')).toHaveCount(0)
+  await expect(waiting.getByText('33.00')).toHaveCount(0)
+  await expect(waiting.getByText('Card')).toHaveCount(0)
+  await expect(accepted.getByText('Accepted')).toBeVisible()
+  await expect(accepted.getByText('Waiting on acceptance')).toHaveCount(0)
+  await expect(accepted.getByText('18.50 EUR')).toBeVisible()
+  await expect(accepted.getByText('Cash')).toBeVisible()
+  await expect(plain.getByText('7.00 EUR')).toBeVisible()
+  await expect(plain.getByText('Cash')).toBeVisible()
+  await expect(plain.getByText('Accepted')).toHaveCount(0)
+  await expect(plain.getByText('Waiting on acceptance')).toHaveCount(0)
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
+  expect(overflow).toBe(false)
+
+  await page.getByRole('button', { name: 'Light theme' }).click()
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await expect(waiting.getByText('Waiting on acceptance')).toBeVisible()
+  await expect(accepted.getByText('Accepted')).toBeVisible()
+  await expect(plain.getByText('Waiting on acceptance')).toHaveCount(0)
 })
 
 test('a driver with no linked Driver sees an empty list', async ({ page }) => {

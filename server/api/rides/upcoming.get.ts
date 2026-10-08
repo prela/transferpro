@@ -11,6 +11,8 @@ import { rideHttpError } from './http'
  * admin is 403. No session is 401. Another Tenant cannot: the tables have
  * FORCE RLS, and the per-driver filter runs inside that transaction.
  * Cash includes the price. Card and invoice to agency include neither.
+ * Each Ride includes `state` (`assigned` or `accepted`) and `mustAccept`.
+ * This route does not accept a Ride.
  */
 export default defineEventHandler(async (event) => {
   try {
