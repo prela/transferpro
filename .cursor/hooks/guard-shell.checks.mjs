@@ -164,7 +164,8 @@ test('a local agent may not push elsewhere, force-push, hard-reset, or discard',
   }
   denied('git commit -m "chore: test"', /feature\/\*/, localEnv(), { ...localDeps, currentBranch: 'main' })
   denied('git commit -m "chore: test"', /feature\/\*/, localEnv(), { ...localDeps, currentBranch: 'topic' })
-  denied('git push', /feature\/\*/, localEnv(), { ...work, currentBranch: 'develop' })
+  // Empty upstream so a work-branch checkout does not hide this denial.
+  denied('git push', /feature\/\*/, localEnv(), { ...work, currentBranch: 'develop', upstreamBranch: '' })
   denied('git push origin develop', /feature\/\*/, localEnv(), work)
 })
 
@@ -229,7 +230,7 @@ test('a worker id allows git writes only with a bc- conversation id', () => {
     'git switch -c chore/other develop',
   ]) {
     allowed(command, worker, cloud)
-    denied(command, /git/, worker, { ...localDeps, currentBranch: 'develop', remotes: ['origin'] })
+    denied(command, /git/, worker, { ...localDeps, currentBranch: 'develop', remotes: ['origin'], upstreamBranch: '' })
   }
 
   allowed('git push origin develop', worker, cloud)
@@ -374,4 +375,131 @@ test('the CLI passes conversation_id from stdin into the worker-id gate', (t) =>
   assert.equal(localWork.permission, 'allow')
   const prefix = run('export CURSOR_AGENT_WORKER_ID=x; git push origin develop', {}, 'node', { conversation_id: 'bc-ci' })
   assert.equal(prefix.permission, 'deny')
+})
+
+test('a local agent cannot skip husky with --no-verify', () => {
+  const work = { ...localDeps, remotes: ['origin'], currentBranch: 'chore/90-workflow', upstreamBranch: 'chore/90-workflow' }
+  const worker = { CURSOR_AGENT_WORKER_ID: 'worker-1' }
+  const cloud = { ...localDeps, conversationId: 'bc-123', remotes: ['origin'], currentBranch: 'develop' }
+
+  denied('git commit --no-verify -m "chore: test"', /do not skip git hooks/, localEnv(), work)
+  denied('git commit -n -m "chore: test"', /do not skip git hooks/, localEnv(), work)
+  denied('git push --no-verify origin chore/90-workflow', /do not skip git hooks/, localEnv(), work)
+  allowed('git commit -m "chore: test"', localEnv(), work)
+  allowed('git push origin chore/90-workflow', localEnv(), work)
+  // push -n is dry-run, not --no-verify.
+  allowed('git push -n origin chore/90-workflow', localEnv(), work)
+  allowed('git commit --no-verify -m "chore: test"', worker, cloud)
+  allowed('git commit -n -m "chore: test"', worker, cloud)
+  allowed('git push --no-verify origin develop', worker, cloud)
+})
+
+test('a local agent cannot retarget add, commit, or push with git config', () => {
+  const work = { ...localDeps, remotes: ['origin'], currentBranch: 'chore/90-workflow', upstreamBranch: 'chore/90-workflow' }
+  const worker = { CURSOR_AGENT_WORKER_ID: 'worker-1' }
+  const cloud = { ...localDeps, conversationId: 'bc-123', remotes: ['origin'], currentBranch: 'develop' }
+
+  for (const command of [
+    'git -c remote.origin.push=HEAD:develop push origin',
+    'git -c user.name=hidden commit -m "chore: test"',
+    'git -c core.hooksPath=/tmp add AGENTS.md',
+    'git --config-env=remote.origin.push=PUSH_TARGET push origin',
+    'git --config-env remote.origin.push=PUSH_TARGET commit -m "chore: test"',
+    'GIT_CONFIG_PARAMETERS=\'remote.origin.push=HEAD:develop\' git push origin chore/90-workflow',
+    'GIT_CONFIG_COUNT=1 git commit -m "chore: test"',
+    'GIT_CONFIG_KEY_0=remote.origin.push git push origin',
+    'env GIT_CONFIG_COUNT=2 git add AGENTS.md',
+    'export GIT_CONFIG_COUNT=1; git push origin chore/90-workflow',
+    'export GIT_CONFIG_KEY_0=remote.origin.push; git commit -m "chore: test"',
+  ]) {
+    denied(command, /do not pass git -c or --config-env|do not set GIT_CONFIG_/, localEnv(), work)
+  }
+
+  allowed('git push origin', localEnv(), work)
+  allowed('git -c color.ui=never status', localEnv(), work)
+  allowed('git --config-env=color.ui=NO_COLOR status', localEnv(), work)
+  allowed('GIT_CONFIG_COUNT=1 git status', localEnv(), work)
+  allowed('git config --get user.name', localEnv(), work)
+  allowed('git config --list', localEnv(), work)
+  allowed('git config -l', localEnv(), work)
+  allowed('git config user.name', localEnv(), work)
+  allowed('git config --global --get user.email', localEnv(), work)
+
+  for (const command of [
+    'git config user.name hidden',
+    'git config --global user.email hidden@example.com',
+    'git config --unset user.name',
+    'git config --unset-all user.name',
+    'git config --add remote.origin.push HEAD:develop',
+    'git config --replace-all remote.origin.push HEAD:develop',
+    'git config --edit',
+    'git config -e',
+    'git config --remove-section remote.origin',
+    'git config --rename-section remote.origin remote.elsewhere',
+  ]) {
+    denied(command, /write git config/, localEnv(), work)
+  }
+
+  allowed('git -c remote.origin.push=HEAD:develop push origin', worker, cloud)
+  allowed('git --config-env=remote.origin.push=PUSH_TARGET push origin develop', worker, cloud)
+  allowed('GIT_CONFIG_COUNT=1 git push origin develop', worker, cloud)
+  allowed('export GIT_CONFIG_KEY_0=remote.origin.push; git commit -m "chore: test"', worker, cloud)
+  allowed('git config user.name hidden', worker, cloud)
+})
+
+test('a local agent cannot set CI=1 for pnpm or run pnpm install', () => {
+  const worker = { CURSOR_AGENT_WORKER_ID: 'worker-1' }
+  const cloud = { ...localDeps, conversationId: 'bc-123' }
+
+  for (const command of [
+    'CI=1 pnpm test',
+    'env CI=1 pnpm lint',
+    'export CI=1; pnpm test',
+    'export CI=1 && pnpm exec node -v',
+    'CI=1 bash -lc "pnpm test"',
+    'export CI=1; bash -lc "pnpm test"',
+  ]) {
+    denied(command, /do not run pnpm with CI=1/, localEnv(), localDeps)
+  }
+
+  allowed('pnpm test')
+  allowed('env FOO=1 pnpm lint')
+  allowed('CI=0 pnpm test')
+  allowed('export CI=1; unset CI; pnpm test')
+  allowed('export CI=1; git status', localEnv(), { ...localDeps, currentBranch: 'chore/90-workflow' })
+
+  for (const command of [
+    'pnpm install',
+    'pnpm i',
+    'pnpm install --frozen-lockfile',
+    'pnpm --dir apps/web install',
+    'pnpm -C . i',
+    'pnpm --filter @app/web install',
+  ]) {
+    denied(command, /do not run pnpm install/)
+  }
+
+  allowed('pnpm run test')
+  allowed('pnpm exec node -v')
+  allowed('CI=1 pnpm test', worker, cloud)
+  allowed('export CI=1; pnpm test', worker, cloud)
+  allowed('pnpm install', worker, cloud)
+  allowed('pnpm i --frozen-lockfile', worker, cloud)
+})
+
+test('push -o takes a value the way --push-option does', () => {
+  const upstreamDevelop = {
+    ...localDeps,
+    remotes: ['origin'],
+    currentBranch: 'chore/90-workflow',
+    upstreamBranch: 'develop',
+  }
+  const upstreamWork = { ...upstreamDevelop, upstreamBranch: 'chore/90-workflow' }
+
+  allowed('git push -o ci.skip origin chore/90-workflow', localEnv(), upstreamDevelop)
+  allowed('git push origin -o ci.skip chore/90-workflow', localEnv(), upstreamDevelop)
+  allowed('git push --push-option ci.skip origin chore/90-workflow', localEnv(), upstreamDevelop)
+  allowed('git push -o ci.skip origin', localEnv(), upstreamWork)
+  denied('git push -o feature/decoy', /feature\/\*/, localEnv(), upstreamDevelop)
+  denied('git push -o ci.skip origin develop', /feature\/\*/, localEnv(), upstreamDevelop)
 })

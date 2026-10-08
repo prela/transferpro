@@ -7,6 +7,13 @@
         "timeout": 10,
         "failClosed": true
       }
+    ],
+    "beforeReadFile": [
+      {
+        "command": ".cursor/hooks/guard-read.sh",
+        "timeout": 10,
+        "failClosed": true
+      }
     ]
   }
 }
