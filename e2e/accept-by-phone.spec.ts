@@ -30,8 +30,8 @@ async function acceptByPhone(page: Page): Promise<void> {
       transportLicenceExpiresOn: licence,
     },
   }))
-  const flagged = await page.request.patch(`/api/drivers/${driverId}`, { data: { mustAccept: true } })
-  expect(flagged.ok()).toBeTruthy()
+  const corrected = await page.request.patch(`/api/drivers/${driverId}`, { data: { mustAccept: true } })
+  expect(corrected.ok()).toBeTruthy()
   const vehicleId = await createdId(await page.request.post('/api/vehicles', {
     data: {
       registrationPlate: plate,
@@ -84,6 +84,7 @@ test('the audit log names the admin and says the acceptance was confirmed by pho
 
   const row = page.getByRole('row', { name: 'Prihvaćanje potvrđeno telefonom' })
   await expect(row).toContainText(tenant.adminName)
+  await expect(row.getByRole('cell', { name: `${tenant.adminName} Prihvaćanje potvrđeno telefonom`, exact: true })).toBeVisible()
   await expect(row).not.toContainText(plate)
   await expect(row).not.toContainText(phone)
   await expect(row).not.toContainText(guest)
@@ -96,6 +97,7 @@ test('the audit log names the admin and says the acceptance was confirmed by pho
   await page.getByRole('button', { name: 'English', exact: true }).click()
   const english = page.getByRole('row', { name: 'Acceptance confirmed by phone' })
   await expect(english).toContainText(tenant.adminName)
+  await expect(english.getByRole('cell', { name: `${tenant.adminName} Acceptance confirmed by phone`, exact: true })).toBeVisible()
   await expect(english).not.toContainText(plate)
   await expect(english).not.toContainText(phone)
   await expect(english).not.toContainText(guest)

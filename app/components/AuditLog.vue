@@ -114,10 +114,12 @@ function detailText(entry: AuditEntry): string {
     case 'ride.accepted':
       // The name is joined from the Driver id. The plate is not on this action.
       return entry.driverName ?? ''
-    case 'ride.accepted_by_phone':
-      // The actor column names the office member. The action sentence says it was confirmed by phone.
-      // The plate is not joined. A departed member's actor name stays null on the row.
-      return ''
+    case 'ride.accepted_by_phone': {
+      // The detail is the office member's name and the sentence that it was confirmed by phone.
+      // A departed member has a null actor name, so only the sentence remains. The plate is not joined.
+      const sentence = t('audit.actions.ride.accepted_by_phone')
+      return entry.actorName === null ? sentence : `${entry.actorName} ${sentence}`
+    }
     case 'roster.assigned':
     case 'roster.changed':
     case 'roster.cleared':
