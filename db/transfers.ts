@@ -80,9 +80,12 @@ export const transfers = tenantTable('transfers', {
  * writer of `assigned`. That state has both a Driver and a Vehicle, and a
  * copy of the Driver's must-accept setting. `unassigned` has neither, and
  * the copy is null because there is no Driver yet.
+ * `accepted` has the same pair, and the copy is true: a Ride that does not
+ * require acceptance is never stored as `accepted`. This slice only adds
+ * that check. It does not write `accepted`.
  * There is no `assigned_at` or `assigned_by`. The audit entry records the
- * actor and the time (ADR-0014). Later states are not constrained here:
- * this slice does not write them.
+ * actor and the time (ADR-0014). `done`, `no-show`, and `cancelled` are
+ * not constrained here.
  * The composite foreign keys refuse another Tenant's Driver or Vehicle.
  */
 
@@ -116,4 +119,5 @@ export const rides = tenantTable('rides', {
   check('rides_state', sql`${table.state} in (${states})`),
   check('rides_unassigned_open', sql`${table.state} <> 'unassigned' or (${table.driverId} is null and ${table.vehicleId} is null and ${table.mustAccept} is null)`),
   check('rides_assigned_pair', sql`${table.state} <> 'assigned' or (${table.driverId} is not null and ${table.vehicleId} is not null and ${table.mustAccept} is not null)`),
+  check('rides_accepted_pair', sql`${table.state} <> 'accepted' or (${table.driverId} is not null and ${table.vehicleId} is not null and ${table.mustAccept} is true)`),
 ], { oneRowPerTenant: false })

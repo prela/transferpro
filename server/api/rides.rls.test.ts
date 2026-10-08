@@ -631,6 +631,55 @@ it('refuses an assigned Ride that is missing a Driver, a Vehicle, or the must-ac
   })
 })
 
+it('stores an accepted Ride only with a Driver, a Vehicle, and must-accept true', async () => {
+  const world = await office('hasg-acc')
+  const driver = await createDriver(world.dispatcher, driverBody)
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG7003AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 10 * 60 * 60 * 1000).toISOString()))
+
+  await expect(withAppTenant(world.tenantId, client => client.query(
+    `update app.rides
+     set state = 'accepted', driver_id = null, vehicle_id = $2, must_accept = true
+     where id = $1`,
+    [recorded.ride.id, vehicle.id],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'rides_accepted_pair' })
+
+  await expect(withAppTenant(world.tenantId, client => client.query(
+    `update app.rides
+     set state = 'accepted', driver_id = $2, vehicle_id = null, must_accept = true
+     where id = $1`,
+    [recorded.ride.id, driver.id],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'rides_accepted_pair' })
+
+  await expect(withAppTenant(world.tenantId, client => client.query(
+    `update app.rides
+     set state = 'accepted', driver_id = $2, vehicle_id = $3, must_accept = false
+     where id = $1`,
+    [recorded.ride.id, driver.id, vehicle.id],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'rides_accepted_pair' })
+
+  await expect(withAppTenant(world.tenantId, client => client.query(
+    `update app.rides
+     set state = 'accepted', driver_id = $2, vehicle_id = $3, must_accept = null
+     where id = $1`,
+    [recorded.ride.id, driver.id, vehicle.id],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'rides_accepted_pair' })
+
+  const stored = await withAppTenant(world.tenantId, client => client.query(
+    `update app.rides
+     set state = 'accepted', driver_id = $2, vehicle_id = $3, must_accept = true
+     where id = $1`,
+    [recorded.ride.id, driver.id, vehicle.id],
+  ))
+  expect(stored.rowCount).toBe(1)
+  expect(await rideRow(recorded.ride.id)).toEqual({
+    state: 'accepted',
+    driver_id: driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: true,
+  })
+})
+
 /**
  * Poll until another backend of this role is waiting on a share lock of `table`.
  * The holder stays open until this returns, so the assign result is the one

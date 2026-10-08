@@ -6,7 +6,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { addCalendarDays, calendarDateInTimeZone, driverUpcomingListSchema, instantFromWallClock } from '../../../shared'
 import { createClient } from '../../modules/clients'
-import { createDriver } from '../../modules/drivers'
+import { createDriver, updateDriver } from '../../modules/drivers'
 import { archiveLocation, createLocation } from '../../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../../modules/tenancy'
 import { assignRide, createTransfer, listTransferDay } from '../../modules/transfers'
@@ -257,7 +257,10 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     return recorded
   }
 
+  // `accepted` stores the copied flag as true. This Driver's default is false, so turn it on for this Ride only.
+  await updateDriver(admin, mine.id, { mustAccept: true })
   await ride({ guest: 'Iva Card', pickupAt: at('10:00'), price: 99, payment: 'card', airportMark: false, passengerCount: 1, assign: mine.id, state: 'accepted' })
+  await updateDriver(admin, mine.id, { mustAccept: false })
   const cashRide = await ride({ guest: 'Iva Cash', pickupAt: at('11:00'), price: 42.5, payment: 'cash', airportMark: true, flightNumber: 'OU 384', passengerCount: 3, assign: mine.id })
   await ride({ guest: 'Iva Invoice', pickupAt: at('12:00'), price: 80, payment: 'invoice_to_agency', airportMark: false, passengerCount: 2, assign: mine.id })
   await ride({ guest: 'Iva Other', pickupAt: at('13:00'), price: 15, payment: 'cash', airportMark: false, passengerCount: 1, assign: other.id })
