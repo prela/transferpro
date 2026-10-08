@@ -26,7 +26,7 @@ Longer notes for agents. `AGENTS.md` is the short source and wins if a line here
 - **Never edit `CHARTER.md`** without owner approval: propose a diff, reason, and impact, then wait.
 - Stay inside v1 scope. Non-goals in the Charter are out of bounds unless a WP says so.
 - No global installs; use repo scripts only.
-- One slice per chat. Start with `/implement #N`. Commit and push on the ticket's `feature/*`, `fix/*`, or `chore/*` branch. Never open a PR. Stop after the slice and `/code-review`.
+- One slice per chat. Start with `/implement #N`. A local agent that is told a branch name and is not already on it runs `git fetch origin` and then `git switch -c <branch> origin/develop`, before any edit. If the branch already exists, stop and report; never switch to it. Commit and push on the ticket's `feature/*`, `fix/*`, or `chore/*` branch. Never open a PR. Stop after the slice and `/code-review`.
 
 ## Database roles and migrations
 
@@ -133,7 +133,7 @@ The guard needs `sh` and `node`. On Windows, run Cursor in WSL or Git Bash.
 
 Cursor docs: project hooks in `.cursor/hooks.json` run in cloud agents, including `beforeShellExecution`, once the VM is writable. They do not run during an early read-only turn. User hooks in `~/.cursor/hooks.json` are not loaded in a cloud VM, so a stop hook there does not run beside this project hook and does not clash with it.
 
-A local agent may `git add`, `git commit`, and `git push` only for a `feature/*`, `fix/*`, or `chore/*` branch. `git push -u origin <branch>` is included. A bare `git push` is allowed only when the upstream branch is one of those names, or, when there is no upstream, when the current branch is. The hook refuses a push to `develop`, `main`, or any other branch, `--force`, `--force-with-lease`, a `+refspec`, `--delete`, and a refspec that deletes a remote branch (`:name`). `git reset --hard`, `git branch -D`, and a checkout, restore, or stash that discards changes stay denied for a local agent. `git checkout -b` and `git switch -c` stay denied for a local agent. Cloud agents still may `git branch -D`; that denial is local.
+A local agent may `git add`, `git commit`, and `git push` only for a `feature/*`, `fix/*`, or `chore/*` branch. `git push -u origin <branch>` is included. A bare `git push` is allowed only when the upstream branch is one of those names, or, when there is no upstream, when the current branch is. The hook refuses a push to `develop`, `main`, or any other branch, `--force`, `--force-with-lease`, a `+refspec`, `--delete`, and a refspec that deletes a remote branch (`:name`). `git reset --hard`, `git branch -D`, and a checkout, restore, or stash that discards changes stay denied for a local agent. A local agent may `git switch -c <name>` and `git checkout -b <name>` when `<name>` is a work branch, with an optional start of exactly `develop` or `origin/develop`, and with no other flags. `git checkout -B` and `git switch -C` stay denied. Cloud agents still may `git branch -D`; that denial is local.
 
 Cloud-agent behaviour is unchanged. `git commit` and `git push` are allowed when the guard sees a cloud agent:
 
@@ -144,7 +144,7 @@ Cloud-agent behaviour is unchanged. `git commit` and `git push` are allowed when
 
 Cursor's hooks page (https://cursor.com/docs/hooks, Environment Variables and `sessionStart`) lists the variables a hook receives, and says a `sessionStart` hook may return an `env` object that later hooks in that session see. It does not say the hook process inherits variables an agent `export`s in a shell, and it does not say hooks are spawned from the terminal session. The guard therefore treats a command prefix and `export` as text, not as its own environment. The worker id stays a residual risk if a hook runner both inherited the shell and already had a `bc-` conversation id. On a managed VM the fixed socket allows commit and push without that variable.
 
-The same cloud gate allows `git checkout -b <name>` and `git switch -c <name>` (a start-point after the name is fine). `git checkout -B` and `git switch -C` stay denied, because those reset a branch that already exists. Plain `checkout` or `switch` of an existing branch or of files stays denied everywhere, including cloud agents. Local branch creation stays denied. `git reset`, `git stash`, and `git restore` stay denied everywhere. So do deletions of `node_modules` or `.modules.yaml`, and reading `.env` files (`cat`, `less`, `more`, `head`, `tail`, `grep`) other than `.env.example`. `printenv` and a bare `env` dump are denied. `env pnpm test` is allowed.
+The same cloud gate allows `git checkout -b <name>` and `git switch -c <name>` (a start-point after the name is fine). `git checkout -B` and `git switch -C` stay denied, because those reset a branch that already exists. Plain `checkout` or `switch` of an existing branch or of files stays denied everywhere, including cloud agents. A local agent may create only a work branch, with an optional start of `develop` or `origin/develop`, and no other flags. `git reset`, `git stash`, and `git restore` stay denied everywhere. So do deletions of `node_modules` or `.modules.yaml`, and reading `.env` files (`cat`, `less`, `more`, `head`, `tail`, `grep`) other than `.env.example`. `printenv` and a bare `env` dump are denied. `env pnpm test` is allowed.
 
 Check it locally:
 
@@ -155,7 +155,7 @@ printf '%s\n' '{"command":"cat .env","cwd":"/workspace"}' | .cursor/hooks/guard-
 
 The checks are `.cursor/hooks/*.checks.mjs` and use `node:test`. A `*.test.*` name makes ESLint rewrite that import to vitest.
 
-A local agent also may not skip husky (`git commit --no-verify`, `git commit -n`, `git push --no-verify`), pass `git -c` or `--config-env` on `git add`, `git commit`, or `git push`, set `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, or `GIT_CONFIG_KEY_*` for those commands, or write `git config`. `git config --get` and `git config --list` stay allowed. `CI=1 pnpm` (`env CI=1`, `export CI=1; pnpm`) and `pnpm install` / `pnpm i` are denied for a local agent. A cloud agent is not subject to these local refusals.
+A local agent also may not skip husky (`git commit --no-verify`, `git commit -n`, `git push --no-verify`), pass `git -c` or `--config-env` on `git add`, `git commit`, `git push`, or a local branch create, set `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, or `GIT_CONFIG_KEY_*` for those commands, or write `git config`. `git config --get` and `git config --list` stay allowed. `CI=1 pnpm` (`env CI=1`, `export CI=1; pnpm`) and `pnpm install` / `pnpm i` are denied for a local agent. A cloud agent is not subject to these local refusals.
 
 `.cursor/hooks.json` also registers `beforeReadFile` as `.cursor/hooks/guard-read.sh` (`failClosed: true`). It denies `.env` and `.env.*` except names ending in `.example`, `*.pem`, `*.key`, and anything under `~/.ssh`.
 

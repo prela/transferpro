@@ -12,12 +12,20 @@
  * A cloud agent may commit, push, and `git checkout -b` / `git switch -c`.
  * A local agent may `git add`, `git commit`, and `git push` only for a
  * `feature/*`, `fix/*`, or `chore/*` branch, including `git push -u origin <branch>`.
+ * A local agent may also create that branch with `git switch -c <name>` or
+ * `git checkout -b <name>`, plus an optional start-point of exactly `develop`
+ * or `origin/develop`. No other flags or operands. `-B`, `-C`, `-f`,
+ * `--discard-changes`, `--merge`, `--orphan`, `--detach`, `--track`, a
+ * pathspec, and a `git -c` / `--config-env` / `GIT_CONFIG_*` override stay
+ * denied, because each one can reset a branch or start from another commit.
+ * Plain checkout, switch, reset, restore, and stash stay denied locally.
  * Force, a `+refspec`, a push to any other branch, and deleting a remote
  * branch stay denied locally. A prefix on the command does not count:
  * the agent could add it itself.
- * Local add, commit, and push also refuse `git -c`, `--config-env`, and a
- * GIT_CONFIG_PARAMETERS / GIT_CONFIG_COUNT / GIT_CONFIG_KEY_* prefix, because
- * those retarget the push without a refspec the parser can see. Commit
+ * Local add, commit, push, and that branch create also refuse `git -c`,
+ * `--config-env`, and a GIT_CONFIG_PARAMETERS / GIT_CONFIG_COUNT /
+ * GIT_CONFIG_KEY_* prefix, because those retarget the command without an
+ * operand the parser can see. Commit
  * refuses `--no-verify` and `-n`, and push refuses `--no-verify`, so husky
  * still runs. `git config` writes are refused locally; `--get` and `--list`
  * stay allowed. `CI=1 pnpm` and `pnpm install` / `pnpm i` are refused
@@ -33,6 +41,8 @@ const ALWAYS_BLOCKED_GIT = new Set(['reset', 'checkout', 'stash', 'switch', 'res
 const LOCAL_BRANCH_WRITES = new Set(['add', 'commit', 'push'])
 /** Ticket branches an agent may commit on and push to. `feature/` alone is not one. */
 const WORK_BRANCH = /^(?:feature|fix|chore)\/.+/
+/** Start-points a local agent may use when creating its work branch. */
+const LOCAL_CREATE_START = new Set(['develop', 'origin/develop'])
 const PUSH_OPTIONS_WITH_VALUE = new Set([
   '--receive-pack',
   '--exec',
@@ -329,13 +339,23 @@ function inspectStatement(statement, env, depth, deps, shell) {
   const git = gitSubcommand(argv)
   if (git.invoked) {
     // checkout -b and switch -c create a branch. -B and -C reset one that
-    // already exists, so they stay denied. Only a cloud agent may create.
-    const creating = createsNewBranch(git.name, git.args) && cloud
-    if (ALWAYS_BLOCKED_GIT.has(git.name) && !creating) {
-      return deny(
-        `do not run git ${git.name}. It can discard local changes.`,
-        statement,
-      )
+    // already exists, so they stay denied. A cloud agent may create with any
+    // start-point. A local agent may create only a work branch, optionally
+    // from develop or origin/develop, and with no other flags.
+    if (ALWAYS_BLOCKED_GIT.has(git.name)) {
+      if (cloud) {
+        if (!createsNewBranch(git.name, git.args)) {
+          return deny(
+            `do not run git ${git.name}. It can discard local changes.`,
+            statement,
+          )
+        }
+      }
+      else {
+        const problem = localBranchCreateProblem(git, effective)
+        if (problem)
+          return deny(problem, statement)
+      }
     }
     // Local only. A cloud agent keeps the previous policy, which allows this.
     if (git.name === 'branch' && !cloud && forceDeletesLocalBranch(git.args)) {
@@ -524,15 +544,17 @@ function shellInlineScript(argv) {
  */
 function gitSubcommand(argv) {
   if (baseName(argv[0]) !== 'git')
-    return { invoked: false, name: '', args: [], cwd: '', configOverride: false }
+    return { invoked: false, name: '', args: [], cwd: '', configOverride: false, hasGlobalOption: false }
   let i = 1
   let cwd = ''
   let configOverride = false
+  let hasGlobalOption = false
   while (i < argv.length) {
     const token = argv[i]
     if (token === '--')
-      return { invoked: true, name: '', args: [], cwd, configOverride }
+      return { invoked: true, name: '', args: [], cwd, configOverride, hasGlobalOption: true }
     if (token.startsWith('-')) {
+      hasGlobalOption = true
       const opt = token.includes('=') ? token.slice(0, token.indexOf('=')) : token
       // -c and --config-env set config for this invocation. -C is a directory.
       if (opt === '-c' || opt === '--config-env' || (token.startsWith('-c') && !token.startsWith('-C')))
@@ -545,9 +567,9 @@ function gitSubcommand(argv) {
         i++
       continue
     }
-    return { invoked: true, name: token, args: argv.slice(i + 1), cwd, configOverride }
+    return { invoked: true, name: token, args: argv.slice(i + 1), cwd, configOverride, hasGlobalOption }
   }
-  return { invoked: true, name: '', args: [], cwd, configOverride }
+  return { invoked: true, name: '', args: [], cwd, configOverride, hasGlobalOption }
 }
 
 /**
@@ -782,8 +804,40 @@ function readGitText(gitCwd, args) {
 }
 
 /**
+ * Local `git switch -c` / `git checkout -b` of a work branch.
+ * Null means this exact command may run. The shape is the create flag, the
+ * branch name, and an optional start of `develop` or `origin/develop`.
+ * Anything else can reset a branch, discard files, or start from another commit.
+ * @param {{ name: string, args: string[], configOverride: boolean, hasGlobalOption: boolean }} git
+ * @param {{ gitConfigNames: Set<string> }} shell
+ * @returns {string | null} denial text, or null when the create may run
+ */
+function localBranchCreateProblem(git, shell) {
+  let flag = ''
+  if (git.name === 'checkout')
+    flag = '-b'
+  else if (git.name === 'switch')
+    flag = '-c'
+  if (!flag)
+    return `do not run git ${git.name}. It can discard local changes.`
+  // Same override rule as local add, commit, and push: the flag can retarget
+  // the create at another repo or hook path.
+  if (git.configOverride)
+    return 'do not pass git -c or --config-env on git switch or git checkout.'
+  if (shell.gitConfigNames.size > 0)
+    return 'do not set GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT, or GIT_CONFIG_KEY_* for git switch or git checkout.'
+
+  const args = git.args
+  const startOk = args.length === 2 || (args.length === 3 && LOCAL_CREATE_START.has(args[2]))
+  if (!git.hasGlobalOption && args[0] === flag && startOk && isWorkBranch(args[1]))
+    return null
+  return 'git switch -c and git checkout -b are allowed only for a feature/*, fix/*, or chore/* branch, from develop or origin/develop, with no other flags.'
+}
+
+/**
  * `git checkout -b <name>` or `git switch -c <name>`, and not `-B` or `-C`.
  * The name is the next word. A start-point after the name is still a create.
+ * Cloud agents use this. Local creates go through `localBranchCreateProblem`.
  * @param {string} subcommand
  * @param {string[]} args
  */
