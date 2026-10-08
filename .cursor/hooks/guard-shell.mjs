@@ -9,16 +9,31 @@
  * socket. The path is not taken from the environment, and the socket is not
  * read. A worker id counts only together with a conversation id from hook
  * stdin that starts with `bc-`. A shell export cannot set that field.
- * The same gate allows commit, push, and `git checkout -b` / `git switch -c`.
- * A prefix on the command does not count: the agent could add it itself.
+ * A cloud agent may commit, push, and `git checkout -b` / `git switch -c`.
+ * A local agent may `git add`, `git commit`, and `git push` only for a
+ * `feature/*`, `fix/*`, or `chore/*` branch, including `git push -u origin <branch>`.
+ * Force, a `+refspec`, a push to any other branch, and deleting a remote
+ * branch stay denied locally. A prefix on the command does not count:
+ * the agent could add it itself.
  */
 import { Buffer } from 'node:buffer'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 
 const ALWAYS_BLOCKED_GIT = new Set(['reset', 'checkout', 'stash', 'switch', 'restore'])
-const COMMIT_OR_PUSH = new Set(['commit', 'push'])
+const LOCAL_BRANCH_WRITES = new Set(['add', 'commit', 'push'])
+/** Ticket branches an agent may commit on and push to. `feature/` alone is not one. */
+const WORK_BRANCH = /^(?:feature|fix|chore)\/.+/
+const PUSH_OPTIONS_WITH_VALUE = new Set([
+  '--receive-pack',
+  '--exec',
+  '--repo',
+  '--push-option',
+  '-o',
+  '--recurse-submodules',
+])
 const GIT_OPTIONS_WITH_VALUE = new Set([
   '-C',
   '-c',
@@ -52,7 +67,7 @@ const FIXED_METADATA_SOCKET = '/run/cursor/api.sock'
  * @param {string} command
  * @param {NodeJS.ProcessEnv} [env]
  * @param {number} [depth]
- * @param {{ isSocket?: (path: string) => boolean, conversationId?: string }} [deps]
+ * @param {{ isSocket?: (path: string) => boolean, conversationId?: string, currentBranch?: string, remotes?: string[] }} [deps]
  */
 export function decide(command, env = process.env, depth = 0, deps = {}) {
   if (depth > MAX_DEPTH) {
@@ -196,7 +211,7 @@ function tokenize(statement) {
  * @param {string} statement
  * @param {NodeJS.ProcessEnv} env
  * @param {number} depth
- * @param {{ isSocket?: (path: string) => boolean, conversationId?: string }} deps
+ * @param {{ isSocket?: (path: string) => boolean, conversationId?: string, currentBranch?: string, remotes?: string[] }} deps
  */
 function inspectStatement(statement, env, depth, deps) {
   const unwrapped = unwrap(tokenize(statement))
@@ -219,20 +234,27 @@ function inspectStatement(statement, env, depth, deps) {
 
   const git = gitSubcommand(argv)
   if (git.invoked) {
+    const cloud = gitWritesAllowed(env, deps)
     // checkout -b and switch -c create a branch. -B and -C reset one that
-    // already exists, so they stay denied. Same gate as commit and push.
-    const creating = createsNewBranch(git.name, git.args) && gitWritesAllowed(env, deps)
+    // already exists, so they stay denied. Only a cloud agent may create.
+    const creating = createsNewBranch(git.name, git.args) && cloud
     if (ALWAYS_BLOCKED_GIT.has(git.name) && !creating) {
       return deny(
-        `do not run git ${git.name}. The human does that.`,
+        `do not run git ${git.name}. It can discard local changes.`,
         statement,
       )
     }
-    if (COMMIT_OR_PUSH.has(git.name) && !gitWritesAllowed(env, deps)) {
+    // Local only. A cloud agent keeps the previous policy, which allows this.
+    if (git.name === 'branch' && !cloud && forceDeletesLocalBranch(git.args)) {
       return deny(
-        'do not run git commit or git push. The human commits. A cloud agent may commit and push.',
+        'do not run git branch -D.',
         statement,
       )
+    }
+    if (LOCAL_BRANCH_WRITES.has(git.name) && !cloud) {
+      const problem = localWriteProblem(git, deps)
+      if (problem)
+        return deny(problem, statement)
     }
   }
 
@@ -385,23 +407,242 @@ function shellInlineScript(argv) {
  */
 function gitSubcommand(argv) {
   if (baseName(argv[0]) !== 'git')
-    return { invoked: false, name: '', args: [] }
+    return { invoked: false, name: '', args: [], cwd: '' }
   let i = 1
+  let cwd = ''
   while (i < argv.length) {
     const token = argv[i]
     if (token === '--')
-      return { invoked: true, name: '', args: [] }
+      return { invoked: true, name: '', args: [], cwd }
     if (token.startsWith('-')) {
       const opt = token.includes('=') ? token.slice(0, token.indexOf('=')) : token
+      if (opt === '-C' && !token.includes('='))
+        cwd = argv[i + 1] ?? ''
       if (!token.includes('=') && GIT_OPTIONS_WITH_VALUE.has(opt))
         i += 2
       else
         i++
       continue
     }
-    return { invoked: true, name: token, args: argv.slice(i + 1) }
+    return { invoked: true, name: token, args: argv.slice(i + 1), cwd }
   }
-  return { invoked: true, name: '', args: [] }
+  return { invoked: true, name: '', args: [], cwd }
+}
+
+/**
+ * Local commit and push. Null means the command may run.
+ * A cloud agent never reaches this; its commit and push stay unrestricted.
+ * @param {{ name: string, args: string[], cwd: string }} git
+ * @param {{ currentBranch?: string, remotes?: string[], upstreamBranch?: string }} deps
+ * @returns {string | null} denial text, or null when the write may run
+ */
+function localWriteProblem(git, deps) {
+  if (git.name === 'add' || git.name === 'commit') {
+    const branch = resolveCurrentBranch(git.cwd, deps)
+    if (!isWorkBranch(branch))
+      return `git ${git.name} is allowed only on a feature/*, fix/*, or chore/* branch.`
+    return null
+  }
+  if (git.name === 'push')
+    return localPushProblem(git.args, git.cwd, deps)
+  return null
+}
+
+/**
+ * @param {string} branch
+ */
+function isWorkBranch(branch) {
+  return WORK_BRANCH.test(branch)
+}
+
+/**
+ * `git branch -D` and `git branch --delete --force`. Plain `-d` stays allowed.
+ * @param {string[]} args
+ */
+function forceDeletesLocalBranch(args) {
+  let deleting = false
+  let force = false
+  for (const token of args) {
+    if (token === '--')
+      break
+    // -Dname is still a force delete. `--delete` starts with `--`, so it does not match.
+    if (token === '-D' || /^-[A-Za-z]*D/.test(token))
+      return true
+    if (token === '-d' || token === '--delete')
+      deleting = true
+    if (token === '-f' || token === '--force')
+      force = true
+  }
+  return deleting && force
+}
+
+/**
+ * @param {string[]} args
+ * @param {string} gitCwd
+ * @param {{ currentBranch?: string, remotes?: string[], upstreamBranch?: string }} deps
+ * @returns {string | null} denial text, or null when the push may run
+ */
+function localPushProblem(args, gitCwd, deps) {
+  const refused = 'git push is allowed only to a feature/*, fix/*, or chore/* branch, and not with force or a remote delete.'
+  /** @type {string[]} */
+  const positionals = []
+  for (let i = 0; i < args.length; i++) {
+    const token = args[i]
+    if (token === '--') {
+      positionals.push(...args.slice(i + 1))
+      break
+    }
+    if (isForcePushFlag(token) || isBroadPushFlag(token))
+      return refused
+    if (token.startsWith('--')) {
+      const opt = token.includes('=') ? token.slice(0, token.indexOf('=')) : token
+      if (!token.includes('=') && PUSH_OPTIONS_WITH_VALUE.has(opt))
+        i++
+      continue
+    }
+    // Short cluster: -u is upstream, -f is force, -d deletes a remote branch.
+    if (token.startsWith('-')) {
+      const cluster = token.slice(1)
+      if (/[fd]/i.test(cluster))
+        return refused
+      continue
+    }
+    positionals.push(token)
+  }
+
+  const remotes = resolveRemotes(gitCwd, deps)
+  let refspecs = positionals
+  if (refspecs.length > 0 && remotes.includes(refspecs[0]))
+    refspecs = refspecs.slice(1)
+
+  if (refspecs.length === 0) {
+    // No refspec: git updates the upstream branch when one exists, which can
+    // differ from the local name. With no upstream, the current name is the
+    // destination under the usual push.default.
+    const upstream = resolveUpstreamBranch(gitCwd, deps)
+    const destination = upstream || resolveCurrentBranch(gitCwd, deps)
+    return isWorkBranch(destination) ? null : refused
+  }
+
+  for (const spec of refspecs) {
+    if (!pushRefspecAllowed(spec, resolveCurrentBranch(gitCwd, deps)))
+      return refused
+  }
+  return null
+}
+
+/**
+ * @param {string} token
+ */
+function isForcePushFlag(token) {
+  return token === '-f'
+    || token === '--force'
+    || token === '--force-if-includes'
+    || token.startsWith('--force-with-lease')
+}
+
+/**
+ * Pushes that are not one named work branch: every branch, tags, or a remote delete.
+ * @param {string} token
+ */
+function isBroadPushFlag(token) {
+  return token === '--all'
+    || token === '--mirror'
+    || token === '--tags'
+    || token === '--follow-tags'
+    || token === '--prune'
+    || token === '--delete'
+    || token.startsWith('--delete=')
+    || token === '-d'
+}
+
+/**
+ * @param {string} spec
+ * @param {string} currentBranch
+ */
+function pushRefspecAllowed(spec, currentBranch) {
+  if (spec.startsWith('+'))
+    return false
+  const colon = spec.indexOf(':')
+  const src = colon === -1 ? spec : spec.slice(0, colon)
+  const dst = colon === -1 ? spec : spec.slice(colon + 1)
+  // An empty side deletes the remote branch (`:name` or `name:`).
+  if (src === '' || dst === '')
+    return false
+  return destinationIsWorkBranch(dst, currentBranch)
+}
+
+/**
+ * @param {string} dst
+ * @param {string} currentBranch
+ */
+function destinationIsWorkBranch(dst, currentBranch) {
+  if (dst === 'HEAD')
+    return isWorkBranch(currentBranch)
+  if (dst.startsWith('refs/heads/'))
+    return isWorkBranch(dst.slice('refs/heads/'.length))
+  if (dst.startsWith('refs/'))
+    return false
+  return isWorkBranch(dst)
+}
+
+/**
+ * Tests pass `currentBranch` so they do not depend on this checkout.
+ * Otherwise ask git. A failure denies the write (empty name is not a work branch).
+ * @param {string} gitCwd
+ * @param {{ currentBranch?: string }} deps
+ */
+function resolveCurrentBranch(gitCwd, deps) {
+  if (typeof deps.currentBranch === 'string')
+    return deps.currentBranch
+  return readGitLine(gitCwd, ['rev-parse', '--abbrev-ref', 'HEAD'])
+}
+
+/**
+ * Branch name on the remote, without the remote prefix. Empty when unset.
+ * Tests pass `upstreamBranch` so they do not read this checkout's tracking ref.
+ * @param {string} gitCwd
+ * @param {{ upstreamBranch?: string }} deps
+ */
+function resolveUpstreamBranch(gitCwd, deps) {
+  if (typeof deps.upstreamBranch === 'string')
+    return deps.upstreamBranch
+  const text = readGitLine(gitCwd, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'])
+  if (!text)
+    return ''
+  const slash = text.indexOf('/')
+  return slash === -1 ? text : text.slice(slash + 1)
+}
+
+/**
+ * @param {string} gitCwd
+ * @param {{ remotes?: string[] }} deps
+ */
+function resolveRemotes(gitCwd, deps) {
+  if (Array.isArray(deps.remotes))
+    return deps.remotes
+  const text = readGitText(gitCwd, ['remote'])
+  return text.split('\n').map(line => line.trim()).filter(Boolean)
+}
+
+/**
+ * @param {string} gitCwd
+ * @param {string[]} args
+ */
+function readGitLine(gitCwd, args) {
+  return readGitText(gitCwd, args).trim()
+}
+
+/**
+ * @param {string} gitCwd
+ * @param {string[]} args
+ */
+function readGitText(gitCwd, args) {
+  const gitArgs = gitCwd ? ['-C', gitCwd, ...args] : args
+  const result = spawnSync('git', gitArgs, { encoding: 'utf8' })
+  if (result.status !== 0)
+    return ''
+  return result.stdout ?? ''
 }
 
 /**
