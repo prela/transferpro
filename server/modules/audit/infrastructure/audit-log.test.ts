@@ -151,6 +151,42 @@ it('lists a ride.accepted entry with the Driver name and does not join the plate
   expect(text).not.toContain('phone')
 })
 
+it('lists a ride.accepted_by_phone entry with the actor name, and does not join the plate', async () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const named = {
+    id: '8d3a2e5c-4444-4444-8444-444444444444',
+    occurredAt: '2026-10-03T18:43:00.000Z',
+    action: 'ride.accepted_by_phone' as const,
+    actorUserId: adminId,
+    actorName: 'Dino Dispatcher',
+    subjectUserId: null,
+    subjectName: null,
+    data: {
+      rideId,
+      driverId,
+      fields: ['state'],
+    },
+  }
+  // A member who has left the Tenant has no row in tenant_member, so the name stays null.
+  const departed = {
+    ...named,
+    id: '9e4b3f6d-5555-4555-8555-555555555555',
+    actorUserId: memberId,
+    actorName: null,
+  }
+  const { transaction, queries } = fakeTransaction([
+    { ...named, driverName: 'Marko Vozač', vehiclePlate: 'ZG8202AA' },
+    { ...departed, driverName: null, vehiclePlate: null },
+  ])
+  expect(await listAuditEntries(transaction)).toEqual({ entries: [named, departed] })
+  const text = queries[0]?.sql ?? ''
+  const vehicleJoin = text.slice(text.indexOf('left join app.vehicles'))
+  expect(text).toContain('left join app.tenant_member as actor')
+  expect(vehicleJoin).not.toContain('accepted_by_phone')
+  expect(text).not.toContain('phone')
+})
+
 it('fails the read on a row whose data does not match its action', async () => {
   const { transaction } = fakeTransaction([{
     id: '8d3a2e5c-4444-4444-8444-444444444444',

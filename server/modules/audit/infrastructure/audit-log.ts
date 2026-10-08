@@ -34,7 +34,9 @@ const listLimit = 100
  * has a null name rather than one read from `auth.user`.
  * A `ride.assigned` row stores ids only. The Driver name and Vehicle plate
  * are joined here for the screen. A `ride.accepted` row joins the Driver
- * name and does not join the plate.
+ * name and does not join the plate. A `ride.accepted_by_phone` row joins
+ * neither: the screen names the office member from `tenant_member`, and a
+ * member who has left has a null name. The plate stays off that row.
  * Drizzle hands timestamptz back as Postgres text, so the instant is
  * formatted as UTC ISO here rather than parsed in JavaScript.
  */

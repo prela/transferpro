@@ -130,7 +130,8 @@
       },
       "ride": {
         "assigned": "Ride assigned",
-        "accepted": "Ride accepted"
+        "accepted": "Ride accepted",
+        "accepted_by_phone": "Acceptance confirmed by phone"
       },
       "roster": {
         "assigned": "Vehicle given for the day",

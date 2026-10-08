@@ -130,7 +130,8 @@
       },
       "ride": {
         "assigned": "Vožnja dodijeljena",
-        "accepted": "Vožnja prihvaćena"
+        "accepted": "Vožnja prihvaćena",
+        "accepted_by_phone": "Prihvaćanje potvrđeno telefonom"
       },
       "roster": {
         "assigned": "Vozilo dodijeljeno za dan",

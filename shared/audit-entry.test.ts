@@ -368,6 +368,46 @@ it('lists an acceptance with the Driver name and without a plate', () => {
   }).success).toBe(false)
 })
 
+it('lists an office acceptance by phone with the actor name and without a plate', () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const listed = auditEntryListSchema.parse({
+    entries: [{
+      id: '8d3a2e5c-4444-4444-8444-444444444444',
+      occurredAt: '2026-10-03T18:42:00.000Z',
+      actorUserId: adminId,
+      actorName: 'Dino Dispatcher',
+      action: 'ride.accepted_by_phone',
+      subjectUserId: null,
+      subjectName: null,
+      driverName: 'Marko Vozač',
+      vehiclePlate: 'ZG8202AA',
+      data: {
+        rideId,
+        driverId,
+        fields: ['state'],
+      },
+    }, {
+      id: '9e4b3f6d-5555-4555-8555-555555555555',
+      occurredAt: '2026-10-03T18:41:00.000Z',
+      actorUserId: memberId,
+      actorName: null,
+      action: 'ride.accepted_by_phone',
+      subjectUserId: null,
+      subjectName: null,
+      data: {
+        rideId,
+        driverId,
+        fields: ['state'],
+      },
+    }],
+  })
+  expect(listed.entries[0]).toMatchObject({ actorName: 'Dino Dispatcher' })
+  expect(listed.entries[0]).not.toHaveProperty('vehiclePlate')
+  expect(listed.entries[0]).not.toHaveProperty('driverName')
+  expect(listed.entries[1]).toMatchObject({ actorName: null })
+})
+
 it('lists an assignment with the Driver name and Vehicle plate resolved at read time', () => {
   const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
