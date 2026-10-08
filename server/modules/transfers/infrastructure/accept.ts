@@ -57,6 +57,9 @@ const acceptedRows = z.object({
   })),
 })
 
+/** An accepted Ride still has the Driver, the Vehicle, and the copied flag it had. */
+type AcceptedRide = z.infer<typeof acceptedRows>['rows'][number]
+
 /**
  * Accepts an empty body and a Ride id. Any key, or a path that is not an id,
  * throws first, so the caller does not open a session. The Driver id is not
@@ -91,16 +94,7 @@ export async function acceptAssignedRide(
   if (!driver)
     throw new RideNotFoundError()
 
-  const current = lockedRows.parse(await runAcceptStep(transaction, sql`
-    select id,
-           state,
-           driver_id as "driverId",
-           vehicle_id as "vehicleId",
-           must_accept as "mustAccept"
-    from app.rides
-    where id = ${rideId}
-    for update
-  `)).rows[0]
+  const current = await lockRideForAccept(transaction, rideId)
   if (!current)
     throw new RideNotFoundError()
   // Another Driver's Ride is hidden the same way a missing Ride is.
@@ -110,35 +104,40 @@ export async function acceptAssignedRide(
   if (current.state !== 'assigned' || current.mustAccept !== true)
     throw new RideNotAcceptableError()
 
-  const updated = acceptedRows.parse(await runAcceptStep(transaction, sql`
-    update app.rides
-    set state = 'accepted'
-    where id = ${rideId}
-      and state = 'assigned'
-      and must_accept is true
-      and driver_id = ${driver.id}
-    returning
-      id,
-      transfer_id as "transferId",
-      state,
-      driver_id as "driverId",
-      vehicle_id as "vehicleId",
-      must_accept as "mustAccept"
-  `)).rows[0]
+  const updated = await writeAcceptedRide(transaction, rideId, driver.id)
   // The locked row was acceptable. Zero rows means a concurrent accept committed first.
   if (!updated)
     throw new RideNotAcceptableError()
 
-  await hideDatabaseError(() => appendAuditEntry(transaction, {
-    action: 'ride.accepted',
-    actorUserId,
-    subjectUserId: null,
-    data: {
-      rideId: updated.id,
-      driverId: updated.driverId,
-      fields: [...RIDE_ACCEPTED_FIELDS],
-    },
-  }), 'Ride accept failed')
+  await appendAcceptance(transaction, 'ride.accepted', actorUserId, updated)
+  return updated
+}
+
+/**
+ * A dispatcher or an admin records that the Driver accepted, after confirming
+ * by phone. The Ride must be `assigned` with the copied flag on. The Driver,
+ * the Vehicle, and the flag stay, including when the Driver has no account:
+ * the Driver id is the Ride's, not a member link. `ride.accepted_by_phone`
+ * names the office member. The caller has already required that role.
+ */
+export async function recordAcceptanceByPhone(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  rideId: string,
+): Promise<Ride> {
+  const current = await lockRideForAccept(transaction, rideId)
+  if (!current)
+    throw new RideNotFoundError()
+  // The flag off, any other state, or a Ride with no Driver cannot become accepted.
+  if (current.state !== 'assigned' || current.mustAccept !== true || current.driverId === null)
+    throw new RideNotAcceptableError()
+
+  const updated = await writeAcceptedRide(transaction, rideId, current.driverId)
+  // The locked row was acceptable. Zero rows means a concurrent accept committed first.
+  if (!updated)
+    throw new RideNotAcceptableError()
+
+  await appendAcceptance(transaction, 'ride.accepted_by_phone', actorUserId, updated)
   return updated
 }
 
@@ -155,6 +154,81 @@ export async function acceptRide(headers: Headers, rawRideId: unknown, rawBody: 
       throw new TenantAccessError(403)
     return acceptAssignedRide(transaction, actor.userId, rideId)
   })
+}
+
+/**
+ * The office records acceptance after confirming with the Driver by phone.
+ * The body is parsed first, so a key never opens a session. Only a dispatcher
+ * or an admin may call this. The Driver route is unchanged. No mail is sent.
+ */
+export async function acceptRideByPhone(headers: Headers, rawRideId: unknown, rawBody: unknown): Promise<Ride> {
+  const rideId = parseAcceptRide(rawRideId, rawBody)
+  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+    if (actor.role !== 'admin' && actor.role !== 'dispatcher')
+      throw new TenantAccessError(403)
+    return recordAcceptanceByPhone(transaction, actor.userId, rideId)
+  })
+}
+
+/** The Ride row this accept will decide on. Missing means another Tenant, or no such Ride. */
+async function lockRideForAccept(transaction: TenantTransaction, rideId: string) {
+  return lockedRows.parse(await runAcceptStep(transaction, sql`
+    select id,
+           state,
+           driver_id as "driverId",
+           vehicle_id as "vehicleId",
+           must_accept as "mustAccept"
+    from app.rides
+    where id = ${rideId}
+    for update
+  `)).rows[0]
+}
+
+/**
+ * Sets `accepted` only while the Ride is still `assigned`, the copied flag
+ * is on, and the Driver is the one the caller already checked. The Driver,
+ * the Vehicle, and the flag are not rewritten. Zero rows means a concurrent
+ * accept won. Both the Driver route and the office route use this write.
+ */
+async function writeAcceptedRide(
+  transaction: TenantTransaction,
+  rideId: string,
+  driverId: string,
+): Promise<AcceptedRide | undefined> {
+  return acceptedRows.parse(await runAcceptStep(transaction, sql`
+    update app.rides
+    set state = 'accepted'
+    where id = ${rideId}
+      and state = 'assigned'
+      and must_accept is true
+      and driver_id = ${driverId}
+    returning
+      id,
+      transfer_id as "transferId",
+      state,
+      driver_id as "driverId",
+      vehicle_id as "vehicleId",
+      must_accept as "mustAccept"
+  `)).rows[0]
+}
+
+/** The acceptance row stores ids and the field name. A phone number is not a key. */
+async function appendAcceptance(
+  transaction: TenantTransaction,
+  action: 'ride.accepted' | 'ride.accepted_by_phone',
+  actorUserId: string,
+  updated: AcceptedRide,
+): Promise<void> {
+  await hideDatabaseError(() => appendAuditEntry(transaction, {
+    action,
+    actorUserId,
+    subjectUserId: null,
+    data: {
+      rideId: updated.id,
+      driverId: updated.driverId,
+      fields: [...RIDE_ACCEPTED_FIELDS],
+    },
+  }), 'Ride accept failed')
 }
 
 /** Run one statement on this accept. Every failure becomes a fixed message. */

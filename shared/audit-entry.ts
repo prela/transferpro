@@ -384,6 +384,8 @@ export type AuditFact = z.infer<typeof auditFactSchema>
  * members; a person who is no longer a member has a null name.
  * `ride.assigned` also carries the current Driver name and Vehicle plate.
  * `ride.accepted` carries the Driver name only. The plate is not joined.
+ * `ride.accepted_by_phone` carries neither. The actor name is the office member.
+ * A member who has left has a null actor name. The plate is not joined.
  */
 const listed = {
   id: z.uuid(),
@@ -423,6 +425,8 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
     // The Driver name is joined from `driverId`. The plate is not.
     driverName: z.string().nullable(),
   }),
+  // The office member is `actorName`. A plate or a Driver name is not joined.
+  rideAcceptedByPhone.extend(listed),
   rosterAssigned.extend(listed),
   rosterChanged.extend(listed),
   rosterCleared.extend(listed),
