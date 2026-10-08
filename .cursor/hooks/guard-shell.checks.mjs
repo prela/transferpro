@@ -169,6 +169,49 @@ test('a local agent may not push elsewhere, force-push, hard-reset, or discard',
   denied('git push origin develop', /feature\/\*/, localEnv(), work)
 })
 
+test('a local agent may create a work branch from develop', () => {
+  for (const command of [
+    'git switch -c feature/97-x',
+    'git switch -c fix/1-y origin/develop',
+    'git checkout -b chore/2-z develop',
+  ]) {
+    allowed(command)
+  }
+})
+
+test('a local agent may not create any other branch', () => {
+  for (const command of [
+    'git switch -c develop',
+    'git switch -c main',
+    'git switch -c feature/',
+    'git switch -c foo',
+    'git switch -C feature/a',
+    'git checkout -B feature/a',
+    'git switch -c feature/a --discard-changes',
+    'git checkout -f -b feature/a',
+    'git switch -c feature/a -f',
+    'git switch -c feature/a origin/main',
+    'git switch -c feature/a HEAD~3',
+    'git switch -c feature/a some-sha',
+    'git checkout -b feature/a -- src/x.ts',
+    'git switch --orphan feature/a',
+    'git switch -c feature/a --track origin/feature/b',
+    'git switch -c feature/a -t origin/feature/b',
+    'git switch -c feature/a --merge',
+    'git switch -c feature/a -m',
+    'git checkout --detach -b feature/a',
+    'git -C /tmp switch -c feature/a',
+    'git switch feature/a',
+    'git checkout develop',
+    'git reset --hard',
+    'git stash',
+  ]) {
+    denied(command, /git/)
+  }
+  denied('git -c core.hooksPath=/tmp switch -c feature/a', /do not pass git -c or --config-env/)
+  denied('GIT_CONFIG_COUNT=1 git switch -c feature/a', /do not set GIT_CONFIG_/)
+})
+
 test('denies git history and branch commands for a local agent', () => {
   const other = { ...localDeps, currentBranch: 'develop', remotes: ['origin'] }
   for (const command of [
@@ -177,14 +220,12 @@ test('denies git history and branch commands for a local agent', () => {
     'git reset --hard',
     'git checkout develop',
     'git checkout -- AGENTS.md',
-    'git checkout -b chore/other',
     'git checkout -b',
     'git checkout -B chore/other',
     'git stash',
     'git stash push',
     'git switch develop',
     'git switch -',
-    'git switch -c chore/other',
     'git switch -c',
     'git switch -C chore/other',
     'git restore AGENTS.md',
@@ -224,13 +265,20 @@ test('a worker id allows git writes only with a bc- conversation id', () => {
   for (const command of [
     'git commit -m "chore: test"',
     'git push',
+  ]) {
+    allowed(command, worker, cloud)
+    denied(command, /git/, worker, { ...localDeps, currentBranch: 'develop', remotes: ['origin'], upstreamBranch: '' })
+  }
+
+  // Creating a work branch is a local permission. It does not need the cloud gate.
+  for (const command of [
     'git checkout -b chore/other',
     'git checkout -b chore/other develop',
     'git switch -c chore/other',
     'git switch -c chore/other develop',
   ]) {
     allowed(command, worker, cloud)
-    denied(command, /git/, worker, { ...localDeps, currentBranch: 'develop', remotes: ['origin'], upstreamBranch: '' })
+    allowed(command, worker, { ...localDeps, currentBranch: 'develop', remotes: ['origin'], upstreamBranch: '' })
   }
 
   allowed('git push origin develop', worker, cloud)
