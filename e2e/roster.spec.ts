@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { openAudit, signIn } from './fixtures/ui'
 
 const driverName = 'Ana Roster'
 const otherDriverName = 'Marko Roster'
@@ -79,7 +79,7 @@ test('admin gives a driver a vehicle for the day, and the audit log keeps the pl
   await expect(page.getByRole('button', { name: `Clear vehicle for ${otherDriverName}` })).toBeVisible()
 
   await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
-  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizijski zapisnik', exact: true }).click()
+  await openAudit(page)
   await expect(page.getByRole('cell', { name: 'Vozilo dodijeljeno za dan', exact: true }).first()).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vozilo za dan promijenjeno', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vozilo za dan uklonjeno', exact: true })).toBeVisible()

@@ -9,12 +9,6 @@ const nuxtApp = useNuxtApp()
 /** Admin sees Audit. A Dispatcher uses this shell and does not. */
 const officeRole = useState<'admin' | 'dispatcher' | null>('office-sidebar-role', () => null)
 
-function officeNavRole(role: SessionShell['role'] | undefined): 'admin' | 'dispatcher' | null {
-  if (role === 'admin' || role === 'dispatcher')
-    return role
-  return null
-}
-
 /**
  * Apply the saved Locale before this template renders. The layout is the
  * parent, so without this the sidebar is painted in the default Locale
@@ -25,7 +19,7 @@ function officeNavRole(role: SessionShell['role'] | undefined): 'admin' | 'dispa
 if (import.meta.server) {
   const lookup = await readTenantSession()
   if (lookup.kind === 'member') {
-    officeRole.value = officeNavRole(lookup.session.role)
+    officeRole.value = isOfficeMember(lookup.session.role) ? lookup.session.role : null
     await nuxtApp.runWithContext(() => setLocale(lookup.session.locale))
   }
 }
@@ -39,7 +33,7 @@ if (import.meta.client) {
   watch(shell, (next) => {
     if (!next)
       return
-    officeRole.value = officeNavRole(next.role)
+    officeRole.value = isOfficeMember(next.role) ? next.role : null
   }, { immediate: true })
 }
 

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, signIn } from './fixtures/ui'
+import { chooseOption, openAudit, signIn } from './fixtures/ui'
 
 const phone = '+385981112233'
 const nextPhone = '+385981112244'
@@ -50,7 +50,7 @@ test('admin adds a driver, corrects it, and the audit log does not show the phon
   await expect(page.getByRole('cell', { name: '3.3.2029.' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Da', exact: true })).toBeVisible()
 
-  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizijski zapisnik', exact: true }).click()
+  await openAudit(page)
   await expect(page.getByRole('cell', { name: 'Vozač dodan', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vozač ispravljen', exact: true }).first()).toBeVisible()
   await expect(page.getByText(phone)).toHaveCount(0)

@@ -29,7 +29,7 @@ export type TenantSessionLookup
     | { kind: 'unavailable' }
 
 /** Admin and Dispatcher. A Driver is not an office member. */
-export function isOfficeMember(role: SessionShell['role'] | undefined): boolean {
+export function isOfficeMember(role: SessionShell['role'] | undefined): role is 'admin' | 'dispatcher' {
   return role === 'admin' || role === 'dispatcher'
 }
 

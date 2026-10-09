@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /**
- * The audit log for an Admin. The shared admin middleware is the only
- * gate: a Dispatcher or a Driver is sent Home, and a signed-out visitor
- * gets the sign-in form, before this page loads. Do not add a second
- * admin check. The log loads when it opens. It does not live-update
- * from another route. Locale and theme stay here until #124.
+ * The audit log for an Admin. This page declares the shared admin
+ * middleware, which sends a Dispatcher or a Driver Home and a signed-out
+ * visitor to the sign-in form. That middleware returns without redirecting
+ * when its session read is unavailable. If this page's own read then finds
+ * a non-admin, leave for Home before the log mounts. Home is that
+ * middleware's branch for `/audit`, not a second policy. The log loads
+ * when it opens. It does not live-update from another route. Locale and
+ * theme stay here until #124.
  */
 definePageMeta({
   middleware: 'admin',
@@ -21,6 +24,9 @@ const {
   chooseLocale,
   loadMessage,
 } = await useSessionShell()
+
+if (session.value && session.value.role !== 'admin')
+  await navigateTo('/', { replace: true })
 
 useHead({
   title: () => t('audit.title'),
