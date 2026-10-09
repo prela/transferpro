@@ -17,8 +17,17 @@ export async function useTheme(page: Page, theme: 'light' | 'dark') {
   }, theme)
 }
 
+/**
+ * Office staff keep Odjava in the navbar user menu. A Driver, a Superadmin,
+ * and the invitation accept screen still show that control on the page.
+ * Open the menu only when Odjava is not already on screen, then click it.
+ */
 export async function signOut(page: Page) {
-  await page.getByRole('button', { name: 'Odjava', exact: true }).click()
+  const onPage = page.getByRole('button', { name: 'Odjava', exact: true })
+  const inMenu = page.getByRole('menuitem', { name: 'Odjava', exact: true })
+  if (!(await onPage.isVisible()) && !(await inMenu.isVisible()))
+    await page.locator('button[aria-haspopup="menu"]').click()
+  await onPage.or(inMenu).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
 }
 

@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { signIn, signOut, useTheme } from './fixtures/ui'
 
 const sections = ['Početna', 'Transferi', 'Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored'] as const
 
@@ -145,6 +145,101 @@ test('driver home stays narrow and has no office sidebar', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
   await expectNarrowColumn(page)
 })
+
+test('an admin signs out from the user menu on home and on an office page, and the theme stays', async ({ page }) => {
+  const tenant = await seedTenant('shell-menu-admin')
+  await useTheme(page, 'dark')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+
+  const menu = await openUserMenu(page, tenant.name)
+  await expect(menu.getByText(tenant.name, { exact: true })).toBeVisible()
+  await expect(menu.getByRole('menuitem')).toHaveCount(1)
+  await expect(menu.getByRole('menuitem', { name: 'Odjava', exact: true })).toBeVisible()
+  await expect(menu.getByText(tenant.adminName)).toHaveCount(0)
+  await expect(menu.getByText(tenant.adminEmail)).toHaveCount(0)
+  await signOut(page)
+  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toHaveCount(0)
+  await expect(page.evaluate(() => localStorage.getItem('transferpro-theme'))).resolves.toBe('dark')
+
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Klijenti', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  const officeMenu = await openUserMenu(page, tenant.name)
+  await expect(officeMenu.getByText(tenant.name, { exact: true })).toBeVisible()
+  await signOut(page)
+  await expect(page.getByText(tenant.name)).toHaveCount(0)
+  await expect(page.evaluate(() => localStorage.getItem('transferpro-theme'))).resolves.toBe('dark')
+})
+
+test('a dispatcher signs out from the user menu on home and on an office page', async ({ page }) => {
+  const tenant = await seedTenant('shell-menu-dispatcher')
+  const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
+  await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
+
+  const menu = await openUserMenu(page, tenant.name)
+  await expect(menu.getByText(tenant.name, { exact: true })).toBeVisible()
+  await expect(menu.getByText(dispatcher.name)).toHaveCount(0)
+  await signOut(page)
+
+  await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Raspored', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Raspored vozila' })).toBeVisible()
+  await openUserMenu(page, tenant.name)
+  await signOut(page)
+  await expect(page.getByText(tenant.name)).toHaveCount(0)
+})
+
+test('a failed sign-out from the user menu keeps the tenant and shows the failure', async ({ page }) => {
+  const tenant = await seedTenant('shell-menu-fail')
+  await useTheme(page, 'light')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Klijenti', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  await page.route('**/api/auth/sign-out', async (route) => {
+    await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' })
+  })
+
+  const menu = await openUserMenu(page, tenant.name)
+  await menu.getByRole('menuitem', { name: 'Odjava', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: 'Odjava nije uspjela. Pokušajte ponovno.' })).toBeVisible()
+  await expect(page.evaluate(() => localStorage.getItem('transferpro-theme'))).resolves.toBe('light')
+})
+
+test('the user menu is reachable and operable from the keyboard', async ({ page }) => {
+  const tenant = await seedTenant('shell-menu-keys')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+
+  const trigger = page.getByRole('button', { name: tenant.name, exact: true })
+  await expect(trigger).toBeVisible()
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur()
+  })
+  for (let step = 0; step < 12 && !(await trigger.evaluate(el => el === document.activeElement)); step++)
+    await page.keyboard.press('Tab')
+  await expect(trigger).toBeFocused()
+  await page.keyboard.press('Enter')
+
+  const item = page.getByRole('menuitem', { name: 'Odjava', exact: true })
+  await expect(item).toBeVisible()
+  for (let step = 0; step < 4 && !(await item.evaluate(el => el === document.activeElement)); step++)
+    await page.keyboard.press('ArrowDown')
+  await expect(item).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toHaveCount(0)
+})
+
+/** The navbar trigger names the Tenant. The menu itself repeats that name and offers sign-out. */
+async function openUserMenu(page: Page, tenantName: string) {
+  await page.getByRole('button', { name: tenantName, exact: true }).click()
+  const menu = page.getByRole('menu')
+  await expect(menu).toBeVisible()
+  return menu
+}
 
 /** The page main fills the dashboard panel body, and that width is past 28rem. */
 async function expectOfficePanelWidth(page: Page) {
