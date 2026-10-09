@@ -8,8 +8,40 @@ import { platformShellSchema, sessionShellSchema } from '../../shared'
 const sessionShellKey = 'session-shell'
 
 interface SessionShellOptions {
-  /** Office pages send a signed-out visitor to the sign-in form. Home does not. */
+  /**
+   * Office pages set this. The office middleware already sends a signed-out
+   * visitor to the sign-in form before the page loads. This remains so a
+   * page that renders without that middleware still leaves.
+   */
   redirectWhenSignedOut?: boolean
+}
+
+/**
+ * What a route middleware learns from GET /api/session before the page loads.
+ * 401 is signed out. Any other failure is left to the page: Home still sends
+ * a superadmin to the firm list, and an office page still shows no-access.
+ */
+export type TenantSessionLookup
+  = | { kind: 'member', session: SessionShell }
+    | { kind: 'signed-out' }
+    | { kind: 'unavailable' }
+
+/**
+ * The route middlewares read the same shell as the pages.
+ * `useRequestFetch` runs before the await so the document request forwards
+ * the cookie. A bare `$fetch` during SSR would look signed out.
+ */
+export async function readTenantSession(): Promise<TenantSessionLookup> {
+  const requestFetch = useRequestFetch()
+  try {
+    const session = sessionShellSchema.parse(await requestFetch<unknown>('/api/session'))
+    return { kind: 'member', session }
+  }
+  catch (error) {
+    if (httpStatus(error) === 401)
+      return { kind: 'signed-out' }
+    return { kind: 'unavailable' }
+  }
 }
 
 /**

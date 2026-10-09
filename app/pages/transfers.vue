@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// The office gate. A Driver and a signed-out visitor leave before this page loads.
+definePageMeta({
+  middleware: 'office',
+})
+
 const {
   t,
   session,
@@ -13,8 +18,6 @@ const {
 useHead({
   title: () => t('transfers.title'),
 })
-
-const office = computed(() => session.value?.role === 'admin' || session.value?.role === 'dispatcher')
 </script>
 
 <template>
@@ -58,16 +61,8 @@ const office = computed(() => session.value?.role === 'admin' || session.value?.
         {{ t('transfers.title') }}
       </h1>
       <TransferDay
-        v-if="office"
         :time-zone="session.timeZone"
         :locale="session.locale"
-      />
-      <UAlert
-        v-else
-        color="error"
-        variant="subtle"
-        role="alert"
-        :description="t('transfers.forbidden')"
       />
       <UAlert
         v-if="shellError"

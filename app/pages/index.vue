@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { formatInstant, signInErrorKey } from '../../shared'
 
+// Layout only. A Driver stays on the phone layout. Office staff get the
+// dashboard layout. Sign-in, no-access, and the firm list stay on this page.
+definePageMeta({
+  middleware: 'authenticated',
+})
+
 const email = ref('')
 const password = ref('')
 const formError = ref<'signIn.failed' | 'signIn.limited' | null>(null)

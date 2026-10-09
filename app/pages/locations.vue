@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// The office gate. A Driver and a signed-out visitor leave before this page loads.
+definePageMeta({
+  middleware: 'office',
+})
+
 const {
   t,
   session,
@@ -13,8 +18,6 @@ const {
 useHead({
   title: () => t('locations.title'),
 })
-
-const office = computed(() => session.value?.role === 'admin' || session.value?.role === 'dispatcher')
 </script>
 
 <template>
@@ -57,14 +60,7 @@ const office = computed(() => session.value?.role === 'admin' || session.value?.
       <h1 class="mb-4 text-2xl font-semibold">
         {{ t('locations.title') }}
       </h1>
-      <LocationList v-if="office" />
-      <UAlert
-        v-else
-        color="error"
-        variant="subtle"
-        role="alert"
-        :description="t('locations.forbidden')"
-      />
+      <LocationList />
       <UAlert
         v-if="shellError"
         color="error"
