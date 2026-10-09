@@ -1,4 +1,6 @@
+import type { TenantRole } from '../../../shared'
 import { loadEnvFile } from 'node:process'
+import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
@@ -30,6 +32,8 @@ const password = 'invite-cookie-password'
 const adminEmail = 'iac-admin@example.test'
 const newEmail = 'iac-new@example.test'
 const pendingEmail = 'iac-pending@example.test'
+const dispatcherEmail = 'iac-dispatcher@example.test'
+const dispatcherInviteEmail = 'iac-from-dispatcher@example.test'
 const slug = 'iac-cookie'
 
 const authPool = new pg.Pool({ connectionString: authDatabaseUrl })
@@ -153,6 +157,25 @@ it('answers 409 for a member and a pending invitation, and 200 after that member
   expect(inviteResultSchema.parse(await restored.json()).inviteUrl).toMatch(/#[0-9a-f-]{36}$/)
 })
 
+it('a dispatcher receives 403 from POST /api/invitations', async () => {
+  const organization = await authPool.query<{ id: string }>(
+    'select id from auth.organization where slug = $1',
+    [slug],
+  )
+  const tenantId = organization.rows[0]?.id
+  if (tenantId === undefined)
+    throw new Error('invite fixture tenant is missing')
+  await addMember(tenantId, dispatcherEmail, 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn(dispatcherEmail)
+
+  const refused = await call(invite, 'POST', '/api/invitations', dispatcher, {
+    email: dispatcherInviteEmail,
+    role: 'driver',
+  })
+  expect(refused.status).toBe(403)
+  expect(await refused.text()).not.toContain(dispatcherInviteEmail)
+})
+
 function sessionSetCookie(cookies: readonly string[]): string {
   const session = cookies.find(part => part.includes('session_token') && !part.includes('Max-Age=0'))
   if (session === undefined)
@@ -188,6 +211,25 @@ function call(
   }))
 }
 
+async function addMember(tenantId: string, email: string, name: string, role: TenantRole): Promise<void> {
+  const userId = crypto.randomUUID()
+  await authPool.query(
+    `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
+     values ($1, $2, $3, true, now(), now())`,
+    [userId, name, email],
+  )
+  await authPool.query(
+    `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
+     values ($1, $2, 'credential', $2, $3, now(), now())`,
+    [crypto.randomUUID(), userId, await hashPassword(password)],
+  )
+  await authPool.query(
+    `insert into auth.member (id, organization_id, user_id, role, created_at)
+     values ($1, $2, $3, $4, now())`,
+    [crypto.randomUUID(), tenantId, userId, role],
+  )
+}
+
 async function signIn(email: string): Promise<string> {
   const response = await handleAuthRequest(new Request(new URL('/api/auth/sign-in/email', authUrl), {
     method: 'POST',
@@ -214,7 +256,7 @@ async function removeFixture() {
   finally {
     owner.release()
   }
-  const emails = [adminEmail, newEmail, pendingEmail, 'iac-later@example.test', 'iac-reinvite@example.test']
+  const emails = [adminEmail, newEmail, pendingEmail, dispatcherEmail, dispatcherInviteEmail, 'iac-later@example.test', 'iac-reinvite@example.test']
   const client = await authPool.connect()
   try {
     await client.query('begin')
