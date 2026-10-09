@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// The office gate. A Driver and a signed-out visitor leave before this page loads.
+definePageMeta({
+  middleware: 'office',
+})
+
 const {
   t,
   session,
@@ -14,7 +19,9 @@ useHead({
   title: () => t('transfers.title'),
 })
 
-const office = computed(() => session.value?.role === 'admin' || session.value?.role === 'dispatcher')
+// The middleware is the gate. If a Driver still reaches this page, the list
+// does not mount, so the browser does not request the collection.
+const office = computed(() => isOfficeMember(session.value?.role))
 </script>
 
 <template>
@@ -61,13 +68,6 @@ const office = computed(() => session.value?.role === 'admin' || session.value?.
         v-if="office"
         :time-zone="session.timeZone"
         :locale="session.locale"
-      />
-      <UAlert
-        v-else
-        color="error"
-        variant="subtle"
-        role="alert"
-        :description="t('transfers.forbidden')"
       />
       <UAlert
         v-if="shellError"

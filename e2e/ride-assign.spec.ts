@@ -405,10 +405,25 @@ test('a driver sees no assign action', async ({ page }) => {
   await signOut(page)
   await signIn(page, driver.email, driver.password, tenant.name)
 
-  await page.goto('/transfers')
-  await expect(page.getByRole('alert')).toContainText('Vozač ne može zabilježiti transfer ni vidjeti dnevni popis.')
-  await expect(page.getByRole('button', { name: /Dodijeli/ })).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
+  const dayLists: string[] = []
+  const onRequest = (request: { method: () => string, url: () => string }) => {
+    if (request.method() === 'GET' && new URL(request.url()).pathname === '/api/transfers')
+      dayLists.push(request.url())
+  }
+  page.on('request', onRequest)
+  try {
+    await page.goto('/transfers')
+    await expect(page).toHaveURL('/')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+    await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
+    expect(dayLists).toEqual([])
+    await expect(page.getByText('Vozač ne može zabilježiti transfer ni vidjeti dnevni popis.')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Dodijeli/ })).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
+  }
+  finally {
+    page.off('request', onRequest)
+  }
 })
 
 test('the assign form uses English copy', async ({ page }) => {

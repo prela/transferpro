@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const officePaths = ['/clients', '/locations', '/drivers', '/vehicles', '/roster', '/admin/tenants'] as const
+const officePaths = ['/clients', '/locations', '/drivers', '/vehicles', '/roster', '/transfers', '/admin/tenants'] as const
 
 test('signed-out visits to office and platform pages show the sign-in form', async ({ page }) => {
   for (const path of officePaths) {

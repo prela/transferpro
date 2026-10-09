@@ -9,6 +9,8 @@ const uiLocale = computed(() => locale.value === 'en' ? en : hr)
 
 <template>
   <UApp :locale="uiLocale">
-    <NuxtPage />
+    <NuxtLayout>
+      <NuxtPage />
+    </NuxtLayout>
   </UApp>
 </template>
