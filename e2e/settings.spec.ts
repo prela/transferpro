@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedTenant } from './fixtures/seed'
 import { signIn } from './fixtures/ui'
@@ -5,6 +6,7 @@ import { signIn } from './fixtures/ui'
 test('admin changes the waits and the time zone, and the audit log updates', async ({ page }) => {
   const tenant = await seedTenant('settings')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await openSettingsTab(page, 'Organizacija')
   const settings = page.getByRole('region', { name: 'Postavke' })
 
   await settings.getByLabel('Čekanje na aerodromu (minute)').fill('45')
@@ -15,8 +17,9 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
   await settings.getByRole('button', { name: 'Spremi', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Spremljeno.' })).toBeVisible()
 
-  // The log is already on this page. These rows appear because the save
-  // calls notifyAuditChanged, before any reload.
+  // The log stays on Home. Opening it reads the rows the save already wrote.
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toBeVisible()
   await expect(page.getByText('Promijenjeno čekanje na aerodromu')).toBeVisible()
   await expect(page.getByText('90 → 45 min')).toBeVisible()
   await expect(page.getByText('Promijenjeno čekanje izvan aerodroma')).toBeVisible()
@@ -24,9 +27,16 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
   await expect(page.getByText('Promijenjena vremenska zona')).toBeVisible()
   await expect(page.getByText('Europe/Zagreb → Europe/London')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Osvježi', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
 
-  await page.reload()
+  await page.goto('/settings/tenant')
   await expect(settings.getByLabel('Čekanje na aerodromu (minute)')).toHaveValue('45')
   await expect(settings.getByLabel('Čekanje izvan aerodroma (minute)')).toHaveValue('30')
   await expect(settings.getByLabel('Vremenska zona')).toContainText('Europe/London')
 })
+
+/** Settings in the sidebar, then the named tab. */
+async function openSettingsTab(page: Page, name: string) {
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Postavke', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Postavke' }).getByRole('link', { name, exact: true }).click()
+}

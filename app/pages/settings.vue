@@ -3,9 +3,10 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 
 /**
  * Settings is on `authenticated`, not `office` or `admin`: a Driver uses it.
- * `/settings` only redirects. The tab menu lists Profile until Tenant and
- * Members have routes. Office staff get the dashboard; a Driver stays in the
- * phone column. The layout is set here as well as in the middleware, because
+ * `/settings` only redirects. The tab menu lists Profile for every Tenant
+ * role, and Tenant and Members for an Admin. Office staff get the dashboard;
+ * a Driver stays in the phone column. The layout is set here as well as in
+ * the middleware, because
  * a sidebar jump can drop the middleware call and this layout is not constant
  * (it cannot live in `definePageMeta`).
  */
@@ -58,13 +59,33 @@ onBeforeRouteUpdate((to) => {
     return navigateTo(target, { replace: true })
 })
 
-// One tab. Tenant and Members are later routes; do not list them yet.
-const tabs = computed<NavigationMenuItem[]>(() => [{
-  label: t('shell.profile'),
-  icon: 'i-lucide-user',
-  to: '/settings/profile',
-  exact: true,
-}])
+// Profile is every role. Tenant and Members are Admin addresses, so a
+// Dispatcher or a Driver never sees those links.
+const tabs = computed<NavigationMenuItem[]>(() => {
+  const items: NavigationMenuItem[] = [{
+    label: t('shell.profile'),
+    icon: 'i-lucide-user',
+    to: '/settings/profile',
+    exact: true,
+  }]
+  if (session.value?.role !== 'admin')
+    return items
+  items.push(
+    {
+      label: t('shell.tenant'),
+      icon: 'i-lucide-building-2',
+      to: '/settings/tenant',
+      exact: true,
+    },
+    {
+      label: t('members.title'),
+      icon: 'i-lucide-users',
+      to: '/settings/members',
+      exact: true,
+    },
+  )
+  return items
+})
 </script>
 
 <template>

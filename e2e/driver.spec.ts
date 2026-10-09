@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { expectSettingsRedirect, signIn } from './fixtures/ui'
 
 /**
  * The list that page loads for office staff. A Driver is sent Home before
@@ -30,10 +30,22 @@ test('a driver who opens an office address lands on Driver Home before office da
   await expect(page.getByRole('link', { name: 'Vozači' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Članovi' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Spremi', exact: true })).toHaveCount(0)
-  await expect(page.getByText('Samo administrator može ovo promijeniti.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
+  await expect(page.getByText('Samo administrator može ovo promijeniti.')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
 
   for (const visit of officeVisits)
     await expectOfficeAddressReturnsHome(page, visit.path, visit.collection, tenant.name)
+})
+
+test('a driver who opens tenant settings or members lands on profile', async ({ page }) => {
+  const tenant = await seedTenant('driver-settings')
+  const driver = await seedMember(tenant.tenantId, 'driver', 'Vozač')
+  await signIn(page, driver.email, driver.password, tenant.name)
+  await expectSettingsRedirect(page, '/settings/tenant')
+  await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
+  await expectSettingsRedirect(page, '/settings/members')
+  await expect(page.getByRole('navigation', { name: 'Postavke' }).getByRole('link')).toHaveText(['Profil'])
 })
 
 /** Home, with the Tenant name as the only h1, and no request for that page's collection. */

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { openMembers, signIn } from './fixtures/ui'
 
 const roles = ['Administrator', 'Dispečer', 'Vozač'] as const
 const viewports = [
@@ -25,6 +25,7 @@ for (const viewport of viewports) {
     test('every invite role option is in the viewport and pointer-clickable', async ({ page }) => {
       const tenant = await seedTenant(`invite-role-click-${viewport.width}`)
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      await openMembers(page)
 
       const region = page.getByRole('region', { name: 'Pozovi člana' })
       const select = region.getByRole('combobox', { name: 'Uloga' })

@@ -126,16 +126,10 @@ function httpStatus(error: unknown): number | undefined {
         </time>
       </template>
       <ExpiringDocuments />
-      <TenantSettings
-        :is-admin="session.role === 'admin'"
-        @saved="refresh()"
-      />
-      <MemberInvite v-if="session.role === 'admin'" />
-      <MemberList
-        v-if="session.role !== 'driver'"
-        :is-admin="session.role === 'admin'"
-        :current-user-id="session.userId"
-      />
+      <!--
+        Tenant settings, Members, and invitations live on the Admin settings
+        tabs. Home keeps the example instant, expiring documents, and the log.
+      -->
       <AuditLog
         v-if="session.role === 'admin'"
         :time-zone="session.timeZone"

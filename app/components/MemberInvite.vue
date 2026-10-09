@@ -21,12 +21,9 @@ const roleItems = computed(() => [
   { label: t('invite.roles.driver'), value: 'driver' as const },
 ])
 
-// The invite control sits in the lower half of a long home page. After the
-// trigger is scrolled into view it sits near the bottom of a 720px (or
-// phone) viewport. USelect's default side is bottom + popper (fixed). The
-// last options then sit outside the viewport; document scroll does not move
-// a fixed list, so a pointer click times out. Popper + collision keeps the
-// list in the viewport (it opens upward here and flips if needed).
+// The option list is fixed, so document scroll does not move it. Popper with
+// collision keeps every option inside the viewport: side top opens upward
+// when the control sits low, and flips when the control is near the top.
 const roleSelectContent = {
   position: 'popper' as const,
   side: 'top' as const,
