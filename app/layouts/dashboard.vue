@@ -6,7 +6,7 @@ const nuxtApp = useNuxtApp()
 
 /**
  * Apply the saved Locale before this template renders. The layout is the
- * parent, so without this the sidebar is painted in the default language
+ * parent, so without this the sidebar is painted in the default Locale
  * and its accessible names stay there after the visible labels update.
  * Server only: awaiting the shell in the browser suspends hydration, and
  * a click on the server HTML is lost.

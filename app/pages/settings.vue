@@ -30,11 +30,33 @@ function applyLayout() {
 applyLayout()
 watch(() => session.value?.role, applyLayout)
 
-const path = route.path.replace(/\/$/, '') || '/'
-if (!session.value && !loadError.value)
-  await navigateTo('/', { replace: true })
-else if (session.value && path === '/settings')
-  await navigateTo('/settings/profile', { replace: true })
+/**
+ * `/settings` has no screen of its own. Setup covers the first load, including
+ * the server redirect. A later choice of Settings, from the sidebar or the
+ * user menu, keeps this parent mounted, so the guard returns the same
+ * redirect or the empty child stays on screen.
+ */
+function barePath(path: string) {
+  return path.replace(/\/$/, '') || '/'
+}
+
+function redirectTarget(path: string) {
+  if (!session.value && !loadError.value)
+    return '/'
+  if (session.value && path === '/settings')
+    return '/settings/profile'
+  return null
+}
+
+const initialTarget = redirectTarget(barePath(route.path))
+if (initialTarget)
+  await navigateTo(initialTarget, { replace: true })
+
+onBeforeRouteUpdate((to) => {
+  const target = redirectTarget(barePath(to.path))
+  if (target)
+    return navigateTo(target, { replace: true })
+})
 
 // One tab. Tenant and Members are later routes; do not list them yet.
 const tabs = computed<NavigationMenuItem[]>(() => [{

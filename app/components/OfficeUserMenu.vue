@@ -6,7 +6,7 @@ import type { DropdownMenuItem } from '@nuxt/ui'
  * The session shell has no personal display name, so this menu does not invent one.
  * Sign-out is the shared shell action: success clears that shell and leaves the
  * device theme; failure keeps the Tenant and sets the alert already on the page.
- * Language and theme stay on Profile, and on the signed-out screen.
+ * Locale and theme stay on Profile, and on the signed-out screen.
  */
 const { t } = useI18n()
 const { session, pending, signOut } = useShellSignOut()

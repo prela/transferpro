@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Profile for every Tenant role. Language uses the existing locale save.
+ * Profile for every Tenant role. Locale uses the existing locale save.
  * Theme uses the existing device toggle. This page does not read Tenant
  * settings, Members, invitations, or the audit log.
  */

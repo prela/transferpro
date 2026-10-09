@@ -122,6 +122,15 @@ test('an admin and a dispatcher open Profile from the sidebar and the user menu'
     await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toBeVisible()
 
+    // The parent stays mounted. Choosing Settings again must still open Profile.
+    await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Postavke', exact: true }).click()
+    await expect(page).toHaveURL(/\/settings\/profile$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+    const menuHere = await openUserMenu(page, tenant.name)
+    await menuHere.getByRole('menuitem', { name: 'Postavke', exact: true }).click()
+    await expect(page).toHaveURL(/\/settings\/profile$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+
     await page.goto('/')
     await hydrated(page)
     const menu = await openUserMenu(page, tenant.name)
@@ -153,6 +162,8 @@ test('a dispatcher and a driver on Profile do not request admin endpoints', asyn
 
   for (const member of [dispatcher, driver]) {
     await signIn(page, member.email, member.password, tenant.name)
+    // Home's Members fetch belongs to Home. Profile is measured after that settles.
+    await page.waitForLoadState('networkidle')
     const seen: string[] = []
     const onRequest = (request: { method: () => string, url: () => string }) => {
       const path = new URL(request.url()).pathname
@@ -164,8 +175,6 @@ test('a dispatcher and a driver on Profile do not request admin endpoints', asyn
       await page.goto('/settings/profile')
       await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
       await expect(page.getByRole('button', { name: 'English', exact: true })).toBeVisible()
-      // Home may still be loading Members when Profile's document starts.
-      seen.length = 0
       await page.waitForLoadState('networkidle')
       expect(seen).toEqual([])
     }
