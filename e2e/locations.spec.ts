@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, signIn } from './fixtures/ui'
+import { chooseOption, openAudit, signIn } from './fixtures/ui'
 
 const place = 'Zračna luka Dubrovnik'
 const address = 'Dobrota bb, Čilipi'
@@ -54,7 +54,7 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   await expect(page.getByRole('cell', { name: 'Arhivirano' })).toBeVisible()
   await expect(page.getByRole('cell', { name: nextPlace })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Početna' }).click()
+  await openAudit(page)
   await expect(page.getByRole('cell', { name: 'Lokacija dodana', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Lokacija ispravljena', exact: true }).first()).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Lokacija arhivirana', exact: true })).toBeVisible()

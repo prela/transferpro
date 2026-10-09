@@ -98,6 +98,13 @@ export async function expectSettingsRedirect(page: Page, path: '/settings/tenant
   }
 }
 
+/** The audit log. Opening it reads the rows already written. */
+export async function openAudit(page: Page) {
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizijski zapisnik', exact: true }).click()
+  await expect(page).toHaveURL(/\/audit$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Revizijski zapisnik' })).toBeVisible()
+}
+
 /** The invitation form and the Member list live on the Members tab. */
 export async function openMembers(page: Page) {
   await page.goto('/settings/members')

@@ -2,7 +2,7 @@ import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { seedMember, seedTenant, seedVehicleRecord } from './fixtures/seed'
-import { chooseOption, signIn, signOut, useTheme } from './fixtures/ui'
+import { chooseOption, openAudit, signIn, signOut, useTheme } from './fixtures/ui'
 
 const phone = '+385911112233'
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
@@ -106,7 +106,7 @@ test('an admin assigns a ride and the audit log names the actor', async ({ page 
   await expect(page.getByRole('cell', { name: plate, exact: true })).toBeVisible()
   await expect(assignButton(page, guest)).toHaveCount(0)
 
-  await page.getByRole('link', { name: 'Početna' }).click()
+  await openAudit(page)
   const assigned = page.getByRole('row', { name: 'Vožnja dodijeljena' })
   await expect(assigned).toContainText(tenant.adminName)
   await expect(assigned).toContainText(driverName)

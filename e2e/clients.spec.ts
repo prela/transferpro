@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { openAudit, signIn } from './fixtures/ui'
 
 test('admin adds a client, corrects it, and the audit log shows the entries', async ({ page }) => {
   const tenant = await seedTenant('clients-admin')
@@ -44,8 +44,8 @@ test('admin adds a client, corrects it, and the audit log shows the entries', as
   await expect(page.getByRole('button', { name: 'Ispravi klijenta: Marko Marić' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Osoba' })).toBeVisible()
 
-  // Home mounts the log that was notified from this page. Assert before reload.
-  await page.getByRole('link', { name: 'Početna' }).click()
+  // Opening Audit reads the rows this page already wrote.
+  await openAudit(page)
   await expect(page.getByRole('cell', { name: 'Klijent dodan', exact: true })).toHaveCount(2)
   await expect(page.getByRole('cell', { name: 'Ime klijenta ispravljeno', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vrsta klijenta ispravljena', exact: true })).toBeVisible()

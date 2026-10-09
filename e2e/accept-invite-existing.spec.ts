@@ -18,6 +18,8 @@ test('an existing account signs in on the invite page and joins as a driver', as
   await page.getByRole('button', { name: 'Prijavi se i prihvati', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Pozovi člana' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Članovi' })).toHaveCount(0)
   await expect(page.getByText('Samo administrator može ovo promijeniti.')).toHaveCount(0)
@@ -42,7 +44,9 @@ test('an existing account signs in on the invite page and joins as a dispatcher'
   await expect(page.getByRole('heading', { name: 'Članovi' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
   await expect(page.getByText('Samo administrator može ovo promijeniti.')).toHaveCount(0)
+  await expect(page.getByText('Primjer vremena')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toHaveCount(0)
 })
 
 test('an existing account signs in on the invite page and joins as an administrator', async ({ page }) => {
@@ -58,8 +62,9 @@ test('an existing account signs in on the invite page and joins as an administra
   await page.getByLabel('Lozinka').fill(existing.password)
   await page.getByRole('button', { name: 'Prijavi se i prihvati', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toBeVisible()
+  await expect(page.getByText('Primjer vremena')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Pozovi člana' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
 

@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import type { SessionShell } from '../../shared'
+import { sessionShellKey } from '../composables/session-shell'
 
 const { t, setLocale } = useI18n()
 const nuxtApp = useNuxtApp()
+
+/** Admin sees Audit. A Dispatcher uses this shell and does not. */
+const officeRole = useState<'admin' | 'dispatcher' | null>('office-sidebar-role', () => null)
 
 /**
  * Apply the saved Locale before this template renders. The layout is the
@@ -13,8 +18,23 @@ const nuxtApp = useNuxtApp()
  */
 if (import.meta.server) {
   const lookup = await readTenantSession()
-  if (lookup.kind === 'member')
+  if (lookup.kind === 'member') {
+    officeRole.value = isOfficeMember(lookup.session.role) ? lookup.session.role : null
     await nuxtApp.runWithContext(() => setLocale(lookup.session.locale))
+  }
+}
+
+// Sign-in mounts this layout on the client, after the shell is already
+// loaded, so the server read above did not run. Hydration already has the
+// role. A later shell replaces a stale one before the sidebar paints:
+// sign out, then sign in as the other office role, on the same page.
+if (import.meta.client) {
+  const { data: shell } = useNuxtData<SessionShell | null>(sessionShellKey)
+  watch(shell, (next) => {
+    if (!next)
+      return
+    officeRole.value = isOfficeMember(next.role) ? next.role : null
+  }, { immediate: true })
 }
 
 /**
@@ -23,22 +43,28 @@ if (import.meta.server) {
  * `transferpro-dashboard` (Nuxt UI appends `-sidebar-shell`), not a cookie.
  * The navbar has no title: that prop is an h1, and each page already has one.
  * The right slot is the user menu: the Tenant name, Settings, and sign-out.
- * Home is exact so it is current only on `/`. Settings is not exact: Profile
- * lives under `/settings`, and the item stays current for that section.
+ * Home is exact so it is current only on `/`. Audit is exact and Admin only.
+ * Settings is not exact: Profile lives under `/settings`, and the item stays
+ * current for that section.
  * The aria-label stays when the collapsed rail hides the visible label
  * (`display: none` drops it from the name).
  * Collapse and the phone toggle are size xl: they are tapped (ADR-0016).
  */
-const items = computed<NavigationMenuItem[]>(() => [
-  link(t('shell.home'), 'i-lucide-house', '/', true),
-  link(t('transfers.nav'), 'i-lucide-route', '/transfers'),
-  link(t('clients.nav'), 'i-lucide-users', '/clients'),
-  link(t('locations.nav'), 'i-lucide-map-pin', '/locations'),
-  link(t('drivers.nav'), 'i-lucide-id-card', '/drivers'),
-  link(t('vehicles.nav'), 'i-lucide-car', '/vehicles'),
-  link(t('roster.nav'), 'i-lucide-calendar', '/roster'),
-  link(t('shell.settings'), 'i-lucide-settings', '/settings'),
-])
+const items = computed<NavigationMenuItem[]>(() => {
+  const links = [
+    link(t('shell.home'), 'i-lucide-house', '/', true),
+    link(t('transfers.nav'), 'i-lucide-route', '/transfers'),
+    link(t('clients.nav'), 'i-lucide-users', '/clients'),
+    link(t('locations.nav'), 'i-lucide-map-pin', '/locations'),
+    link(t('drivers.nav'), 'i-lucide-id-card', '/drivers'),
+    link(t('vehicles.nav'), 'i-lucide-car', '/vehicles'),
+    link(t('roster.nav'), 'i-lucide-calendar', '/roster'),
+  ]
+  if (officeRole.value === 'admin')
+    links.push(link(t('audit.title'), 'i-lucide-scroll-text', '/audit', true))
+  links.push(link(t('shell.settings'), 'i-lucide-settings', '/settings'))
+  return links
+})
 
 function link(label: string, icon: string, to: string, exact = false): NavigationMenuItem {
   return { label, icon, to, exact, 'aria-label': label }

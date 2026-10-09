@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { openUserMenu, signIn, signOut, useTheme } from './fixtures/ui'
 
-const sections = ['Početna', 'Transferi', 'Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored', 'Postavke'] as const
+const sections = ['Početna', 'Transferi', 'Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored', 'Revizijski zapisnik', 'Postavke'] as const
 
 test('an admin moves through the sidebar, sees the current item, and the office page fills the panel', async ({ page }) => {
   const tenant = await seedTenant('shell-admin')

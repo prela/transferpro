@@ -37,6 +37,8 @@ test('the dashboard lists expired and soon documents in Croatian and English', a
   })
 
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await expect(page.getByText('Primjer vremena')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toHaveCount(0)
   const list = page.getByRole('region', { name: 'Dokumenti koji istječu' })
   const items = list.getByRole('listitem')
   await expect(items).toHaveCount(5)
@@ -60,6 +62,8 @@ test('the dashboard lists expired and soon documents in Croatian and English', a
   await expect(page.getByText('1.1.2099.')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'English', exact: true }).click()
+  await expect(page.getByText('Example time')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Audit log' })).toHaveCount(0)
   const english = page.getByRole('region', { name: 'Expiring documents' })
   await expect(english.getByRole('heading', { name: 'Expiring documents' })).toBeVisible()
   await expect(english.getByRole('listitem').nth(0)).toContainText('Expired')
