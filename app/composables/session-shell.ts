@@ -28,17 +28,21 @@ export async function useSessionShell(options?: SessionShellOptions) {
   // Shared across pages. The first caller owns the async-data handler, and a
   // later refresh (sign-in on Home) still has to see this flag.
   const platformRedirect = useState('session-platform-redirect', () => false)
+  // Await below leaves this composable without the Nuxt instance. The page
+  // setup keeps it; a nested composable does not (NUXT_E1001 on a document request).
+  const nuxtApp = useNuxtApp()
 
   const { data: session, error: loadError, refresh } = await useAsyncData(sessionShellKey, loadShell, {
     // Hydration has to paint the shell the server rendered. After that, do not
     // reuse a cached null: a superadmin's next visit to Home would see sign-in.
-    getCachedData: (key, nuxtApp) => nuxtApp.isHydrating ? nuxtApp.payload.data[key] : undefined,
+    getCachedData: (key, app) => app.isHydrating ? app.payload.data[key] : undefined,
   })
 
-  if (session.value)
-    await setLocale(session.value.locale)
+  const locale = session.value?.locale
+  if (locale)
+    await nuxtApp.runWithContext(() => setLocale(locale))
   else if (options?.redirectWhenSignedOut && !loadError.value)
-    await navigateTo('/')
+    await nuxtApp.runWithContext(() => navigateTo('/'))
 
   async function loadShell(): Promise<SessionShell | null> {
     platformRedirect.value = false
