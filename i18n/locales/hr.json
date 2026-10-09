@@ -17,7 +17,8 @@
     "unavailable": "Zaslon se nije mogao učitati. Pokušajte ponovno.",
     "noAccess": "Niste član nijednog prijevoznika. Odjavite se ili zatražite novu pozivnicu.",
     "saveFailed": "Promjena jezika nije spremljena. Pokušajte ponovno.",
-    "nav": "Odjeljci"
+    "nav": "Odjeljci",
+    "home": "Početna"
   },
   "locale": {
     "hr": "Hrvatski",
@@ -162,7 +163,6 @@
   },
   "clients": {
     "nav": "Klijenti",
-    "home": "Početna",
     "title": "Klijenti",
     "add": "Dodaj klijenta",
     "edit": "Ispravi klijenta",
@@ -193,7 +193,6 @@
   },
   "locations": {
     "nav": "Lokacije",
-    "home": "Početna",
     "title": "Lokacije",
     "add": "Dodaj lokaciju",
     "edit": "Ispravi lokaciju",
@@ -236,7 +235,6 @@
   },
   "transfers": {
     "nav": "Transferi",
-    "home": "Početna",
     "title": "Transferi",
     "day": "Dan",
     "loading": "Učitavanje vožnji",
@@ -329,7 +327,6 @@
   },
   "drivers": {
     "nav": "Vozači",
-    "home": "Početna",
     "title": "Vozači",
     "add": "Dodaj vozača",
     "edit": "Ispravi vozača",
@@ -380,7 +377,6 @@
   },
   "vehicles": {
     "nav": "Vozila",
-    "home": "Početna",
     "title": "Vozila",
     "add": "Dodaj vozilo",
     "edit": "Ispravi vozilo",
@@ -430,7 +426,6 @@
   },
   "roster": {
     "nav": "Raspored",
-    "home": "Početna",
     "title": "Raspored vozila",
     "date": "Datum",
     "intro": "Jedno vozilo po vozaču za taj dan. Vozilo koje je već dano drugom vozaču tog dana nije prihvaćeno.",

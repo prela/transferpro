@@ -25,7 +25,7 @@ const office = computed(() => isOfficeMember(session.value?.role))
 </script>
 
 <template>
-  <main class="mx-auto box-border w-full max-w-3xl p-4">
+  <main class="box-border w-full p-4">
     <section v-if="loadError">
       <UAlert
         color="error"
@@ -45,19 +45,6 @@ const office = computed(() => isOfficeMember(session.value?.role))
     </section>
 
     <section v-else-if="session">
-      <nav
-        class="mb-4"
-        :aria-label="t('shell.nav')"
-      >
-        <UButton
-          to="/"
-          color="neutral"
-          variant="outline"
-          size="xl"
-        >
-          {{ t('locations.home') }}
-        </UButton>
-      </nav>
       <p class="text-sm text-muted">
         {{ t('shell.tenant') }}: {{ session.tenantName }}
       </p>

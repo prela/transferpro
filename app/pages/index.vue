@@ -76,7 +76,14 @@ function httpStatus(error: unknown): number | undefined {
 </script>
 
 <template>
-  <main class="mx-auto box-border w-full max-w-md p-4">
+  <!--
+    Office staff fill the dashboard panel. Sign-in and Driver Home stay
+    at most 28rem (ADR-0016).
+  -->
+  <main
+    class="box-border w-full p-4"
+    :class="isOfficeMember(session?.role) ? undefined : 'mx-auto max-w-md'"
+  >
     <section v-if="loadError">
       <UAlert
         color="error"
@@ -118,60 +125,6 @@ function httpStatus(error: unknown): number | undefined {
           {{ formatInstant(exampleInstant, session.timeZone, session.locale) }}
         </time>
       </template>
-      <nav
-        v-if="session.role !== 'driver'"
-        class="mt-4 flex flex-wrap gap-2"
-        :aria-label="t('shell.nav')"
-      >
-        <UButton
-          to="/transfers"
-          color="neutral"
-          variant="outline"
-          size="xl"
-        >
-          {{ t('transfers.nav') }}
-        </UButton>
-        <UButton
-          to="/clients"
-          color="neutral"
-          variant="outline"
-          size="xl"
-        >
-          {{ t('clients.nav') }}
-        </UButton>
-        <UButton
-          to="/locations"
-          color="neutral"
-          variant="outline"
-          size="xl"
-        >
-          {{ t('locations.nav') }}
-        </UButton>
-        <UButton
-          to="/drivers"
-          color="neutral"
-          variant="outline"
-          size="xl"
-        >
-          {{ t('drivers.nav') }}
-        </UButton>
-        <UButton
-          to="/vehicles"
-          color="neutral"
-          variant="outline"
-          size="xl"
-        >
-          {{ t('vehicles.nav') }}
-        </UButton>
-        <UButton
-          to="/roster"
-          color="neutral"
-          variant="outline"
-          size="xl"
-        >
-          {{ t('roster.nav') }}
-        </UButton>
-      </nav>
       <ExpiringDocuments />
       <TenantSettings
         :is-admin="session.role === 'admin'"

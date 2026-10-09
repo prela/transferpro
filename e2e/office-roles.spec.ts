@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn } from './fixtures/ui'
 
-const officeLinks = ['Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored'] as const
+const officeLinks = ['Početna', 'Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored'] as const
 
 test('a dispatcher sees office screens and read-only settings, and cannot invite', async ({ page }) => {
   const tenant = await seedTenant('office-disp')
@@ -27,13 +27,13 @@ test('a dispatcher sees office screens and read-only settings, and cannot invite
   await expect(settings.getByText('Samo administrator može ovo promijeniti.')).toBeVisible()
   await expect(settings.getByRole('button', { name: 'Spremi', exact: true })).toHaveCount(0)
 
-  await page.getByRole('link', { name: 'Klijenti' }).click()
+  await nav.getByRole('link', { name: 'Klijenti' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
   await expect(page.getByText('Još nema klijenata.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Dodaj klijenta', exact: true })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Početna' }).click()
-  await page.getByRole('link', { name: 'Raspored' }).click()
+  await nav.getByRole('link', { name: 'Početna' }).click()
+  await nav.getByRole('link', { name: 'Raspored' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Raspored vozila' })).toBeVisible()
   await expect(page.getByText('Još nema vozača.')).toBeVisible()
 })
