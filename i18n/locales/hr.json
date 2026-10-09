@@ -18,7 +18,9 @@
     "noAccess": "Niste član nijednog prijevoznika. Odjavite se ili zatražite novu pozivnicu.",
     "saveFailed": "Promjena jezika nije spremljena. Pokušajte ponovno.",
     "nav": "Odjeljci",
-    "home": "Početna"
+    "home": "Početna",
+    "settings": "Postavke",
+    "profile": "Profil"
   },
   "locale": {
     "hr": "Hrvatski",

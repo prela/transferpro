@@ -1,8 +1,10 @@
 /**
- * Layout for Home, and later for settings. An Admin or a Dispatcher gets the
- * dashboard layout. A Driver and a signed-out visitor stay on the default
- * phone layout. This does not redirect: Home still shows the sign-in form,
- * and a superadmin still leaves Home for the firm list from the session shell.
+ * Layout for Home and settings. An Admin or a Dispatcher gets the dashboard
+ * layout. A Driver and a signed-out visitor stay on the default phone layout.
+ * This does not redirect: Home still shows the sign-in form, and a superadmin
+ * still leaves Home for the firm list from the session shell. Settings sends
+ * a signed-out visitor to that form itself, because this middleware also
+ * serves Home.
  */
 export default defineNuxtRouteMiddleware(async () => {
   const nuxtApp = useNuxtApp()

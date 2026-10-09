@@ -151,9 +151,21 @@ function httpStatus(error: unknown): number | undefined {
       />
       <div class="mt-4 flex flex-wrap gap-2">
         <!--
-          Office staff sign out from the navbar menu. A Driver has no sidebar,
-          so this button stays on the phone layout.
+          Office staff reach Settings from the sidebar and the navbar menu.
+          A Driver has no sidebar, so Profile opens from this phone column.
+          Sign-out stays here for the same reason.
         -->
+        <UButton
+          v-if="session.role === 'driver'"
+          to="/settings"
+          color="neutral"
+          variant="outline"
+          size="xl"
+          icon="i-lucide-settings"
+          class="flex-1 basis-32 justify-center"
+        >
+          {{ t('shell.settings') }}
+        </UButton>
         <UButton
           v-if="session.role === 'driver'"
           type="button"

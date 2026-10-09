@@ -18,7 +18,9 @@
     "noAccess": "You are not a member of any tenant. Sign out or ask for a new invitation.",
     "saveFailed": "The locale was not saved. Try again.",
     "nav": "Sections",
-    "home": "Home"
+    "home": "Home",
+    "settings": "Settings",
+    "profile": "Profile"
   },
   "locale": {
     "hr": "Hrvatski",

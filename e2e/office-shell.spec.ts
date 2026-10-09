@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { openUserMenu, signIn, signOut, useTheme } from './fixtures/ui'
 
-const sections = ['Početna', 'Transferi', 'Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored'] as const
+const sections = ['Početna', 'Transferi', 'Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored', 'Postavke'] as const
 
 test('an admin moves through the sidebar, sees the current item, and the office page fills the panel', async ({ page }) => {
   const tenant = await seedTenant('shell-admin')
@@ -153,7 +153,8 @@ test('an admin signs out from the user menu on home and on an office page, and t
 
   const menu = await openUserMenu(page, tenant.name)
   await expect(menu.getByText(tenant.name, { exact: true })).toBeVisible()
-  await expect(menu.getByRole('menuitem')).toHaveCount(1)
+  await expect(menu.getByRole('menuitem')).toHaveCount(2)
+  await expect(menu.getByRole('menuitem', { name: 'Postavke', exact: true })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Odjava', exact: true })).toBeVisible()
   await expect(menu.getByText(tenant.adminName)).toHaveCount(0)
   await expect(menu.getByText(tenant.adminEmail)).toHaveCount(0)
@@ -175,6 +176,7 @@ test('a dispatcher signs out from the user menu on home and on an office page', 
   const tenant = await seedTenant('shell-menu-dispatcher')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
+  await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Postavke', exact: true })).toBeVisible()
 
   const menu = await openUserMenu(page, tenant.name)
   await expect(menu.getByText(tenant.name, { exact: true })).toBeVisible()
