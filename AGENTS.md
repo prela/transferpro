@@ -2,7 +2,7 @@
 
 Rules for agents in this repo. This file is the source. `.cursor/rules/transferpro.mdc` only points here.
 
-Read `docs/agents/working-rules.md` when the work touches database roles, migrations, the tenant session, audit, logging, provisioning, invitations, superadmin, tenant settings, i18n, theme, or the shell guard.
+Read `docs/agents/working-rules.md` when the work touches database roles, migrations, the tenant session, audit, logging, provisioning, invitations, superadmin, tenant settings, UI, i18n, theme, or the shell guard.
 
 ## Read first
 

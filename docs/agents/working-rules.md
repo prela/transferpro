@@ -87,6 +87,8 @@ A null user locale follows the Tenant default. `POST /api/locale` accepts `hr` o
 
 Screens are Nuxt UI components. Nuxt UI is the only UI library. When it lacks a component, build it from the Reka UI primitives Nuxt UI already uses, and style it with Nuxt UI theme tokens. Do not add shadcn-vue or another kit. Icons come from the installed `@iconify-json/lucide` set. `icon.fallbackToApi` stays false, so an icon is not fetched from a CDN at runtime. Inputs are labeled, 16px, and submit with Enter.
 
+When building or changing a screen, layout, or theme, open `.agents/skills/nuxt-ui/SKILL.md` and then the layout or guideline it names.
+
 ## Shell guard
 
 The shell hook's input and output are the Cursor hook JSON: `permission` is `allow` or `deny`, and a denial sets `user_message` and `agent_message`.
