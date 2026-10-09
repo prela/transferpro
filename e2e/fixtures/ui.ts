@@ -58,10 +58,58 @@ export async function chooseOption(page: Page, combobox: Locator, name: string) 
 }
 
 /**
+ * Tenant settings writes, Members, invitations, role change, and removal.
+ * A GET of tenant settings is not one of these: every Tenant role may read it.
+ */
+export function isAdminSettingsRequest(method: string, path: string) {
+  if (method === 'PATCH' && path === '/api/tenant-settings')
+    return true
+  if (path === '/api/members' || path.startsWith('/api/members/'))
+    return true
+  if (path === '/api/invitations' || path.startsWith('/api/invitations/'))
+    return true
+  return false
+}
+
+/**
+ * A Dispatcher or a Driver who opens an Admin settings address lands on
+ * Profile, and the browser does not call the Admin endpoints above.
+ */
+export async function expectSettingsRedirect(page: Page, path: '/settings/tenant' | '/settings/members') {
+  const seen: string[] = []
+  const onRequest = (request: { method: () => string, url: () => string }) => {
+    const pathname = new URL(request.url()).pathname
+    if (isAdminSettingsRequest(request.method(), pathname))
+      seen.push(`${request.method()} ${pathname}`)
+  }
+  page.on('request', onRequest)
+  try {
+    await page.goto(path)
+    await expect(page).toHaveURL(/\/settings\/profile$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Pozovi člana' })).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'Članovi' })).toHaveCount(0)
+    await page.waitForLoadState('networkidle')
+    expect(seen).toEqual([])
+  }
+  finally {
+    page.off('request', onRequest)
+  }
+}
+
+/** The invitation form and the Member list live on the Members tab. */
+export async function openMembers(page: Page) {
+  await page.goto('/settings/members')
+  await expect(page.getByRole('region', { name: 'Pozovi člana' })).toBeVisible()
+}
+
+/**
  * The invite link is on the screen. The server is the fake mailer, so this
- * does not read a Resend response.
+ * does not read a Resend response. The form is the Members tab.
  */
 export async function invite(page: Page, email: string, role: InviteRole): Promise<string> {
+  await openMembers(page)
   const region = page.getByRole('region', { name: 'Pozovi člana' })
   await region.getByLabel('E-pošta').fill(email)
   const select = region.getByRole('combobox', { name: 'Uloga' })

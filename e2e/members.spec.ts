@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { openMembers, signIn } from './fixtures/ui'
 
 test('admin changes a role and removes the member through the confirmation modal', async ({ page }) => {
   const tenant = await seedTenant('members')
   const driver = await seedMember(tenant.tenantId, 'driver', 'Vozač')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await openMembers(page)
 
   const row = page.getByRole('row', { name: driver.name })
   await row.getByRole('combobox', { name: 'Uloga' }).click()

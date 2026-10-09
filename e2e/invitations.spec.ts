@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { memberPassword, seedTenant } from './fixtures/seed'
-import { chooseOption, expectNoInvitationCookie, invite, signIn, signOut } from './fixtures/ui'
+import { chooseOption, expectNoInvitationCookie, invite, openMembers, signIn, signOut } from './fixtures/ui'
 
 test('a failed send shows the message and the copyable invite link', async ({ page }) => {
   const tenant = await seedTenant('invite-mail-fail')
@@ -29,6 +29,7 @@ test('a failed send shows the message and the copyable invite link', async ({ pa
 test('invite without a role shows the role message', async ({ page }) => {
   const tenant = await seedTenant('invite-role')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await openMembers(page)
   const region = page.getByRole('region', { name: 'Pozovi člana' })
   await region.getByLabel('E-pošta').fill(`e2e-norole-${crypto.randomUUID()}@example.test`)
   await region.getByRole('button', { name: 'Pošalji pozivnicu', exact: true }).click()
@@ -38,6 +39,7 @@ test('invite without a role shows the role message', async ({ page }) => {
 test('inviting an existing member shows the already-member message', async ({ page }) => {
   const tenant = await seedTenant('invite-member')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await openMembers(page)
   const region = page.getByRole('region', { name: 'Pozovi člana' })
   await region.getByLabel('E-pošta').fill(tenant.adminEmail)
   // This path never shows an invite link, so invite() cannot wait for one.
@@ -71,6 +73,7 @@ test('accepts a new account after sign-out, then remove and invite again succeed
 
   await signOut(page)
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await openMembers(page)
   const row = page.getByRole('row', { name: invitee })
   await row.getByRole('button', { name: 'Ukloni člana', exact: true }).click()
   const dialog = page.getByRole('dialog')

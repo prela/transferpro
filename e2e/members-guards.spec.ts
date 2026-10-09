@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { openMembers, signIn } from './fixtures/ui'
 
 test('an admin cannot change or remove themselves, and can cancel a removal', async ({ page }) => {
   const tenant = await seedTenant('members-guards')
   const driver = await seedMember(tenant.tenantId, 'driver', 'Vozac')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await openMembers(page)
 
   const selfRow = page.getByRole('row', { name: tenant.adminName })
   await expect(selfRow.getByText('(vi)', { exact: true })).toBeVisible()

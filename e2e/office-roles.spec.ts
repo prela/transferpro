@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { expectSettingsRedirect, signIn } from './fixtures/ui'
 
 const officeLinks = ['Početna', 'Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored'] as const
 
-test('a dispatcher sees office screens and read-only settings, and cannot invite', async ({ page }) => {
+test('a dispatcher sees office screens, and Home has no member list or settings form', async ({ page }) => {
   const tenant = await seedTenant('office-disp')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
@@ -14,18 +14,15 @@ test('a dispatcher sees office screens and read-only settings, and cannot invite
   for (const name of officeLinks)
     await expect(nav.getByRole('link', { name })).toBeVisible()
 
+  await expect(page.getByText('Primjer vremena')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Pozovi člana' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: 'Članovi' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Članovi' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Ukloni člana', exact: true })).toHaveCount(0)
   await expect(page.getByRole('combobox', { name: 'Uloga' })).toHaveCount(0)
-
-  const settings = page.getByRole('region', { name: 'Postavke' })
-  await expect(settings.getByText('90', { exact: true })).toBeVisible()
-  await expect(settings.getByText('25', { exact: true })).toBeVisible()
-  await expect(settings.getByText('Europe/Zagreb', { exact: true })).toBeVisible()
-  await expect(settings.getByText('Samo administrator može ovo promijeniti.')).toBeVisible()
-  await expect(settings.getByRole('button', { name: 'Spremi', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
+  await expect(page.getByText('Samo administrator može ovo promijeniti.')).toHaveCount(0)
 
   await nav.getByRole('link', { name: 'Klijenti' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
@@ -51,6 +48,15 @@ test('a driver does not see office navigation or office actions on home', async 
   await expect(page.getByRole('heading', { name: 'Članovi' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Ukloni člana', exact: true })).toHaveCount(0)
-  await expect(page.getByText('Samo administrator može ovo promijeniti.')).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Postavke' }).getByRole('button', { name: 'Spremi', exact: true })).toHaveCount(0)
+  await expect(page.getByText('Samo administrator može ovo promijeniti.')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
+})
+
+test('a dispatcher who opens tenant settings or members lands on profile', async ({ page }) => {
+  const tenant = await seedTenant('office-disp-redirect')
+  const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
+  await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
+  await expectSettingsRedirect(page, '/settings/tenant')
+  await expectSettingsRedirect(page, '/settings/members')
+  await expect(page.getByRole('navigation', { name: 'Postavke' }).getByRole('link')).toHaveText(['Profil'])
 })

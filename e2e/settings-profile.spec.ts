@@ -20,7 +20,10 @@ test('/settings opens Profile for an admin, a dispatcher, and a driver', async (
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
     await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
     const tabs = page.getByRole('navigation', { name: 'Postavke' })
-    await expect(tabs.getByRole('link')).toHaveText(['Profil'])
+    const admin = member.email === tenant.adminEmail
+    await expect(tabs.getByRole('link')).toHaveText(admin
+      ? ['Profil', 'Organizacija', 'Članovi']
+      : ['Profil'])
     await expect(tabs.getByRole('link', { name: 'Profil', exact: true })).toHaveAttribute('aria-current', 'page')
     // Driver Home is where that role signs out. Office staff can leave from here.
     await page.goto('/')
@@ -187,24 +190,45 @@ test('a dispatcher and a driver on Profile do not request admin endpoints', asyn
   }
 })
 
-test('the Profile tab is reachable from the keyboard', async ({ page }) => {
+test('the settings tabs are reachable and operable from the keyboard', async ({ page }) => {
   const tenant = await seedTenant('settings-profile-keys')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.goto('/settings/profile')
 
-  const tab = page.getByRole('navigation', { name: 'Postavke' }).getByRole('link', { name: 'Profil', exact: true })
+  const nav = page.getByRole('navigation', { name: 'Postavke' })
+  const profile = nav.getByRole('link', { name: 'Profil', exact: true })
+  const tenantTab = nav.getByRole('link', { name: 'Organizacija', exact: true })
+  const members = nav.getByRole('link', { name: 'Članovi', exact: true })
+
+  await focusByTab(page, profile)
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/settings\/profile$/)
+  await expect(profile).toHaveAttribute('aria-current', 'page')
+
+  await focusByTab(page, tenantTab)
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/settings\/tenant$/)
+  await expect(tenantTab).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('region', { name: 'Postavke' }).getByRole('button', { name: 'Spremi', exact: true })).toBeVisible()
+
+  await focusByTab(page, members)
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/settings\/members$/)
+  await expect(members).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('region', { name: 'Pozovi člana' })).toBeVisible()
+})
+
+/** Tab from the top of the page until this control is focused. */
+async function focusByTab(page: Page, tab: ReturnType<Page['getByRole']>) {
   await expect(tab).toBeVisible()
   await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement)
       document.activeElement.blur()
   })
-  for (let step = 0; step < 30 && !(await tab.evaluate(element => element === document.activeElement)); step++)
+  for (let step = 0; step < 40 && !(await tab.evaluate(element => element === document.activeElement)); step++)
     await page.keyboard.press('Tab')
   await expect(tab).toBeFocused()
-  await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/\/settings\/profile$/)
-  await expect(tab).toHaveAttribute('aria-current', 'page')
-})
+}
 
 /** The document is interactive. A click before this misses the Vue handler. */
 async function hydrated(page: Page) {
