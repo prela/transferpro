@@ -46,3 +46,23 @@ Fixed point `feature/115-office-home-bf0e` resolves (`9fcc7bf`). The diff is non
 **(b) Scope creep:** none. The clock argument on the day list exists so the default-before-05:00 case can be fixed. After a save, the board follows the recorded pickup’s operational day.
 
 **(c) Implemented but wrong:** none. The query is `pickup_at >= start and pickup_at < end` with those 05:00 instants, including the daylight-saving bounds.
+
+### e2e seeds
+
+Fixed point `b537dde`. Commit `0b56573`.
+
+## Standards
+
+No hard breaches. Seeds that must appear on the open board use `operationalDateInTimeZone` at 05:00 or later, so that date string is also the pickup’s calendar date. Licence dates still use `calendarDateInTimeZone`.
+
+**Judgement call — Mysterious Name.** `recordTodayRide` still says “today” after the body returns the operational day, which before 05:00 is the previous calendar date. The test title in `e2e/transfers.spec.ts` still says “today’s list”.
+
+**Judgement call — Duplicated Code.** The operational-day seed and the noon-before-05:00 warning are copied in `e2e/day-list-accept-by-phone.spec.ts`, `e2e/ride-assign.spec.ts`, and `e2e/transfers.spec.ts`.
+
+## Spec
+
+**(a) Missing or partial:** none. Seeds that must appear on the open board use `operationalDateInTimeZone` at 10:00, 11:00, or 12:00, so they sit in `[local 05:00, next local 05:00)`. `transfers.spec.ts` still expects the guest after save and after the locale reload. Roster writes still use that same date string. The 30-day rejection and the form’s calendar-noon default are untouched. No assertion was removed.
+
+**(b) Scope creep:** none. No product file is in the diff.
+
+**(c) Implemented but wrong:** none.
