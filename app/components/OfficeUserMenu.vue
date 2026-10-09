@@ -2,11 +2,11 @@
 import type { DropdownMenuItem } from '@nuxt/ui'
 
 /**
- * Office navbar menu. It names the Tenant and signs out.
+ * Office navbar menu. It names the Tenant, opens Settings, and signs out.
  * The session shell has no personal display name, so this menu does not invent one.
  * Sign-out is the shared shell action: success clears that shell and leaves the
  * device theme; failure keeps the Tenant and sets the alert already on the page.
- * Settings stays out until a later ticket.
+ * Language and theme stay on Profile, and on the signed-out screen.
  */
 const { t } = useI18n()
 const { session, pending, signOut } = useShellSignOut()
@@ -17,14 +17,21 @@ const items = computed<DropdownMenuItem[][]>(() => {
     return []
   return [
     [{ label: tenantName, type: 'label' }],
-    [{
-      label: pending.value ? t('shell.signingOut') : t('shell.signOut'),
-      icon: 'i-lucide-log-out',
-      disabled: pending.value,
-      onSelect: () => {
-        void signOut()
+    [
+      {
+        label: t('shell.settings'),
+        icon: 'i-lucide-settings',
+        to: '/settings',
       },
-    }],
+      {
+        label: pending.value ? t('shell.signingOut') : t('shell.signOut'),
+        icon: 'i-lucide-log-out',
+        disabled: pending.value,
+        onSelect: () => {
+          void signOut()
+        },
+      },
+    ],
   ]
 })
 </script>

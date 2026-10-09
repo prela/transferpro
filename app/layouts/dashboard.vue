@@ -8,9 +8,11 @@ const { t } = useI18n()
  * use this layout. Collapse is stored in localStorage under
  * `transferpro-dashboard` (Nuxt UI appends `-sidebar-shell`), not a cookie.
  * The navbar has no title: that prop is an h1, and each page already has one.
- * The right slot is the user menu: the Tenant name and sign-out.
- * Home is exact so it is current only on `/`. The aria-label stays when the
- * collapsed rail hides the visible label (`display: none` drops it from the name).
+ * The right slot is the user menu: the Tenant name, Settings, and sign-out.
+ * Home is exact so it is current only on `/`. Settings is not exact: Profile
+ * lives under `/settings`, and the item stays current for that section.
+ * The aria-label stays when the collapsed rail hides the visible label
+ * (`display: none` drops it from the name).
  * Collapse and the phone toggle are size xl: they are tapped (ADR-0016).
  */
 const items = computed<NavigationMenuItem[]>(() => [
@@ -21,6 +23,7 @@ const items = computed<NavigationMenuItem[]>(() => [
   link(t('drivers.nav'), 'i-lucide-id-card', '/drivers'),
   link(t('vehicles.nav'), 'i-lucide-car', '/vehicles'),
   link(t('roster.nav'), 'i-lucide-calendar', '/roster'),
+  link(t('shell.settings'), 'i-lucide-settings', '/settings'),
 ])
 
 function link(label: string, icon: string, to: string, exact = false): NavigationMenuItem {
