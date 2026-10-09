@@ -44,8 +44,15 @@ test('collapse is stored under transferpro-dashboard and the rail stays keyboard
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
 
   const nav = page.getByRole('navigation', { name: 'Odjeljci' })
+  const home = nav.getByRole('link', { name: 'Početna', exact: true })
+  // Sign-in can leave focus on the page. Blur, then Tab from the top once the rail is up.
+  await expect(home).toBeVisible()
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur()
+  })
   await page.keyboard.press('Tab')
-  await expect(nav.getByRole('link', { name: 'Početna', exact: true })).toBeFocused()
+  await expect(home).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(nav.getByRole('link', { name: 'Transferi', exact: true })).toBeFocused()
   await page.keyboard.press('Enter')
