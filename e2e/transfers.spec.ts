@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { addCalendarDays, calendarDateInTimeZone } from '../shared/date'
+import { addCalendarDays, operationalDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, signIn, switchLocale } from './fixtures/ui'
 
@@ -34,7 +34,9 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
   await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
   await page.getByRole('button', { name: 'Dodaj mjesto', exact: true }).click()
 
-  const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
+  // Noon on the operational day the board opens on. A calendar-date noon
+  // before 05:00 is the next operational day, and a later reload drops the Ride.
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
   const tooEarly = addCalendarDays(day, -40)
   await chooseOption(page, page.getByRole('combobox', { name: 'Klijent' }), clientName)
   await chooseOption(page, page.getByRole('combobox', { name: 'Polazište' }), startPlace)

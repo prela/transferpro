@@ -9,6 +9,7 @@ Out of scope: the office Home snapshot (#146), the unassigned alarm, and a confi
 - A missing date on `GET /api/transfers`, and the date the board opens on, are the operational day that contains now, including before 05:00. `listTransferDay` takes that clock as its third argument so a test can pin the instant.
 - Recording a pickup is unchanged, including the 30-day window. The form still defaults to noon on the calendar date. After a save, the board shows the operational day of that pickup.
 - No migration and no new copy.
+- An e2e Ride that must show on the open board is seeded on that operational day, at 05:00 or later. Noon on the calendar date is the next operational day when now is before 05:00, and a reload of the board does not list it. The roster key for that seed stays the calendar date, which matches because the clock is after 05:00.
 
 ## Code review
 
