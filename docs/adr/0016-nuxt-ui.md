@@ -38,7 +38,7 @@ shadcn-vue. It copies component source into this repo for us to maintain. A seco
 
 New screens use Nuxt UI components and tokens. A second library would fight the theme and the accessibility work already in these controls.
 
-`app/assets/shell.css` is gone. The system font and the button cursor live in `app/assets/css/main.css`. Each page's `main` stays at most 28rem, the width the shell used.
+`app/assets/shell.css` is gone. The system font and the button cursor live in `app/assets/css/main.css`. Pages inside the office shell use the panel width. Sign-in, the invitation accept screen, and the Driver phone column stay at most 28rem, the width the shell used.
 
 Dark mode is the `dark` class, not `data-theme`.
 

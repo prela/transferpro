@@ -17,7 +17,8 @@
     "unavailable": "The screen could not be loaded. Try again.",
     "noAccess": "You are not a member of any tenant. Sign out or ask for a new invitation.",
     "saveFailed": "The locale was not saved. Try again.",
-    "nav": "Sections"
+    "nav": "Sections",
+    "home": "Home"
   },
   "locale": {
     "hr": "Hrvatski",
@@ -162,7 +163,6 @@
   },
   "clients": {
     "nav": "Clients",
-    "home": "Home",
     "title": "Clients",
     "add": "Add a client",
     "edit": "Correct client",
@@ -193,7 +193,6 @@
   },
   "locations": {
     "nav": "Locations",
-    "home": "Home",
     "title": "Locations",
     "add": "Add a location",
     "edit": "Correct location",
@@ -236,7 +235,6 @@
   },
   "transfers": {
     "nav": "Transfers",
-    "home": "Home",
     "title": "Transfers",
     "day": "Day",
     "loading": "Loading rides",
@@ -329,7 +327,6 @@
   },
   "drivers": {
     "nav": "Drivers",
-    "home": "Home",
     "title": "Drivers",
     "add": "Add a driver",
     "edit": "Correct driver",
@@ -380,7 +377,6 @@
   },
   "vehicles": {
     "nav": "Vehicles",
-    "home": "Home",
     "title": "Vehicles",
     "add": "Add a vehicle",
     "edit": "Correct vehicle",
@@ -430,7 +426,6 @@
   },
   "roster": {
     "nav": "Roster",
-    "home": "Home",
     "title": "Vehicle roster",
     "date": "Date",
     "intro": "One vehicle per driver for this day. A vehicle already given to another driver that day is refused.",
