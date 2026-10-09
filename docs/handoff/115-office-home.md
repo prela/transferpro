@@ -1,6 +1,6 @@
 # 115 Office home
 
-Grill decisions for the office home. The read shape is still open.
+Grill closed 10 October 2026. Nothing left open.
 
 ## Decisions
 
@@ -13,4 +13,5 @@ Grill decisions for the office home. The read shape is still open.
 - The office sees every price and payment method on this screen. The Driver still sees price and payment method only for cash (ADR-0009, ADR-0020).
 - A ride row may show the flight number as text. A live flight link belongs on the ride detail. This issue does not add a flight tracker.
 - Home loads on open and on a manual refresh. It does not poll.
+- One office read returns the three lists and the seven operational-day counts from one moment (ADR-0024). Expiring documents stay on their own read. Opening and refresh each load both.
 - Expiring documents stay as they are, including who sees which row. Notifications stay mail only. Maps stay on Locations. Locale and theme stay on Profile.
