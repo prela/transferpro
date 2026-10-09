@@ -8,6 +8,14 @@ Upstream is mattpocock/skills v1.3.1. A future vendor update must re-apply the d
 - (b) Mandatory `docs/handoff/<N>-<slug>.md` step after `/code-review` (this chore). One-line out-of-scope, `## Decisions` (only what the next agent must follow), and `## Code review` with Standards and Spec pasted verbatim (judgement calls and Spec a/b/c). No PR without that file. Delete it on merge.
 - (c) PR body must strip Cursor footer / `CURSOR_AGENT_PR_BODY_*` / Open-in-Web|Cursor image links; body is Why / What (+ `Closes #N` / ASVS when required).
 
+## Lead: code-review subagents
+
+Damir + NEO, 10.10.2026. Both code-review subagents run with `fast=false`. Set that at implement launch, or in `.agents/skills/implement/SKILL.md` before the run starts.
+
+Leave a running implement's review model and `fast` as they were at launch. A steer that changes either one spawns a second pair of review subagents while the first pair keeps running. That steer is forbidden.
+
+`.agents/skills/implement/SKILL.md` does not set a review model or `fast`, and it does not allow a change mid-run, so this rule stays in this file.
+
 ## Not this workflow
 
 The Pocock `handoff` skill writes to the OS temp directory. It is not part of this workflow. Lead QC uses only the repo file `docs/handoff/<N>-<slug>.md`.
