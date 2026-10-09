@@ -143,12 +143,13 @@ watch(generation, () => {
 
 <template>
   <section>
-    <h2
+    <!-- The log is the page. Home no longer hosts it, so this is the h1. -->
+    <h1
       :id="titleId"
-      class="mt-6 mb-4 text-xl font-semibold"
+      class="mb-4 text-2xl font-semibold"
     >
       {{ t('audit.title') }}
-    </h2>
+    </h1>
     <UAlert
       v-if="loadError"
       color="error"

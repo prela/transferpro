@@ -17,8 +17,8 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
   await settings.getByRole('button', { name: 'Spremi', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Spremljeno.' })).toBeVisible()
 
-  // The log stays on Home. Opening it reads the rows the save already wrote.
-  await page.goto('/')
+  // The log is on Audit. Opening it reads the rows the save already wrote.
+  await page.goto('/audit')
   await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toBeVisible()
   await expect(page.getByText('Promijenjeno čekanje na aerodromu')).toBeVisible()
   await expect(page.getByText('90 → 45 min')).toBeVisible()

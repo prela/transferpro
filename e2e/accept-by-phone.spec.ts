@@ -18,7 +18,7 @@ async function createdId(response: APIResponse): Promise<string> {
 
 /**
  * Records an assigned Ride whose copied flag is on, then the office accepts it by phone.
- * This screen is the audit log. The day-list button is covered separately.
+ * The audit log is /audit. The day-list button is covered separately.
  */
 async function acceptByPhone(page: Page): Promise<void> {
   const driverId = await createdId(await page.request.post('/api/drivers', {
@@ -80,7 +80,7 @@ test('the audit log names the admin and says the acceptance was confirmed by pho
   const tenant = await seedTenant('phone-accept')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await acceptByPhone(page)
-  await page.reload()
+  await page.goto('/audit')
 
   const row = page.getByRole('row', { name: 'Prihvaćanje potvrđeno telefonom' })
   await expect(row).toContainText(tenant.adminName)

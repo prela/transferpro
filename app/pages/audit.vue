@@ -1,0 +1,75 @@
+<script setup lang="ts">
+/**
+ * The audit log for an Admin. The shared admin middleware is the only
+ * gate: a Dispatcher or a Driver is sent Home, and a signed-out visitor
+ * gets the sign-in form, before this page loads. Do not add a second
+ * admin check. The log loads when it opens. It does not live-update
+ * from another route. Locale and theme stay here until #124.
+ */
+definePageMeta({
+  middleware: 'admin',
+  layout: 'dashboard',
+})
+
+const {
+  t,
+  session,
+  loadError,
+  pending,
+  shellError,
+  signOut,
+  chooseLocale,
+  loadMessage,
+} = await useSessionShell()
+
+useHead({
+  title: () => t('audit.title'),
+})
+</script>
+
+<template>
+  <main class="box-border w-full p-4">
+    <section v-if="loadError">
+      <UAlert
+        color="error"
+        variant="subtle"
+        role="alert"
+        class="mb-4"
+        :description="t(loadMessage)"
+      />
+      <UButton
+        type="button"
+        size="xl"
+        :disabled="pending"
+        @click="signOut"
+      >
+        {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
+      </UButton>
+    </section>
+
+    <!--
+      Mount the log only for an Admin. A non-admin who reached this page
+      because the middleware read failed must not request the audit endpoint.
+    -->
+    <section v-else-if="session?.role === 'admin'">
+      <p class="text-sm text-muted">
+        {{ t('shell.tenant') }}: {{ session.tenantName }}
+      </p>
+      <AuditLog
+        :time-zone="session.timeZone"
+        :locale="session.locale"
+      />
+      <UAlert
+        v-if="shellError"
+        color="error"
+        variant="subtle"
+        role="alert"
+        class="mt-4"
+        :description="t(shellError)"
+      />
+      <div class="mt-4 flex flex-wrap gap-2">
+        <LocaleThemeActions @choose="chooseLocale" />
+      </div>
+    </section>
+  </main>
+</template>

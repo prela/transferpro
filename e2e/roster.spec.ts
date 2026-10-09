@@ -79,7 +79,7 @@ test('admin gives a driver a vehicle for the day, and the audit log keeps the pl
   await expect(page.getByRole('button', { name: `Clear vehicle for ${otherDriverName}` })).toBeVisible()
 
   await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
-  await page.getByRole('link', { name: 'Početna' }).click()
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizijski zapisnik', exact: true }).click()
   await expect(page.getByRole('cell', { name: 'Vozilo dodijeljeno za dan', exact: true }).first()).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vozilo za dan promijenjeno', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vozilo za dan uklonjeno', exact: true })).toBeVisible()

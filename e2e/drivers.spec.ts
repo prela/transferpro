@@ -50,7 +50,7 @@ test('admin adds a driver, corrects it, and the audit log does not show the phon
   await expect(page.getByRole('cell', { name: '3.3.2029.' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Da', exact: true })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Početna' }).click()
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizijski zapisnik', exact: true }).click()
   await expect(page.getByRole('cell', { name: 'Vozač dodan', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vozač ispravljen', exact: true }).first()).toBeVisible()
   await expect(page.getByText(phone)).toHaveCount(0)

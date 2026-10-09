@@ -3,9 +3,11 @@ import { platformShellSchema, sessionShellSchema } from '../../shared'
 
 /**
  * Payload key for the signed-in Tenant shell.
- * Home and the office pages share this entry. `MemberInvite` refreshes it on 401.
+ * Home, the office pages, and the office sidebar share this entry.
+ * `MemberInvite` refreshes it on 401. The sidebar reads it so a sign-in
+ * can show Audit without a second session request.
  */
-const sessionShellKey = 'session-shell'
+export const sessionShellKey = 'session-shell'
 
 interface SessionShellOptions {
   /**

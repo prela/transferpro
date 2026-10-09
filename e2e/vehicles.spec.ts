@@ -53,7 +53,7 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await expect(page.getByRole('button', { name: 'Ispravi vozilo: ZG111AA' })).toHaveCount(0)
   await expect(page.getByRole('cell', { name: 'Arhivirano' })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Početna' }).click()
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizijski zapisnik', exact: true }).click()
   await expect(page.getByRole('cell', { name: 'Vozilo dodano', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vozilo ispravljeno', exact: true }).first()).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vozilo arhivirano', exact: true })).toBeVisible()

@@ -54,7 +54,7 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   await expect(page.getByRole('cell', { name: 'Arhivirano' })).toBeVisible()
   await expect(page.getByRole('cell', { name: nextPlace })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Početna' }).click()
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizijski zapisnik', exact: true }).click()
   await expect(page.getByRole('cell', { name: 'Lokacija dodana', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Lokacija ispravljena', exact: true }).first()).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Lokacija arhivirana', exact: true })).toBeVisible()

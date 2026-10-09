@@ -127,14 +127,9 @@ function httpStatus(error: unknown): number | undefined {
       </template>
       <ExpiringDocuments />
       <!--
-        Tenant settings, Members, and invitations live on the Admin settings
-        tabs. Home keeps the example instant, expiring documents, and the log.
+        Tenant settings, Members, invitations, and the audit log live on
+        their own screens. Home keeps the example instant and expiring documents.
       -->
-      <AuditLog
-        v-if="session.role === 'admin'"
-        :time-zone="session.timeZone"
-        :locale="session.locale"
-      />
       <UAlert
         v-if="shellError"
         color="error"

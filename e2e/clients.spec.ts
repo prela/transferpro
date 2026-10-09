@@ -44,8 +44,8 @@ test('admin adds a client, corrects it, and the audit log shows the entries', as
   await expect(page.getByRole('button', { name: 'Ispravi klijenta: Marko Marić' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Osoba' })).toBeVisible()
 
-  // Home mounts the log that was notified from this page. Assert before reload.
-  await page.getByRole('link', { name: 'Početna' }).click()
+  // Audit mounts the log. Opening it reads the rows this page already wrote.
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizijski zapisnik', exact: true }).click()
   await expect(page.getByRole('cell', { name: 'Klijent dodan', exact: true })).toHaveCount(2)
   await expect(page.getByRole('cell', { name: 'Ime klijenta ispravljeno', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vrsta klijenta ispravljena', exact: true })).toBeVisible()
