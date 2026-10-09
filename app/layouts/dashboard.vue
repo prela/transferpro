@@ -4,6 +4,13 @@ import type { NavigationMenuItem } from '@nuxt/ui'
 const { t } = useI18n()
 
 /**
+ * Apply the saved Locale before this template renders. The layout is the
+ * parent, so without this the sidebar is painted in the default language
+ * and its accessible names stay there after the visible labels update.
+ */
+await useSessionShell()
+
+/**
  * Office shell for an Admin or a Dispatcher. A Driver and a Superadmin never
  * use this layout. Collapse is stored in localStorage under
  * `transferpro-dashboard` (Nuxt UI appends `-sidebar-shell`), not a cookie.

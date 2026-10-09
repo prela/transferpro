@@ -33,6 +33,7 @@ test('profile saves hr and en through POST /api/locale and the next screen uses 
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.goto('/settings/profile')
   await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  await hydrated(page)
 
   const english = page.waitForRequest(request =>
     request.method() === 'POST' && new URL(request.url()).pathname === '/api/locale',
@@ -45,6 +46,8 @@ test('profile saves hr and en through POST /api/locale and the next screen uses 
   await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Home', exact: true })).toBeVisible()
 
   await page.goto('/settings/profile')
+  await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible()
+  await hydrated(page)
   const croatian = page.waitForRequest(request =>
     request.method() === 'POST' && new URL(request.url()).pathname === '/api/locale',
   )
@@ -61,6 +64,7 @@ test('a failed locale save shows the existing failure message', async ({ page })
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.goto('/settings/profile')
   await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  await hydrated(page)
   await page.route('**/api/locale', async (route) => {
     await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' })
   })
@@ -76,6 +80,9 @@ test('the theme control changes light and dark for this browser only', async ({ 
   await useTheme(page, 'light')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.goto('/settings/profile')
+  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  // The theme class is set before Vue hydrates. A click in that gap is lost.
+  await hydrated(page)
   await expect(page.locator('html')).not.toHaveClass(/dark/)
 
   const writes: string[] = []
@@ -115,6 +122,7 @@ test('an admin and a dispatcher open Profile from the sidebar and the user menu'
     await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toBeVisible()
 
     await page.goto('/')
+    await hydrated(page)
     const menu = await openUserMenu(page, tenant.name)
     await menu.getByRole('menuitem', { name: 'Postavke', exact: true }).click()
     await expect(page).toHaveURL(/\/settings\/profile$/)
@@ -155,6 +163,9 @@ test('a dispatcher and a driver on Profile do not request admin endpoints', asyn
       await page.goto('/settings/profile')
       await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
       await expect(page.getByRole('button', { name: 'English', exact: true })).toBeVisible()
+      // Home may still be loading Members when Profile's document starts.
+      seen.length = 0
+      await page.waitForLoadState('networkidle')
       expect(seen).toEqual([])
     }
     finally {
@@ -183,6 +194,16 @@ test('the Profile tab is reachable from the keyboard', async ({ page }) => {
   await expect(page).toHaveURL(/\/settings\/profile$/)
   await expect(tab).toHaveAttribute('aria-current', 'page')
 })
+
+/** The document is interactive. A click before this misses the Vue handler. */
+async function hydrated(page: Page) {
+  await page.waitForFunction(() => {
+    const root = document.querySelector('#__nuxt')
+    const app = root ? Reflect.get(root, '__vue_app__') : undefined
+    const nuxt = app?.config?.globalProperties?.$nuxt
+    return nuxt?.isHydrating === false
+  })
+}
 
 /** Tenant settings writes, Members, invitations, role change, removal, and the audit log. */
 function isAdminRequest(method: string, path: string) {
