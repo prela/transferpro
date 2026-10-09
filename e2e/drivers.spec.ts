@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, openAudit, signIn } from './fixtures/ui'
+import { chooseOption, openAudit, signIn, switchLocale } from './fixtures/ui'
 
 const phone = '+385981112233'
 const nextPhone = '+385981112244'
@@ -20,11 +20,19 @@ test('admin adds a driver, corrects it, and the audit log does not show the phon
   await page.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Unesite ime.')
 
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
+  await chooseOption(page, page.getByRole('combobox', { name: 'Kind' }), 'Own')
+  await page.getByLabel('Phone').fill(phone)
+  await page.getByLabel('Driving licence valid until').fill('2027-06-01')
+  await page.getByLabel('Transport licence valid until').fill('2028-01-31')
   await page.getByRole('button', { name: 'Add driver', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Enter a name.')
 
-  await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
+  await switchLocale(page, 'hr')
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Vlastiti')
+  await page.getByLabel('Telefon').fill(phone)
+  await page.getByLabel('Vozačka dozvola vrijedi do').fill('2027-06-01')
+  await page.getByLabel('Dozvola za prijevoz vrijedi do').fill('2028-01-31')
   await page.getByLabel('Ime').fill('Marko Marić')
   await chooseOption(page, page.getByRole('combobox', { name: 'Član' }), linked.name)
   await page.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()

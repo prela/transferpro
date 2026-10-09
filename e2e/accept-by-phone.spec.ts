@@ -2,7 +2,7 @@ import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { seedTenant } from './fixtures/seed'
-import { signIn, useTheme } from './fixtures/ui'
+import { signIn, switchLocale, useTheme } from './fixtures/ui'
 
 const phone = '+385911113344'
 const plate = 'DU107AA'
@@ -94,7 +94,7 @@ test('the audit log names the admin and says the acceptance was confirmed by pho
   await page.reload()
   await expect(page.getByRole('row', { name: 'Prihvaćanje potvrđeno telefonom' })).toContainText(tenant.adminName)
 
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
   const english = page.getByRole('row', { name: 'Acceptance confirmed by phone' })
   await expect(english).toContainText(tenant.adminName)
   await expect(english.getByRole('cell', { name: `${tenant.adminName} Acceptance confirmed by phone`, exact: true })).toBeVisible()

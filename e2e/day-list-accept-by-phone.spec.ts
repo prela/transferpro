@@ -2,7 +2,7 @@ import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn, signOut, useTheme } from './fixtures/ui'
+import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
 const waitingGuest = 'Nika Phone'
@@ -162,7 +162,7 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   await expect(waitingRow.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
   expect(await dayRide(page, waiting.day, waitingGuest)).toMatchObject({ state: 'assigned', mustAccept: true })
 
-  await page.getByRole('button', { name: 'Tamna tema' }).click()
+  await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await waitingRow.getByRole('button', { name: acceptName }).click()
   await expect(dialog).toContainText('Ovo bilježi prihvaćanje potvrđeno s vozačem telefonom.')
@@ -171,7 +171,7 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   await expect(dialog).toBeHidden()
   expect(acceptPosts).toBe(0)
 
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
   const englishName = `Record acceptance by phone: ${waitingGuest}`
   await expect(waitingRow.getByRole('button', { name: englishName })).toBeVisible()
   await expect(plainRow.getByRole('button', { name: /Record acceptance by phone/ })).toHaveCount(0)
@@ -204,11 +204,11 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   expect(await dayRide(page, plain.day, plainGuest)).toMatchObject({ state: 'assigned', mustAccept: false })
   expect(await dayRide(page, open.day, openGuest)).toMatchObject({ state: 'unassigned', mustAccept: null })
 
-  await page.getByRole('button', { name: 'Light theme' }).click()
+  await switchTheme(page, 'light')
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   await expect(waitingRow.getByRole('cell', { name: 'Accepted', exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
+  await switchLocale(page, 'hr')
   await expect(waitingRow.getByRole('cell', { name: 'Prihvaćeno', exact: true })).toBeVisible()
   await expect(waitingRow.getByRole('button', { name: acceptName })).toHaveCount(0)
   await expect(plainRow.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()

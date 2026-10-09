@@ -9,6 +9,78 @@ export async function signIn(page: Page, email: string, password: string, tenant
   await expect(page.getByRole('heading', { level: 1, name: tenantName })).toBeVisible()
 }
 
+const localeButton = {
+  hr: 'Hrvatski',
+  en: 'English',
+} as const
+
+const profileHeading = {
+  hr: 'Profil',
+  en: 'Profile',
+} as const
+
+const themeButton = {
+  light: /^(Svijetla tema|Light theme)$/,
+  dark: /^(Tamna tema|Dark theme)$/,
+} as const
+
+/**
+ * The document is interactive. A click before this misses the Vue handler.
+ * The theme class is set before Vue hydrates, and the same gap drops a locale click.
+ */
+export async function hydrated(page: Page) {
+  await page.waitForFunction(() => {
+    const root = document.querySelector('#__nuxt')
+    const app = root ? Reflect.get(root, '__vue_app__') : undefined
+    const nuxt = app?.config?.globalProperties?.$nuxt
+    return nuxt?.isHydrating === false
+  })
+}
+
+/**
+ * Save the Locale on Profile, then return to the screen under test.
+ * Signed-in Home, office pages, and settings tabs do not carry this button.
+ */
+export async function switchLocale(page: Page, locale: 'hr' | 'en') {
+  const returnTo = page.url()
+  await page.goto('/settings/profile')
+  await expect(page.getByRole('heading', { level: 1, name: /^(Profil|Profile)$/ })).toBeVisible()
+  await hydrated(page)
+  const saved = page.waitForResponse(response =>
+    response.request().method() === 'POST'
+    && new URL(response.url()).pathname === '/api/locale'
+    && response.ok(),
+  )
+  await page.getByRole('button', { name: localeButton[locale], exact: true }).click()
+  await saved
+  await expect(page.getByRole('heading', { level: 1, name: profileHeading[locale] })).toBeVisible()
+  if (new URL(returnTo).pathname !== '/settings/profile')
+    await page.goto(returnTo)
+}
+
+/**
+ * Change light or dark on Profile, then return to the screen under test.
+ * The choice stays in `transferpro-theme` on this browser.
+ */
+export async function switchTheme(page: Page, theme: 'light' | 'dark') {
+  const returnTo = page.url()
+  await page.goto('/settings/profile')
+  await expect(page.getByRole('heading', { level: 1, name: /^(Profil|Profile)$/ })).toBeVisible()
+  await hydrated(page)
+  await page.getByRole('button', { name: themeButton[theme] }).click()
+  if (theme === 'dark')
+    await expect(page.locator('html')).toHaveClass(/dark/)
+  else
+    await expect(page.locator('html')).not.toHaveClass(/dark/)
+  // An earlier useTheme() init script would put the old value back on the next
+  // document. Register this choice after it so the return keeps the click.
+  await page.addInitScript((value) => {
+    localStorage.setItem('transferpro-theme', value)
+  }, theme)
+  if (new URL(returnTo).pathname !== '/settings/profile')
+    await page.goto(returnTo)
+}
+
 /** Apply light or dark theme before the next navigation so color-mode paints the right variant. */
 export async function useTheme(page: Page, theme: 'light' | 'dark') {
   await page.emulateMedia({ colorScheme: theme })

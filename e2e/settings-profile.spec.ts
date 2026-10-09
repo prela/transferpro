@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { openUserMenu, signIn, signOut, useTheme } from './fixtures/ui'
+import { hydrated, openUserMenu, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 test('/settings opens Profile for an admin, a dispatcher, and a driver', async ({ page }) => {
   const tenant = await seedTenant('settings-profile-open')
@@ -48,6 +48,8 @@ test('profile saves hr and en through POST /api/locale and the next screen uses 
 
   await page.goto('/')
   await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Home', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Clients', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
 
   await page.goto('/settings/profile')
   await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible()
@@ -61,6 +63,69 @@ test('profile saves hr and en through POST /api/locale and the next screen uses 
 
   await page.goto('/')
   await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Početna', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Klijenti', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+})
+
+test('signed-in home and an office page do not show locale or theme buttons', async ({ page }) => {
+  const tenant = await seedTenant('settings-profile-no-chrome')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await expectNoLocaleTheme(page)
+
+  await page.getByRole('link', { name: 'Klijenti', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  await expectNoLocaleTheme(page)
+
+  await page.goto('/settings/tenant')
+  await expect(page.getByRole('heading', { level: 1, name: 'Organizacija' })).toBeVisible()
+  await expectNoLocaleTheme(page)
+
+  await signOut(page)
+  await hydrated(page)
+  await expect(page.getByRole('button', { name: 'English', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Sign in' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dark theme', exact: true })).toBeVisible()
+})
+
+test('an admin, a dispatcher, and a driver save locale and theme on profile and the next screen uses that choice', async ({ page }) => {
+  const tenant = await seedTenant('settings-profile-roles')
+  const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
+  const driver = await seedMember(tenant.tenantId, 'driver', 'Vozac')
+
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await switchLocale(page, 'en')
+  await page.goto('/clients')
+  await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
+  await switchTheme(page, 'dark')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
+  // Sign-out looks for the Croatian control, and the next Member starts from light.
+  await switchLocale(page, 'hr')
+  await switchTheme(page, 'light')
+  await page.goto('/')
+  await hydrated(page)
+  await signOut(page)
+
+  await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
+  await switchLocale(page, 'en')
+  await page.goto('/clients')
+  await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
+  await switchTheme(page, 'dark')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
+  await switchLocale(page, 'hr')
+  await switchTheme(page, 'light')
+  await page.goto('/')
+  await hydrated(page)
+  await signOut(page)
+
+  await signIn(page, driver.email, driver.password, tenant.name)
+  await switchLocale(page, 'en')
+  await expect(page.getByRole('heading', { name: 'My rides' })).toBeVisible()
+  await switchTheme(page, 'dark')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.getByRole('heading', { name: 'My rides' })).toBeVisible()
 })
 
 test('a failed locale save shows the existing failure message', async ({ page }) => {
@@ -230,14 +295,10 @@ async function focusByTab(page: Page, tab: ReturnType<Page['getByRole']>) {
   await expect(tab).toBeFocused()
 }
 
-/** The document is interactive. A click before this misses the Vue handler. */
-async function hydrated(page: Page) {
-  await page.waitForFunction(() => {
-    const root = document.querySelector('#__nuxt')
-    const app = root ? Reflect.get(root, '__vue_app__') : undefined
-    const nuxt = app?.config?.globalProperties?.$nuxt
-    return nuxt?.isHydrating === false
-  })
+/** Locale and theme buttons, in either locale. Signed-in office screens have none. */
+async function expectNoLocaleTheme(page: Page) {
+  for (const name of ['English', 'Hrvatski', 'Tamna tema', 'Svijetla tema', 'Dark theme', 'Light theme'])
+    await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
 }
 
 /** Tenant settings writes, Members, invitations, role change, removal, and the audit log. */

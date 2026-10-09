@@ -3,7 +3,7 @@ import pg from 'pg'
 import { calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { formatInstant } from '../shared/format-instant'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn, signOut, useTheme } from './fixtures/ui'
+import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 function required(name: string): string {
   const value = process.env[name]
@@ -206,7 +206,7 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
   expect(overflow).toBe(false)
 
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
   await expect(page.getByRole('heading', { name: 'My rides' })).toBeVisible()
   await expect(cashCard.getByText('Cash')).toBeVisible()
   await expect(cashCard.getByText('42.50 EUR')).toBeVisible()
@@ -223,7 +223,7 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(invoiceCard.getByText('Accepted')).toHaveCount(0)
   await expect(invoiceCard.getByText('Waiting on acceptance')).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Dark theme' }).click()
+  await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(cashCard.getByRole('heading', { name: 'Nika Sunce' })).toBeVisible()
   await expect(cardCard.getByText('99.00')).toHaveCount(0)
@@ -361,7 +361,7 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
   await expect(accepted.getByRole('button')).toHaveCount(0)
   await expect(plain.getByRole('button')).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Tamna tema' }).click()
+  await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(waiting.getByText('Čeka na prihvat')).toBeVisible()
   await expect(waiting.getByRole('button')).toHaveCount(1)
@@ -370,7 +370,7 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
   await expect(plain.getByText('Čeka na prihvat')).toHaveCount(0)
   await expect(plain.getByText('Prihvaćeno')).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
   await expect(waiting.getByText('Waiting on acceptance')).toBeVisible()
   await expect(waiting.getByText('Accepted')).toHaveCount(0)
   await expect(waiting.getByText('33.00')).toHaveCount(0)
@@ -391,7 +391,7 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
   expect(overflow).toBe(false)
 
-  await page.getByRole('button', { name: 'Light theme' }).click()
+  await switchTheme(page, 'light')
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   await expect(waiting.getByText('Waiting on acceptance')).toBeVisible()
   await expect(waiting.getByRole('button')).toHaveCount(1)
@@ -526,24 +526,32 @@ test('a driver accepts a waiting ride, and a conflict reloads the list', async (
   expect(await rideRow(conflictRide)).toMatchObject({ state: 'assigned', must_accept: false })
   expect(mail).toEqual([])
 
-  await page.getByRole('button', { name: 'Tamna tema' }).click()
+  await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(accepted.getByText('Prihvaćeno')).toBeVisible()
-  await expect(page.getByRole('alert')).toContainText('Ovu vožnju više nije moguće prihvatiti.')
 
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  // The conflict alert does not survive the Profile round-trip. Arm the same
+  // Ride again so the English screen shows the failure in the saved Locale.
+  await setCopiedMustAccept(conflictRide, true)
+  await switchLocale(page, 'en')
   await expect(accepted.getByText('Accepted')).toBeVisible()
+  await expect(conflicted.getByRole('button', { name: 'Accept ride', exact: true })).toBeVisible()
+  await setCopiedMustAccept(conflictRide, false)
+  const englishConflict = page.waitForResponse(response =>
+    response.url().includes(`/api/rides/${conflictRide}/accept`) && response.request().method() === 'POST',
+  )
+  await conflicted.getByRole('button', { name: 'Accept ride', exact: true }).click()
+  expect((await englishConflict).status()).toBe(409)
+  await expect(page.getByRole('alert')).toContainText('This ride can no longer be accepted.')
   await expect(accepted.getByRole('button')).toHaveCount(0)
   await expect(conflicted.getByRole('button')).toHaveCount(0)
-  await expect(page.getByRole('alert')).toContainText('This ride can no longer be accepted.')
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
   expect(overflow).toBe(false)
 
-  await page.getByRole('button', { name: 'Light theme' }).click()
+  await switchTheme(page, 'light')
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   await expect(accepted.getByText('Accepted')).toBeVisible()
-  await expect(page.getByRole('alert')).toContainText('This ride can no longer be accepted.')
 })
 
 test('a driver with no linked Driver sees an empty list', async ({ page }) => {
@@ -555,6 +563,6 @@ test('a driver with no linked Driver sees an empty list', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Moje vožnje' })).toBeVisible()
   await expect(page.getByText('Nemate nadolazećih vožnji.')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Transferi' })).toHaveCount(0)
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
   await expect(page.getByText('You have no upcoming rides.')).toBeVisible()
 })
