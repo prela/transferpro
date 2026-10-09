@@ -1,14 +1,21 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
 
-const { t } = useI18n()
+const { t, setLocale } = useI18n()
+const nuxtApp = useNuxtApp()
 
 /**
  * Apply the saved Locale before this template renders. The layout is the
  * parent, so without this the sidebar is painted in the default language
  * and its accessible names stay there after the visible labels update.
+ * Server only: awaiting the shell in the browser suspends hydration, and
+ * a click on the server HTML is lost.
  */
-await useSessionShell()
+if (import.meta.server) {
+  const lookup = await readTenantSession()
+  if (lookup.kind === 'member')
+    await nuxtApp.runWithContext(() => setLocale(lookup.session.locale))
+}
 
 /**
  * Office shell for an Admin or a Dispatcher. A Driver and a Superadmin never

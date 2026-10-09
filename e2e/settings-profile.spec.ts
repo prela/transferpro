@@ -24,6 +24,7 @@ test('/settings opens Profile for an admin, a dispatcher, and a driver', async (
     await expect(tabs.getByRole('link', { name: 'Profil', exact: true })).toHaveAttribute('aria-current', 'page')
     // Driver Home is where that role signs out. Office staff can leave from here.
     await page.goto('/')
+    await hydrated(page)
     await signOut(page)
   }
 })
@@ -172,6 +173,7 @@ test('a dispatcher and a driver on Profile do not request admin endpoints', asyn
       page.off('request', onRequest)
     }
     await page.goto('/')
+    await hydrated(page)
     await signOut(page)
   }
 })
