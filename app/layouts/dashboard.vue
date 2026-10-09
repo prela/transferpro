@@ -10,6 +10,7 @@ const { t } = useI18n()
  * The navbar has no title: that prop is an h1, and each page already has one.
  * Home is exact so it is current only on `/`. The aria-label stays when the
  * collapsed rail hides the visible label (`display: none` drops it from the name).
+ * Collapse and the phone toggle are size xl: they are tapped (ADR-0016).
  */
 const items = computed<NavigationMenuItem[]>(() => [
   link(t('shell.home'), 'i-lucide-house', '/', true),
@@ -38,6 +39,7 @@ function link(label: string, icon: string, to: string, exact = false): Navigatio
     <UDashboardSidebar
       id="shell"
       collapsible
+      :toggle="{ size: 'xl' }"
     >
       <template #default="{ collapsed }">
         <UNavigationMenu
@@ -52,9 +54,9 @@ function link(label: string, icon: string, to: string, exact = false): Navigatio
 
     <UDashboardPanel>
       <template #header>
-        <UDashboardNavbar>
+        <UDashboardNavbar :toggle="{ size: 'xl' }">
           <template #leading>
-            <UDashboardSidebarCollapse />
+            <UDashboardSidebarCollapse size="xl" />
           </template>
         </UDashboardNavbar>
       </template>
