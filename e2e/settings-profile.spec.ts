@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { openUserMenu, signIn, signOut, useTheme } from './fixtures/ui'
+import { hydrated, openUserMenu, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 test('/settings opens Profile for an admin, a dispatcher, and a driver', async ({ page }) => {
   const tenant = await seedTenant('settings-profile-open')
@@ -94,48 +94,36 @@ test('an admin, a dispatcher, and a driver save locale and theme on profile and 
   const driver = await seedMember(tenant.tenantId, 'driver', 'Vozac')
 
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await saveEnglishOnProfile(page)
+  await switchLocale(page, 'en')
   await page.goto('/clients')
   await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
-  await saveDarkOnProfile(page)
-  await page.goto('/clients')
+  await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
-  await page.goto('/settings/profile')
-  await hydrated(page)
-  await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
-  await page.getByRole('button', { name: 'Svijetla tema', exact: true }).click()
-  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  // Sign-out looks for the Croatian control, and the next Member starts from light.
+  await switchLocale(page, 'hr')
+  await switchTheme(page, 'light')
   await page.goto('/')
   await hydrated(page)
   await signOut(page)
 
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
-  await saveEnglishOnProfile(page)
+  await switchLocale(page, 'en')
   await page.goto('/clients')
   await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
-  await saveDarkOnProfile(page)
-  await page.goto('/clients')
+  await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
-  // Sign-out looks for the Croatian control, and the next Member starts from light.
-  await page.goto('/settings/profile')
-  await hydrated(page)
-  await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
-  await page.getByRole('button', { name: 'Svijetla tema', exact: true }).click()
-  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await switchLocale(page, 'hr')
+  await switchTheme(page, 'light')
   await page.goto('/')
   await hydrated(page)
   await signOut(page)
 
   await signIn(page, driver.email, driver.password, tenant.name)
-  await saveEnglishOnProfile(page)
-  await page.goto('/')
+  await switchLocale(page, 'en')
   await expect(page.getByRole('heading', { name: 'My rides' })).toBeVisible()
-  await saveDarkOnProfile(page)
-  await page.goto('/')
+  await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(page.getByRole('heading', { name: 'My rides' })).toBeVisible()
 })
@@ -307,38 +295,10 @@ async function focusByTab(page: Page, tab: ReturnType<Page['getByRole']>) {
   await expect(tab).toBeFocused()
 }
 
-/** Locale and theme buttons, in either language. Signed-in office screens have none. */
+/** Locale and theme buttons, in either locale. Signed-in office screens have none. */
 async function expectNoLocaleTheme(page: Page) {
   for (const name of ['English', 'Hrvatski', 'Tamna tema', 'Svijetla tema', 'Dark theme', 'Light theme'])
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
-}
-
-/** Profile is where a signed-in Member saves the Locale. */
-async function saveEnglishOnProfile(page: Page) {
-  await page.goto('/settings/profile')
-  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
-  await hydrated(page)
-  await page.getByRole('button', { name: 'English', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible()
-}
-
-/** Theme stays on this browser. The following screen reads the same class. */
-async function saveDarkOnProfile(page: Page) {
-  await page.goto('/settings/profile')
-  await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible()
-  await hydrated(page)
-  await page.getByRole('button', { name: 'Dark theme', exact: true }).click()
-  await expect(page.locator('html')).toHaveClass(/dark/)
-}
-
-/** The document is interactive. A click before this misses the Vue handler. */
-async function hydrated(page: Page) {
-  await page.waitForFunction(() => {
-    const root = document.querySelector('#__nuxt')
-    const app = root ? Reflect.get(root, '__vue_app__') : undefined
-    const nuxt = app?.config?.globalProperties?.$nuxt
-    return nuxt?.isHydrating === false
-  })
 }
 
 /** Tenant settings writes, Members, invitations, role change, removal, and the audit log. */

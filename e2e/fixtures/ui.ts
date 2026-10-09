@@ -28,7 +28,7 @@ const themeButton = {
  * The document is interactive. A click before this misses the Vue handler.
  * The theme class is set before Vue hydrates, and the same gap drops a locale click.
  */
-async function hydrated(page: Page) {
+export async function hydrated(page: Page) {
   await page.waitForFunction(() => {
     const root = document.querySelector('#__nuxt')
     const app = root ? Reflect.get(root, '__vue_app__') : undefined
