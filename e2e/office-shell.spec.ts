@@ -36,6 +36,7 @@ test('an admin moves through the sidebar, sees the current item, and the office 
   }
 
   await nav.getByRole('link', { name: 'Klijenti', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
   await expectOfficePanelWidth(page)
 })
 

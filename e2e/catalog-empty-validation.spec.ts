@@ -11,10 +11,12 @@ test('empty catalog lists and remaining field messages appear on the screens', a
   await expect(page.getByText('Još nema klijenata.')).toBeVisible()
 
   await nav.getByRole('link', { name: 'Početna' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
   await nav.getByRole('link', { name: 'Lokacije' }).click()
   await expect(page.getByText('Još nema lokacija.')).toBeVisible()
 
   await nav.getByRole('link', { name: 'Početna' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
   await nav.getByRole('link', { name: 'Vozači' }).click()
   await expect(page.getByText('Još nema vozača.')).toBeVisible()
   await page.getByLabel('Ime').fill('Ivo Ivić')
@@ -26,6 +28,7 @@ test('empty catalog lists and remaining field messages appear on the screens', a
   await expect(page.getByRole('alert')).toContainText('Unesite telefon.')
 
   await nav.getByRole('link', { name: 'Početna' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
   await nav.getByRole('link', { name: 'Vozila' }).click()
   await expect(page.getByText('Još nema vozila.')).toBeVisible()
   await page.getByLabel('Registarska oznaka', { exact: true }).fill('ST333DD')
@@ -35,6 +38,7 @@ test('empty catalog lists and remaining field messages appear on the screens', a
   await expect(page.getByRole('alert').filter({ hasText: 'Unesite datum.' })).toHaveCount(3)
 
   await nav.getByRole('link', { name: 'Početna' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
   await nav.getByRole('link', { name: 'Raspored' }).click()
   await expect(page.getByText('Još nema vozača.')).toBeVisible()
 })

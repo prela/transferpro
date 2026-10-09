@@ -1,7 +1,9 @@
 <script setup lang="ts">
 // The office gate. A Driver and a signed-out visitor leave before this page loads.
+// Layout is declared here so an overlapping sidebar navigation cannot drop it.
 definePageMeta({
   middleware: 'office',
+  layout: 'dashboard',
 })
 
 const {

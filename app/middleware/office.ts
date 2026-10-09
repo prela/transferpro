@@ -1,9 +1,10 @@
 /**
  * Transfers, Clients, Locations, Drivers, Vehicles, and Roster.
- * An Admin or a Dispatcher stays on the dashboard layout. A Driver is sent
- * Home before the page loads, so the browser does not request that page's
- * collection. A signed-out visitor gets the sign-in form. Not used on Home
- * or settings.
+ * A Driver is sent Home before the page loads, so the browser does not
+ * request that page's collection. A signed-out visitor gets the sign-in
+ * form. Each page declares the dashboard layout. This middleware only
+ * checks the session, because a layout call here is lost when two
+ * sidebar navigations overlap. Not used on Home or settings.
  */
 export default defineNuxtRouteMiddleware(async () => {
   const nuxtApp = useNuxtApp()
@@ -16,5 +17,4 @@ export default defineNuxtRouteMiddleware(async () => {
     return
   if (lookup.session.role === 'driver')
     return nuxtApp.runWithContext(() => navigateTo('/'))
-  await nuxtApp.runWithContext(() => setPageLayout('dashboard'))
 })
