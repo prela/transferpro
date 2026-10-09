@@ -1,6 +1,6 @@
 # 115 Office home
 
-Grill closed 10 October 2026. Nothing left open.
+Grill closed 10 October 2026. Spec is #115. Tickets: #145, then #146.
 
 ## Decisions
 
@@ -15,3 +15,4 @@ Grill closed 10 October 2026. Nothing left open.
 - Home loads on open and on a manual refresh. It does not poll.
 - One office read returns the three lists and the seven operational-day counts from one moment (ADR-0024). Expiring documents stay on their own read. Opening and refresh each load both.
 - Expiring documents stay as they are, including who sees which row. Notifications stay mail only. Maps stay on Locations. Locale and theme stay on Profile.
+- #145 changes the board to the operational day. #146 is the office Home snapshot and is blocked by #145.
