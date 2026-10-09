@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedTenant, seedUserWithoutMembership } from './fixtures/seed'
-import { signIn, signOut, useTheme } from './fixtures/ui'
+import { openUserMenu, signIn, signOut, useTheme } from './fixtures/ui'
 
 test('admin signs in and signs out', async ({ page }) => {
   const tenant = await seedTenant('auth')
@@ -35,8 +35,8 @@ test('the next sign-in loads the member locale from the session shell', async ({
   const tenant = await seedTenant('auth-locale')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.getByRole('button', { name: 'English', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await openUserMenu(page, tenant.name)
+  await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toHaveCount(0)
   await page.getByLabel('E-pošta').fill(tenant.adminEmail)
@@ -44,7 +44,8 @@ test('the next sign-in loads the member locale from the session shell', async ({
   await page.getByRole('button', { name: 'Prijavi se', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
   await expect(page.getByText('Tenant', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible()
+  await openUserMenu(page, tenant.name)
+  await expect(page.getByRole('menuitem', { name: 'Sign out', exact: true })).toBeVisible()
 })
 
 test('a failed sign-out keeps the tenant and shows the failure', async ({ page }) => {
@@ -53,7 +54,8 @@ test('a failed sign-out keeps the tenant and shows the failure', async ({ page }
   await page.route('**/api/auth/sign-out', async (route) => {
     await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' })
   })
-  await page.getByRole('button', { name: 'Odjava', exact: true }).click()
+  await openUserMenu(page, tenant.name)
+  await page.getByRole('menuitem', { name: 'Odjava', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
   await expect(page.getByRole('alert').filter({ hasText: 'Odjava nije uspjela. Pokušajte ponovno.' })).toBeVisible()
 })
@@ -81,5 +83,6 @@ test('english smoke: the shell follows the language switch', async ({ page }) =>
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.getByRole('button', { name: 'English', exact: true }).click()
   await expect(page.getByText('Tenant', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible()
+  await openUserMenu(page, tenant.name)
+  await expect(page.getByRole('menuitem', { name: 'Sign out', exact: true })).toBeVisible()
 })

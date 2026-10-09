@@ -60,8 +60,9 @@ export async function useSessionShell(options?: SessionShellOptions) {
   const { t, setLocale } = useI18n()
   const requestFetch = useRequestFetch()
   const route = useRoute()
-  const pending = ref(false)
-  const shellError = ref<'shell.saveFailed' | 'shell.signOutFailed' | null>(null)
+  // The navbar menu and these pages share one sign-out. A failure sets the
+  // alert already on the page; a success clears this shell.
+  const { pending, shellError, signOut } = useShellSignOut()
   // Shared across pages. The first caller owns the async-data handler, and a
   // later refresh (sign-in on Home) still has to see this flag.
   const platformRedirect = useState('session-platform-redirect', () => false)
@@ -116,53 +117,6 @@ export async function useSessionShell(options?: SessionShellOptions) {
     }
   }
 
-  async function signOut() {
-    pending.value = true
-    shellError.value = null
-    try {
-      // ofetch omits Content-Type when there is no body. The auth route still
-      // gives that POST a body stream, and Better Auth answers 415. An empty
-      // object is application/json, which sign-out accepts.
-      await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
-      // The cookie is gone. Drop the shared shell before the next paint so
-      // this page and the next one cannot render the previous Tenant. A
-      // refetch would leave that Tenant up until the response arrived.
-      clearSharedShell()
-      await setLocale('hr')
-      if (route.path !== '/')
-        await navigateTo('/')
-    }
-    catch {
-      // A failed request keeps the shell. A throw after the shell was cleared
-      // (locale or navigation) is not the sign-out failure message.
-      if (session.value)
-        shellError.value = 'shell.signOutFailed'
-    }
-    finally {
-      pending.value = false
-    }
-  }
-
-  function clearSharedShell() {
-    const nuxtApp = useNuxtApp()
-    const entry = nuxtApp._asyncData[sessionShellKey]
-    // Abort a refresh that is still in flight. A late resolve writes the
-    // Tenant back unless this promise slot is empty when it lands.
-    entry?._abortController?.abort(new DOMException('Session shell cleared on sign-out.', 'AbortError'))
-    delete nuxtApp._asyncDataPromises[sessionShellKey]
-    session.value = null
-    loadError.value = undefined
-    if (entry) {
-      // Stay successful so the next page paints this empty shell. Idle would
-      // suspend that page on a refetch, and the previous Tenant could remain
-      // on screen until the response arrived. Pending follows this status.
-      entry.status.value = 'success'
-    }
-    // useNuxtData reads `data ?? payload`. Null would fall through to the
-    // payload copy, which still holds the previous Tenant.
-    delete nuxtApp.payload.data[sessionShellKey]
-  }
-
   async function chooseLocale(next: SessionShell['locale']) {
     shellError.value = null
     if (!session.value) {
@@ -204,6 +158,84 @@ export async function useSessionShell(options?: SessionShellOptions) {
     loadMessage,
     platformRedirect,
   }
+}
+
+type ShellError = 'shell.saveFailed' | 'shell.signOutFailed' | null
+
+/**
+ * Sign-out for the office navbar and for the pages that still have the button.
+ * Pending and the failure live in shared state so the menu and the page alert
+ * are one action. A route change drops the failure, which is what a fresh
+ * page ref used to do. The device theme is not touched.
+ */
+export function useShellSignOut() {
+  const { setLocale } = useI18n()
+  const route = useRoute()
+  const pending = useState('session-shell-pending', () => false)
+  const shellError = useState<ShellError>('session-shell-error', () => null)
+  const session = computed(readSharedSession)
+
+  watch(() => route.path, () => {
+    shellError.value = null
+  })
+
+  async function signOut() {
+    pending.value = true
+    shellError.value = null
+    try {
+      // ofetch omits Content-Type when there is no body. The auth route still
+      // gives that POST a body stream, and Better Auth answers 415. An empty
+      // object is application/json, which sign-out accepts.
+      await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
+      // The cookie is gone. Drop the shared shell before the next paint so
+      // this page and the next one cannot render the previous Tenant. A
+      // refetch would leave that Tenant up until the response arrived.
+      clearSharedShell()
+      await setLocale('hr')
+      if (route.path !== '/')
+        await navigateTo('/')
+    }
+    catch {
+      // A failed request keeps the shell. A throw after the shell was cleared
+      // (locale or navigation) is not the sign-out failure message.
+      if (session.value)
+        shellError.value = 'shell.signOutFailed'
+    }
+    finally {
+      pending.value = false
+    }
+  }
+
+  return { pending, shellError, signOut, session }
+}
+
+function readSharedSession(): SessionShell | null {
+  const nuxtApp = useNuxtApp()
+  const entry = nuxtApp._asyncData[sessionShellKey]
+  // Prefer the live ref. Falling through on null would revive the payload copy.
+  const value = entry ? entry.data.value : nuxtApp.payload.data[sessionShellKey]
+  const parsed = sessionShellSchema.safeParse(value)
+  return parsed.success ? parsed.data : null
+}
+
+function clearSharedShell() {
+  const nuxtApp = useNuxtApp()
+  const entry = nuxtApp._asyncData[sessionShellKey]
+  // Abort a refresh that is still in flight. A late resolve writes the
+  // Tenant back unless this promise slot is empty when it lands.
+  entry?._abortController?.abort(new DOMException('Session shell cleared on sign-out.', 'AbortError'))
+  delete nuxtApp._asyncDataPromises[sessionShellKey]
+  if (entry) {
+    entry.data.value = null
+    entry.error.value = undefined
+    // Stay successful so the next page paints this empty shell. Idle would
+    // suspend that page on a refetch, and the previous Tenant could remain
+    // on screen until the response arrived. Pending follows this status.
+    entry.status.value = 'success'
+  }
+  // useNuxtData reads `data ?? payload`. Null would fall through to the
+  // payload copy, which still holds the previous Tenant.
+  delete nuxtApp.payload.data[sessionShellKey]
 }
 
 function httpStatus(error: unknown): number | undefined {

@@ -8,6 +8,7 @@ const { t } = useI18n()
  * use this layout. Collapse is stored in localStorage under
  * `transferpro-dashboard` (Nuxt UI appends `-sidebar-shell`), not a cookie.
  * The navbar has no title: that prop is an h1, and each page already has one.
+ * The right slot is the user menu: the Tenant name and sign-out.
  * Home is exact so it is current only on `/`. The aria-label stays when the
  * collapsed rail hides the visible label (`display: none` drops it from the name).
  * Collapse and the phone toggle are size xl: they are tapped (ADR-0016).
@@ -57,6 +58,9 @@ function link(label: string, icon: string, to: string, exact = false): Navigatio
         <UDashboardNavbar :toggle="{ size: 'xl' }">
           <template #leading>
             <UDashboardSidebarCollapse size="xl" />
+          </template>
+          <template #right>
+            <OfficeUserMenu />
           </template>
         </UDashboardNavbar>
       </template>

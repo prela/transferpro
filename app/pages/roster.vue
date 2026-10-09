@@ -66,15 +66,6 @@ const office = computed(() => isOfficeMember(session.value?.role))
         :description="t(shellError)"
       />
       <div class="mt-4 flex flex-wrap gap-2">
-        <UButton
-          type="button"
-          size="xl"
-          class="flex-1 basis-32 justify-center"
-          :disabled="pending"
-          @click="signOut"
-        >
-          {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
-        </UButton>
         <LocaleThemeActions @choose="chooseLocale" />
       </div>
     </section>
