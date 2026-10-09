@@ -48,6 +48,8 @@ test('profile saves hr and en through POST /api/locale and the next screen uses 
 
   await page.goto('/')
   await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Home', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Clients', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
 
   await page.goto('/settings/profile')
   await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible()
@@ -61,6 +63,81 @@ test('profile saves hr and en through POST /api/locale and the next screen uses 
 
   await page.goto('/')
   await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Početna', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Klijenti', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+})
+
+test('signed-in home and an office page do not show locale or theme buttons', async ({ page }) => {
+  const tenant = await seedTenant('settings-profile-no-chrome')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await expectNoLocaleTheme(page)
+
+  await page.getByRole('link', { name: 'Klijenti', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  await expectNoLocaleTheme(page)
+
+  await page.goto('/settings/tenant')
+  await expect(page.getByRole('heading', { level: 1, name: 'Organizacija' })).toBeVisible()
+  await expectNoLocaleTheme(page)
+
+  await signOut(page)
+  await hydrated(page)
+  await expect(page.getByRole('button', { name: 'English', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Sign in' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dark theme', exact: true })).toBeVisible()
+})
+
+test('an admin, a dispatcher, and a driver save locale and theme on profile and the next screen uses that choice', async ({ page }) => {
+  const tenant = await seedTenant('settings-profile-roles')
+  const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
+  const driver = await seedMember(tenant.tenantId, 'driver', 'Vozac')
+
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await saveEnglishOnProfile(page)
+  await page.goto('/clients')
+  await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
+  await saveDarkOnProfile(page)
+  await page.goto('/clients')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
+  await page.goto('/settings/profile')
+  await hydrated(page)
+  await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  await page.getByRole('button', { name: 'Svijetla tema', exact: true }).click()
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await page.goto('/')
+  await hydrated(page)
+  await signOut(page)
+
+  await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
+  await saveEnglishOnProfile(page)
+  await page.goto('/clients')
+  await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
+  await saveDarkOnProfile(page)
+  await page.goto('/clients')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
+  // Sign-out looks for the Croatian control, and the next Member starts from light.
+  await page.goto('/settings/profile')
+  await hydrated(page)
+  await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  await page.getByRole('button', { name: 'Svijetla tema', exact: true }).click()
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await page.goto('/')
+  await hydrated(page)
+  await signOut(page)
+
+  await signIn(page, driver.email, driver.password, tenant.name)
+  await saveEnglishOnProfile(page)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'My rides' })).toBeVisible()
+  await saveDarkOnProfile(page)
+  await page.goto('/')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.getByRole('heading', { name: 'My rides' })).toBeVisible()
 })
 
 test('a failed locale save shows the existing failure message', async ({ page }) => {
@@ -228,6 +305,30 @@ async function focusByTab(page: Page, tab: ReturnType<Page['getByRole']>) {
   for (let step = 0; step < 40 && !(await tab.evaluate(element => element === document.activeElement)); step++)
     await page.keyboard.press('Tab')
   await expect(tab).toBeFocused()
+}
+
+/** Locale and theme buttons, in either language. Signed-in office screens have none. */
+async function expectNoLocaleTheme(page: Page) {
+  for (const name of ['English', 'Hrvatski', 'Tamna tema', 'Svijetla tema', 'Dark theme', 'Light theme'])
+    await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
+}
+
+/** Profile is where a signed-in Member saves the Locale. */
+async function saveEnglishOnProfile(page: Page) {
+  await page.goto('/settings/profile')
+  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  await hydrated(page)
+  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible()
+}
+
+/** Theme stays on this browser. The following screen reads the same class. */
+async function saveDarkOnProfile(page: Page) {
+  await page.goto('/settings/profile')
+  await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible()
+  await hydrated(page)
+  await page.getByRole('button', { name: 'Dark theme', exact: true }).click()
+  await expect(page.locator('html')).toHaveClass(/dark/)
 }
 
 /** The document is interactive. A click before this misses the Vue handler. */

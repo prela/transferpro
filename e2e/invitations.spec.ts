@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { memberPassword, seedTenant } from './fixtures/seed'
-import { chooseOption, expectNoInvitationCookie, invite, openMembers, signIn, signOut } from './fixtures/ui'
+import { chooseOption, expectNoInvitationCookie, invite, openMembers, signIn, signOut, switchLocale } from './fixtures/ui'
 
 test('a failed send shows the message and the copyable invite link', async ({ page }) => {
   const tenant = await seedTenant('invite-mail-fail')
@@ -22,7 +22,11 @@ test('a failed send shows the message and the copyable invite link', async ({ pa
   await expect(page.getByRole('alert')).toContainText('E-pošta nije poslana. Kopirajte poveznicu i pošaljite je sami.')
   const region = page.getByRole('region', { name: 'Pozovi člana' })
   await expect(region.getByLabel('Poveznica pozivnice')).toHaveValue(inviteUrl)
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
+  const english = page.getByRole('region', { name: 'Invite a member' })
+  await english.getByLabel('Email').fill(`e2e-mail-fail-en-${crypto.randomUUID()}@example.test`)
+  await chooseOption(page, english.getByRole('combobox', { name: 'Role' }), 'Driver')
+  await english.getByRole('button', { name: 'Send invite', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('The email was not sent. Copy the link and send it yourself.')
 })
 

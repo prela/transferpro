@@ -13,7 +13,6 @@ const {
   session,
   refresh,
   shellError,
-  chooseLocale,
 } = await useSessionShell()
 
 // The middleware is the gate. If that read failed and this one then finds
@@ -44,12 +43,5 @@ useHead({
       class="mt-4"
       :description="t(shellError)"
     />
-    <!--
-      Locale and theme stay on signed-in pages until #124. This page is one
-      of those pages, same as Home and the office screens.
-    -->
-    <div class="mt-4 flex flex-wrap gap-2">
-      <LocaleThemeActions @choose="chooseLocale" />
-    </div>
   </section>
 </template>

@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { openUserMenu, signIn, signOut, useTheme } from './fixtures/ui'
+import { openUserMenu, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 const sections = ['Početna', 'Transferi', 'Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored', 'Revizijski zapisnik', 'Postavke'] as const
 
@@ -110,18 +110,18 @@ test('the sidebar is usable in light and dark, in Croatian and English', async (
   await expect(nav.getByRole('link', { name: 'Klijenti', exact: true })).toBeVisible()
   await expect(page.locator('html')).not.toHaveClass(/dark/)
 
-  await page.getByRole('button', { name: 'Tamna tema', exact: true }).click()
+  await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(nav.getByRole('link', { name: 'Vozači', exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
   const english = page.getByRole('navigation', { name: 'Sections' })
   await expect(english.getByRole('link', { name: 'Home', exact: true })).toHaveAttribute('aria-current', 'page')
   await expect(english.getByRole('link', { name: 'Clients', exact: true })).toBeVisible()
   await expect(english.getByRole('link', { name: 'Roster', exact: true })).toBeVisible()
   await expect(page.locator('html')).toHaveClass(/dark/)
 
-  await page.getByRole('button', { name: 'Light theme', exact: true }).click()
+  await switchTheme(page, 'light')
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   await expect(english.getByRole('link', { name: 'Transfers', exact: true })).toBeVisible()
 })

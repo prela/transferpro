@@ -138,14 +138,17 @@ function httpStatus(error: unknown): number | undefined {
         class="mt-4"
         :description="t(shellError)"
       />
-      <div class="mt-4 flex flex-wrap gap-2">
-        <!--
-          Office staff reach Settings from the sidebar and the navbar menu.
-          A Driver has no sidebar, so Profile opens from this phone column.
-          Sign-out stays here for the same reason.
-        -->
+      <!--
+        Office staff reach Settings from the sidebar and the navbar menu.
+        A Driver has no sidebar, so Profile opens from this phone column.
+        Sign-out stays here for the same reason. Locale and theme for a
+        signed-in Member are on Profile. The sign-in form below keeps both.
+      -->
+      <div
+        v-if="session.role === 'driver'"
+        class="mt-4 flex flex-wrap gap-2"
+      >
         <UButton
-          v-if="session.role === 'driver'"
           to="/settings"
           color="neutral"
           variant="outline"
@@ -156,7 +159,6 @@ function httpStatus(error: unknown): number | undefined {
           {{ t('shell.settings') }}
         </UButton>
         <UButton
-          v-if="session.role === 'driver'"
           type="button"
           size="xl"
           class="flex-1 basis-32 justify-center"
@@ -165,7 +167,6 @@ function httpStatus(error: unknown): number | undefined {
         >
           {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
         </UButton>
-        <LocaleThemeActions @choose="chooseLocale" />
       </div>
     </section>
 

@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedTenant } from './fixtures/seed'
-import { chooseOption, signIn } from './fixtures/ui'
+import { chooseOption, signIn, switchLocale } from './fixtures/ui'
 
 const archivedPlate = 'ARC81AA'
 const livePlate = 'LIV81BB'
@@ -40,7 +40,7 @@ test('correcting a plate to an archived plate shows the archived-conflict messag
 
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
   await page.getByRole('button', { name: `Correct vehicle: ${livePlate}` }).click()
   await dialog.getByLabel('Registration plate', { exact: true }).fill(archivedPlate)
   await dialog.getByRole('button', { name: 'Save', exact: true }).click()

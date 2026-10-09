@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedTenant, seedUserWithoutMembership } from './fixtures/seed'
-import { openUserMenu, signIn, signOut, useTheme } from './fixtures/ui'
+import { openUserMenu, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
 
 test('admin signs in and signs out', async ({ page }) => {
   const tenant = await seedTenant('auth')
@@ -34,7 +34,7 @@ test('sign-out from an office page clears the tenant, returns to Croatian, and k
 test('the next sign-in loads the member locale from the session shell', async ({ page }) => {
   const tenant = await seedTenant('auth-locale')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
   await openUserMenu(page, tenant.name)
   await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
@@ -81,7 +81,7 @@ test('a user with no membership sees the no-access message', async ({ page }) =>
 test('english smoke: the shell follows the language switch', async ({ page }) => {
   const tenant = await seedTenant('auth-en')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
   await expect(page.getByText('Tenant', { exact: true })).toBeVisible()
   await openUserMenu(page, tenant.name)
   await expect(page.getByRole('menuitem', { name: 'Sign out', exact: true })).toBeVisible()

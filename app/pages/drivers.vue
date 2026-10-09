@@ -13,7 +13,6 @@ const {
   pending,
   shellError,
   signOut,
-  chooseLocale,
   loadMessage,
 } = await useSessionShell({ redirectWhenSignedOut: true })
 
@@ -65,9 +64,6 @@ const office = computed(() => isOfficeMember(session.value?.role))
         class="mt-4"
         :description="t(shellError)"
       />
-      <div class="mt-4 flex flex-wrap gap-2">
-        <LocaleThemeActions @choose="chooseLocale" />
-      </div>
     </section>
   </main>
 </template>

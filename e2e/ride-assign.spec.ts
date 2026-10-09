@@ -2,7 +2,7 @@ import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { seedMember, seedTenant, seedVehicleRecord } from './fixtures/seed'
-import { chooseOption, openAudit, signIn, signOut, useTheme } from './fixtures/ui'
+import { chooseOption, openAudit, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
 
 const phone = '+385911112233'
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
@@ -433,7 +433,8 @@ test('the assign form uses English copy', async ({ page }) => {
   await recordTodayRide(page, guest)
 
   await page.getByRole('link', { name: 'Transferi' }).click()
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferi' })).toBeVisible()
+  await switchLocale(page, 'en')
   await expect(page.getByRole('columnheader', { name: 'Driver' })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Vehicle' })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Actions' })).toBeAttached()

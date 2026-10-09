@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { openAudit, signIn } from './fixtures/ui'
+import { openAudit, signIn, switchLocale } from './fixtures/ui'
 
 test('admin adds a client, corrects it, and the audit log shows the entries', async ({ page }) => {
   const tenant = await seedTenant('clients-admin')
@@ -18,12 +18,17 @@ test('admin adds a client, corrects it, and the audit log shows the entries', as
   await page.getByRole('button', { name: 'Dodaj klijenta', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Unesite ime.')
 
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
+  await page.getByLabel('Name').fill(' ')
+  await page.getByRole('combobox', { name: 'Kind' }).click()
+  await page.getByRole('option', { name: 'Hotel', exact: true }).click()
   await page.getByRole('button', { name: 'Add client', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Enter a name.')
 
-  await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
+  await switchLocale(page, 'hr')
   await page.getByLabel('Ime').fill('Hotel Adriatic')
+  await page.getByRole('combobox', { name: 'Vrsta' }).click()
+  await page.getByRole('option', { name: 'Hotel', exact: true }).click()
   await page.getByRole('button', { name: 'Dodaj klijenta', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Ispravi klijenta: Hotel Adriatic' })).toBeVisible()
 

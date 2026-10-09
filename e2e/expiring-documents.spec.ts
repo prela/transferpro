@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { calendarDateInTimeZone } from '../shared/date'
 import { addCalendarDays } from '../shared/expiring-documents'
 import { seedDriverRecord, seedMember, seedTenant, seedVehicleRecord } from './fixtures/seed'
-import { signIn, signOut, useTheme } from './fixtures/ui'
+import { signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
 
 const phone = '+385955550000'
 const far = '2099-01-01'
@@ -61,7 +61,7 @@ test('the dashboard lists expired and soon documents in Croatian and English', a
   await expect(page.getByText(phone)).toHaveCount(0)
   await expect(page.getByText('1.1.2099.')).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
   await expect(page.getByText('Example time')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Audit log' })).toHaveCount(0)
   const english = page.getByRole('region', { name: 'Expiring documents' })
@@ -124,7 +124,7 @@ for (const theme of ['light', 'dark'] as const) {
     await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
     await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
     await expect(page.getByText('Nema isteklih dokumenata ni dokumenata koji istječu u sljedećih 30 dana.')).toBeVisible()
-    await page.getByRole('button', { name: 'English', exact: true }).click()
+    await switchLocale(page, 'en')
     await expect(page.getByRole('heading', { name: 'Expiring documents' })).toBeVisible()
     await expect(page.getByText('No documents are expired or expire within the next 30 days.')).toBeVisible()
   })

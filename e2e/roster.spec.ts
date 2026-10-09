@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { openAudit, signIn } from './fixtures/ui'
+import { openAudit, signIn, switchLocale } from './fixtures/ui'
 
 const driverName = 'Ana Roster'
 const otherDriverName = 'Marko Roster'
@@ -73,12 +73,12 @@ test('admin gives a driver a vehicle for the day, and the audit log keeps the pl
   await page.getByRole('button', { name: `Ukloni vozilo za ${driverName}` }).click()
   await expect(page.getByRole('button', { name: `Ukloni vozilo za ${driverName}` })).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
   await expect(page.getByRole('heading', { level: 1, name: 'Vehicle roster' })).toBeVisible()
   await expect(page.getByLabel('Date')).toBeVisible()
   await expect(page.getByRole('button', { name: `Clear vehicle for ${otherDriverName}` })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
+  await switchLocale(page, 'hr')
   await openAudit(page)
   await expect(page.getByRole('cell', { name: 'Vozilo dodijeljeno za dan', exact: true }).first()).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Vozilo za dan promijenjeno', exact: true })).toBeVisible()

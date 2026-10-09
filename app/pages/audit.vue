@@ -7,7 +7,7 @@
  * a non-admin, leave for Home before the log mounts. Home is that
  * middleware's branch for `/audit`, not a second policy. The log loads
  * when it opens. It does not live-update from another route. Locale and
- * theme stay here until #124.
+ * theme for a signed-in Member are on Profile.
  */
 definePageMeta({
   middleware: 'admin',
@@ -21,7 +21,6 @@ const {
   pending,
   shellError,
   signOut,
-  chooseLocale,
   loadMessage,
 } = await useSessionShell()
 
@@ -73,9 +72,6 @@ useHead({
         class="mt-4"
         :description="t(shellError)"
       />
-      <div class="mt-4 flex flex-wrap gap-2">
-        <LocaleThemeActions @choose="chooseLocale" />
-      </div>
     </section>
   </main>
 </template>

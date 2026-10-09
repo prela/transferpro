@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, openAudit, signIn } from './fixtures/ui'
+import { chooseOption, openAudit, signIn, switchLocale } from './fixtures/ui'
 
 const plate = 'DU123AB'
 const nextPlate = 'ZG111AA'
@@ -20,12 +20,20 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await expect(page.getByRole('alert')).toHaveCount(1)
   await expect(page.getByRole('alert')).toContainText('Unesite registarsku oznaku.')
 
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await switchLocale(page, 'en')
+  await chooseOption(page, page.getByRole('combobox', { name: 'Kind' }), 'Fixed')
+  await page.getByLabel('Registration valid until').fill('2027-06-01')
+  await page.getByLabel('Technical inspection valid until').fill('2028-01-31')
+  await page.getByLabel('Insurance valid until').fill('2029-03-03')
   await page.getByRole('button', { name: 'Add vehicle', exact: true }).click()
   await expect(page.getByRole('alert')).toHaveCount(1)
   await expect(page.getByRole('alert')).toContainText('Enter a registration plate.')
 
-  await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
+  await switchLocale(page, 'hr')
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), 'Stalno')
+  await page.getByLabel('Registracija vrijedi do').fill('2027-06-01')
+  await page.getByLabel('Tehnički pregled vrijedi do').fill('2028-01-31')
+  await page.getByLabel('Osiguranje vrijedi do').fill('2029-03-03')
   await page.getByLabel('Registarska oznaka', { exact: true }).fill('du 123 ab')
   await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Ispravi vozilo: DU123AB' })).toBeVisible()
