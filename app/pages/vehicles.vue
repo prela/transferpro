@@ -1,86 +1,20 @@
 <script setup lang="ts">
-import type { SessionShell } from '../../shared'
-import { sessionShellSchema } from '../../shared'
-
-const { t, setLocale } = useI18n()
-const requestFetch = useRequestFetch()
-
-const pending = ref(false)
-const shellError = ref<'shell.saveFailed' | 'shell.signOutFailed' | null>(null)
-
-const { data: session, error: loadError, refresh } = await useAsyncData('session-shell', async () => {
-  try {
-    return sessionShellSchema.parse(await requestFetch<unknown>('/api/session'))
-  }
-  catch (error) {
-    if (httpStatus(error) === 401)
-      return null
-    throw error
-  }
-})
-
-if (session.value)
-  await setLocale(session.value.locale)
-else if (!loadError.value)
-  await navigateTo('/')
+const {
+  t,
+  session,
+  loadError,
+  pending,
+  shellError,
+  signOut,
+  chooseLocale,
+  loadMessage,
+} = await useSessionShell({ redirectWhenSignedOut: true })
 
 useHead({
   title: () => t('vehicles.title'),
 })
 
 const office = computed(() => session.value?.role === 'admin' || session.value?.role === 'dispatcher')
-
-async function signOut() {
-  pending.value = true
-  shellError.value = null
-  try {
-    await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
-    await navigateTo('/')
-  }
-  catch {
-    shellError.value = 'shell.signOutFailed'
-  }
-  finally {
-    pending.value = false
-  }
-}
-
-async function chooseLocale(next: SessionShell['locale']) {
-  shellError.value = null
-  if (!session.value) {
-    await setLocale(next)
-    return
-  }
-  try {
-    await $fetch('/api/locale', {
-      method: 'POST',
-      body: { locale: next },
-    })
-    await refresh()
-    await setLocale(session.value?.locale ?? next)
-  }
-  catch {
-    shellError.value = 'shell.saveFailed'
-  }
-}
-
-function httpStatus(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null)
-    return undefined
-  if ('statusCode' in error && typeof error.statusCode === 'number')
-    return error.statusCode
-  if ('status' in error && typeof error.status === 'number')
-    return error.status
-  return undefined
-}
-
-const loadMessage = computed(() => {
-  if (shellError.value)
-    return shellError.value
-  if (httpStatus(loadError.value) === 403)
-    return 'shell.noAccess'
-  return 'shell.unavailable'
-})
 </script>
 
 <template>
