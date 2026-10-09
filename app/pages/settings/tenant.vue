@@ -16,18 +16,24 @@ const {
   chooseLocale,
 } = await useSessionShell()
 
+// The middleware is the gate. If that read failed and this one then finds
+// a Dispatcher or a Driver, leave before the form mounts, so the browser
+// does not request the settings write.
+if (session.value && session.value.role !== 'admin')
+  await navigateTo('/settings/profile', { replace: true })
+
 useHead({
   title: () => t('shell.tenant'),
 })
 </script>
 
 <template>
-  <section v-if="session">
+  <section v-if="session?.role === 'admin'">
     <h1 class="mb-4 text-2xl font-semibold">
       {{ t('shell.tenant') }}
     </h1>
     <TenantSettings
-      :is-admin="true"
+      :is-admin="session.role === 'admin'"
       @saved="refresh()"
     />
     <UAlert

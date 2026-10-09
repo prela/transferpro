@@ -15,19 +15,25 @@ const {
   chooseLocale,
 } = await useSessionShell()
 
+// The middleware is the gate. If that read failed and this one then finds
+// a Dispatcher or a Driver, leave before the forms mount, so the browser
+// does not request Members, invitations, role change, or removal.
+if (session.value && session.value.role !== 'admin')
+  await navigateTo('/settings/profile', { replace: true })
+
 useHead({
   title: () => t('members.title'),
 })
 </script>
 
 <template>
-  <section v-if="session">
+  <section v-if="session?.role === 'admin'">
     <h1 class="mb-4 text-2xl font-semibold">
       {{ t('members.title') }}
     </h1>
     <MemberInvite />
     <MemberList
-      :is-admin="true"
+      :is-admin="session.role === 'admin'"
       :current-user-id="session.userId"
     />
     <UAlert
