@@ -4,10 +4,11 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../../shared'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../../shared'
 import { createClient } from '../modules/clients'
 import { archiveLocation, createLocation } from '../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
+import { listTransferDay } from '../modules/transfers'
 import getTransfers from './transfers.get'
 import postTransfer from './transfers.post'
 
@@ -165,15 +166,16 @@ function pickupInsideWindow(): string {
 }
 
 /**
- * 00:30 local, two days ahead. That instant is the listed Zagreb day, and the
- * previous calendar day stays empty, in summer time and in winter time.
+ * 00:30 local, two days ahead. That instant belongs only to the previous
+ * operational day, in summer time and in winter time. The calendar date of
+ * the instant stays empty.
  */
-function upcomingZagrebMidnight() {
-  const day = calendarDateInTimeZone('Europe/Zagreb', new Date(Date.now() + 2 * 24 * 60 * 60 * 1000))
+function upcomingZagrebHalfPast() {
+  const calendar = calendarDateInTimeZone('Europe/Zagreb', new Date(Date.now() + 2 * 24 * 60 * 60 * 1000))
   return {
-    day,
-    previous: addCalendarDays(day, -1),
-    pickupAt: instantFromWallClock(`${day}T00:30`, 'Europe/Zagreb').toISOString(),
+    calendar,
+    operational: addCalendarDays(calendar, -1),
+    pickupAt: instantFromWallClock(`${calendar}T00:30`, 'Europe/Zagreb').toISOString(),
   }
 }
 
@@ -297,8 +299,8 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
   expect(await blocked.text()).not.toContain(guest)
   expect(await rideCount(created.tenantId)).toBe(0)
 
-  // 00:30 in Zagreb is still the previous UTC date. The list uses the local day.
-  const sample = upcomingZagrebMidnight()
+  // 00:30 in Zagreb is still the previous UTC date, and it belongs to the previous operational day.
+  const sample = upcomingZagrebHalfPast()
   const added = await call('POST', '/api/transfers', dispatcher, {
     clientId: client.id,
     pickupAt: sample.pickupAt,
@@ -341,14 +343,14 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
   })
   expect(await rideCount(created.tenantId, row.transfer.id)).toBe(1)
 
-  const sameDay = await call('GET', `/api/transfers?date=${sample.previous}`, admin)
-  expect(sameDay.status).toBe(200)
-  expect(await sameDay.json()).toEqual({ date: sample.previous, rides: [] })
+  const calendarDay = await call('GET', `/api/transfers?date=${sample.calendar}`, admin)
+  expect(calendarDay.status).toBe(200)
+  expect(await calendarDay.json()).toEqual({ date: sample.calendar, rides: [] })
 
-  const nextDay = await call('GET', `/api/transfers?date=${sample.day}`, dispatcher)
-  expect(nextDay.status).toBe(200)
-  const listed = await nextDay.json()
-  expect(listed.date).toBe(sample.day)
+  const operationalDay = await call('GET', `/api/transfers?date=${sample.operational}`, dispatcher)
+  expect(operationalDay.status).toBe(200)
+  const listed = await operationalDay.json()
+  expect(listed.date).toBe(sample.operational)
   expect(listed.rides).toEqual([
     expect.objectContaining({
       rideId: row.ride.id,
@@ -365,7 +367,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
 
   const today = await call('GET', '/api/transfers', admin)
   expect(today.status).toBe(200)
-  expect((await today.json()).date).toBe(calendarDateInTimeZone('Europe/Zagreb', new Date()))
+  expect((await today.json()).date).toBe(operationalDateInTimeZone('Europe/Zagreb', new Date()))
 
   const audit = await ownerPool.query<{ data: unknown }>(
     `select data from app.audit_entry where tenant_id = $1 and action::text = 'transfer.created'`,
@@ -501,7 +503,7 @@ it('refuses the same start and end place, and writes nothing', async () => {
   expect(await tenantCounts(created.tenantId)).toEqual(before)
 })
 
-it('lists a Zagreb local day, including the 23-hour and 25-hour days, and midnight starts the new day', async () => {
+it('lists a Zagreb operational day from local 05:00, including a daylight-saving night', async () => {
   const created = await tenant('htr-dst', 'Hana Admin')
   await addMember(created.tenantId, 'htr-dst-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
   const dispatcher = await signIn('htr-dst-dispatcher@example.test')
@@ -518,23 +520,35 @@ it('lists a Zagreb local day, including the 23-hour and 25-hour days, and midnig
   )
 
   await seed(zagrebInstant('2026-10-07T23:30'), 'Evening')
-  await seed(zagrebInstant('2026-10-08T00:00'), 'Midnight')
-  await seed(zagrebInstant('2026-03-28T23:30'), 'Short before')
-  await seed(zagrebInstant('2026-03-29T00:00'), 'Short start')
-  await seed(zagrebInstant('2026-03-29T23:30'), 'Short late')
-  // 22:30Z is 00:30 on 30 March, after the 23-hour day has ended.
-  await seed('2026-03-29T22:30:00.000Z', 'Short spill')
-  await seed(zagrebInstant('2026-03-30T00:00'), 'Short next')
-  await seed(zagrebInstant('2026-10-24T23:30'), 'Long before')
-  await seed(zagrebInstant('2026-10-25T00:00'), 'Long start')
-  // 00:30Z is the first 02:30, before the clocks fall back.
+  await seed(zagrebInstant('2026-10-08T00:30'), 'Half past')
+  await seed(zagrebInstant('2026-10-08T04:59'), 'Before five')
+  await seed(zagrebInstant('2026-10-08T05:00'), 'Five')
+  // The spring-forward is 02:00 on 29 March, still inside the day that started on 28 March.
+  await seed(zagrebInstant('2026-03-28T05:00'), 'Short start')
+  await seed(zagrebInstant('2026-03-29T04:59'), 'Short late')
+  await seed(zagrebInstant('2026-03-29T05:00'), 'Short next')
+  // The fall-back repeats 02:30 on 25 October, still inside the day that started on 24 October.
+  await seed(zagrebInstant('2026-10-24T05:00'), 'Long start')
   await seed('2026-10-25T00:30:00.000Z', 'Long first')
   await seed(zagrebInstant('2026-10-25T02:30'), 'Long second')
-  await seed(zagrebInstant('2026-10-25T23:30'), 'Long late')
-  await seed(zagrebInstant('2026-10-26T00:00'), 'Long next')
+  await seed(zagrebInstant('2026-10-25T04:59'), 'Long late')
+  await seed(zagrebInstant('2026-10-25T05:00'), 'Long next')
 
-  expect(await listedGuests(dispatcher, '2026-10-07')).toEqual(['Evening'])
-  expect(await listedGuests(dispatcher, '2026-10-08')).toEqual(['Midnight'])
-  expect(await listedGuests(dispatcher, '2026-03-29')).toEqual(['Short start', 'Short late'])
-  expect(await listedGuests(dispatcher, '2026-10-25')).toEqual(['Long start', 'Long first', 'Long second', 'Long late'])
+  expect(await listedGuests(dispatcher, '2026-10-07')).toEqual(['Evening', 'Half past', 'Before five'])
+  expect(await listedGuests(dispatcher, '2026-10-08')).toEqual(['Five'])
+  expect(await listedGuests(dispatcher, '2026-03-28')).toEqual(['Short start', 'Short late'])
+  expect(await listedGuests(dispatcher, '2026-03-29')).toEqual(['Short next'])
+  expect(await listedGuests(dispatcher, '2026-10-24')).toEqual(['Long start', 'Long first', 'Long second', 'Long late'])
+  expect(await listedGuests(dispatcher, '2026-10-25')).toEqual(['Long next'])
+})
+
+it('opens the board on the operational day that contains now, including before 05:00', async () => {
+  const created = await tenant('htr-open', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-open-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-open-dispatcher@example.test')
+  const beforeFive = instantFromWallClock('2026-10-08T04:30', 'Europe/Zagreb')
+  const atFive = instantFromWallClock('2026-10-08T05:00', 'Europe/Zagreb')
+
+  expect((await listTransferDay(dispatcher, undefined, beforeFive)).date).toBe('2026-10-07')
+  expect((await listTransferDay(dispatcher, undefined, atFive)).date).toBe('2026-10-08')
 })

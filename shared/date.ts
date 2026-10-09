@@ -19,9 +19,10 @@ export function isCalendarDate(value: string): boolean {
 
 /**
  * The calendar day of `instant` in an IANA time zone, `YYYY-MM-DD`.
- * The Tenant time zone decides which day "today" is: the roster opens on it
- * and expiring documents count from it. Parts are reassembled with a fixed
- * calendar and digits so the string does not depend on the ICU build.
+ * The roster opens on it and expiring documents count from it. The board
+ * does not: a Ride is listed on the operational day ({@link operationalDateInTimeZone}).
+ * Parts are reassembled with a fixed calendar and digits so the string
+ * does not depend on the ICU build.
  */
 export function calendarDateInTimeZone(timeZone: string, instant: Date): string {
   if (Number.isNaN(instant.getTime()))
@@ -90,19 +91,35 @@ export function addCalendarDays(isoDate: string, days: number): string {
 }
 
 /**
- * Half-open UTC instants `[start, end)` for one calendar day in an IANA zone.
- * `start` is local midnight of `day`. `end` is local midnight of the next date,
- * so a pickup at exactly that midnight belongs to the new day. A 23-hour or
- * 25-hour local day stays one day because the bounds follow the zone, not a
- * fixed 24 hours and not a `date` cast of the stored instant.
+ * Half-open UTC instants `[start, end)` for one operational day in an IANA zone.
+ * `day` is the calendar date of the 05:00 start. `start` is local 05:00 of
+ * that date. `end` is local 05:00 of the next date, so a pickup at exactly
+ * 05:00 belongs to the new operational day and a pickup before 05:00 belongs
+ * to the previous one. A daylight-saving night still breaks at local 05:00.
+ * The bounds follow the zone, not a fixed 24 hours and not a `date` cast of
+ * the stored instant, so the board can use the `(tenant_id, pickup_at)` index.
+ * The roster and expiring documents do not call this.
  */
 export function localDayBounds(day: string, timeZone: string): { start: Date, end: Date } {
   if (!isCalendarDate(day))
     throw new RangeError('Day is not a calendar date.')
   return {
-    start: instantFromWallClock(`${day}T00:00`, timeZone),
-    end: instantFromWallClock(`${addCalendarDays(day, 1)}T00:00`, timeZone),
+    start: instantFromWallClock(`${day}T05:00`, timeZone),
+    end: instantFromWallClock(`${addCalendarDays(day, 1)}T05:00`, timeZone),
   }
+}
+
+/**
+ * The calendar date that names the operational day containing `instant`.
+ * That date is the local date of the 05:00 that starts the interval. Before
+ * local 05:00 the name is the previous calendar date. The board opens on
+ * this date. The roster and expiring documents stay on {@link calendarDateInTimeZone}.
+ */
+export function operationalDateInTimeZone(timeZone: string, instant: Date): string {
+  const calendar = calendarDateInTimeZone(timeZone, instant)
+  if (instant.getTime() >= localDayBounds(calendar, timeZone).start.getTime())
+    return calendar
+  return addCalendarDays(calendar, -1)
 }
 
 /**

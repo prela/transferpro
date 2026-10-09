@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Client, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
-import { calendarDateInTimeZone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, transferDaySchema, vehicleListSchema } from '../../shared'
+import { calendarDateInTimeZone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, transferDaySchema, vehicleListSchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -10,8 +10,10 @@ const props = defineProps<{
 const { t } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
 
-const today = calendarDateInTimeZone(props.timeZone, new Date())
-const day = ref(today)
+// The board opens on the operational day that contains now. A pickup form
+// still defaults to noon on the calendar date: recording a pickup did not move.
+const day = ref(operationalDateInTimeZone(props.timeZone, new Date()))
+const pickupDay = calendarDateInTimeZone(props.timeZone, new Date())
 const rides = ref<TransferDayRide[]>([])
 const clients = ref<Client[]>([])
 const locations = ref<Location[]>([])
@@ -25,7 +27,7 @@ const acceptByPhoneErrorKey = ref<AcceptByPhoneFailure | null>(null)
 const dayListRegion = ref<HTMLElement | null>(null)
 
 const clientId = ref<string | undefined>()
-const pickupWall = ref(`${today}T12:00`)
+const pickupWall = ref(`${pickupDay}T12:00`)
 const startLocationId = ref<string | undefined>()
 const endLocationId = ref<string | undefined>()
 const passengers = ref('1')
@@ -505,7 +507,7 @@ async function record() {
     flight.value = ''
     note.value = ''
     saved.value = true
-    day.value = calendarDateInTimeZone(props.timeZone, new Date(recorded.transfer.pickupAt))
+    day.value = operationalDateInTimeZone(props.timeZone, new Date(recorded.transfer.pickupAt))
     await loadDay()
   }
   catch (error) {

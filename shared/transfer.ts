@@ -290,8 +290,9 @@ export function parseCreateTransfer(raw: unknown, now: Date = new Date()): Creat
 }
 
 /**
- * GET /api/transfers `date`. Absent means today in the Tenant time zone.
- * Anything else that is not `YYYY-MM-DD` is refused before a session opens.
+ * GET /api/transfers `date`. Absent means the operational day that contains
+ * now, in the Tenant time zone. Anything else that is not `YYYY-MM-DD` is
+ * refused before a session opens.
  */
 export function parseTransferDay(raw: unknown): string | null {
   if (raw === undefined)
