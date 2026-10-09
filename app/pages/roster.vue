@@ -18,6 +18,10 @@ const {
 useHead({
   title: () => t('roster.title'),
 })
+
+// The middleware is the gate. If a Driver still reaches this page, the list
+// does not mount, so the browser does not request the collection.
+const office = computed(() => isOfficeMember(session.value?.role))
 </script>
 
 <template>
@@ -60,7 +64,10 @@ useHead({
       <h1 class="mb-4 text-2xl font-semibold">
         {{ t('roster.title') }}
       </h1>
-      <RosterDay :time-zone="session.timeZone" />
+      <RosterDay
+        v-if="office"
+        :time-zone="session.timeZone"
+      />
       <UAlert
         v-if="shellError"
         color="error"

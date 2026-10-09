@@ -10,8 +10,8 @@ const sessionShellKey = 'session-shell'
 interface SessionShellOptions {
   /**
    * Office pages set this. The office middleware already sends a signed-out
-   * visitor to the sign-in form before the page loads. This remains so a
-   * page that renders without that middleware still leaves.
+   * visitor to the sign-in form, and a Driver Home, before the page loads.
+   * If that read fails and this page then loads a Driver, the Driver still leaves.
    */
   redirectWhenSignedOut?: boolean
 }
@@ -25,6 +25,11 @@ export type TenantSessionLookup
   = | { kind: 'member', session: SessionShell }
     | { kind: 'signed-out' }
     | { kind: 'unavailable' }
+
+/** Admin and Dispatcher. A Driver is not an office member. */
+export function isOfficeMember(role: SessionShell['role'] | undefined): boolean {
+  return role === 'admin' || role === 'dispatcher'
+}
 
 /**
  * The route middlewares read the same shell as the pages.
@@ -74,6 +79,10 @@ export async function useSessionShell(options?: SessionShellOptions) {
   if (locale)
     await nuxtApp.runWithContext(() => setLocale(locale))
   else if (options?.redirectWhenSignedOut && !loadError.value)
+    await nuxtApp.runWithContext(() => navigateTo('/'))
+  // The middleware is the gate. This covers a Driver whose middleware read
+  // failed and whose page read then succeeded.
+  if (options?.redirectWhenSignedOut && session.value?.role === 'driver')
     await nuxtApp.runWithContext(() => navigateTo('/'))
 
   async function loadShell(): Promise<SessionShell | null> {

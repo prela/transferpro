@@ -25,6 +25,12 @@ const {
   platformRedirect,
 } = await useSessionShell()
 
+// The middleware runs on navigation. Sign-in and sign-out on Home stay on
+// this URL, so the layout has to follow the shell after those actions too.
+watch(session, (next) => {
+  setPageLayout(isOfficeMember(next?.role) ? 'dashboard' : 'default')
+})
+
 // 23:30 UTC is 00:30 the next day in Europe/Zagreb during standard time.
 const exampleInstant = new Date('2026-01-15T23:30:00.000Z')
 

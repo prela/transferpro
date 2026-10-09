@@ -18,6 +18,10 @@ const {
 useHead({
   title: () => t('transfers.title'),
 })
+
+// The middleware is the gate. If a Driver still reaches this page, the list
+// does not mount, so the browser does not request the collection.
+const office = computed(() => isOfficeMember(session.value?.role))
 </script>
 
 <template>
@@ -61,6 +65,7 @@ useHead({
         {{ t('transfers.title') }}
       </h1>
       <TransferDay
+        v-if="office"
         :time-zone="session.timeZone"
         :locale="session.locale"
       />

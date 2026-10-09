@@ -7,8 +7,7 @@
 export default defineNuxtRouteMiddleware(async () => {
   const nuxtApp = useNuxtApp()
   const lookup = await readTenantSession()
-  const office = lookup.kind === 'member'
-    && (lookup.session.role === 'admin' || lookup.session.role === 'dispatcher')
+  const office = lookup.kind === 'member' && isOfficeMember(lookup.session.role)
   // After the session fetch the middleware may no longer hold the Nuxt instance.
   await nuxtApp.runWithContext(() => setPageLayout(office ? 'dashboard' : 'default'))
 })
