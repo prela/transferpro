@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn, signOut, useTheme } from './fixtures/ui'
+import { openUserMenu, signIn, signOut, useTheme } from './fixtures/ui'
 
 const sections = ['Početna', 'Transferi', 'Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored'] as const
 
@@ -232,14 +232,6 @@ test('the user menu is reachable and operable from the keyboard', async ({ page 
   await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toHaveCount(0)
 })
-
-/** The navbar trigger names the Tenant. The menu itself repeats that name and offers sign-out. */
-async function openUserMenu(page: Page, tenantName: string) {
-  await page.getByRole('button', { name: tenantName, exact: true }).click()
-  const menu = page.getByRole('menu')
-  await expect(menu).toBeVisible()
-  return menu
-}
 
 /** The page main fills the dashboard panel body, and that width is past 28rem. */
 async function expectOfficePanelWidth(page: Page) {

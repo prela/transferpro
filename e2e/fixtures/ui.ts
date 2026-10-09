@@ -17,6 +17,14 @@ export async function useTheme(page: Page, theme: 'light' | 'dark') {
   }, theme)
 }
 
+/** The office navbar trigger's accessible name is the Tenant. */
+export async function openUserMenu(page: Page, tenantName: string) {
+  await page.getByRole('button', { name: tenantName, exact: true }).click()
+  const menu = page.getByRole('menu')
+  await expect(menu).toBeVisible()
+  return menu
+}
+
 /**
  * Office staff keep Odjava in the navbar user menu. A Driver, a Superadmin,
  * and the invitation accept screen still show that control on the page.

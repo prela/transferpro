@@ -1,13 +1,6 @@
-import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedTenant, seedUserWithoutMembership } from './fixtures/seed'
-import { signIn, signOut, useTheme } from './fixtures/ui'
-
-/** English sign-out lives in the navbar menu. The trigger names the Tenant. */
-async function openUserMenu(page: Page, tenantName: string) {
-  await page.getByRole('button', { name: tenantName, exact: true }).click()
-  await expect(page.getByRole('menu')).toBeVisible()
-}
+import { openUserMenu, signIn, signOut, useTheme } from './fixtures/ui'
 
 test('admin signs in and signs out', async ({ page }) => {
   const tenant = await seedTenant('auth')
