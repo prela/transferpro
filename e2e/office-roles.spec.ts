@@ -15,7 +15,7 @@ test('a dispatcher sees office screens, and Home has no member list or settings 
     await expect(nav.getByRole('link', { name })).toBeVisible()
 
   await expect(nav.getByRole('link', { name: 'Revizijski zapisnik', exact: true })).toHaveCount(0)
-  await expect(page.getByText('Primjer vremena')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Pozovi člana' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toHaveCount(0)
@@ -49,6 +49,7 @@ test('a driver does not see office navigation or office actions on home', async 
   await expect(page.getByRole('heading', { name: 'Članovi' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Ukloni člana', exact: true })).toHaveCount(0)
   await expect(page.getByText('Samo administrator može ovo promijeniti.')).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)

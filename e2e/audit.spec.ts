@@ -66,7 +66,7 @@ test('a dispatcher who opens /audit lands on home without requesting the audit l
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
   await expectAuditRedirectsHome(page, tenant.name)
-  await expect(page.getByText('Primjer vremena')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
 })
 

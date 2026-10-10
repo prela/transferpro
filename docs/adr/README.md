@@ -36,3 +36,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0018 | Module boundaries | accepted |
 | ADR-0019 | Superadmin | accepted |
 | ADR-0020 | Invoice to agency is a recorded payment | accepted |
+| ADR-0021 | Operational day | accepted |
+| ADR-0022 | In progress is not a Ride state | accepted |
+| ADR-0023 | Unassigned alarm | accepted |
+| ADR-0024 | One office home read | accepted |

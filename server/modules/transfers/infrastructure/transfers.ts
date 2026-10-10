@@ -128,11 +128,13 @@ export async function recordTransfer(
 }
 
 /**
- * Rides whose pickup falls on this calendar day in the Tenant time zone.
- * The day is `YYYY-MM-DD`. The bounds are local midnight and the next local
- * midnight, as UTC instants, so the `(tenant_id, pickup_at)` index can serve
- * the list. A `date` cast of the stored instant cannot, and it would also
- * miss the extra hour or keep the missing hour of a daylight-saving day.
+ * Rides whose pickup falls on this operational day in the Tenant time zone.
+ * The day is `YYYY-MM-DD`, the date of the local 05:00 that starts it. The
+ * bounds are that 05:00 and the next local 05:00, as UTC instants, so the
+ * `(tenant_id, pickup_at)` index can serve the list. A `date` cast of the
+ * stored instant cannot, and it would also miss the extra hour or keep the
+ * missing hour of a daylight-saving night. A pickup before 05:00 is not in
+ * this interval; it belongs to the previous operational day.
  */
 export async function loadRidesForDay(
   transaction: TenantTransaction,
@@ -230,8 +232,11 @@ function toDayRide(row: z.infer<typeof dayRowSchema>): TransferDayRide {
   }
 }
 
-/** node-pg may return a Date or a timestamp string. The API always uses ISO-8601 UTC. */
-function toInstant(value: unknown): string {
+/**
+ * node-pg may return a Date or a timestamp string. The API always uses ISO-8601 UTC.
+ * The office home read uses the same conversion.
+ */
+export function toInstant(value: unknown): string {
   if (value instanceof Date)
     return value.toISOString()
   if (typeof value === 'string') {
@@ -243,8 +248,8 @@ function toInstant(value: unknown): string {
   throw new Error('Transfer pickup_at is not a timestamp.')
 }
 
-/** numeric comes back as text. The API always uses two decimal places. */
-function toPrice(value: string | number): string {
+/** numeric comes back as text. The API always uses two decimal places. The office home read uses this too. */
+export function toPrice(value: string | number): string {
   const parsed = transferPriceSchema.safeParse(typeof value === 'number' ? value.toFixed(2) : normalizePriceText(value))
   if (!parsed.success)
     throw new Error('Transfer price is not numeric.')

@@ -4,7 +4,7 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { addCalendarDays, calendarDateInTimeZone, localDayBounds } from '../../shared'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../../shared'
 import { createClient } from '../modules/clients'
 import { createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
@@ -246,13 +246,13 @@ async function office(slug: string) {
 }
 
 /**
- * Local midnight of a Zagreb day a few days ahead, and one minute before it.
- * `localDayBounds` reads the zone offset, so the boundary stays exact in CET
- * and in CEST. Both instants stay inside the pickup window.
+ * Local midnight of a Zagreb calendar day a few days ahead, and one minute
+ * before it. The roster keeps that calendar date. The Ride day bound is
+ * 05:00 and is not used here. Both instants stay inside the pickup window.
  */
 function zagrebMidnightBoundary() {
   const day = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 3)
-  const midnight = localDayBounds(day, 'Europe/Zagreb').start
+  const midnight = instantFromWallClock(`${day}T00:00`, 'Europe/Zagreb')
   return {
     day,
     previous: addCalendarDays(day, -1),

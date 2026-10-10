@@ -15,7 +15,7 @@ test('an admin moves through the sidebar, sees the current item, and the office 
   await expect(nav.getByRole('link', { name: 'Početna', exact: true })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
-  await expect(page.getByText('Primjer vremena', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
   await expectOfficePanelWidth(page)
 

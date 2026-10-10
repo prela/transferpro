@@ -484,6 +484,18 @@
     "unknownDriver": "Nepoznat vozač",
     "unknownVehicle": "Nepoznato vozilo"
   },
+  "officeHome": {
+    "refresh": "Osvježi početnu",
+    "loading": "Učitavanje početne",
+    "loadFailed": "Početna se nije mogla učitati. Pokušajte ponovno.",
+    "unassigned": "Nedodijeljeno",
+    "waiting": "Čeka na prihvat",
+    "inProgress": "U tijeku",
+    "empty": "Ovaj popis je prazan.",
+    "counts": "Brojevi za operativni dan",
+    "countRides": "Vožnje",
+    "unassignedAlarm": "Alarm za nedodijeljenu vožnju"
+  },
   "expiringDocuments": {
     "title": "Dokumenti koji istječu",
     "empty": "Nema isteklih dokumenata ni dokumenata koji istječu u sljedećih 30 dana.",
