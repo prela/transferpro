@@ -58,8 +58,12 @@ _Avoid_: deleted
 A Ride that has a Driver, is not finished, and is not waiting on acceptance, once its pickup is in the past. An earlier day's pickup stays in progress until the Ride is done, a no-show, or cancelled.
 _Avoid_: started, a Ride state
 
+**Operational-day start**:
+The hour in the Tenant's time zone at which an operational day begins. A new Tenant starts at 05:00. An admin can change it.
+_Avoid_: cutoff, midnight
+
 **Operational day**:
-The day a Ride is listed and counted on, from 05:00 up to the next 05:00 in the Tenant's time zone. A pickup before 05:00 belongs to the previous operational day, and the roster and an expiring document keep the calendar date.
+The day a Ride is listed and counted on, from the Tenant's operational-day start up to the next one in the Tenant's time zone. A pickup before that start belongs to the previous operational day, and the roster and an expiring document keep the calendar date.
 _Avoid_: calendar day, midnight
 
 **Member**:
