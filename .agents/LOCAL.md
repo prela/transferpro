@@ -17,6 +17,14 @@ Leave a running implement's review model and `fast` as they were at launch. A st
 
 This rule now lives in `.agents/skills/implement/SKILL.md`, not only in this file.
 
+## Lead: code-review subagents
+
+Damir + NEO, 10.10.2026. Both code-review subagents run with `fast=false`. Set that at implement launch, or in `.agents/skills/implement/SKILL.md` before the run starts.
+
+Leave a running implement's review model and `fast` as they were at launch. A steer that changes either one spawns a second pair of review subagents while the first pair keeps running. That steer is forbidden.
+
+`.agents/skills/implement/SKILL.md` does not set a review model or `fast`, and it does not allow a change mid-run, so this rule stays in this file.
+
 ## Not this workflow
 
 The Pocock `handoff` skill writes to the OS temp directory. It is not part of this workflow. Lead QC uses only the repo file `docs/handoff/<N>-<slug>.md`.
