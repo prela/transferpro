@@ -2,7 +2,7 @@ export { auditActions, auditActionSchema, auditEntryListSchema, auditEntrySchema
 export type { AuditAction, AuditEntry, AuditEntryList, AuditFact } from './audit-entry'
 export { CLIENT_KINDS, CLIENT_NAME_MAX_LENGTH, ClientInputError, clientKindError, clientKindSchema, clientListSchema, clientNameError, clientNameSchema, clientPatchSchema, clientSchema, createClientSchema, parseClientPatch, parseCreateClient } from './client'
 export type { Client, ClientKind, ClientKindError, ClientList, ClientNameError, ClientPatch, CreateClient } from './client'
-export { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, isCalendarDate, localDayBounds } from './date'
+export { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, isCalendarDate, localDayBounds, operationalDateInTimeZone } from './date'
 export { displayLocaleSchema, resolveDisplayLocale } from './display-locale'
 export type { DisplayLocale } from './display-locale'
 export { DRIVER_FIELDS, DRIVER_KINDS, DRIVER_MEMBER_ID_MAX_LENGTH, DRIVER_NAME_MAX_LENGTH, DRIVER_PHONE_MAX_LENGTH, driverDateError, driverDateSchema, driverFieldSchema, DriverInputError, driverKindError, driverKindSchema, driverListSchema, driverNameError, driverPhoneError, driverPhoneSchema, driverSchema, parseCreateDriver, parseDriverPatch } from './driver'
