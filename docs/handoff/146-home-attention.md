@@ -11,6 +11,7 @@ Out of scope: a decline command, a stored alarm, mail for the alarm, a live flig
 - Counts use `localDayBounds` and `operationalDateInTimeZone`. Do not use `calendarDateInTimeZone` for a Ride day. The roster and expiring documents stay on the calendar date.
 - The office allow-list is admin or dispatcher, checked before a Ride is read. A missing name for a set Driver, Vehicle, or Location fails the whole read with `Office home read failed`. Do not log a guest, a flight, an address, a phone, or a price.
 - No migration.
+- The board day assertion is the textbox named exactly `Dan`. `getByLabel('Dan')` also matches the Home counts heading, “Brojevi za operativni dan”, and `toHaveValue` then throws before the board route paints.
 
 ## Code review
 
