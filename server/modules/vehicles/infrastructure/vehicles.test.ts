@@ -6,7 +6,7 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
 import { VehicleInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
-import { addVehicle, archiveStoredVehicle, correctVehicle, loadVehicles, VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError, vehiclePresenceForAssign } from './vehicles'
+import { addVehicle, archiveStoredVehicle, correctVehicle, loadVehicle, loadVehicles, VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError, vehiclePresenceForAssign } from './vehicles'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const vehicleId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -85,6 +85,10 @@ function fakeTransaction(
       }
       if (text.includes('update'))
         return { rows: [] }
+      if (text.includes('where id =') && !text.includes('for update')) {
+        const id = compiled.params[0]
+        return { rows: vehicles.filter(row => row.id === id) }
+      }
       if (text.includes('vehicles'))
         return { rows: vehicles }
       return { rows: [] }
@@ -162,6 +166,14 @@ it('replaces any other write failure so the log line does not keep the plate', a
 it('lists the Vehicles the session returned', async () => {
   const { transaction } = fakeTransaction([stored])
   await expect(loadVehicles(transaction, false)).resolves.toEqual([stored])
+})
+
+it('loads an archived Vehicle by id, and a missing id is not found', async () => {
+  const archived = { ...stored, archivedAt: '2026-10-05T10:00:00.000Z' }
+  const { transaction } = fakeTransaction([archived])
+  await expect(loadVehicle(transaction, vehicleId)).resolves.toEqual(archived)
+  const missing = fakeTransaction([])
+  await expect(loadVehicle(missing.transaction, vehicleId)).rejects.toBeInstanceOf(VehicleNotFoundError)
 })
 
 it('records each corrected field by name, and not the plate or the date', async () => {

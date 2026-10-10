@@ -149,6 +149,25 @@ export async function loadVehicles(
 }
 
 /**
+ * One Vehicle in this Tenant, archived or not.
+ * A missing id and another Tenant's id are the same result.
+ * The Driver upcoming read calls this through the Vehicles index so a Ride
+ * still shows the plate after the Vehicle is archived. This read does not
+ * apply the office role check: the caller already required a Driver.
+ */
+export async function loadVehicle(transaction: TenantTransaction, vehicleId: string): Promise<Vehicle> {
+  const selected = vehicleRows.parse(await transaction.execute(sql`
+    select ${vehicleColumns}
+    from app.vehicles
+    where id = ${vehicleId}
+  `))
+  const row = selected.rows[0]
+  if (!row)
+    throw new VehicleNotFoundError()
+  return toVehicle(row)
+}
+
+/**
  * Insert one Vehicle and append `vehicle.created` on this transaction.
  * The entry names the fields that were set. It does not store the plate,
  * the expiry dates, or the kind.

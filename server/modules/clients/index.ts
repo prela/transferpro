@@ -7,4 +7,4 @@ export { ClientNotFoundError, createClient, listClients, updateClient } from './
  * The list a Transfer offers, inside the caller's tenant transaction.
  * This module does not import transfers (ADR-0018).
  */
-export { loadClients } from './infrastructure/clients'
+export { loadClient, loadClients } from './infrastructure/clients'

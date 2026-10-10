@@ -18,6 +18,13 @@ export interface UpcomingRideRow {
   readonly passengerCount: number
   readonly flightNumber: string | null
   readonly airportMark: boolean
+  readonly clientId: string
+  readonly luggageCount: number
+  readonly childSeatCount: number
+  readonly note: string | null
+  /** Stored as '' when the Transfer has no meet sign. */
+  readonly tabla: string
+  readonly vehicleId: string
   readonly price: string
   readonly payment: PaymentMethod
   readonly state: 'assigned' | 'accepted'
@@ -33,6 +40,12 @@ const upcomingRowSchema = z.object({
   passengerCount: z.number().int(),
   flightNumber: z.string().nullable(),
   airportMark: z.boolean(),
+  clientId: z.uuid(),
+  luggageCount: z.number().int(),
+  childSeatCount: z.number().int(),
+  note: z.string().nullable(),
+  tabla: z.string(),
+  vehicleId: z.uuid(),
   price: z.union([z.string(), z.number()]),
   payment: paymentMethodSchema,
   state: z.enum(['assigned', 'accepted']),
@@ -64,6 +77,12 @@ export async function loadUpcomingRidesForDriver(
         t.passenger_count as "passengerCount",
         t.flight_number as "flightNumber",
         t.airport_mark as "airportMark",
+        t.client_id as "clientId",
+        t.luggage_count as "luggageCount",
+        t.child_seat_count as "childSeatCount",
+        t.note,
+        t.tabla,
+        r.vehicle_id as "vehicleId",
         t.price,
         t.payment,
         r.state,
@@ -89,6 +108,12 @@ function toUpcomingRide(row: z.infer<typeof upcomingRowSchema>): UpcomingRideRow
     passengerCount: row.passengerCount,
     flightNumber: row.flightNumber,
     airportMark: row.airportMark,
+    clientId: row.clientId,
+    luggageCount: row.luggageCount,
+    childSeatCount: row.childSeatCount,
+    note: row.note,
+    tabla: row.tabla,
+    vehicleId: row.vehicleId,
     price: toPrice(row.price),
     payment: row.payment,
     state: row.state,

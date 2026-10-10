@@ -34,6 +34,24 @@ export async function loadClients(transaction: TenantTransaction): Promise<Clien
 }
 
 /**
+ * One Client in this Tenant, by id.
+ * A missing id and another Tenant's id are the same result.
+ * The Driver upcoming read calls this through the Clients index. It does
+ * not apply the office role check: the caller already required a Driver.
+ */
+export async function loadClient(transaction: TenantTransaction, clientId: string): Promise<Client> {
+  const selected = clientRows.parse(await transaction.execute(sql`
+    select id, name, kind
+    from app.clients
+    where id = ${clientId}
+  `))
+  const row = selected.rows[0]
+  if (!row)
+    throw new ClientNotFoundError()
+  return toClient(row)
+}
+
+/**
  * Insert one Client and append `client.created` on this transaction.
  * The name is not in the entry (ADR-0017). The caller has already required
  * a dispatcher or an admin, and has already trimmed the name.

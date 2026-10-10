@@ -11,6 +11,11 @@ import { rideHttpError } from './http'
  * admin is 403. No session is 401. Another Tenant cannot: the tables have
  * FORCE RLS, and the per-driver filter runs inside that transaction.
  * Cash includes the price. Card and invoice to agency include neither.
+ * Each Ride also includes the Client name and kind, both Location addresses
+ * (null when none), the luggage and child-seat counts (including zero), the
+ * note and the tabla (null when empty), and the Vehicle plate. An archived
+ * Location or Vehicle still contributes its stored text. There is no
+ * archived mark and no catalog id.
  * Each Ride includes `state` (`assigned` or `accepted`) and `mustAccept`.
  * This route does not accept a Ride.
  */
