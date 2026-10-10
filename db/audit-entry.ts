@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, LOCATION_FIELDS, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -39,6 +39,26 @@ function minutesFromTo(data: AnyPgColumn) {
     fromToOnly(data),
     minuteBound(data, 'from'),
     minuteBound(data, 'to'),
+  ], sql` and `)
+}
+
+/**
+ * One side of an operational-day start change: a JSON integer from 0 through 8.
+ * The CASE avoids casting a string, which would abort the check with a
+ * different error than a shape violation.
+ */
+function hourBound(data: AnyPgColumn, key: 'from' | 'to') {
+  const name = sql.raw(`'${key}'`)
+  const min = sql.raw(String(OPERATIONAL_DAY_START_MIN))
+  const max = sql.raw(String(OPERATIONAL_DAY_START_MAX))
+  return sql`(case when jsonb_typeof(${data} -> ${name}) = 'number' and (${data} ->> ${name}) ~ '^[0-9]+$' then (${data} ->> ${name})::integer between ${min} and ${max} else false end)`
+}
+
+function hoursFromTo(data: AnyPgColumn) {
+  return sql.join([
+    fromToOnly(data),
+    hourBound(data, 'from'),
+    hourBound(data, 'to'),
   ], sql` and `)
 }
 
@@ -223,6 +243,7 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'settings.airport_wait_changed' then ${table.subjectUserId} is null and ${minutesFromTo(table.data)}
     when 'settings.elsewhere_wait_changed' then ${table.subjectUserId} is null and ${minutesFromTo(table.data)}
     when 'settings.time_zone_changed' then ${table.subjectUserId} is null and ${zonesFromTo(table.data)}
+    when 'settings.operational_day_start_changed' then ${table.subjectUserId} is null and ${hoursFromTo(table.data)}
     when 'client.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'kind')} and ${clientIdText(table.data)} and ${kindText(table.data, 'kind')}
     when 'client.name_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId')} and ${clientIdText(table.data)}
     when 'client.kind_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'from', 'to')} and ${clientIdText(table.data)} and ${kindText(table.data, 'from')} and ${kindText(table.data, 'to')}

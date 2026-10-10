@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { signIn, switchLocale, switchTheme } from './fixtures/ui'
 
 test('admin changes the waits and the time zone, and the audit log updates', async ({ page }) => {
   const tenant = await seedTenant('settings')
@@ -33,6 +33,39 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
   await expect(settings.getByLabel('Čekanje na aerodromu (minute)')).toHaveValue('45')
   await expect(settings.getByLabel('Čekanje izvan aerodroma (minute)')).toHaveValue('30')
   await expect(settings.getByLabel('Vremenska zona')).toContainText('Europe/London')
+})
+
+test('admin sets the operational-day start and sees it after reload, in light and in dark', async ({ page }) => {
+  const tenant = await seedTenant('settings-hour')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await openSettingsTab(page, 'Organizacija')
+  const settings = page.getByRole('region', { name: 'Postavke' })
+  const hour = settings.getByLabel('Sat početka operativnog dana')
+
+  await expect(hour).toContainText('05:00')
+  await hour.click()
+  await page.getByRole('option', { name: '06:00', exact: true }).click()
+  await settings.getByRole('button', { name: 'Spremi', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Spremljeno.' })).toBeVisible()
+
+  await page.goto('/audit')
+  await expect(page.getByText('Promijenjen sat početka operativnog dana')).toBeVisible()
+  await expect(page.getByText('05:00 → 06:00')).toBeVisible()
+
+  await page.goto('/settings/tenant')
+  await expect(hour).toContainText('06:00')
+  await expect(settings.getByLabel('Čekanje na aerodromu (minute)')).toHaveValue('90')
+  await expect(settings.getByLabel('Čekanje izvan aerodroma (minute)')).toHaveValue('25')
+
+  await switchTheme(page, 'dark')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.getByLabel('Sat početka operativnog dana')).toContainText('06:00')
+
+  await switchLocale(page, 'en')
+  await expect(page.getByLabel('Operational day starts at')).toContainText('06:00')
+  await page.goto('/audit')
+  await expect(page.getByText('Operational day start changed')).toBeVisible()
+  await expect(page.getByText('05:00 → 06:00')).toBeVisible()
 })
 
 /** Settings in the sidebar, then the named tab. */

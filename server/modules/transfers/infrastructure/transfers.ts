@@ -3,7 +3,7 @@ import type { CreateTransfer, Ride, Transfer, TransferDayRide, TransferField } f
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { localDayBounds, paymentMethodSchema, rideStateSchema, TRANSFER_FIELDS, transferPriceSchema } from '../../../../shared'
+import { localDayBounds, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideStateSchema, TRANSFER_FIELDS, transferPriceSchema } from '../../../../shared'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
@@ -129,19 +129,21 @@ export async function recordTransfer(
 
 /**
  * Rides whose pickup falls on this operational day in the Tenant time zone.
- * The day is `YYYY-MM-DD`, the date of the local 05:00 that starts it. The
- * bounds are that 05:00 and the next local 05:00, as UTC instants, so the
+ * The day is `YYYY-MM-DD`, the date of the local start hour. The bounds are
+ * that hour and the same hour next date, as UTC instants, so the
  * `(tenant_id, pickup_at)` index can serve the list. A `date` cast of the
  * stored instant cannot, and it would also miss the extra hour or keep the
- * missing hour of a daylight-saving night. A pickup before 05:00 is not in
- * this interval; it belongs to the previous operational day.
+ * missing hour of a daylight-saving night. A pickup before the start hour is
+ * not in this interval; it belongs to the previous operational day.
+ * Omitting the hour uses 05:00. The day list passes the stored hour.
  */
 export async function loadRidesForDay(
   transaction: TenantTransaction,
   day: string,
   timeZone: string,
+  startHour = OPERATIONAL_DAY_START_DEFAULT,
 ): Promise<TransferDayRide[]> {
-  const bounds = localDayBounds(day, timeZone)
+  const bounds = localDayBounds(day, timeZone, startHour)
   const selected = z.object({ rows: z.array(dayRowSchema) }).parse(await transaction.execute(sql`
     select
       r.id as "rideId",

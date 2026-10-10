@@ -1,6 +1,7 @@
 import type { PaymentMethod, RideState } from './transfer'
 import { z } from 'zod'
 import { localDayBounds, operationalDateInTimeZone } from './date'
+import { OPERATIONAL_DAY_START_DEFAULT } from './tenant-settings'
 import { paymentMethodSchema, rideStateSchema, transferPriceSchema } from './transfer'
 
 /**
@@ -116,12 +117,17 @@ function byPickup(a: { pickupAt: string, rideId: string }, b: { pickupAt: string
  * A Ride that is only assigned, does not require acceptance, and is still
  * ahead is in the Rides count and on no list.
  */
-export function buildOfficeHome(rides: readonly OfficeHomeRide[], now: Date, timeZone: string): OfficeHome {
+export function buildOfficeHome(
+  rides: readonly OfficeHomeRide[],
+  now: Date,
+  timeZone: string,
+  startHour = OPERATIONAL_DAY_START_DEFAULT,
+): OfficeHome {
   if (Number.isNaN(now.getTime()))
     throw new RangeError('Instant is not a valid time.')
 
   const nowMs = now.getTime()
-  const bounds = localDayBounds(operationalDateInTimeZone(timeZone, now), timeZone)
+  const bounds = localDayBounds(operationalDateInTimeZone(timeZone, now, startHour), timeZone, startHour)
   const startMs = bounds.start.getTime()
   const endMs = bounds.end.getTime()
 

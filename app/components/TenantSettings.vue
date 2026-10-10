@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TenantSettingsResponse } from '../../shared'
-import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, TENANT_TIME_ZONE_DEFAULT, tenantSettingsGetSchema, tenantSettingsResponseSchema, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../../shared'
+import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, formatOperationalDayStart, OPERATIONAL_DAY_START_DEFAULT, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, TENANT_TIME_ZONE_DEFAULT, tenantSettingsGetSchema, tenantSettingsResponseSchema, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../../shared'
 
 defineProps<{
   isAdmin: boolean
@@ -19,6 +19,14 @@ const settings = ref<TenantSettingsResponse | null>(null)
 const airportWaitMinutes = ref(AIRPORT_WAIT_DEFAULT_MINUTES)
 const elsewhereWaitMinutes = ref(ELSEWHERE_WAIT_DEFAULT_MINUTES)
 const timeZone = ref(TENANT_TIME_ZONE_DEFAULT)
+const operationalDayStartHour = ref(OPERATIONAL_DAY_START_DEFAULT)
+const hourItems = Array.from(
+  { length: OPERATIONAL_DAY_START_MAX - OPERATIONAL_DAY_START_MIN + 1 },
+  (_, index) => {
+    const hour = OPERATIONAL_DAY_START_MIN + index
+    return { label: formatOperationalDayStart(hour), value: hour }
+  },
+)
 const loading = ref(false)
 const pending = ref(false)
 const loadError = ref(false)
@@ -47,6 +55,7 @@ const zoneItems = computed(() => {
 const airportId = useId()
 const elsewhereId = useId()
 const timeZoneId = useId()
+const operationalDayStartId = useId()
 // autofocus stays off so a phone keyboard does not cover the list.
 // The placeholder is not a label, so the search field keeps the time-zone name.
 const timeZoneSearchInput = computed(() => ({
@@ -77,6 +86,7 @@ function apply(next: TenantSettingsResponse) {
   airportWaitMinutes.value = next.airportWaitMinutes
   elsewhereWaitMinutes.value = next.elsewhereWaitMinutes
   timeZone.value = next.timeZone
+  operationalDayStartHour.value = next.operationalDayStartHour
 }
 
 async function save() {
@@ -84,9 +94,10 @@ async function save() {
   saved.value = false
   pending.value = true
   try {
-    const body: { airportWaitMinutes: number, elsewhereWaitMinutes: number, timeZone?: string } = {
+    const body: { airportWaitMinutes: number, elsewhereWaitMinutes: number, operationalDayStartHour: number, timeZone?: string } = {
       airportWaitMinutes: airportWaitMinutes.value,
       elsewhereWaitMinutes: elsewhereWaitMinutes.value,
+      operationalDayStartHour: operationalDayStartHour.value,
     }
     // An unchanged zone stays off the body, including one the list has dropped.
     if (settings.value && timeZone.value !== settings.value.timeZone)
@@ -186,6 +197,18 @@ onMounted(loadSettings)
         />
       </UFormField>
       <UFormField
+        :label="t('settings.operationalDayStart')"
+        class="mb-4"
+        size="xl"
+      >
+        <USelect
+          :id="operationalDayStartId"
+          v-model="operationalDayStartHour"
+          :items="hourItems"
+          class="w-full"
+        />
+      </UFormField>
+      <UFormField
         :label="t('settings.timeZone')"
         class="mb-4"
         size="xl"
@@ -218,6 +241,10 @@ onMounted(loadSettings)
         {{ t('settings.elsewhereWait') }}
       </p>
       <p>{{ settings.elsewhereWaitMinutes }}</p>
+      <p class="mt-4 text-sm text-muted">
+        {{ t('settings.operationalDayStart') }}
+      </p>
+      <p>{{ formatOperationalDayStart(settings.operationalDayStartHour) }}</p>
       <p class="mt-4 text-sm text-muted">
         {{ t('settings.timeZone') }}
       </p>

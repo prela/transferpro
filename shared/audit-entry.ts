@@ -5,7 +5,7 @@ import { locationFieldSchema } from './location'
 import { RIDE_ASSIGNMENT_FIELDS, rideAssignmentFieldSchema } from './ride-assignment'
 import { rosterDateSchema } from './roster'
 import { tenantRoleSchema } from './tenant-role'
-import { ianaTimeZoneSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
+import { ianaTimeZoneSchema, operationalDayStartHourSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
 import { TRANSFER_FIELDS, transferFieldSchema } from './transfer'
 import { vehicleFieldSchema } from './vehicle'
 
@@ -21,6 +21,7 @@ export const auditActions = [
   'settings.airport_wait_changed',
   'settings.elsewhere_wait_changed',
   'settings.time_zone_changed',
+  'settings.operational_day_start_changed',
   'client.created',
   'client.name_changed',
   'client.kind_changed',
@@ -96,6 +97,13 @@ const settingsTimeZoneChanged = z.object({
   action: z.literal('settings.time_zone_changed'),
   subjectUserId: z.null(),
   data: z.strictObject({ from: storedTimeZoneSchema, to: ianaTimeZoneSchema }),
+})
+
+/** The previous hour and the next hour. No member is named. */
+const settingsOperationalDayStartChanged = z.object({
+  action: z.literal('settings.operational_day_start_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({ from: operationalDayStartHourSchema, to: operationalDayStartHourSchema }),
 })
 
 /*
@@ -354,6 +362,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   settingsAirportWaitChanged,
   settingsElsewhereWaitChanged,
   settingsTimeZoneChanged,
+  settingsOperationalDayStartChanged,
   clientCreated,
   clientNameChanged,
   clientKindChanged,
@@ -402,6 +411,7 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   settingsAirportWaitChanged.extend(listed),
   settingsElsewhereWaitChanged.extend(listed),
   settingsTimeZoneChanged.extend(listed),
+  settingsOperationalDayStartChanged.extend(listed),
   clientCreated.extend(listed),
   clientNameChanged.extend(listed),
   clientKindChanged.extend(listed),

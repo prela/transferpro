@@ -27,8 +27,8 @@ export async function createTransfer(headers: Headers, raw: unknown): Promise<Re
 
 /**
  * Rides for one operational day in the Tenant time zone. The date is the
- * calendar date of the local 05:00 that starts that day. A missing date is
- * the operational day that contains `now`, including when that is before 05:00.
+ * calendar date of the stored start hour. A missing date is the operational
+ * day that contains `now`, including when that is before the start hour.
  * `now` is the clock; tests pass a fixed instant so the default does not
  * depend on the wall clock. The date is parsed first. A driver is 403.
  * Another Tenant sees none.
@@ -38,10 +38,11 @@ export async function listTransferDay(headers: Headers, rawDate: unknown, now: D
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
     const settings = await loadTenantSettings(transaction)
-    const date = requested ?? operationalDateInTimeZone(settings.timeZone, now)
+    const startHour = settings.operationalDayStartHour
+    const date = requested ?? operationalDateInTimeZone(settings.timeZone, now, startHour)
     return {
       date,
-      rides: await loadRidesForDay(transaction, date, settings.timeZone),
+      rides: await loadRidesForDay(transaction, date, settings.timeZone, startHour),
     }
   })
 }

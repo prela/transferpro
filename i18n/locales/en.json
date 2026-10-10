@@ -107,7 +107,8 @@
       "settings": {
         "airport_wait_changed": "Airport wait changed",
         "elsewhere_wait_changed": "Wait elsewhere changed",
-        "time_zone_changed": "Time zone changed"
+        "time_zone_changed": "Time zone changed",
+        "operational_day_start_changed": "Operational day start changed"
       },
       "client": {
         "created": "Client added",
@@ -154,6 +155,7 @@
     "airportWait": "Airport wait (minutes)",
     "elsewhereWait": "Wait elsewhere (minutes)",
     "timeZone": "Time zone",
+    "operationalDayStart": "Operational day starts at",
     "timeZoneUnsupported": "{zone} (no longer supported)",
     "loading": "Loading settings",
     "loadFailed": "The settings could not be loaded. Try again.",

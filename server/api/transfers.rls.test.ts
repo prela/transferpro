@@ -552,3 +552,34 @@ it('opens the board on the operational day that contains now, including before 0
   expect((await listTransferDay(dispatcher, undefined, beforeFive)).date).toBe('2026-10-07')
   expect((await listTransferDay(dispatcher, undefined, atFive)).date).toBe('2026-10-08')
 })
+
+it('uses the stored hour, so 06:00 starts the day and a pickup one minute earlier moves to the previous day', async () => {
+  const created = await tenant('htr-hour', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-hour-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const admin = await signIn('htr-hour-admin@example.test')
+  const dispatcher = await signIn('htr-hour-dispatcher@example.test')
+  const client = await createClient(admin, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(admin, { name: 'Hotel Park', kind: 'hotel' })
+  const before = zagrebInstant('2026-10-08T05:59')
+  const atHour = zagrebInstant('2026-10-08T06:00')
+  await seedRide(created.tenantId, client.id, start.id, end.id, before, 'Before six')
+  await seedRide(created.tenantId, client.id, start.id, end.id, atHour, 'At six')
+
+  expect(await listedGuests(dispatcher, '2026-10-08')).toEqual(['Before six', 'At six'])
+  expect(await listedGuests(dispatcher, '2026-10-07')).toEqual([])
+
+  await ownerPool.query(
+    'update app.tenant_settings set operational_day_start_hour = 6 where tenant_id = $1',
+    [created.tenantId],
+  )
+
+  expect(await listedGuests(dispatcher, '2026-10-08')).toEqual(['At six'])
+  expect(await listedGuests(dispatcher, '2026-10-07')).toEqual(['Before six'])
+  const stored = await ownerPool.query<{ pickup_at: Date }>(
+    'select pickup_at from app.transfers where tenant_id = $1 order by pickup_at',
+    [created.tenantId],
+  )
+  expect(stored.rows.map(row => new Date(row.pickup_at).toISOString())).toEqual([before, atHour])
+  expect((await listTransferDay(dispatcher, undefined, instantFromWallClock('2026-10-08T05:30', 'Europe/Zagreb'))).date).toBe('2026-10-07')
+})

@@ -1,3 +1,5 @@
+import { OPERATIONAL_DAY_START_DEFAULT, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN } from './tenant-settings'
+
 const calendarDate = /^(\d{4})-(\d{2})-(\d{2})$/
 
 /**
@@ -91,33 +93,56 @@ export function addCalendarDays(isoDate: string, days: number): string {
 }
 
 /**
- * Half-open UTC instants `[start, end)` for one operational day in an IANA zone.
- * `day` is the calendar date of the 05:00 start. `start` is local 05:00 of
- * that date. `end` is local 05:00 of the next date, so a pickup at exactly
- * 05:00 belongs to the new operational day and a pickup before 05:00 belongs
- * to the previous one. A daylight-saving night still breaks at local 05:00.
- * The bounds follow the zone, not a fixed 24 hours and not a `date` cast of
- * the stored instant, so the board can use the `(tenant_id, pickup_at)` index.
- * The roster and expiring documents do not call this.
+ * `HH:00` for the Tenant's operational-day start. A skipped hour and a
+ * repeated hour go through {@link instantFromWallClock}, the same rule as a
+ * pickup clock. An hour outside 0 through 8 is not a stored start.
  */
-export function localDayBounds(day: string, timeZone: string): { start: Date, end: Date } {
+function operationalStartClock(hour: number): string {
+  if (!Number.isInteger(hour) || hour < OPERATIONAL_DAY_START_MIN || hour > OPERATIONAL_DAY_START_MAX)
+    throw new RangeError('Operational-day start is not a whole hour from 0 through 8.')
+  return `${String(hour).padStart(2, '0')}:00`
+}
+
+/**
+ * Half-open UTC instants `[start, end)` for one operational day in an IANA zone.
+ * `day` is the calendar date of the start hour. `start` is that local hour of
+ * `day`. `end` is the same hour of the next date, so a pickup at the hour
+ * belongs to the new operational day and a pickup before it belongs to the
+ * previous one. Omitting the hour uses 05:00, the Tenant default. A caller
+ * that has loaded settings passes the stored hour. Hours 2 and 3 use the
+ * pickup wall-clock rule. The bounds follow the zone, not a fixed 24 hours
+ * and not a `date` cast of the stored instant, so the board can use the
+ * `(tenant_id, pickup_at)` index. The roster and expiring documents do not
+ * call this.
+ */
+export function localDayBounds(
+  day: string,
+  timeZone: string,
+  startHour = OPERATIONAL_DAY_START_DEFAULT,
+): { start: Date, end: Date } {
   if (!isCalendarDate(day))
     throw new RangeError('Day is not a calendar date.')
+  const clock = operationalStartClock(startHour)
   return {
-    start: instantFromWallClock(`${day}T05:00`, timeZone),
-    end: instantFromWallClock(`${addCalendarDays(day, 1)}T05:00`, timeZone),
+    start: instantFromWallClock(`${day}T${clock}`, timeZone),
+    end: instantFromWallClock(`${addCalendarDays(day, 1)}T${clock}`, timeZone),
   }
 }
 
 /**
  * The calendar date that names the operational day containing `instant`.
- * That date is the local date of the 05:00 that starts the interval. Before
- * local 05:00 the name is the previous calendar date. The board opens on
- * this date. The roster and expiring documents stay on {@link calendarDateInTimeZone}.
+ * That date is the local date of the start hour. Before that hour the name
+ * is the previous calendar date. The board opens on this date. Omitting the
+ * hour uses 05:00. The roster and expiring documents stay on
+ * {@link calendarDateInTimeZone}.
  */
-export function operationalDateInTimeZone(timeZone: string, instant: Date): string {
+export function operationalDateInTimeZone(
+  timeZone: string,
+  instant: Date,
+  startHour = OPERATIONAL_DAY_START_DEFAULT,
+): string {
   const calendar = calendarDateInTimeZone(timeZone, instant)
-  if (instant.getTime() >= localDayBounds(calendar, timeZone).start.getTime())
+  if (instant.getTime() >= localDayBounds(calendar, timeZone, startHour).start.getTime())
     return calendar
   return addCalendarDays(calendar, -1)
 }

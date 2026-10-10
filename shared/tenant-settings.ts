@@ -12,6 +12,15 @@ export const WAIT_MINUTES_MAX = 24 * 60
 export const AIRPORT_WAIT_DEFAULT_MINUTES = 90
 export const ELSEWHERE_WAIT_DEFAULT_MINUTES = 25
 
+/**
+ * The operational day starts at a whole hour. 0 is local midnight, so the
+ * operational day is the calendar date. 8 is the latest morning an office
+ * may draw the line. A new Tenant, and one that already exists, starts at 5.
+ */
+export const OPERATIONAL_DAY_START_MIN = 0
+export const OPERATIONAL_DAY_START_MAX = 8
+export const OPERATIONAL_DAY_START_DEFAULT = 5
+
 /** Display zone for a new Tenant. Instants stay UTC. */
 export const TENANT_TIME_ZONE_DEFAULT = 'Europe/Zagreb'
 
@@ -58,12 +67,21 @@ function isIanaTimeZone(zone: string): boolean {
 
 export const waitMinutesSchema = z.number().int().min(WAIT_MINUTES_MIN).max(WAIT_MINUTES_MAX)
 
+/** A whole hour from 00:00 through 08:00. The column and the audit row use the same bound. */
+export const operationalDayStartHourSchema = z.number().int().min(OPERATIONAL_DAY_START_MIN).max(OPERATIONAL_DAY_START_MAX)
+
+/** `5` is shown as `05:00` on the settings control and in the audit log. */
+export function formatOperationalDayStart(hour: number): string {
+  return `${String(hour).padStart(2, '0')}:00`
+}
+
 export const ianaTimeZoneSchema = z.string().min(1).max(TIME_ZONE_MAX_LENGTH).refine(isIanaTimeZone)
 
 export const tenantSettingsSchema = z.object({
   airportWaitMinutes: waitMinutesSchema,
   elsewhereWaitMinutes: waitMinutesSchema,
   timeZone: ianaTimeZoneSchema,
+  operationalDayStartHour: operationalDayStartHourSchema,
 })
 
 export type TenantSettings = z.infer<typeof tenantSettingsSchema>
@@ -76,6 +94,7 @@ export const tenantSettingsResponseSchema = z.object({
   airportWaitMinutes: waitMinutesSchema,
   elsewhereWaitMinutes: waitMinutesSchema,
   timeZone: storedTimeZoneSchema,
+  operationalDayStartHour: operationalDayStartHourSchema,
 })
 
 export type TenantSettingsResponse = z.infer<typeof tenantSettingsResponseSchema>
@@ -92,6 +111,7 @@ export const tenantSettingsPatchSchema = z.strictObject({
   airportWaitMinutes: waitMinutesSchema.optional(),
   elsewhereWaitMinutes: waitMinutesSchema.optional(),
   timeZone: ianaTimeZoneSchema.optional(),
+  operationalDayStartHour: operationalDayStartHourSchema.optional(),
 })
 
 export type TenantSettingsPatch = z.infer<typeof tenantSettingsPatchSchema>
@@ -107,8 +127,9 @@ export class TenantSettingsError extends Error {
 }
 
 /**
- * Accepts a patch of the waits and the time zone. Any other body throws
- * first, so the caller does not open a session and does not write.
+ * Accepts a patch of the waits, the time zone, and the operational-day
+ * start. Any other body throws first, so the caller does not open a session
+ * and does not write. An absent hour stays as stored.
  */
 export function parseTenantSettingsPatch(raw: unknown): TenantSettingsPatch {
   const parsed = tenantSettingsPatchSchema.safeParse(raw)
