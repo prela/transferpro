@@ -38,6 +38,7 @@ const PERSONAL_KEYS = new Set([
   'fare',
   'note',
   'notes',
+  'tabla',
   // Postgres `detail` carries the row values that caused the error.
   'detail',
   'connectionstring',

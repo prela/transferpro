@@ -48,6 +48,7 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
     address: 'Ilica 1, Zagreb',
     price: '42.00 EUR',
     notes: 'allergic to nuts',
+    tabla: 'GOSPOĐA HORVAT',
     cookie: 'better-auth.session=abc',
     connectionString: 'postgres://app:secret@localhost/transferpro',
     user_id: '6b1e0c3a-1111-4111-8111-111111111111',
@@ -61,6 +62,7 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
     address: '[Redacted]',
     price: '[Redacted]',
     notes: '[Redacted]',
+    tabla: '[Redacted]',
     cookie: '[Redacted]',
     connectionString: '[Redacted]',
     user_id: '6b1e0c3a-1111-4111-8111-111111111111',
@@ -69,6 +71,7 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
   expect(text).not.toContain('OU392')
   expect(text).not.toContain('postgres://app:secret')
   expect(text).not.toContain('allergic to nuts')
+  expect(text).not.toContain('GOSPOĐA HORVAT')
 })
 
 it('redacts an invitation id and an invite link', () => {

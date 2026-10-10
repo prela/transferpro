@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Client, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
-import { calendarDateInTimeZone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, transferDaySchema, vehicleListSchema } from '../../shared'
+import { calendarDateInTimeZone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -33,6 +33,7 @@ const startLocationId = ref<string | undefined>()
 const endLocationId = ref<string | undefined>()
 const passengers = ref('1')
 const guest = ref('')
+const tabla = ref('')
 const flight = ref('')
 const price = ref('')
 const payment = ref<PaymentMethod | undefined>()
@@ -53,6 +54,7 @@ const placePending = ref(false)
 const saved = ref(false)
 const formErrorKey = ref<TransferFailure | null>(null)
 const guestErrorKey = ref<'transfers.guestEmpty' | 'transfers.guestTooLong' | null>(null)
+const tablaErrorKey = ref<'transfers.tablaTooLong' | null>(null)
 const flightErrorKey = ref<'transfers.flightTooLong' | null>(null)
 const noteErrorKey = ref<'transfers.noteTooLong' | null>(null)
 const priceErrorKey = ref<'transfers.priceInvalid' | null>(null)
@@ -106,6 +108,7 @@ const kindItems = computed(() => [
 const columns = computed(() => [
   { id: 'pickup', header: t('transfers.pickupAt') },
   { accessorKey: 'guestName' as const, header: t('transfers.guest') },
+  { id: 'tabla', header: t('transfers.tabla') },
   { id: 'start', header: t('transfers.start') },
   { id: 'end', header: t('transfers.end') },
   { id: 'state', header: t('transfers.status') },
@@ -430,6 +433,7 @@ function formReady(): boolean {
     : guestNameError(guest.value) === 'too-long'
       ? 'transfers.guestTooLong'
       : null
+  tablaErrorKey.value = tablaError(tabla.value) ? 'transfers.tablaTooLong' : null
   flightErrorKey.value = flightNumberError(flight.value) ? 'transfers.flightTooLong' : null
   noteErrorKey.value = noteError(note.value) ? 'transfers.noteTooLong' : null
   priceErrorKey.value = priceError(price.value) ? 'transfers.priceInvalid' : null
@@ -441,6 +445,7 @@ function formReady(): boolean {
     ? 'transfers.samePlace'
     : null
   return !guestErrorKey.value
+    && !tablaErrorKey.value
     && !flightErrorKey.value
     && !noteErrorKey.value
     && !priceErrorKey.value
@@ -495,6 +500,7 @@ async function record() {
         endLocationId: endLocationId.value,
         passengerCount: Number(passengers.value),
         guestName: guest.value,
+        tabla: tabla.value,
         flightNumber: flight.value,
         price: priceFromInput(price.value),
         payment: payment.value,
@@ -505,6 +511,7 @@ async function record() {
       },
     }))
     guest.value = ''
+    tabla.value = ''
     flight.value = ''
     note.value = ''
     saved.value = true
@@ -581,6 +588,9 @@ onMounted(loadAll)
           <time :datetime="row.original.pickupAt">
             {{ formatInstant(new Date(row.original.pickupAt), timeZone, locale) }}
           </time>
+        </template>
+        <template #tabla-cell="{ row }">
+          <span v-if="row.original.tabla">{{ row.original.tabla }}</span>
         </template>
         <template #start-cell="{ row }">
           {{ placeLabel(row.original.startLocationId) }}
@@ -915,6 +925,25 @@ onMounted(loadAll)
           id="transfer-guest"
           v-model="guest"
           name="guest"
+          type="text"
+          autocomplete="off"
+          class="w-full"
+        />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
+      </UFormField>
+      <UFormField
+        :label="t('transfers.tabla')"
+        name="tabla"
+        class="mb-4"
+        size="xl"
+        :error="tablaErrorKey ? t(tablaErrorKey) : false"
+      >
+        <UInput
+          id="transfer-tabla"
+          v-model="tabla"
+          name="tabla"
           type="text"
           autocomplete="off"
           class="w-full"

@@ -249,9 +249,14 @@ it('records a Transfer by ids and field names, and refuses the guest name, the f
     },
   }
   expect(auditFactSchema.parse(created)).toEqual(created)
+  const withTabla = {
+    ...created,
+    data: { ...created.data, fields: [...created.data.fields, 'tabla'] as const },
+  }
+  expect(auditFactSchema.parse(withTabla)).toEqual(withTabla)
   expect(auditFactSchema.safeParse({
     ...created,
-    data: { ...created.data, guestName: 'Ana Anić', flightNumber: 'OU 384', note: 'terminal', price: '42.50' },
+    data: { ...created.data, guestName: 'Ana Anić', flightNumber: 'OU 384', note: 'terminal', tabla: 'GOSPOĐA HORVAT', price: '42.50' },
   }).success).toBe(false)
   expect(auditFactSchema.safeParse({
     ...created,

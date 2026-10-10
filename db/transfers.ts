@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { boolean, check, foreignKey, index, integer, numeric, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
-import { CHILD_SEAT_COUNT_MAX, CHILD_SEAT_COUNT_MIN, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, LUGGAGE_COUNT_MIN, NOTE_MAX_LENGTH, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, PAYMENT_METHODS, RIDE_STATES } from '../shared'
+import { CHILD_SEAT_COUNT_MAX, CHILD_SEAT_COUNT_MIN, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, LUGGAGE_COUNT_MIN, NOTE_MAX_LENGTH, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, PAYMENT_METHODS, RIDE_STATES, TABLA_MAX_LENGTH } from '../shared'
 import { clients } from './clients'
 import { drivers } from './drivers'
 import { locations } from './locations'
@@ -21,6 +21,7 @@ const payments = sql.raw(PAYMENT_METHODS.map(method => `'${method}'`).join(', ')
 const guestMax = sql.raw(String(GUEST_NAME_MAX_LENGTH))
 const flightMax = sql.raw(String(FLIGHT_NUMBER_MAX_LENGTH))
 const noteMax = sql.raw(String(NOTE_MAX_LENGTH))
+const tablaMax = sql.raw(String(TABLA_MAX_LENGTH))
 const passengersMin = sql.raw(String(PASSENGER_COUNT_MIN))
 const passengersMax = sql.raw(String(PASSENGER_COUNT_MAX))
 const luggageMin = sql.raw(String(LUGGAGE_COUNT_MIN))
@@ -43,6 +44,8 @@ export const transfers = tenantTable('transfers', {
   luggageCount: integer('luggage_count').notNull(),
   childSeatCount: integer('child_seat_count').notNull(),
   note: text('note'),
+  // Empty text is a blank meet sign. It is not null, and it is not the guest name.
+  tabla: text('tabla').notNull().default(''),
 }, table => [
   uniqueIndex('transfers_tenant_id_id').on(table.tenantId, table.id),
   // The day list reads one Tenant's pickups in instant order.
@@ -70,6 +73,7 @@ export const transfers = tenantTable('transfers', {
   check('transfers_luggage_count', sql`${table.luggageCount} between ${luggageMin} and ${luggageMax}`),
   check('transfers_child_seat_count', sql`${table.childSeatCount} between ${seatsMin} and ${seatsMax}`),
   check('transfers_note', sql`${table.note} is null or (${table.note} = btrim(${table.note}) and length(${table.note}) between 1 and ${noteMax})`),
+  check('transfers_tabla', sql`${table.tabla} = btrim(${table.tabla}) and length(${table.tabla}) <= ${tablaMax}`),
 ], { oneRowPerTenant: false })
 
 /**

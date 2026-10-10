@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, operationalDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, signIn, switchLocale } from './fixtures/ui'
+import { chooseOption, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
 const guest = 'Ana Anić'
+const tabla = 'GOSPOĐA HORVAT'
 const clientName = 'Agencija Mora'
 const startPlace = 'Zračna luka Dubrovnik'
 const endPlace = 'Hotel Excelsior'
@@ -75,6 +76,7 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
 
   await page.getByLabel('Vrijeme preuzimanja').fill(`${day}T12:00`)
   await page.getByLabel('Ime gosta').fill(guest)
+  await page.getByLabel('Tabla').fill(tabla)
   await page.getByLabel('Broj leta').fill('OU 384')
   await page.getByLabel('Cijena (EUR)').fill('42,50')
   await chooseOption(page, page.getByRole('combobox', { name: 'Plaćanje' }), 'Gotovina')
@@ -82,6 +84,7 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
 
   await expect(page.getByText('Zabilježeno.')).toBeVisible()
   await expect(page.getByRole('cell', { name: guest, exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: tabla, exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: startPlace })).toBeVisible()
   await expect(page.getByRole('cell', { name: endPlace })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Nedodijeljeno' })).toBeVisible()
@@ -89,6 +92,17 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
   await switchLocale(page, 'en')
   await expect(page.getByRole('heading', { level: 1, name: 'Transfers' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Record transfer', exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Meet sign' })).toBeVisible()
   await expect(page.getByRole('cell', { name: guest, exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: tabla, exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Unassigned' })).toBeVisible()
+  await expect(page.getByLabel('Meet sign')).toBeVisible()
+
+  await switchTheme(page, 'dark')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.getByLabel('Meet sign')).toBeVisible()
+  await expect(page.getByRole('cell', { name: tabla, exact: true })).toBeVisible()
+  await switchTheme(page, 'light')
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await expect(page.getByLabel('Meet sign')).toBeVisible()
 })

@@ -107,6 +107,7 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
     price: 42.5,
     payment: 'cash',
     flightNumber: 'OU 384',
+    tabla: 'GOSPOĐA HORVAT',
   })
   await record(page, 'Card Ivo', new Date(now.getTime() + 3 * 60 * 60 * 1000), places, {
     price: 18,
@@ -138,6 +139,8 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
   await expect(alarm).toContainText('42,50 EUR')
   await expect(alarm).toContainText('Gotovina')
   await expect(alarm).toContainText('OU 384')
+  await expect(alarm).toContainText('Tabla: GOSPOĐA HORVAT')
+  await expect(unassigned.getByRole('listitem').filter({ hasText: 'Card Ivo' })).not.toContainText('Tabla:')
   await expect(alarm).toContainText('Zračna luka Dubrovnik')
   await expect(alarm).toContainText('Hotel Excelsior')
   await expect(alarm.getByRole('link')).toHaveCount(0)
@@ -163,6 +166,7 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
 
   await switchLocale(page, 'en')
   await expect(page.getByRole('heading', { name: 'Counts for the operational day' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Meet sign: GOSPOĐA HORVAT')
   await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Unassigned alarm')
   await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('42.50 EUR')
   await expect(page.getByRole('button', { name: 'English' })).toHaveCount(0)
@@ -213,7 +217,7 @@ async function record(
   guestName: string,
   pickupAt: Date,
   places: { clientId: string, startLocationId: string, endLocationId: string },
-  fare: { price: number, payment: 'cash' | 'card' | 'invoice_to_agency', flightNumber?: string },
+  fare: { price: number, payment: 'cash' | 'card' | 'invoice_to_agency', flightNumber?: string, tabla?: string },
 ): Promise<string> {
   const recorded = await page.request.post('/api/transfers', {
     data: {
@@ -224,6 +228,7 @@ async function record(
       passengerCount: 1,
       guestName,
       flightNumber: fare.flightNumber,
+      tabla: fare.tabla,
       price: fare.price,
       payment: fare.payment,
       airportMark: false,

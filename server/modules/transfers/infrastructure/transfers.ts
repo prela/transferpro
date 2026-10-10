@@ -23,6 +23,7 @@ const transferRowSchema = z.object({
   luggageCount: z.number().int(),
   childSeatCount: z.number().int(),
   note: z.string().nullable(),
+  tabla: z.string(),
 })
 
 const rideRowSchema = z.object({
@@ -57,13 +58,14 @@ const transferColumns = sql`
   airport_mark as "airportMark",
   luggage_count as "luggageCount",
   child_seat_count as "childSeatCount",
-  note
+  note,
+  tabla
 `
 
 /**
  * Insert one Transfer and its one unassigned Ride, then append
  * `transfer.created` on this transaction. The entry names ids and field
- * names. It does not store the guest name, the flight, the note, or the price.
+ * names. It does not store the guest name, the flight, the note, the tabla, or the price.
  * The caller has already required a dispatcher or an admin, and has already
  * checked that role before loading the Client and the Locations.
  */
@@ -87,12 +89,12 @@ export async function recordTransfer(
     insert into app.transfers (
       client_id, pickup_at, start_location_id, end_location_id,
       passenger_count, guest_name, flight_number, price, payment,
-      airport_mark, luggage_count, child_seat_count, note
+      airport_mark, luggage_count, child_seat_count, note, tabla
     )
     values (
       ${input.clientId}, ${input.pickupAt}, ${input.startLocationId}, ${input.endLocationId},
       ${input.passengerCount}, ${input.guestName}, ${input.flightNumber}, ${input.price}, ${input.payment},
-      ${input.airportMark}, ${input.luggageCount}, ${input.childSeatCount}, ${input.note}
+      ${input.airportMark}, ${input.luggageCount}, ${input.childSeatCount}, ${input.note}, ${input.tabla}
     )
     returning ${transferColumns}
   `))
@@ -164,7 +166,8 @@ export async function loadRidesForDay(
       t.airport_mark as "airportMark",
       t.luggage_count as "luggageCount",
       t.child_seat_count as "childSeatCount",
-      t.note
+      t.note,
+      t.tabla
     from app.rides as r
     join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
     where t.pickup_at >= ${bounds.start.toISOString()} and t.pickup_at < ${bounds.end.toISOString()}
@@ -188,6 +191,8 @@ function createdFields(input: CreateTransfer): TransferField[] {
     set.add('flightNumber')
   if (input.note !== null)
     set.add('note')
+  if (input.tabla !== '')
+    set.add('tabla')
   return TRANSFER_FIELDS.filter(field => set.has(field))
 }
 
@@ -207,6 +212,7 @@ function toTransfer(row: z.infer<typeof transferRowSchema>): Transfer {
     luggageCount: row.luggageCount,
     childSeatCount: row.childSeatCount,
     note: row.note,
+    tabla: row.tabla,
   }
 }
 
@@ -231,6 +237,7 @@ function toDayRide(row: z.infer<typeof dayRowSchema>): TransferDayRide {
     luggageCount: row.luggageCount,
     childSeatCount: row.childSeatCount,
     note: row.note,
+    tabla: row.tabla,
   }
 }
 

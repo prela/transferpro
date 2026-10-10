@@ -21,6 +21,7 @@ function ride(overrides: Partial<OfficeHomeRide> & Pick<OfficeHomeRide, 'rideId'
     price: '42.50',
     payment: 'cash',
     flightNumber: null,
+    tabla: '',
     mustAccept: null,
     ...overrides,
   }
@@ -339,6 +340,7 @@ it('shows price and payment for cash, card, and invoice to agency, and the fligh
       price: '42.50',
       payment: 'cash',
       flightNumber: 'OU 384',
+      tabla: 'GOSPOĐA HORVAT',
     }),
     ride({
       rideId: '00000000-0000-4000-8000-000000000041',
@@ -365,10 +367,11 @@ it('shows price and payment for cash, card, and invoice to agency, and the fligh
     price: row.price,
     payment: row.payment,
     flightNumber: row.flightNumber,
+    tabla: row.tabla,
   }))).toEqual([
-    { guestName: 'Cash', price: '42.50', payment: 'cash', flightNumber: 'OU 384' },
-    { guestName: 'Card', price: '18.00', payment: 'card', flightNumber: null },
-    { guestName: 'Agency', price: '0.00', payment: 'invoice_to_agency', flightNumber: 'LH 123' },
+    { guestName: 'Cash', price: '42.50', payment: 'cash', flightNumber: 'OU 384', tabla: 'GOSPOĐA HORVAT' },
+    { guestName: 'Card', price: '18.00', payment: 'card', flightNumber: null, tabla: '' },
+    { guestName: 'Agency', price: '0.00', payment: 'invoice_to_agency', flightNumber: 'LH 123', tabla: '' },
   ])
   expect(snapshot.unassigned.every(row => !('flightUrl' in row))).toBe(true)
 })

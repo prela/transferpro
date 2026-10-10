@@ -8,7 +8,7 @@ import { transferHttpError } from './transfers/http'
  * A dispatcher or an admin records a Transfer and its one unassigned Ride.
  * An invalid body is 400 and is parsed before a session opens. A driver is 403.
  * No session is 401. An archived start or end is 409. The audit entry written
- * with the row does not contain the guest name, the flight, the note, or the price.
+ * with the row does not contain the guest name, the flight, the note, the tabla, or the price.
  */
 export default defineEventHandler(async (event) => {
   try {

@@ -106,7 +106,7 @@ function detailText(entry: AuditEntry): string {
     case 'location.archived':
       return ''
     case 'transfer.created':
-      // Field names only. The guest name, the flight, the note, and the price stay on the Transfer.
+      // Field names only. The guest name, the flight, the note, the tabla, and the price stay on the Transfer.
       return entry.data.fields.map(field => t(`transfers.fields.${field}`)).join(', ')
     case 'ride.assigned':
       return t('audit.rideAssignedDetail', {
