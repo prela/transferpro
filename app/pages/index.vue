@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatInstant, signInErrorKey } from '../../shared'
+import { signInErrorKey } from '../../shared'
 
 // Layout only. A Driver stays on the phone layout. Office staff get the
 // dashboard layout. Sign-in, no-access, and the firm list stay on this page.
@@ -31,8 +31,11 @@ watch(session, (next) => {
   setPageLayout(isOfficeMember(next?.role) ? 'dashboard' : 'default')
 })
 
-// 23:30 UTC is 00:30 the next day in Europe/Zagreb during standard time.
-const exampleInstant = new Date('2026-01-15T23:30:00.000Z')
+const documents = ref<{ reload: () => Promise<void> } | null>(null)
+
+function refreshDocuments() {
+  return documents.value?.reload() ?? Promise.resolve()
+}
 
 useHead({
   title: () => session.value?.tenantName ?? t('signIn.title'),
@@ -114,21 +117,23 @@ function httpStatus(error: unknown): number | undefined {
         :time-zone="session.timeZone"
         :locale="session.locale"
       />
-      <template v-else>
-        <p class="text-sm text-muted">
-          {{ t('shell.exampleTime') }}
-        </p>
-        <time
-          class="mt-1 block"
-          :datetime="exampleInstant.toISOString()"
-        >
-          {{ formatInstant(exampleInstant, session.timeZone, session.locale) }}
-        </time>
-      </template>
-      <ExpiringDocuments />
+      <!--
+        Office Home is the three lists, the seven counts, and one refresh.
+        The example instant is gone. Locale and theme stay on Profile.
+      -->
+      <OfficeHome
+        v-else
+        :time-zone="session.timeZone"
+        :locale="session.locale"
+        :refresh-documents="refreshDocuments"
+      />
+      <ExpiringDocuments
+        ref="documents"
+        :show-refresh="session.role === 'driver'"
+      />
       <!--
         Tenant settings, Members, invitations, and the audit log live on
-        their own screens. Home keeps the example instant and expiring documents.
+        their own screens.
       -->
       <UAlert
         v-if="shellError"

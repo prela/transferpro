@@ -11,4 +11,5 @@ export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableE
 export { RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
 export { assignRide, rosterVehicleForRide } from './infrastructure/assign-access'
 export { listUpcomingRides } from './infrastructure/driver-ride-access'
+export { readOfficeHome } from './infrastructure/office-home-access'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'

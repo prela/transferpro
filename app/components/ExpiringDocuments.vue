@@ -2,6 +2,12 @@
 import type { ExpiringDocument } from '../../shared'
 import { expiringDocumentListSchema } from '../../shared'
 
+const props = withDefaults(defineProps<{
+  showRefresh?: boolean
+}>(), {
+  showRefresh: true,
+})
+
 const { t, locale } = useI18n()
 const titleId = useId()
 
@@ -49,6 +55,8 @@ function formatDay(iso: string): string {
 function documentKey(document: ExpiringDocument): string {
   return `${document.subject}:${document.subjectId}:${document.kind}`
 }
+
+defineExpose({ reload: loadDocuments })
 
 onMounted(loadDocuments)
 </script>
@@ -108,6 +116,7 @@ onMounted(loadDocuments)
       </li>
     </ul>
     <UButton
+      v-if="props.showRefresh"
       type="button"
       color="neutral"
       variant="outline"
