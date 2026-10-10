@@ -99,7 +99,7 @@ function fakeTransaction(script: Script) {
       if (text.includes('from app.tenant_settings')) {
         if (script.missingSettings)
           return { rows: [] }
-        return { rows: [{ airport_wait_minutes: 90, elsewhere_wait_minutes: 25, time_zone: 'Europe/Zagreb' }] }
+        return { rows: [{ airport_wait_minutes: 90, elsewhere_wait_minutes: 25, time_zone: 'Europe/Zagreb', operational_day_start_hour: 5 }] }
       }
       if (text.includes('from app.roster')) {
         if (script.rosterVehicleId == null)
@@ -290,7 +290,7 @@ it('keeps a roster input error from the pre-fill', async () => {
     if (text.includes('from app.drivers'))
       return { rows: [{ id: driverId }] }
     if (text.includes('from app.tenant_settings'))
-      return { rows: [{ airport_wait_minutes: 90, elsewhere_wait_minutes: 25, time_zone: 'Europe/Zagreb' }] }
+      return { rows: [{ airport_wait_minutes: 90, elsewhere_wait_minutes: 25, time_zone: 'Europe/Zagreb', operational_day_start_hour: 5 }] }
     if (text.includes('from app.roster'))
       throw new RosterInputError()
     return { rows: [] }

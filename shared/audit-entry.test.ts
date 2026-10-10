@@ -43,6 +43,16 @@ it('records a wait or a time zone as from and to, and refuses a member, a name, 
   }
   expect(auditFactSchema.parse(zone)).toEqual(zone)
   expect(auditFactSchema.safeParse({ ...zone, data: { from: 'Europe/Zagreb', to: 'Not/AZone' } }).success).toBe(false)
+  const hour = {
+    action: 'settings.operational_day_start_changed' as const,
+    subjectUserId: null,
+    data: { from: 5, to: 6 },
+  }
+  expect(auditFactSchema.parse(hour)).toEqual(hour)
+  expect(auditFactSchema.safeParse({ ...hour, subjectUserId: memberId }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...hour, data: { from: 5, to: 6, email: 'ana@example.com' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...hour, data: { from: 5, to: 9 } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...hour, data: { from: 5.5, to: 6 } }).success).toBe(false)
   expect(auditEntryListSchema.safeParse({
     entries: [{
       id: '8d3a2e5c-4444-4444-8444-444444444444',

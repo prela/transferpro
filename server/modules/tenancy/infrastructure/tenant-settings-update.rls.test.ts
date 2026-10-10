@@ -40,6 +40,7 @@ const initial = {
   airportWaitMinutes: 90,
   elsewhereWaitMinutes: 25,
   timeZone: 'Europe/Zagreb',
+  operationalDayStartHour: 5,
 }
 
 beforeAll(async () => {
@@ -159,6 +160,7 @@ it('each change of a wait or the time zone appends exactly one entry naming the 
     airportWaitMinutes: 100,
     elsewhereWaitMinutes: 40,
     timeZone: 'Europe/Berlin',
+    operationalDayStartHour: 5,
   })
   expect(JSON.stringify(entries)).not.toContain('@example.test')
 })
@@ -181,6 +183,7 @@ it('one request that changes two fields appends one entry for each and leaves th
     airportWaitMinutes: 110,
     elsewhereWaitMinutes: 25,
     timeZone: 'Europe/Berlin',
+    operationalDayStartHour: 5,
   })
 })
 
@@ -197,9 +200,38 @@ it('a no-op or an invalid change appends nothing and leaves the row as it was', 
   await expect(updateTenantSettings(admin, { timeZone: 'Not/AZone' })).rejects.toMatchObject({ statusCode: 400 })
   await expect(updateTenantSettings(admin, { timeZone: 'europe/zagreb' })).rejects.toMatchObject({ statusCode: 400 })
   await expect(updateTenantSettings(admin, { airportWaitMinutes: 90, email: 'neda@example.test' })).rejects.toMatchObject({ statusCode: 400 })
+  await expect(updateTenantSettings(admin, { operationalDayStartHour: -1 })).rejects.toMatchObject({ statusCode: 400 })
+  await expect(updateTenantSettings(admin, { operationalDayStartHour: 9 })).rejects.toMatchObject({ statusCode: 400 })
+  await expect(updateTenantSettings(admin, { operationalDayStartHour: 5.5 })).rejects.toMatchObject({ statusCode: 400 })
+  await expect(updateTenantSettings(admin, { operationalDayStartHour: '06:00' })).rejects.toMatchObject({ statusCode: 400 })
+  await updateTenantSettings(admin, { operationalDayStartHour: 5 })
 
   expect(await readTenantSettings(admin)).toEqual(initial)
   expect(await entryCount(created.tenantId)).toBe(0)
+})
+
+it('saving the operational-day start leaves the waits and the time zone, and an unchanged hour appends nothing', async () => {
+  const created = await tenant('ts-hour', 'Hana Admin')
+  const admin = await signIn('ts-hour-admin@example.test')
+
+  await updateTenantSettings(admin, { operationalDayStartHour: 0 })
+  await updateTenantSettings(admin, { operationalDayStartHour: 8 })
+  await updateTenantSettings(admin, { operationalDayStartHour: 6 })
+  await updateTenantSettings(admin, { operationalDayStartHour: 6, airportWaitMinutes: 90, elsewhereWaitMinutes: 25 })
+
+  const { entries } = await readAuditLog(admin)
+  expect(entries).toMatchObject([
+    { action: 'settings.operational_day_start_changed', subjectUserId: null, subjectName: null, data: { from: 8, to: 6 } },
+    { action: 'settings.operational_day_start_changed', subjectUserId: null, subjectName: null, data: { from: 0, to: 8 } },
+    { action: 'settings.operational_day_start_changed', subjectUserId: null, subjectName: null, data: { from: 5, to: 0 } },
+  ])
+  expect(entries).toHaveLength(3)
+  expect(await entryCount(created.tenantId)).toBe(3)
+  expect(await readTenantSettings(admin)).toEqual({
+    ...initial,
+    operationalDayStartHour: 6,
+  })
+  expect(JSON.stringify(entries)).not.toContain('@example.test')
 })
 
 it('a dispatcher or a driver can read the settings and cannot change them', async () => {
@@ -211,12 +243,14 @@ it('a dispatcher or a driver can read the settings and cannot change them', asyn
   const driver = await signIn('ts-roles-driver@example.test')
 
   await updateTenantSettings(admin, { airportWaitMinutes: 80 })
-  const changed = { airportWaitMinutes: 80, elsewhereWaitMinutes: 25, timeZone: 'Europe/Zagreb' }
+  const changed = { airportWaitMinutes: 80, elsewhereWaitMinutes: 25, timeZone: 'Europe/Zagreb', operationalDayStartHour: 5 }
   expect(await readTenantSettings(dispatcher)).toEqual(changed)
   expect(await readTenantSettings(driver)).toEqual(changed)
 
   await expect(updateTenantSettings(dispatcher, { airportWaitMinutes: 81 })).rejects.toMatchObject({ statusCode: 403 })
   await expect(updateTenantSettings(driver, { timeZone: 'Europe/Berlin' })).rejects.toMatchObject({ statusCode: 403 })
+  await expect(updateTenantSettings(dispatcher, { operationalDayStartHour: 6 })).rejects.toMatchObject({ statusCode: 403 })
+  await expect(updateTenantSettings(driver, { operationalDayStartHour: 0 })).rejects.toMatchObject({ statusCode: 403 })
   await expect(updateTenantSettings(dispatcher, { elsewhereWaitMinutes: 10 })).rejects.toMatchObject({ statusCode: 403 })
 
   expect(await readTenantSettings(admin)).toEqual(changed)
@@ -237,11 +271,13 @@ it('another tenant cannot read or change these settings', async () => {
     airportWaitMinutes: 120,
     elsewhereWaitMinutes: 30,
     timeZone: 'Europe/Zagreb',
+    operationalDayStartHour: 5,
   })
   expect(await readTenantSettings(otherAdmin)).toEqual({
     airportWaitMinutes: 40,
     elsewhereWaitMinutes: 25,
     timeZone: 'Europe/Zagreb',
+    operationalDayStartHour: 5,
   })
   expect(await entryCount(created.tenantId)).toBe(2)
   expect(await entryCount(other.tenantId)).toBe(1)

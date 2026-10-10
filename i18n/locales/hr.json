@@ -107,7 +107,8 @@
       "settings": {
         "airport_wait_changed": "Promijenjeno čekanje na aerodromu",
         "elsewhere_wait_changed": "Promijenjeno čekanje izvan aerodroma",
-        "time_zone_changed": "Promijenjena vremenska zona"
+        "time_zone_changed": "Promijenjena vremenska zona",
+        "operational_day_start_changed": "Promijenjen sat početka operativnog dana"
       },
       "client": {
         "created": "Klijent dodan",
@@ -154,6 +155,7 @@
     "airportWait": "Čekanje na aerodromu (minute)",
     "elsewhereWait": "Čekanje izvan aerodroma (minute)",
     "timeZone": "Vremenska zona",
+    "operationalDayStart": "Sat početka operativnog dana",
     "timeZoneUnsupported": "{zone} (više nije podržano)",
     "loading": "Učitavanje postavki",
     "loadFailed": "Postavke se nisu mogle učitati. Pokušajte ponovno.",

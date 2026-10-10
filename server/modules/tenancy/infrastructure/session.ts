@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
-import { parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
+import { operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
 import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
@@ -51,6 +51,7 @@ const settingsRows = z.object({
   rows: z.array(z.object({
     default_locale: z.string(),
     time_zone: z.string().min(1),
+    operational_day_start_hour: z.number().int(),
   })),
 })
 
@@ -137,7 +138,7 @@ export async function readSessionShell(headers: Headers): Promise<SessionShell> 
 
   return withTenantFromSession(headers, async ({ context, transaction }) => {
     const selected = settingsRows.parse(await transaction.execute(sql`
-      select default_locale, time_zone from app.tenant_settings
+      select default_locale, time_zone, operational_day_start_hour from app.tenant_settings
     `))
     const settings = selected.rows.length === 1 ? selected.rows[0] : undefined
     if (!settings)
@@ -154,6 +155,7 @@ export async function readSessionShell(headers: Headers): Promise<SessionShell> 
       userId: parsed.data.user.id,
       locale: resolveDisplayLocale(userLocale, settings.default_locale),
       timeZone: settings.time_zone,
+      operationalDayStartHour: operationalDayStartHourSchema.parse(settings.operational_day_start_hour),
       role: role.data,
     })
   })
@@ -247,7 +249,7 @@ export async function readTenantSettings(headers: Headers): Promise<TenantSettin
 }
 
 /**
- * Change the waits or the time zone. Admin only; a dispatcher or a driver
+ * Change the waits, the time zone, or the operational-day start. Admin only; a dispatcher or a driver
  * is 403 before any update. The body is parsed first, so an invalid change
  * never opens a session. A patch that matches the row writes nothing.
  * Each field that does change appends one audit entry in this transaction.

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AuditEntry, DisplayLocale, TenantRole } from '../../shared'
-import { auditEntryListSchema, formatInstant } from '../../shared'
+import { auditEntryListSchema, formatInstant, formatOperationalDayStart } from '../../shared'
 
 defineProps<{
   timeZone: string
@@ -64,7 +64,7 @@ function actorLabel(entry: AuditEntry): string {
   return entry.actorName ?? t('audit.formerMember')
 }
 
-/** The role the entry kept, or the wait or time zone it changed from and to. */
+/** The role the entry kept, or the wait, time zone, or operational-day start it changed from and to. */
 function detailText(entry: AuditEntry): string {
   switch (entry.action) {
     case 'member.role_changed':
@@ -77,6 +77,8 @@ function detailText(entry: AuditEntry): string {
     case 'settings.airport_wait_changed':
     case 'settings.elsewhere_wait_changed':
       return t('audit.minutesChange', { from: entry.data.from, to: entry.data.to })
+    case 'settings.operational_day_start_changed':
+      return `${formatOperationalDayStart(entry.data.from)} → ${formatOperationalDayStart(entry.data.to)}`
     case 'client.created':
       return t(`clients.kinds.${entry.data.kind}`)
     case 'client.kind_changed':

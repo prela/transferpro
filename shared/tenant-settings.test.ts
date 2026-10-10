@@ -3,6 +3,7 @@ import {
   AIRPORT_WAIT_DEFAULT_MINUTES,
   ELSEWHERE_WAIT_DEFAULT_MINUTES,
   ianaTimeZoneSchema,
+  OPERATIONAL_DAY_START_DEFAULT,
   parseTenantSettingsPatch,
   TENANT_TIME_ZONE_DEFAULT,
   TenantSettingsError,
@@ -22,11 +23,31 @@ it('a Tenant starts at a 90-minute airport wait, 25 minutes elsewhere, and Europ
     airportWaitMinutes: 90,
     elsewhereWaitMinutes: 25,
     timeZone: 'Europe/Zagreb',
+    operationalDayStartHour: 5,
   })).toEqual({
     airportWaitMinutes: 90,
     elsewhereWaitMinutes: 25,
     timeZone: 'Europe/Zagreb',
+    operationalDayStartHour: 5,
   })
+})
+
+it('accepts an operational-day start from 00:00 through 08:00 and refuses an hour outside that, a fraction, or a clock string', () => {
+  expect(OPERATIONAL_DAY_START_DEFAULT).toBe(5)
+  expect(tenantSettingsPatchSchema.safeParse({ operationalDayStartHour: 0 }).success).toBe(true)
+  expect(tenantSettingsPatchSchema.safeParse({ operationalDayStartHour: 5 }).success).toBe(true)
+  expect(tenantSettingsPatchSchema.safeParse({ operationalDayStartHour: 6 }).success).toBe(true)
+  expect(tenantSettingsPatchSchema.safeParse({ operationalDayStartHour: 8 }).success).toBe(true)
+  expect(tenantSettingsPatchSchema.safeParse({ operationalDayStartHour: -1 }).success).toBe(false)
+  expect(tenantSettingsPatchSchema.safeParse({ operationalDayStartHour: 9 }).success).toBe(false)
+  expect(tenantSettingsPatchSchema.safeParse({ operationalDayStartHour: 5.5 }).success).toBe(false)
+  expect(tenantSettingsPatchSchema.safeParse({ operationalDayStartHour: '05:00' }).success).toBe(false)
+  expect(tenantSettingsSchema.parse({
+    airportWaitMinutes: 90,
+    elsewhereWaitMinutes: 25,
+    timeZone: 'Europe/Zagreb',
+    operationalDayStartHour: 5,
+  }).operationalDayStartHour).toBe(5)
 })
 
 it('accepts a wait of 1 or 1440 minutes and refuses what is outside that, a fraction, or a string', () => {
@@ -58,6 +79,7 @@ it('a reply accepts a stored zone that is no longer on the list, and a write of 
     airportWaitMinutes: 90,
     elsewhereWaitMinutes: 25,
     timeZone: 'US/Eastern',
+    operationalDayStartHour: 5,
   }
   expect(tenantSettingsResponseSchema.parse(stored)).toEqual(stored)
   expect(tenantSettingsSchema.safeParse(stored).success).toBe(false)

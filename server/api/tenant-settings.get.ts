@@ -4,8 +4,9 @@ import { readTenantSettings, TenantAccessError } from '../modules/tenancy'
 
 /**
  * GET /api/tenant-settings
- * The current Tenant's No-show waits and time zone. Admin, dispatcher, and
- * driver may read them. Another Tenant cannot: the row is behind FORCE RLS.
+ * The current Tenant's No-show waits, time zone, and operational-day start.
+ * Admin, dispatcher, and driver may read them. Another Tenant cannot: the
+ * row is behind FORCE RLS.
  */
 export default defineEventHandler(async (event) => {
   try {

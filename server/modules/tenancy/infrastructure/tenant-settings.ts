@@ -2,7 +2,7 @@ import type { AuditFact, TenantSettings, TenantSettingsPatch } from '../../../..
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { ianaTimeZoneSchema, storedTimeZoneSchema, waitMinutesSchema } from '../../../../shared'
+import { ianaTimeZoneSchema, operationalDayStartHourSchema, storedTimeZoneSchema, waitMinutesSchema } from '../../../../shared'
 import { appendAuditEntry } from '../../audit'
 
 const settingsRows = z.object({
@@ -10,6 +10,7 @@ const settingsRows = z.object({
     airport_wait_minutes: z.number().int(),
     elsewhere_wait_minutes: z.number().int(),
     time_zone: z.string(),
+    operational_day_start_hour: z.number().int(),
   })),
 })
 
@@ -52,12 +53,16 @@ export async function changeTenantSettings(
     airportWaitMinutes: waitMinutesSchema.parse(patch.airportWaitMinutes ?? current.airportWaitMinutes),
     elsewhereWaitMinutes: waitMinutesSchema.parse(patch.elsewhereWaitMinutes ?? current.elsewhereWaitMinutes),
     timeZone: patch.timeZone === undefined ? current.timeZone : ianaTimeZoneSchema.parse(patch.timeZone),
+    operationalDayStartHour: operationalDayStartHourSchema.parse(
+      patch.operationalDayStartHour ?? current.operationalDayStartHour,
+    ),
   }
   await transaction.execute(sql`
     update app.tenant_settings
     set airport_wait_minutes = ${next.airportWaitMinutes},
         elsewhere_wait_minutes = ${next.elsewhereWaitMinutes},
-        time_zone = ${next.timeZone}
+        time_zone = ${next.timeZone},
+        operational_day_start_hour = ${next.operationalDayStartHour}
   `)
   for (const fact of facts)
     await appendAuditEntry(transaction, { ...fact, actorUserId })
@@ -87,18 +92,25 @@ function changedFacts(current: TenantSettings, patch: TenantSettingsPatch): Audi
       data: { from: current.timeZone, to: patch.timeZone },
     })
   }
+  if (patch.operationalDayStartHour !== undefined && patch.operationalDayStartHour !== current.operationalDayStartHour) {
+    facts.push({
+      action: 'settings.operational_day_start_changed',
+      subjectUserId: null,
+      data: { from: current.operationalDayStartHour, to: patch.operationalDayStartHour },
+    })
+  }
   return facts
 }
 
 async function readRow(transaction: TenantTransaction, lock: boolean): Promise<TenantSettings> {
   const query = lock
     ? sql`
-      select airport_wait_minutes, elsewhere_wait_minutes, time_zone
+      select airport_wait_minutes, elsewhere_wait_minutes, time_zone, operational_day_start_hour
       from app.tenant_settings
       for update
     `
     : sql`
-      select airport_wait_minutes, elsewhere_wait_minutes, time_zone
+      select airport_wait_minutes, elsewhere_wait_minutes, time_zone, operational_day_start_hour
       from app.tenant_settings
     `
   const selected = settingsRows.parse(await transaction.execute(query))
@@ -111,5 +123,6 @@ async function readRow(transaction: TenantTransaction, lock: boolean): Promise<T
     // Do not run the IANA check here. The name was valid when it was
     // stored; a later runtime list must not make the row unreadable.
     timeZone: storedTimeZoneSchema.parse(row.time_zone),
+    operationalDayStartHour: operationalDayStartHourSchema.parse(row.operational_day_start_hour),
   }
 }

@@ -5,6 +5,7 @@ import { calendarDateInTimeZone, childSeatCountError, clientListSchema, driverLi
 const props = defineProps<{
   timeZone: string
   locale: DisplayLocale
+  operationalDayStartHour: number
 }>()
 
 const { t } = useI18n()
@@ -12,7 +13,7 @@ const { notifyAuditChanged } = useAuditRefresh()
 
 // The board opens on the operational day that contains now. A pickup form
 // still defaults to noon on the calendar date: recording a pickup did not move.
-const day = ref(operationalDateInTimeZone(props.timeZone, new Date()))
+const day = ref(operationalDateInTimeZone(props.timeZone, new Date(), props.operationalDayStartHour))
 const pickupDay = calendarDateInTimeZone(props.timeZone, new Date())
 const rides = ref<TransferDayRide[]>([])
 const clients = ref<Client[]>([])
@@ -507,7 +508,7 @@ async function record() {
     flight.value = ''
     note.value = ''
     saved.value = true
-    day.value = operationalDateInTimeZone(props.timeZone, new Date(recorded.transfer.pickupAt))
+    day.value = operationalDateInTimeZone(props.timeZone, new Date(recorded.transfer.pickupAt), props.operationalDayStartHour)
     await loadDay()
   }
   catch (error) {

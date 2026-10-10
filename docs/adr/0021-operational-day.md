@@ -1,8 +1,10 @@
 # Operational day
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0025
 
 Damir accepted this on 10 October 2026.
+
+ADR-0025 supersedes "The cutoff is 05:00." The day is still half-open in the Tenant time zone. The board and the office home still share that bound. The roster and expiring documents still keep the calendar date. The recorded pickup instant still does not change.
 
 ## Context
 

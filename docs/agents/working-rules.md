@@ -81,6 +81,8 @@ A new Tenant starts at a 90-minute airport wait, a 25-minute wait elsewhere, and
 
 An admin changes them with `PATCH /api/tenant-settings`. A dispatcher and a driver may `GET` them and receive 403 on a change: ADR-0007 has the Driver wait them out and the Dispatcher close a No-show early. A no-op or a refused change appends no audit entry. A real change appends one entry per field, in the same transaction, with `{ from, to }` only.
 
+The operational-day start is a whole hour from 0 through 8 on the same row, default 5. The board and Home pass that hour into the shared operational-day bound. The roster and expiring documents stay on the calendar date. A real change appends `settings.operational_day_start_changed`. An unchanged hour appends nothing.
+
 ## i18n and theme
 
 A null user locale follows the Tenant default. `POST /api/locale` accepts `hr` or `en`. Ship both locales for every UI change. Ship both light and dark. `nuxt.config.ts` holds the locale strategy and the `transferpro-theme` key. Render instants with `formatInstant` (`shared/format-instant.ts`); do not add another date formatter.

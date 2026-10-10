@@ -344,3 +344,46 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
   expect(http.status).toBe(200)
   officeHomeSchema.parse(await http.json())
 })
+
+it('counts the stored hour, and a pickup before that hour stays on the unassigned list', async () => {
+  const created = await tenant('ohm-hour', 'Hana Admin')
+  const admin = await signIn('ohm-hour-admin@example.test')
+  await ownerPool.query(
+    'update app.tenant_settings set operational_day_start_hour = 6 where tenant_id = $1',
+    [created.tenantId],
+  )
+  const calendar = '2026-10-08'
+  const now = instantFromWallClock(`${calendar}T12:00`, zone)
+  const client = await createClient(admin, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(admin, { name: 'Hotel Excelsior', kind: 'hotel' })
+
+  async function record(guestName: string, wall: string) {
+    const recorded = await createTransfer(admin, {
+      clientId: client.id,
+      pickupAt: instantFromWallClock(wall, zone).toISOString(),
+      startLocationId: start.id,
+      endLocationId: end.id,
+      passengerCount: 1,
+      guestName,
+      price: 10,
+      payment: 'cash',
+      airportMark: false,
+      luggageCount: 0,
+      childSeatCount: 0,
+    })
+    return recorded.ride.id
+  }
+
+  await record('Before six', `${calendar}T05:30`)
+  await setRideState(await record('At six', `${calendar}T06:00`), 'done')
+  await setRideState(await record('Next morning', '2026-10-09T05:30'), 'done')
+
+  const snapshot = officeHomeSchema.parse(await readOfficeHome(admin, now))
+  expect(snapshot.unassigned.map(row => row.guestName)).toEqual(['Before six'])
+  expect(snapshot.counts).toMatchObject({
+    rides: 2,
+    unassigned: 0,
+    done: 2,
+  })
+})

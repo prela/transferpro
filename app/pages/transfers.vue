@@ -55,6 +55,7 @@ const office = computed(() => isOfficeMember(session.value?.role))
       <TransferDay
         v-if="office"
         :time-zone="session.timeZone"
+        :operational-day-start-hour="session.operationalDayStartHour"
         :locale="session.locale"
       />
       <UAlert

@@ -48,6 +48,44 @@ it('lists a 00:30 Zagreb pickup on the previous operational day only', () => {
   expect(pickup >= calendar.start && pickup < calendar.end).toBe(false)
 })
 
+it('makes hour 0 the calendar date, and a pickup at the chosen hour starts that operational day', () => {
+  const midnight = instantFromWallClock('2026-10-08T00:00', 'Europe/Zagreb')
+  const before = instantFromWallClock('2026-10-08T05:59', 'Europe/Zagreb')
+  const atSix = instantFromWallClock('2026-10-08T06:00', 'Europe/Zagreb')
+  const day = localDayBounds('2026-10-08', 'Europe/Zagreb', 0)
+  const atSixDay = localDayBounds('2026-10-08', 'Europe/Zagreb', 6)
+  const previousSix = localDayBounds('2026-10-07', 'Europe/Zagreb', 6)
+  expect(day.start.toISOString()).toBe('2026-10-07T22:00:00.000Z')
+  expect(midnight.getTime()).toBe(day.start.getTime())
+  expect(operationalDateInTimeZone('Europe/Zagreb', midnight, 0)).toBe('2026-10-08')
+  expect(operationalDateInTimeZone('Europe/Zagreb', instantFromWallClock('2026-10-07T23:59', 'Europe/Zagreb'), 0)).toBe('2026-10-07')
+  expect(before >= previousSix.start && before < previousSix.end).toBe(true)
+  expect(before >= atSixDay.start && before < atSixDay.end).toBe(false)
+  expect(atSix.getTime()).toBe(atSixDay.start.getTime())
+  expect(atSix >= atSixDay.start && atSix < atSixDay.end).toBe(true)
+  expect(operationalDateInTimeZone('Europe/Zagreb', before, 6)).toBe('2026-10-07')
+  expect(operationalDateInTimeZone('Europe/Zagreb', atSix, 6)).toBe('2026-10-08')
+})
+
+it('starts a spring-forward morning one hour later when the hour is 02:00', () => {
+  // 29 March 2026, 02:00 does not exist. The same rule as a pickup clock reads it as 03:00 CEST.
+  const day = localDayBounds('2026-03-29', 'Europe/Zagreb', 2)
+  expect(day.start.toISOString()).toBe('2026-03-29T01:00:00.000Z')
+  const before = new Date(day.start.getTime() - 60 * 1000)
+  expect(operationalDateInTimeZone('Europe/Zagreb', before, 2)).toBe('2026-03-28')
+  expect(operationalDateInTimeZone('Europe/Zagreb', day.start, 2)).toBe('2026-03-29')
+})
+
+it('reads the repeated autumn hour at standard time when the hour is 02:00', () => {
+  // 25 October 2026, 02:00 happens twice. The later one is CET (UTC+1), 01:00 UTC.
+  const day = localDayBounds('2026-10-25', 'Europe/Zagreb', 2)
+  expect(day.start.toISOString()).toBe('2026-10-25T01:00:00.000Z')
+  const firstRepeat = new Date('2026-10-25T00:00:00.000Z')
+  expect(firstRepeat < day.start).toBe(true)
+  expect(operationalDateInTimeZone('Europe/Zagreb', firstRepeat, 2)).toBe('2026-10-24')
+  expect(operationalDateInTimeZone('Europe/Zagreb', day.start, 2)).toBe('2026-10-25')
+})
+
 it('names the operational day by the date of its 05:00 start, including before 05:00', () => {
   expect(operationalDateInTimeZone('Europe/Zagreb', instantFromWallClock('2026-10-08T04:59', 'Europe/Zagreb'))).toBe('2026-10-07')
   expect(operationalDateInTimeZone('Europe/Zagreb', instantFromWallClock('2026-10-08T00:30', 'Europe/Zagreb'))).toBe('2026-10-07')

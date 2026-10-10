@@ -44,6 +44,7 @@ const initial = {
   airportWaitMinutes: 90,
   elsewhereWaitMinutes: 25,
   timeZone: 'Europe/Zagreb',
+  operationalDayStartHour: 5,
 }
 
 beforeAll(async () => {
@@ -134,6 +135,10 @@ function call(handler: (request: Request) => Response | Promise<Response>, metho
 
 it('patch answers 400 for bad minutes, an unknown zone, or an unknown key, and does not echo the key', async () => {
   expect((await call(changeSettings, 'PATCH', undefined, { airportWaitMinutes: 0 })).status).toBe(400)
+  expect((await call(changeSettings, 'PATCH', undefined, { operationalDayStartHour: 9 })).status).toBe(400)
+  expect((await call(changeSettings, 'PATCH', undefined, { operationalDayStartHour: 5.5 })).status).toBe(400)
+  expect((await call(changeSettings, 'PATCH', undefined, { operationalDayStartHour: 6 })).status).toBe(401)
+  expect((await call(readSettings, 'GET')).status).toBe(401)
   expect((await call(changeSettings, 'PATCH', undefined, { timeZone: 'Not/AZone' })).status).toBe(400)
   const unknown = await call(changeSettings, 'PATCH', undefined, { airportWaitMinutes: 90, email: 'ana@example.test' })
   expect(unknown.status).toBe(400)
@@ -158,6 +163,8 @@ it('get and patch answer 200 for an admin, and patch answers 403 for a dispatche
 
   expect((await call(changeSettings, 'PATCH', dispatcher, { airportWaitMinutes: 81 })).status).toBe(403)
   expect((await call(changeSettings, 'PATCH', driver, { timeZone: 'Europe/Berlin' })).status).toBe(403)
+  expect((await call(changeSettings, 'PATCH', dispatcher, { operationalDayStartHour: 6 })).status).toBe(403)
+  expect((await call(changeSettings, 'PATCH', driver, { operationalDayStartHour: 0 })).status).toBe(403)
 
   const still = await call(readSettings, 'GET', dispatcher)
   expect(still.status).toBe(200)
@@ -190,6 +197,7 @@ it('patch without a time zone succeeds when the stored zone is off the list', as
     airportWaitMinutes: 100,
     elsewhereWaitMinutes: 25,
     timeZone: 'US/Eastern',
+    operationalDayStartHour: 5,
   })
 
   const got = await call(readSettings, 'GET', admin)

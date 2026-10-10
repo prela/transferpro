@@ -35,7 +35,8 @@ const sourceRowSchema = z.object({
 export async function loadOfficeHome(transaction: TenantTransaction, now: Date): Promise<OfficeHome> {
   const settings = await loadTenantSettings(transaction)
   const timeZone = settings.timeZone
-  const bounds = localDayBounds(operationalDateInTimeZone(timeZone, now), timeZone)
+  const startHour = settings.operationalDayStartHour
+  const bounds = localDayBounds(operationalDateInTimeZone(timeZone, now, startHour), timeZone, startHour)
   const nowIso = now.toISOString()
   const selected = z.object({ rows: z.array(sourceRowSchema) }).parse(await hideDatabaseError(
     () => transaction.execute(sql`
@@ -94,7 +95,7 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
     }
   })
 
-  return buildOfficeHome(rides, now, timeZone)
+  return buildOfficeHome(rides, now, timeZone, startHour)
 }
 
 /** A missing Driver or Vehicle for an id that is set fails the whole read. A null id is an empty name. */

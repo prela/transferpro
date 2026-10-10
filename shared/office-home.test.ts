@@ -210,6 +210,32 @@ it('derives in progress from a past pickup, including an earlier day, and leaves
   expect(snapshot.waitingOnAcceptance).toEqual([])
 })
 
+it('counts the stored hour, so a 05:30 pickup stays off today when the hour is 06:00 and still appears on the unassigned list', () => {
+  const now = instantFromWallClock('2026-01-15T12:00', zone)
+  const snapshot = buildOfficeHome([
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000040',
+      guestName: 'Before six',
+      pickupAt: instantFromWallClock('2026-01-15T05:30', zone).toISOString(),
+      state: 'unassigned',
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000041',
+      guestName: 'At six',
+      pickupAt: instantFromWallClock('2026-01-15T06:00', zone).toISOString(),
+      state: 'done',
+      driverId: '00000000-0000-4000-8000-0000000000aa',
+      driverName: 'Marko',
+      vehiclePlate: 'DU100AA',
+    }),
+  ], now, zone, 6)
+
+  expect(guests(snapshot.unassigned)).toEqual(['Before six'])
+  expect(snapshot.counts.unassigned).toBe(0)
+  expect(snapshot.counts.rides).toBe(1)
+  expect(snapshot.counts.done).toBe(1)
+})
+
 it('counts the operational day only, so a list can be larger than its count, and a future assigned Ride is only in the Rides count', () => {
   // 04:30 on 15 January is still the operational day that started at 05:00 on the 14th.
   const now = instantFromWallClock('2026-01-15T04:30', zone)
