@@ -192,12 +192,15 @@ async function transfersCatalogDeepImport(filePath: string, source: string) {
   )
 }
 
-it('rejects a Transfers deep import of Clients or Locations', async () => {
+it('rejects a Transfers deep import of Clients, Locations, or Vehicles', async () => {
   const clients = `import { loadClients } from '../../clients/infrastructure/clients'\n`
   const locations = `await import('../locations/infrastructure/locations')\n`
+  const vehicles = `import { loadVehicle } from '../../vehicles/infrastructure/vehicles'\n`
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', clients)).not.toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/index.ts', locations)).not.toEqual([])
+  expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/driver-ride-access.ts', vehicles)).not.toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', `import { loadClients } from '../../clients'\n`)).toEqual([])
+  expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/driver-ride-access.ts', `import { loadVehicle } from '../../vehicles'\n`)).toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/locations/infrastructure/locations.ts', clients)).toEqual([])
 })
 

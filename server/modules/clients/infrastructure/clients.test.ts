@@ -2,7 +2,7 @@ import type { SQL } from 'drizzle-orm'
 import type { TenantTransaction } from '../../../core/index'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
-import { addClient, ClientNotFoundError, correctClient, loadClients } from './clients'
+import { addClient, ClientNotFoundError, correctClient, loadClient, loadClients } from './clients'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
@@ -26,6 +26,10 @@ function fakeTransaction(rows: Array<{ id: string, name: string, kind: 'agency' 
       }
       // `for update` contains the word update, so the lock is matched first.
       if (text.includes('for update')) {
+        const id = compiled.params[0]
+        return { rows: rows.filter(row => row.id === id) }
+      }
+      if (text.includes('where id')) {
         const id = compiled.params[0]
         return { rows: rows.filter(row => row.id === id) }
       }
@@ -55,6 +59,14 @@ it('adds a Client and records the id and the kind, not the name', async () => {
   const created = queries.find(query => query.params[0] === 'client.created')
   expect(created?.params[3]).toBe(JSON.stringify({ clientId, kind: 'agency' }))
   expect(JSON.stringify(created?.params)).not.toContain('Agencija Mora')
+})
+
+it('loads one Client by id, and a missing id is not found', async () => {
+  const row = { id: clientId, name: 'Agencija Mora', kind: 'agency' as const }
+  const { transaction } = fakeTransaction([row])
+  await expect(loadClient(transaction, clientId)).resolves.toEqual(row)
+  const missing = fakeTransaction([])
+  await expect(loadClient(missing.transaction, clientId)).rejects.toBeInstanceOf(ClientNotFoundError)
 })
 
 it('lists the Clients the session returned', async () => {

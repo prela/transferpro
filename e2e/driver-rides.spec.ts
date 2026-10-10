@@ -115,16 +115,19 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   const startLocationId = await createdId(await page.request.post('/api/locations', {
     data: { name: 'Polazak', kind: 'airport' },
   }))
+  const addressedStartId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Čilipi', kind: 'airport', address: 'Čilipi 1' },
+  }))
   const endLocationId = await createdId(await page.request.post('/api/locations', {
-    data: { name: 'Hotel Park', kind: 'hotel' },
+    data: { name: 'Hotel Park', kind: 'hotel', address: 'Masarykov put 1' },
   }))
 
-  async function record(guest: string, pickupAt: Date, payment: 'cash' | 'card' | 'invoice_to_agency', price: number, extra?: { flightNumber?: string, airportMark?: boolean, passengerCount?: number }) {
+  async function record(guest: string, pickupAt: Date, payment: 'cash' | 'card' | 'invoice_to_agency', price: number, extra?: { flightNumber?: string, airportMark?: boolean, passengerCount?: number, luggageCount?: number, childSeatCount?: number, note?: string, tabla?: string, startLocationId?: string }) {
     const recorded = await page.request.post('/api/transfers', {
       data: {
         clientId,
         pickupAt: pickupAt.toISOString(),
-        startLocationId,
+        startLocationId: extra?.startLocationId ?? startLocationId,
         endLocationId,
         passengerCount: extra?.passengerCount ?? 1,
         guestName: guest,
@@ -132,8 +135,10 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
         price,
         payment,
         airportMark: extra?.airportMark ?? false,
-        luggageCount: 0,
-        childSeatCount: 0,
+        luggageCount: extra?.luggageCount ?? 0,
+        childSeatCount: extra?.childSeatCount ?? 0,
+        note: extra?.note ?? null,
+        tabla: extra?.tabla ?? '',
       },
     })
     if (!recorded.ok())
@@ -150,12 +155,18 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
       throw new Error(`${response.status()} ${await response.text()}`)
   }
 
-  const cardRide = await record('Nika Plastika', cardAt, 'card', 99)
+  const cardRide = await record('Nika Plastika', cardAt, 'card', 99, {
+    note: 'Voucher fare 99.00',
+    tabla: 'GOSPOĐA HORVAT',
+    startLocationId: addressedStartId,
+  })
   await assign(cardRide, ownDriverId)
   const cashRide = await record('Nika Sunce', cashAt, 'cash', 42.5, {
     flightNumber: 'OU 384',
     airportMark: true,
     passengerCount: 3,
+    luggageCount: 2,
+    childSeatCount: 1,
   })
   await assign(cashRide, ownDriverId)
   const invoiceRide = await record('Nika Agencija', invoiceAt, 'invoice_to_agency', 80)
@@ -165,6 +176,9 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   const doneRide = await record('Nika Kraj', cashAt, 'cash', 11)
   await assign(doneRide, ownDriverId)
   await setRideState(doneRide, 'done')
+  // The card still shows the place and the plate after both are archived.
+  expect((await page.request.post(`/api/locations/${endLocationId}/archive`)).ok()).toBeTruthy()
+  expect((await page.request.post(`/api/vehicles/${vehicleId}/archive`)).ok()).toBeTruthy()
 
   await signOut(page)
   await signIn(page, driver.email, driver.password, tenant.name)
@@ -185,10 +199,30 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(cashCard.getByText('OU 384')).toBeVisible()
   await expect(cashCard.getByText('Zračna luka')).toBeVisible()
   await expect(cardCard.getByText('Zračna luka')).toHaveCount(0)
+  await expect(cashCard.getByText('Klijent Vozač')).toBeVisible()
+  await expect(cashCard.getByText('Agencija')).toBeVisible()
+  await expect(cashCard.getByText('Masarykov put 1')).toBeVisible()
+  // The start has no address, so the card has one address line, on the end.
+  await expect(cashCard.getByText('Adresa', { exact: true })).toHaveCount(1)
+  await expect(cashCard.locator('div').filter({ hasText: /^Prtljaga/ }).locator('dd')).toHaveText('2')
+  await expect(cashCard.locator('div').filter({ hasText: /^Dječje sjedalice/ }).locator('dd')).toHaveText('1')
+  await expect(cashCard.getByText('DU300AA')).toBeVisible()
+  await expect(cashCard.getByText('Tabla')).toHaveCount(0)
+  await expect(cashCard.getByText('Napomena')).toHaveCount(0)
+  await expect(cashCard.getByText('Arhivirano')).toHaveCount(0)
+  await expect(cardCard.getByText('Čilipi 1')).toBeVisible()
+  await expect(cardCard.getByText('Masarykov put 1')).toBeVisible()
+  await expect(cardCard.getByText('Adresa', { exact: true })).toHaveCount(2)
+  await expect(cardCard.getByText('Voucher fare 99.00')).toBeVisible()
+  await expect(cardCard.getByText('GOSPOĐA HORVAT')).toBeVisible()
+  await expect(cardCard.locator('div').filter({ hasText: /^Prtljaga/ }).locator('dd')).toHaveText('0')
+  await expect(cardCard.locator('div').filter({ hasText: /^Dječje sjedalice/ }).locator('dd')).toHaveText('0')
+  await expect(cardCard.getByText('DU300AA')).toBeVisible()
+  await expect(cardCard.getByText('Arhivirano')).toHaveCount(0)
   await expect(cashCard.getByText('42,50 EUR')).toBeVisible()
   await expect(cashCard.getByText('Gotovina')).toBeVisible()
+  await expect(cardCard.getByText('Cijena', { exact: true })).toHaveCount(0)
   await expect(cardCard.getByText('99,00 EUR')).toHaveCount(0)
-  await expect(cardCard.getByText('99.00')).toHaveCount(0)
   await expect(cardCard.getByText('Gotovina')).toHaveCount(0)
   await expect(cardCard.getByText('Kartica')).toHaveCount(0)
   await expect(cardCard.getByText('Card')).toHaveCount(0)
@@ -211,7 +245,19 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(cashCard.getByText('Cash')).toBeVisible()
   await expect(cashCard.getByText('42.50 EUR')).toBeVisible()
   await expect(cashCard.getByText('Airport')).toBeVisible()
-  await expect(cardCard.getByText('99.00')).toHaveCount(0)
+  await expect(cashCard.getByText('Client')).toBeVisible()
+  await expect(cashCard.getByText('Agency')).toBeVisible()
+  await expect(cashCard.getByText('Address')).toBeVisible()
+  await expect(cashCard.getByText('Luggage')).toBeVisible()
+  await expect(cashCard.getByText('Child seats')).toBeVisible()
+  await expect(cashCard.getByText('Registration plate')).toBeVisible()
+  await expect(cashCard.getByText('Meet sign')).toHaveCount(0)
+  await expect(cardCard.getByText('Address', { exact: true })).toHaveCount(2)
+  await expect(cardCard.getByText('99.00 EUR')).toHaveCount(0)
+  await expect(cardCard.getByText('Meet sign')).toBeVisible()
+  await expect(cardCard.getByText('Note')).toBeVisible()
+  await expect(cardCard.getByText('GOSPOĐA HORVAT')).toBeVisible()
+  await expect(cardCard.getByText('Price', { exact: true })).toHaveCount(0)
   await expect(cardCard.getByText('Card')).toHaveCount(0)
   await expect(invoiceCard.getByText('80.00')).toHaveCount(0)
   await expect(invoiceCard.getByText('Invoice to agency')).toHaveCount(0)
@@ -226,7 +272,11 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(cashCard.getByRole('heading', { name: 'Nika Sunce' })).toBeVisible()
-  await expect(cardCard.getByText('99.00')).toHaveCount(0)
+  await expect(cashCard.getByText('Masarykov put 1')).toBeVisible()
+  await expect(cardCard.getByText('GOSPOĐA HORVAT')).toBeVisible()
+  await expect(cardCard.getByText('Čilipi 1')).toBeVisible()
+  await expect(cardCard.getByText('Price', { exact: true })).toHaveCount(0)
+  await expect(cardCard.getByText('99.00 EUR')).toHaveCount(0)
 
   const manifestLink = page.locator('link[rel="manifest"]')
   await expect(manifestLink).toHaveAttribute('href', '/manifest.webmanifest')

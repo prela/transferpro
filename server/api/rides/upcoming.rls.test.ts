@@ -10,7 +10,7 @@ import { createDriver, updateDriver } from '../../modules/drivers'
 import { archiveLocation, createLocation } from '../../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../../modules/tenancy'
 import { assignRide, createTransfer, listTransferDay } from '../../modules/transfers'
-import { createVehicle } from '../../modules/vehicles'
+import { archiveVehicle, createVehicle } from '../../modules/vehicles'
 import getUpcoming from './upcoming.get'
 
 /**
@@ -199,10 +199,14 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
   const driver = await signIn('hdrv-own-driver@example.test')
   const unlinked = await signIn('hdrv-own-unlinked@example.test')
   const client = await createClient(admin, { name: 'Agencija Mora', kind: 'agency' })
+  // No address on the start. The end keeps its address after it is archived.
   const start = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
-  const end = await createLocation(admin, { name: 'Hotel Park', kind: 'hotel' })
+  const addressedStart = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport', address: 'Čilipi 1' })
+  const end = await createLocation(admin, { name: 'Hotel Park', kind: 'hotel', address: 'Masarykov put 1' })
+  // An external Driver sees the agency name. The kind is not rewritten.
   const mine = await createDriver(admin, {
     ...driverFields,
+    kind: 'external',
     name: 'Marko Vozač',
     phone: '+385911110201',
     memberUserId: driverUserId,
@@ -231,6 +235,11 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     airportMark: boolean
     flightNumber?: string
     passengerCount: number
+    luggageCount?: number
+    childSeatCount?: number
+    note?: string | null
+    tabla?: string
+    startLocationId?: string
     assign?: string
     state?: string
     movePickupTo?: string
@@ -238,7 +247,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     const recorded = await createTransfer(admin, {
       clientId: client.id,
       pickupAt: input.pickupAt,
-      startLocationId: start.id,
+      startLocationId: input.startLocationId ?? start.id,
       endLocationId: end.id,
       passengerCount: input.passengerCount,
       guestName: input.guest,
@@ -246,8 +255,10 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
       price: input.price,
       payment: input.payment,
       airportMark: input.airportMark,
-      luggageCount: 0,
-      childSeatCount: 0,
+      luggageCount: input.luggageCount ?? 0,
+      childSeatCount: input.childSeatCount ?? 0,
+      note: input.note ?? null,
+      tabla: input.tabla ?? '',
     })
     if (input.assign) {
       await assignRide(admin, { rideId: recorded.ride.id, driverId: input.assign, vehicleId: vehicle.id })
@@ -259,10 +270,35 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
 
   // `accepted` stores the copied flag as true. This Driver's default is false, so turn it on for these Rides only.
   await updateDriver(admin, mine.id, { mustAccept: true })
-  await ride({ guest: 'Iva Card', pickupAt: at('10:00'), price: 99, payment: 'card', airportMark: false, passengerCount: 1, assign: mine.id, state: 'accepted' })
+  await ride({
+    guest: 'Iva Card',
+    pickupAt: at('10:00'),
+    price: 99,
+    payment: 'card',
+    airportMark: false,
+    passengerCount: 1,
+    luggageCount: 0,
+    childSeatCount: 0,
+    note: 'Voucher fare 99.00',
+    tabla: 'GOSPOĐA HORVAT',
+    startLocationId: addressedStart.id,
+    assign: mine.id,
+    state: 'accepted',
+  })
   await ride({ guest: 'Iva Waiting', pickupAt: at('10:30'), price: 21, payment: 'cash', airportMark: false, passengerCount: 1, assign: mine.id })
   await updateDriver(admin, mine.id, { mustAccept: false })
-  const cashRide = await ride({ guest: 'Iva Cash', pickupAt: at('11:00'), price: 42.5, payment: 'cash', airportMark: true, flightNumber: 'OU 384', passengerCount: 3, assign: mine.id })
+  const cashRide = await ride({
+    guest: 'Iva Cash',
+    pickupAt: at('11:00'),
+    price: 42.5,
+    payment: 'cash',
+    airportMark: true,
+    flightNumber: 'OU 384',
+    passengerCount: 3,
+    luggageCount: 2,
+    childSeatCount: 1,
+    assign: mine.id,
+  })
   await ride({ guest: 'Iva Invoice', pickupAt: at('12:00'), price: 80, payment: 'invoice_to_agency', airportMark: false, passengerCount: 2, assign: mine.id })
   await ride({ guest: 'Iva Other', pickupAt: at('13:00'), price: 15, payment: 'cash', airportMark: false, passengerCount: 1, assign: other.id })
   await ride({ guest: 'Iva Done', pickupAt: at('14:00'), price: 11, payment: 'cash', airportMark: false, passengerCount: 1, assign: mine.id, state: 'done' })
@@ -274,6 +310,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
 
   // An archived place still has a name. The driver cannot open the place list.
   await archiveLocation(admin, end.id)
+  await archiveVehicle(admin, vehicle.id)
 
   const office = await listTransferDay(admin, day)
   expect(office.rides.find(row => row.guestName === 'Iva Cash')).toMatchObject({ price: '42.50', payment: 'cash' })
@@ -312,9 +349,18 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
   expect(cash).toMatchObject({
     from: 'Zračna luka Dubrovnik',
     to: 'Hotel Park',
+    fromAddress: null,
+    toAddress: 'Masarykov put 1',
     passengerCount: 3,
     flightNumber: 'OU 384',
     airportMark: true,
+    clientName: 'Agencija Mora',
+    clientKind: 'agency',
+    luggageCount: 2,
+    childSeatCount: 1,
+    note: null,
+    tabla: null,
+    registrationPlate: 'DU200AA',
     price: '42.50',
     payment: 'cash',
     state: 'assigned',
@@ -328,9 +374,25 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     payment: 'cash',
   })
   const card = listed.rides.find(row => row.guestName === 'Iva Card')
-  expect(card).toMatchObject({ price: null, payment: null, flightNumber: null, airportMark: false })
-  expect(JSON.stringify(card)).not.toContain('99.00')
-  expect(JSON.stringify(card)).not.toContain('card')
+  expect(card).toMatchObject({
+    price: null,
+    payment: null,
+    flightNumber: null,
+    airportMark: false,
+    clientName: 'Agencija Mora',
+    clientKind: 'agency',
+    fromAddress: 'Čilipi 1',
+    toAddress: 'Masarykov put 1',
+    luggageCount: 0,
+    childSeatCount: 0,
+    note: 'Voucher fare 99.00',
+    tabla: 'GOSPOĐA HORVAT',
+    registrationPlate: 'DU200AA',
+  })
+  expect(card?.tabla).not.toBe(card?.guestName)
+  expect(JSON.stringify(card)).not.toContain('"card"')
+  expect(JSON.stringify(card)).not.toContain('"price":"99.00"')
+  expect(JSON.stringify(listed)).not.toContain('archived')
   const invoiced = listed.rides.find(row => row.guestName === 'Iva Invoice')
   expect(invoiced).toMatchObject({ price: null, payment: null })
   expect(JSON.stringify(invoiced)).not.toContain('80.00')

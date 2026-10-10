@@ -270,7 +270,7 @@ const clientsTransfersImport = {
 }
 
 /**
- * Transfers may name a Client or a Location only through that module's index.
+ * Transfers may name a Client, a Location, or a Vehicle only through that module's index.
  * A deep import of infrastructure would couple the booking to the catalog's internals.
  */
 const transfersCatalogDeepImport = {
@@ -278,7 +278,7 @@ const transfersCatalogDeepImport = {
     type: 'problem',
     schema: [],
     messages: {
-      banned: 'Transfers reach Clients and Locations through their index.ts only (ADR-0018).',
+      banned: 'Transfers reach Clients, Locations, and Vehicles through their index.ts only (ADR-0018).',
     },
   },
   create(context) {
@@ -287,7 +287,7 @@ const transfersCatalogDeepImport = {
      * @param {unknown} source
      */
     function check(node, source) {
-      if (typeof source !== 'string' || !/(?:^|\/)(?:clients|locations)\/infrastructure(?:\/|$)/.test(source))
+      if (typeof source !== 'string' || !/(?:^|\/)(?:clients|locations|vehicles)\/infrastructure(?:\/|$)/.test(source))
         return
       const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
       if (!filename.includes('/server/modules/transfers/'))

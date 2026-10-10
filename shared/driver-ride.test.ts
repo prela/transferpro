@@ -10,6 +10,15 @@ const ride = {
   passengerCount: 3,
   flightNumber: 'OU 384',
   airportMark: true,
+  clientName: 'Agencija Mora',
+  clientKind: 'agency' as const,
+  fromAddress: null,
+  toAddress: 'Masarykov put 1',
+  luggageCount: 2,
+  childSeatCount: 1,
+  note: null,
+  tabla: '',
+  registrationPlate: 'DU200AA',
   price: '42.50',
   payment: 'cash' as const,
   state: 'assigned' as const,
@@ -26,6 +35,15 @@ it('shows the price and cash when the Ride is cash', () => {
     passengerCount: 3,
     flightNumber: 'OU 384',
     airportMark: true,
+    clientName: 'Agencija Mora',
+    clientKind: 'agency',
+    fromAddress: null,
+    toAddress: 'Masarykov put 1',
+    luggageCount: 2,
+    childSeatCount: 1,
+    note: null,
+    tabla: null,
+    registrationPlate: 'DU200AA',
     price: '42.50',
     payment: 'cash',
     state: 'assigned',
@@ -70,6 +88,40 @@ it('hides the price and the method when the Ride is card', () => {
   expect(card.mustAccept).toBe(false)
   expect(JSON.stringify(card)).not.toContain('99.00')
   expect(JSON.stringify(card)).not.toContain('card')
+})
+
+it('keeps the note, the tabla, and a zero count on a card Ride, and still hides the fare', () => {
+  const card = presentDriverRide({
+    ...ride,
+    price: '99.00',
+    payment: 'card',
+    guestName: 'Iva Card',
+    note: 'Voucher fare 99.00',
+    tabla: 'GOSPOĐA HORVAT',
+    luggageCount: 0,
+    childSeatCount: 0,
+    clientKind: 'individual',
+  })
+  expect(card.clientName).toBe('Agencija Mora')
+  expect(card.clientKind).toBe('individual')
+  expect(card.note).toBe('Voucher fare 99.00')
+  expect(card.tabla).toBe('GOSPOĐA HORVAT')
+  expect(card.tabla).not.toBe(card.guestName)
+  expect(card.luggageCount).toBe(0)
+  expect(card.childSeatCount).toBe(0)
+  expect(card.fromAddress).toBeNull()
+  expect(card.toAddress).toBe('Masarykov put 1')
+  expect(card.registrationPlate).toBe('DU200AA')
+  expect(card.price).toBeNull()
+  expect(card.payment).toBeNull()
+})
+
+it('omits a blank tabla and a blank address', () => {
+  expect(presentDriverRide({ ...ride, tabla: '   ', toAddress: '  ' })).toMatchObject({
+    tabla: null,
+    toAddress: null,
+    luggageCount: 2,
+  })
 })
 
 it('hides the price and the method when the Ride is invoiced to the agency', () => {

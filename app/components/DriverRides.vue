@@ -38,6 +38,9 @@ async function loadRides(refresh = false) {
   catch {
     if (ticket !== loadTicket)
       return
+    // The alert is a fixed sentence. The response body is not shown, so a
+    // failed load cannot reveal a Client, an address, a note, a tabla, a
+    // plate, or a guest name.
     loadError.value = true
   }
   finally {
@@ -182,15 +185,50 @@ onMounted(loadRides)
           <dl class="mt-3 grid grid-cols-1 gap-2">
             <div>
               <dt class="text-sm text-muted">
+                {{ t('transfers.client') }}
+              </dt>
+              <dd class="break-words">
+                {{ ride.clientName }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-sm text-muted">
+                {{ t('clients.kind') }}
+              </dt>
+              <dd>{{ t(`clients.kinds.${ride.clientKind}`) }}</dd>
+            </div>
+            <div>
+              <dt class="text-sm text-muted">
                 {{ t('driverRides.from') }}
               </dt>
-              <dd>{{ ride.from }}</dd>
+              <dd class="break-words">
+                {{ ride.from }}
+              </dd>
+            </div>
+            <!-- A missing address is not a blank line. An archived Location still has its line. -->
+            <div v-if="ride.fromAddress">
+              <dt class="text-sm text-muted">
+                {{ t('locations.address') }}
+              </dt>
+              <dd class="break-words">
+                {{ ride.fromAddress }}
+              </dd>
             </div>
             <div>
               <dt class="text-sm text-muted">
                 {{ t('driverRides.to') }}
               </dt>
-              <dd>{{ ride.to }}</dd>
+              <dd class="break-words">
+                {{ ride.to }}
+              </dd>
+            </div>
+            <div v-if="ride.toAddress">
+              <dt class="text-sm text-muted">
+                {{ t('locations.address') }}
+              </dt>
+              <dd class="break-words">
+                {{ ride.toAddress }}
+              </dd>
             </div>
             <div>
               <dt class="text-sm text-muted">
@@ -198,11 +236,46 @@ onMounted(loadRides)
               </dt>
               <dd>{{ ride.passengerCount }}</dd>
             </div>
+            <!-- Zero is a fact: the Driver still needs to see that there is no bag and no seat. -->
+            <div>
+              <dt class="text-sm text-muted">
+                {{ t('transfers.luggage') }}
+              </dt>
+              <dd>{{ ride.luggageCount }}</dd>
+            </div>
+            <div>
+              <dt class="text-sm text-muted">
+                {{ t('transfers.childSeats') }}
+              </dt>
+              <dd>{{ ride.childSeatCount }}</dd>
+            </div>
             <div v-if="ride.flightNumber">
               <dt class="text-sm text-muted">
                 {{ t('driverRides.flight') }}
               </dt>
               <dd>{{ ride.flightNumber }}</dd>
+            </div>
+            <div v-if="ride.note">
+              <dt class="text-sm text-muted">
+                {{ t('transfers.note') }}
+              </dt>
+              <dd class="break-words whitespace-pre-wrap">
+                {{ ride.note }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-sm text-muted">
+                {{ t('vehicles.registrationPlate') }}
+              </dt>
+              <dd>{{ ride.registrationPlate }}</dd>
+            </div>
+            <div v-if="ride.tabla">
+              <dt class="text-sm text-muted">
+                {{ t('transfers.tabla') }}
+              </dt>
+              <dd class="break-words whitespace-pre-wrap">
+                {{ ride.tabla }}
+              </dd>
             </div>
             <!--
               Cash only. Card and invoice to agency render neither the price
