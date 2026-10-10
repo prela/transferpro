@@ -17,6 +17,7 @@ const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
 const guest = 'Ana Anić'
 const flight = 'OU 384'
 const note = 'Čeka na terminalu'
+const tabla = 'GOSPOĐA HORVAT'
 const dialect = new PgDialect()
 
 const input = {
@@ -33,6 +34,7 @@ const input = {
   luggageCount: 1,
   childSeatCount: 0,
   note,
+  tabla: '',
 }
 
 interface FakeLocation {
@@ -81,6 +83,7 @@ function fakeTransaction(options: {
             luggageCount: params[10],
             childSeatCount: params[11],
             note: params[12],
+            tabla: params[13],
           }],
         }
       }
@@ -148,6 +151,7 @@ it('records one unassigned Ride and names fields, not the guest, the flight, the
       luggageCount: 1,
       childSeatCount: 0,
       note,
+      tabla: '',
     },
     ride: {
       id: rideId,
@@ -177,7 +181,29 @@ it('records one unassigned Ride and names fields, not the guest, the flight, the
   expect(queries.filter(query => query.sql.includes('insert into app.rides'))).toHaveLength(1)
 })
 
-it('omits a blank flight and note from the field list', async () => {
+it('stores a tabla as its own fact, names the field, and keeps the words off the audit entry', async () => {
+  const { transaction, queries } = fakeTransaction({
+    clients: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }],
+    locations: places,
+  })
+  await expect(recordTransfer(transaction, actorUserId, { ...input, tabla })).resolves.toMatchObject({
+    transfer: { tabla, guestName: guest, note },
+  })
+  const payload = auditPayloads(queries)
+  expect(payload).toEqual([
+    JSON.stringify({
+      transferId,
+      rideId,
+      clientId,
+      startLocationId,
+      endLocationId,
+      fields: ['pickupAt', 'passengerCount', 'guestName', 'flightNumber', 'price', 'payment', 'airportMark', 'luggageCount', 'childSeatCount', 'note', 'tabla'],
+    }),
+  ])
+  expect(JSON.stringify(payload)).not.toContain(tabla)
+})
+
+it('omits a blank flight, note, and tabla from the field list', async () => {
   const { transaction, queries } = fakeTransaction({
     clients: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }],
     locations: places,
@@ -214,7 +240,7 @@ it('replaces a write failure so the log line does not keep the guest name', asyn
   const { transaction } = fakeTransaction({
     clients: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }],
     locations: places,
-    failInsert: { message: `check violation ${guest} ${flight} ${note}` },
+    failInsert: { message: `check violation ${guest} ${flight} ${note} ${tabla}` },
   })
   const error = await recordTransfer(transaction, actorUserId, input).catch(caught => caught)
   expect(error).toMatchObject({ message: 'Transfer write failed' })
@@ -222,6 +248,7 @@ it('replaces a write failure so the log line does not keep the guest name', asyn
   expect(logLine(error)).not.toContain(guest)
   expect(logLine(error)).not.toContain(flight)
   expect(logLine(error)).not.toContain(note)
+  expect(logLine(error)).not.toContain(tabla)
 })
 
 it('loads the Zagreb operational day as a half-open range of local 05:00 and maps the ride', async () => {
@@ -248,10 +275,11 @@ it('loads the Zagreb operational day as a half-open range of local 05:00 and map
       luggageCount: 0,
       childSeatCount: 0,
       note: null,
+      tabla,
     }],
   })
   await expect(loadRidesForDay(transaction, '2026-10-07', 'Europe/Zagreb')).resolves.toMatchObject([
-    { rideId, pickupAt: '2026-10-07T10:30:00.000Z', price: '42.00', airportMark: true },
+    { rideId, pickupAt: '2026-10-07T10:30:00.000Z', price: '42.00', airportMark: true, tabla, guestName: guest, note: null },
   ])
   expect(queries[0]?.sql.toLowerCase()).not.toContain('::date')
   expect(queries[0]?.sql.toLowerCase()).not.toContain('at time zone')

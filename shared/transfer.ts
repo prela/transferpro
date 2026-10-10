@@ -29,6 +29,12 @@ export const FLIGHT_NUMBER_MAX_LENGTH = 20
 export const NOTE_MAX_LENGTH = 1000
 
 /**
+ * Words on the meet sign for this pickup. Same bound as a guest name.
+ * A blank is stored as empty text, not as null, so the column is always present.
+ */
+export const TABLA_MAX_LENGTH = 200
+
+/**
  * Look-back for a pickup instant: 30 × 24 hours from `now` (720 hours), not
  * 30 calendar days in the Tenant time zone. DST and local midnight do not
  * move the edge. The forward bound is {@link PICKUP_FUTURE_MONTHS} UTC
@@ -55,7 +61,7 @@ export const PAYMENT_METHODS = ['cash', 'card', 'invoice_to_agency'] as const
 
 /**
  * The only strings an audit row may store for a Transfer. Values (the guest
- * name, the flight, the note, the price) are not in this list.
+ * name, the flight, the note, the tabla text, the price) are not in this list.
  */
 export const TRANSFER_FIELDS = [
   'pickupAt',
@@ -68,6 +74,7 @@ export const TRANSFER_FIELDS = [
   'luggageCount',
   'childSeatCount',
   'note',
+  'tabla',
 ] as const
 
 export const rideStateSchema = z.enum(RIDE_STATES)
@@ -107,6 +114,12 @@ function optionalLine(maxLength: number) {
 const flightNumberSchema = optionalLine(FLIGHT_NUMBER_MAX_LENGTH)
 const noteSchema = optionalLine(NOTE_MAX_LENGTH)
 
+/**
+ * Missing, null, and whitespace become ''. A real sign is trimmed.
+ * Unlike a flight or a note, empty text is the stored blank.
+ */
+const tablaSchema = z.union([z.null(), z.string()]).optional().transform(value => (value ?? '').trim()).pipe(z.string().max(TABLA_MAX_LENGTH))
+
 export const transferSchema = z.object({
   id: z.uuid(),
   clientId: z.uuid(),
@@ -122,6 +135,7 @@ export const transferSchema = z.object({
   luggageCount: z.number().int().min(LUGGAGE_COUNT_MIN).max(LUGGAGE_COUNT_MAX),
   childSeatCount: z.number().int().min(CHILD_SEAT_COUNT_MIN).max(CHILD_SEAT_COUNT_MAX),
   note: z.string().min(1).max(NOTE_MAX_LENGTH).nullable(),
+  tabla: z.string().max(TABLA_MAX_LENGTH),
 })
 
 export type Transfer = z.infer<typeof transferSchema>
@@ -217,6 +231,7 @@ export const createTransferSchema = z.strictObject({
   luggageCount: z.number().int().min(LUGGAGE_COUNT_MIN).max(LUGGAGE_COUNT_MAX),
   childSeatCount: z.number().int().min(CHILD_SEAT_COUNT_MIN).max(CHILD_SEAT_COUNT_MAX),
   note: noteSchema.optional(),
+  tabla: tablaSchema,
 })
 
 export interface CreateTransfer {
@@ -233,6 +248,7 @@ export interface CreateTransfer {
   readonly luggageCount: number
   readonly childSeatCount: number
   readonly note: string | null
+  readonly tabla: string
 }
 
 /** The body was not a valid Transfer. Nothing is written. The guest name is not in the message. */
@@ -286,6 +302,7 @@ export function parseCreateTransfer(raw: unknown, now: Date = new Date()): Creat
     luggageCount: parsed.data.luggageCount,
     childSeatCount: parsed.data.childSeatCount,
     note: parsed.data.note === undefined ? null : parsed.data.note,
+    tabla: parsed.data.tabla,
   }
 }
 
@@ -323,6 +340,11 @@ export function flightNumberError(value: string): LineError | null {
 
 export function noteError(value: string): LineError | null {
   return value.trim().length > NOTE_MAX_LENGTH ? 'too-long' : null
+}
+
+/** A meet sign the form can refuse before a request. Blank is allowed. */
+export function tablaError(value: string): LineError | null {
+  return value.trim().length > TABLA_MAX_LENGTH ? 'too-long' : null
 }
 
 /** A fare typed as a number. A comma is a decimal mark. More than two places is refused. */

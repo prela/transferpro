@@ -23,6 +23,7 @@ const sourceRowSchema = z.object({
   price: z.union([z.string(), z.number()]),
   payment: paymentMethodSchema,
   flightNumber: z.string().nullable(),
+  tabla: z.string(),
 })
 
 /**
@@ -52,7 +53,8 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
         r.must_accept as "mustAccept",
         t.price,
         t.payment,
-        t.flight_number as "flightNumber"
+        t.flight_number as "flightNumber",
+        t.tabla
       from app.rides as r
       join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
       where
@@ -91,6 +93,7 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
       price: toPrice(row.price),
       payment: row.payment,
       flightNumber: row.flightNumber,
+      tabla: row.tabla,
       mustAccept: row.mustAccept,
     }
   })

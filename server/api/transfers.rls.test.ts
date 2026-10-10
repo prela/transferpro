@@ -8,7 +8,7 @@ import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operatio
 import { createClient } from '../modules/clients'
 import { archiveLocation, createLocation } from '../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
-import { listTransferDay } from '../modules/transfers'
+import { listTransferDay, readOfficeHome } from '../modules/transfers'
 import getTransfers from './transfers.get'
 import postTransfer from './transfers.post'
 
@@ -33,6 +33,7 @@ const password = 'transfers-http-password'
 const guest = 'Ana Anić'
 const flight = 'OU 384'
 const note = 'Čeka na terminalu'
+const tabla = 'GOSPOĐA HORVAT'
 const authPool = new pg.Pool({ connectionString: authDatabaseUrl })
 const ownerPool = new pg.Pool({ connectionString: migrateDatabaseUrl })
 const authUrl = required('BETTER_AUTH_URL')
@@ -315,6 +316,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
     luggageCount: 1,
     childSeatCount: 0,
     note: `  ${note}  `,
+    tabla: `  ${tabla}  `,
   })
   expect(added.status).toBe(200)
   const row = await added.json()
@@ -332,6 +334,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
     luggageCount: 1,
     childSeatCount: 0,
     note,
+    tabla,
   })
   expect(row.ride).toEqual({
     id: expect.any(String),
@@ -362,6 +365,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
       guestName: guest,
       airportMark: false,
       price: '42.50',
+      tabla,
     }),
   ])
 
@@ -378,6 +382,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
   expect(auditText).not.toContain(guest)
   expect(auditText).not.toContain(flight)
   expect(auditText).not.toContain(note)
+  expect(auditText).not.toContain(tabla)
   expect(auditText).not.toContain('42.50')
   expect(audit.rows[0]?.data).toMatchObject({
     transferId: row.transfer.id,
@@ -441,6 +446,20 @@ it('an office user of Tenant B cannot record a Transfer that names Tenant A, and
 
   expect(await tenantCounts(firmA.tenantId)).toEqual(beforeA)
   expect(await tenantCounts(firmB.tenantId)).toEqual(beforeB)
+
+  const recorded = await call('POST', '/api/transfers', officeA, {
+    ...body,
+    clientId: client.id,
+    startLocationId: start.id,
+    endLocationId: end.id,
+    tabla,
+  })
+  expect(recorded.status).toBe(200)
+  const hiddenDay = await call('GET', '/api/transfers', officeB)
+  expect(await hiddenDay.text()).not.toContain(tabla)
+  expect(JSON.stringify(await readOfficeHome(officeB))).not.toContain(tabla)
+  const ownDay = await call('GET', '/api/transfers', officeA)
+  expect(await ownDay.text()).toContain(tabla)
 })
 
 it('refuses a pickup earlier than 30 days or later than 18 months, and writes nothing', async () => {

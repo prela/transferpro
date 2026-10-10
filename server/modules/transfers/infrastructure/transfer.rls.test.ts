@@ -121,7 +121,12 @@ it('tenant B cannot read or change Tenant A transfers or rides, and a second Rid
       `insert into app.locations (name, kind) values ('Hotel Park', 'hotel') returning id`,
     )
     const transfer = await client.query<{ id: string }>(
-      `${transferInsert} returning id`,
+      `insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, flight_number, price, payment,
+        airport_mark, luggage_count, child_seat_count, note, tabla
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      returning id`,
       [
         clientRow.rows[0]?.id,
         '2026-10-06T22:30:00.000Z',
@@ -136,6 +141,7 @@ it('tenant B cannot read or change Tenant A transfers or rides, and a second Rid
         1,
         0,
         null,
+        'GOSPOĐA HORVAT',
       ],
     )
     const ride = await client.query<{ id: string, state: string, driver_id: string | null, vehicle_id: string | null }>(
@@ -156,7 +162,7 @@ it('tenant B cannot read or change Tenant A transfers or rides, and a second Rid
   })
 
   const seenByB = await withTenant(tenantB, async (client) => {
-    const transfers = await client.query('select guest_name from app.transfers')
+    const transfers = await client.query('select guest_name, tabla from app.transfers')
     const rides = await client.query('select state from app.rides')
     const updated = await client.query(`update app.transfers set payment = 'cash'`)
     const updatedRide = await client.query(`update app.rides set state = 'cancelled'`)
@@ -194,12 +200,13 @@ it('tenant B cannot read or change Tenant A transfers or rides, and a second Rid
     ))).rejects.toMatchObject({ code: '23505' })
 
   const seenByA = await withTenant(tenantA, async (client) => {
-    return client.query(`select guest_name, payment, airport_mark from app.transfers`)
+    return client.query(`select guest_name, payment, airport_mark, tabla from app.transfers`)
   })
   expect(seenByA.rows).toEqual([{
     guest_name: 'Ana Anić',
     payment: 'invoice_to_agency',
     airport_mark: false,
+    tabla: 'GOSPOĐA HORVAT',
   }])
 })
 

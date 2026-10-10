@@ -2,7 +2,7 @@ import type { PaymentMethod, RideState } from './transfer'
 import { z } from 'zod'
 import { localDayBounds, operationalDateInTimeZone } from './date'
 import { OPERATIONAL_DAY_START_DEFAULT } from './tenant-settings'
-import { paymentMethodSchema, rideStateSchema, transferPriceSchema } from './transfer'
+import { paymentMethodSchema, rideStateSchema, TABLA_MAX_LENGTH, transferPriceSchema } from './transfer'
 
 /**
  * Four hours, in milliseconds. The unassigned alarm includes this instant
@@ -28,6 +28,7 @@ export interface OfficeHomeRide {
   readonly price: string
   readonly payment: PaymentMethod
   readonly flightNumber: string | null
+  readonly tabla: string
   readonly mustAccept: boolean | null
 }
 
@@ -43,6 +44,7 @@ const officeHomeRowSchema = z.strictObject({
   price: transferPriceSchema,
   payment: paymentMethodSchema,
   flightNumber: z.string().trim().min(1).nullable(),
+  tabla: z.string().max(TABLA_MAX_LENGTH),
 })
 
 const officeHomeUnassignedSchema = officeHomeRowSchema.extend({
@@ -160,6 +162,7 @@ export function buildOfficeHome(
       price: ride.price,
       payment: ride.payment,
       flightNumber: ride.flightNumber,
+      tabla: ride.tabla,
     }
 
     if (onDay) {

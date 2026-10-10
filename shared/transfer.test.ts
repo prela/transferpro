@@ -40,7 +40,24 @@ it('accepts a Transfer, trims the guest name, and stores a blank flight and note
     luggageCount: 1,
     childSeatCount: 0,
     note: null,
+    tabla: '',
   })
+})
+
+it('stores a blank tabla as empty text and trims a meet sign of at most 200 characters', () => {
+  expect(parseCreateTransfer(body, now).tabla).toBe('')
+  expect(parseCreateTransfer({ ...body, tabla: '   ' }, now).tabla).toBe('')
+  expect(parseCreateTransfer({ ...body, tabla: null }, now).tabla).toBe('')
+  const parsed = parseCreateTransfer({
+    ...body,
+    guestName: `  ${guest}  `,
+    note,
+    tabla: '  GOSPOĐA HORVAT  ',
+  }, now)
+  expect(parsed.tabla).toBe('GOSPOĐA HORVAT')
+  expect(parsed.guestName).toBe(guest)
+  expect(parsed.note).toBe(note)
+  expect(() => parseCreateTransfer({ ...body, tabla: 'A'.repeat(201) }, now)).toThrow(TransferInputError)
 })
 
 it('keeps a flight number without turning it into an airport pickup', () => {

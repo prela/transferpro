@@ -225,7 +225,7 @@ const locationArchived = z.object({
 /*
  * A Transfer is not a member. The ids say which rows. The field list names
  * what was written and nothing else: a guest name, a flight number, a note,
- * or a price would stay forever on a row that is never deleted. The Ride id
+ * a tabla, or a price would stay forever on a row that is never deleted. The Ride id
  * is here because creating the Transfer creates that one Ride.
  */
 const transferId = z.uuid()

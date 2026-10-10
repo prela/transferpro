@@ -51,4 +51,8 @@ function priceLabel(price: string): string {
   <p v-if="ride.flightNumber">
     {{ t('transfers.fields.flightNumber') }}: {{ ride.flightNumber }}
   </p>
+  <!-- Empty text is a blank meet sign. The line is omitted, not shown as a dash. -->
+  <p v-if="ride.tabla">
+    {{ t('transfers.fields.tabla') }}: {{ ride.tabla }}
+  </p>
 </template>
