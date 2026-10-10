@@ -30,13 +30,14 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0012 | Logging, redaction, and error responses | accepted |
 | ADR-0013 | Invitation email and the accept path | accepted |
 | ADR-0014 | Append-only audit log | accepted; partially superseded by ADR-0015 and ADR-0019 |
-| ADR-0015 | Settings changes in the audit log | accepted |
+| ADR-0015 | Settings changes in the audit log | accepted; partially superseded by ADR-0025 |
 | ADR-0016 | UI: Nuxt UI + Tailwind v4 | proposed |
 | ADR-0017 | A Client keeps its name off the audit log | accepted |
 | ADR-0018 | Module boundaries | accepted |
 | ADR-0019 | Superadmin | accepted |
 | ADR-0020 | Invoice to agency is a recorded payment | accepted |
-| ADR-0021 | Operational day | accepted |
+| ADR-0021 | Operational day | accepted; partially superseded by ADR-0025 |
 | ADR-0022 | In progress is not a Ride state | accepted |
 | ADR-0023 | Unassigned alarm | accepted |
 | ADR-0024 | One office home read | accepted |
+| ADR-0025 | Operational-day start | accepted |

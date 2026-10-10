@@ -1,6 +1,8 @@
 # Settings changes in the audit log
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0025
+
+ADR-0025 adds `settings.operational_day_start_changed` to the settings actions. The entry is still `{ from, to }` and still names no member. The three actions in this decision stand.
 
 ## Context
 
