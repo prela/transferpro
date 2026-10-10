@@ -12,7 +12,7 @@ Use /tdd where possible, at pre-agreed seams.
 
 Run typechecking regularly, single test files regularly, and the full test suite once at the end.
 
-Once done, use /code-review to review the work.
+Once done, use /code-review to review the work. Both subagents always start with `fast=false`. A mid-run steer that changes `fast` is forbidden: it spawns a second pair of review subagents while the first pair keeps running.
 
 After `/code-review`, write or update `docs/handoff/<N>-<slug>.md`: one-line out-of-scope, `## Decisions` (only what the next agent must follow), and `## Code review` with Standards and Spec pasted verbatim (judgement calls and Spec a/b/c). No PR without that file. Delete it on merge.
 

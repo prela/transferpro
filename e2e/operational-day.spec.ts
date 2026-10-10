@@ -12,6 +12,11 @@ test('the board opens on the operational day and the pickup form stays on the ca
 
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
   await page.getByRole('link', { name: 'Transferi' }).click()
-  await expect(page.getByLabel('Dan')).toHaveValue(operational)
+  // Home's counts heading is "Brojevi za operativni dan". getByLabel('Dan')
+  // is a substring, so it matches that section while this route is still
+  // painting. That section is not an input, and toHaveValue then throws
+  // instead of waiting for the board. The day control is the textbox.
+  const day = page.getByRole('textbox', { name: 'Dan', exact: true })
+  await expect(day).toHaveValue(operational)
   await expect(page.getByLabel('Vrijeme preuzimanja')).toHaveValue(`${calendar}T12:00`)
 })

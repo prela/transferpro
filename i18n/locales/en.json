@@ -484,6 +484,18 @@
     "unknownDriver": "Unknown driver",
     "unknownVehicle": "Unknown vehicle"
   },
+  "officeHome": {
+    "refresh": "Refresh home",
+    "loading": "Loading home",
+    "loadFailed": "Home could not be loaded. Try again.",
+    "unassigned": "Unassigned",
+    "waiting": "Waiting on acceptance",
+    "inProgress": "In progress",
+    "empty": "This list is empty.",
+    "counts": "Counts for the operational day",
+    "countRides": "Rides",
+    "unassignedAlarm": "Unassigned alarm"
+  },
   "expiringDocuments": {
     "title": "Expiring documents",
     "empty": "No documents are expired or expire within the next 30 days.",

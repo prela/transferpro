@@ -232,8 +232,11 @@ function toDayRide(row: z.infer<typeof dayRowSchema>): TransferDayRide {
   }
 }
 
-/** node-pg may return a Date or a timestamp string. The API always uses ISO-8601 UTC. */
-function toInstant(value: unknown): string {
+/**
+ * node-pg may return a Date or a timestamp string. The API always uses ISO-8601 UTC.
+ * The office home read uses the same conversion.
+ */
+export function toInstant(value: unknown): string {
   if (value instanceof Date)
     return value.toISOString()
   if (typeof value === 'string') {
@@ -245,8 +248,8 @@ function toInstant(value: unknown): string {
   throw new Error('Transfer pickup_at is not a timestamp.')
 }
 
-/** numeric comes back as text. The API always uses two decimal places. */
-function toPrice(value: string | number): string {
+/** numeric comes back as text. The API always uses two decimal places. The office home read uses this too. */
+export function toPrice(value: string | number): string {
   const parsed = transferPriceSchema.safeParse(typeof value === 'number' ? value.toFixed(2) : normalizePriceText(value))
   if (!parsed.success)
     throw new Error('Transfer price is not numeric.')
