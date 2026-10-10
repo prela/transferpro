@@ -16,7 +16,7 @@ function driverOnly(role: string): void {
   throw new TenantAccessError(403)
 }
 
-interface PlaceLine {
+interface LocationLine {
   readonly name: string
   readonly address: string | null
 }
@@ -27,17 +27,17 @@ interface ClientLine {
 }
 
 /**
- * One place, by id. An archived Location still has its name and address
+ * One Location, by id. An archived Location still has its name and address
  * (ADR-0018: a Transfer points at a Location, it does not list the catalog).
  * The address stays null when the Location has none.
  */
-async function placeLine(transaction: TenantTransaction, locationId: string, places: Map<string, PlaceLine>): Promise<PlaceLine> {
-  const known = places.get(locationId)
+async function locationLine(transaction: TenantTransaction, locationId: string, locations: Map<string, LocationLine>): Promise<LocationLine> {
+  const known = locations.get(locationId)
   if (known)
     return known
-  const place = await loadLocation(transaction, locationId)
-  const line: PlaceLine = { name: place.name, address: place.address }
-  places.set(locationId, line)
+  const location = await loadLocation(transaction, locationId)
+  const line: LocationLine = { name: location.name, address: location.address }
+  locations.set(locationId, line)
   return line
 }
 
@@ -84,13 +84,13 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
       if (!driverId)
         return { rides: [] }
       const rows = await loadUpcomingRidesForDriver(transaction, driverId)
-      const places = new Map<string, PlaceLine>()
+      const locations = new Map<string, LocationLine>()
       const clients = new Map<string, ClientLine>()
       const plates = new Map<string, string>()
       const rides: DriverUpcomingRide[] = []
       for (const row of rows) {
-        const from = await placeLine(transaction, row.startLocationId, places)
-        const to = await placeLine(transaction, row.endLocationId, places)
+        const from = await locationLine(transaction, row.startLocationId, locations)
+        const to = await locationLine(transaction, row.endLocationId, locations)
         const client = await clientLine(transaction, row.clientId, clients)
         rides.push(presentDriverRide({
           rideId: row.rideId,

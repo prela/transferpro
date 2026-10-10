@@ -201,6 +201,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
   const client = await createClient(admin, { name: 'Agencija Mora', kind: 'agency' })
   // No address on the start. The end keeps its address after it is archived.
   const start = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const addressedStart = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport', address: 'Čilipi 1' })
   const end = await createLocation(admin, { name: 'Hotel Park', kind: 'hotel', address: 'Masarykov put 1' })
   // An external Driver sees the agency name. The kind is not rewritten.
   const mine = await createDriver(admin, {
@@ -238,6 +239,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     childSeatCount?: number
     note?: string | null
     tabla?: string
+    startLocationId?: string
     assign?: string
     state?: string
     movePickupTo?: string
@@ -245,7 +247,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     const recorded = await createTransfer(admin, {
       clientId: client.id,
       pickupAt: input.pickupAt,
-      startLocationId: start.id,
+      startLocationId: input.startLocationId ?? start.id,
       endLocationId: end.id,
       passengerCount: input.passengerCount,
       guestName: input.guest,
@@ -279,6 +281,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     childSeatCount: 0,
     note: 'Voucher fare 99.00',
     tabla: 'GOSPOĐA HORVAT',
+    startLocationId: addressedStart.id,
     assign: mine.id,
     state: 'accepted',
   })
@@ -378,7 +381,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     airportMark: false,
     clientName: 'Agencija Mora',
     clientKind: 'agency',
-    fromAddress: null,
+    fromAddress: 'Čilipi 1',
     toAddress: 'Masarykov put 1',
     luggageCount: 0,
     childSeatCount: 0,

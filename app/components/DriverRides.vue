@@ -205,7 +205,7 @@ onMounted(loadRides)
                 {{ ride.from }}
               </dd>
             </div>
-            <!-- A missing address is not a blank line. An archived place still has its line. -->
+            <!-- A missing address is not a blank line. An archived Location still has its line. -->
             <div v-if="ride.fromAddress">
               <dt class="text-sm text-muted">
                 {{ t('locations.address') }}
