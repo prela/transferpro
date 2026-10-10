@@ -103,7 +103,7 @@ it('refuses a Transfer whose start and end are the same place', () => {
   expect(() => parseCreateTransfer({ ...body, endLocationId: startLocationId }, now)).toThrow(TransferInputError)
 })
 
-it('treats a missing day as today and refuses a day that is not a calendar date', () => {
+it('leaves a missing day for the operational-day default and refuses a day that is not a calendar date', () => {
   expect(parseTransferDay(undefined)).toBeNull()
   expect(parseTransferDay('2026-10-07')).toBe('2026-10-07')
   expect(() => parseTransferDay('')).toThrow(QueryParamError)

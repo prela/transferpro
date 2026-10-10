@@ -1,6 +1,6 @@
 import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant, seedVehicleRecord } from './fixtures/seed'
 import { chooseOption, openAudit, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
 
@@ -39,8 +39,10 @@ async function addVehicle(page: Page, registrationPlate: string): Promise<string
 }
 
 /**
- * Records an unassigned Ride for today in the Tenant zone.
- * Returns that pickup day, which is the day the list opens on and the roster key.
+ * Records an unassigned Ride on the operational day the board opens on.
+ * `wall` is 05:00 or later, so that clock stays on this day and the roster
+ * key is the same calendar date. Noon on the calendar date, when now is
+ * before 05:00, is the next operational day and the open board does not list it.
  */
 async function recordTodayRide(page: Page, guest: string, wall = '12:00'): Promise<{ day: string }> {
   const clientId = await createdId(await page.request.post('/api/clients', {
@@ -52,7 +54,7 @@ async function recordTodayRide(page: Page, guest: string, wall = '12:00'): Promi
   const endLocationId = await createdId(await page.request.post('/api/locations', {
     data: { name: `Dolazak ${guest}`, kind: 'hotel' },
   }))
-  const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
   const pickupAt = instantFromWallClock(`${day}T${wall}`, 'Europe/Zagreb').toISOString()
   const recorded = await page.request.post('/api/transfers', {
     data: {

@@ -224,8 +224,9 @@ it('replaces a write failure so the log line does not keep the guest name', asyn
   expect(logLine(error)).not.toContain(note)
 })
 
-it('loads the Zagreb day as a half-open range of local midnights and maps the ride', async () => {
-  const pickup = new Date('2026-10-06T22:30:00.000Z')
+it('loads the Zagreb operational day as a half-open range of local 05:00 and maps the ride', async () => {
+  // 12:30 in Zagreb on 7 October, inside the operational day that starts at 05:00.
+  const pickup = new Date('2026-10-07T10:30:00.000Z')
   const { transaction, queries } = fakeTransaction({
     dayRows: [{
       rideId,
@@ -250,16 +251,17 @@ it('loads the Zagreb day as a half-open range of local midnights and maps the ri
     }],
   })
   await expect(loadRidesForDay(transaction, '2026-10-07', 'Europe/Zagreb')).resolves.toMatchObject([
-    { rideId, pickupAt: '2026-10-06T22:30:00.000Z', price: '42.00', airportMark: true },
+    { rideId, pickupAt: '2026-10-07T10:30:00.000Z', price: '42.00', airportMark: true },
   ])
   expect(queries[0]?.sql.toLowerCase()).not.toContain('::date')
   expect(queries[0]?.sql.toLowerCase()).not.toContain('at time zone')
-  expect(queries[0]?.params).toEqual(['2026-10-06T22:00:00.000Z', '2026-10-07T22:00:00.000Z'])
+  expect(queries[0]?.params).toEqual(['2026-10-07T03:00:00.000Z', '2026-10-08T03:00:00.000Z'])
 
-  await loadRidesForDay(transaction, '2026-03-29', 'Europe/Zagreb')
-  await loadRidesForDay(transaction, '2026-10-25', 'Europe/Zagreb')
-  expect(queries[1]?.params).toEqual(['2026-03-28T23:00:00.000Z', '2026-03-29T22:00:00.000Z'])
-  expect(queries[2]?.params).toEqual(['2026-10-24T22:00:00.000Z', '2026-10-25T23:00:00.000Z'])
+  // 28 March contains the spring-forward; 24 October contains the fall-back. Both still end at local 05:00.
+  await loadRidesForDay(transaction, '2026-03-28', 'Europe/Zagreb')
+  await loadRidesForDay(transaction, '2026-10-24', 'Europe/Zagreb')
+  expect(queries[1]?.params).toEqual(['2026-03-28T04:00:00.000Z', '2026-03-29T03:00:00.000Z'])
+  expect(queries[2]?.params).toEqual(['2026-10-24T03:00:00.000Z', '2026-10-25T04:00:00.000Z'])
   expect(queries[1]?.sql.toLowerCase()).not.toContain('::date')
   expect(queries[2]?.sql.toLowerCase()).not.toContain('::date')
 })

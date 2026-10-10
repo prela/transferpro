@@ -18,8 +18,16 @@ _Avoid_: trip, job, leg
 **Unassigned**:
 A Ride with no Driver and no Vehicle.
 
+**Unassigned alarm**:
+An unfinished unassigned Ride during the four hours before its pickup. It is not an acceptance deadline.
+_Avoid_: acceptance deadline
+
 **Assigned**:
 A Ride with both a Driver and a Vehicle. When it requires acceptance, it is waiting on acceptance, including after an earlier acceptance was cleared. Whether it requires acceptance is copied from the Driver at assignment and stays on the Ride. The Vehicle on a new assignment starts as that Driver's roster Vehicle for the calendar day, and the office can still choose a different Vehicle for that one Ride. A roster change does not change a Ride already assigned.
+_Avoid_: pending
+
+**Waiting on acceptance**:
+An assigned Ride that requires acceptance, at any pickup time, until it is accepted or cancelled, or the Driver declines it back to unassigned.
 _Avoid_: pending
 
 **Accepted**:
@@ -45,6 +53,14 @@ _Avoid_: grace period
 **Cancelled**:
 A finished Ride that will not run. It stays on record.
 _Avoid_: deleted
+
+**In progress**:
+A Ride that has a Driver, is not finished, and is not waiting on acceptance, once its pickup is in the past. An earlier day's pickup stays in progress until the Ride is done, a no-show, or cancelled.
+_Avoid_: started, a Ride state
+
+**Operational day**:
+The day a Ride is listed and counted on, from 05:00 up to the next 05:00 in the Tenant's time zone. A pickup before 05:00 belongs to the previous operational day, and the roster and an expiring document keep the calendar date.
+_Avoid_: calendar day, midnight
 
 **Member**:
 A person in one Tenant, with one role: admin, dispatcher, or driver.

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { instantFromWallClock, localDayBounds } from './date'
+import { instantFromWallClock, localDayBounds, operationalDateInTimeZone } from './date'
 
 it('reads a Zagreb wall clock as UTC, in summer time and in winter time', () => {
   // 6 October 2026 is still CEST, two hours ahead of UTC.
@@ -19,7 +19,7 @@ it('reads a repeated Zagreb hour at standard time on 25 October', () => {
   expect(instantFromWallClock('2026-10-25T02:30', 'Europe/Zagreb').toISOString()).toBe('2026-10-25T01:30:00.000Z')
 })
 
-it('keeps a 23:30 Zagreb pickup on its own day', () => {
+it('keeps a 23:30 Zagreb pickup on the operational day that started at 05:00', () => {
   const pickup = instantFromWallClock('2026-10-07T23:30', 'Europe/Zagreb')
   const own = localDayBounds('2026-10-07', 'Europe/Zagreb')
   const next = localDayBounds('2026-10-08', 'Europe/Zagreb')
@@ -27,38 +27,64 @@ it('keeps a 23:30 Zagreb pickup on its own day', () => {
   expect(pickup >= next.start && pickup < next.end).toBe(false)
 })
 
-it('gives a pickup at local midnight to the new Zagreb day', () => {
-  const midnight = instantFromWallClock('2026-10-08T00:00', 'Europe/Zagreb')
+it('puts a pickup at 04:59 on the previous operational day and starts the new day at 05:00', () => {
+  const before = instantFromWallClock('2026-10-08T04:59', 'Europe/Zagreb')
+  const start = instantFromWallClock('2026-10-08T05:00', 'Europe/Zagreb')
   const previous = localDayBounds('2026-10-07', 'Europe/Zagreb')
   const next = localDayBounds('2026-10-08', 'Europe/Zagreb')
-  expect(midnight.getTime()).toBe(previous.end.getTime())
-  expect(midnight >= previous.start && midnight < previous.end).toBe(false)
-  expect(midnight.getTime()).toBe(next.start.getTime())
-  expect(midnight >= next.start && midnight < next.end).toBe(true)
+  expect(before >= previous.start && before < previous.end).toBe(true)
+  expect(before >= next.start && before < next.end).toBe(false)
+  expect(start.getTime()).toBe(previous.end.getTime())
+  expect(start >= previous.start && start < previous.end).toBe(false)
+  expect(start.getTime()).toBe(next.start.getTime())
+  expect(start >= next.start && start < next.end).toBe(true)
 })
 
-it('covers the 23-hour Zagreb day on 29 March 2026 and nothing past local midnight', () => {
-  const day = localDayBounds('2026-03-29', 'Europe/Zagreb')
+it('lists a 00:30 Zagreb pickup on the previous operational day only', () => {
+  const pickup = instantFromWallClock('2026-10-08T00:30', 'Europe/Zagreb')
+  const previous = localDayBounds('2026-10-07', 'Europe/Zagreb')
+  const calendar = localDayBounds('2026-10-08', 'Europe/Zagreb')
+  expect(pickup >= previous.start && pickup < previous.end).toBe(true)
+  expect(pickup >= calendar.start && pickup < calendar.end).toBe(false)
+})
+
+it('names the operational day by the date of its 05:00 start, including before 05:00', () => {
+  expect(operationalDateInTimeZone('Europe/Zagreb', instantFromWallClock('2026-10-08T04:59', 'Europe/Zagreb'))).toBe('2026-10-07')
+  expect(operationalDateInTimeZone('Europe/Zagreb', instantFromWallClock('2026-10-08T00:30', 'Europe/Zagreb'))).toBe('2026-10-07')
+  expect(operationalDateInTimeZone('Europe/Zagreb', instantFromWallClock('2026-10-08T05:00', 'Europe/Zagreb'))).toBe('2026-10-08')
+  expect(operationalDateInTimeZone('Europe/Zagreb', instantFromWallClock('2026-10-08T12:00', 'Europe/Zagreb'))).toBe('2026-10-08')
+})
+
+it('breaks the 23-hour Zagreb night at local 05:00 on 29 March 2026', () => {
+  // Clocks jump at 02:00, which is still the operational day that started on 28 March.
+  const day = localDayBounds('2026-03-28', 'Europe/Zagreb')
   expect(day.end.getTime() - day.start.getTime()).toBe(23 * 60 * 60 * 1000)
-  const late = instantFromWallClock('2026-03-29T23:30', 'Europe/Zagreb')
-  const nextMidnight = instantFromWallClock('2026-03-30T00:00', 'Europe/Zagreb')
+  const late = instantFromWallClock('2026-03-29T04:59', 'Europe/Zagreb')
+  const nextStart = instantFromWallClock('2026-03-29T05:00', 'Europe/Zagreb')
   const justBefore = new Date(day.start.getTime() - 1)
   expect(late >= day.start && late < day.end).toBe(true)
   expect(justBefore < day.start).toBe(true)
-  expect(nextMidnight.getTime()).toBe(day.end.getTime())
-  expect(nextMidnight < day.end).toBe(false)
+  expect(nextStart.getTime()).toBe(day.end.getTime())
+  expect(nextStart < day.end).toBe(false)
+  expect(operationalDateInTimeZone('Europe/Zagreb', late)).toBe('2026-03-28')
+  expect(operationalDateInTimeZone('Europe/Zagreb', nextStart)).toBe('2026-03-29')
 })
 
-it('covers the 25-hour Zagreb day on 25 October 2026 and nothing past local midnight', () => {
-  const day = localDayBounds('2026-10-25', 'Europe/Zagreb')
+it('breaks the 25-hour Zagreb night at local 05:00 on 25 October 2026', () => {
+  // The repeated hour is 02:00–03:00, still inside the operational day that started on 24 October.
+  const day = localDayBounds('2026-10-24', 'Europe/Zagreb')
   expect(day.end.getTime() - day.start.getTime()).toBe(25 * 60 * 60 * 1000)
-  const late = instantFromWallClock('2026-10-25T23:30', 'Europe/Zagreb')
+  const late = instantFromWallClock('2026-10-25T04:59', 'Europe/Zagreb')
   const firstRepeat = new Date('2026-10-25T00:30:00.000Z')
-  const nextMidnight = instantFromWallClock('2026-10-26T00:00', 'Europe/Zagreb')
+  const secondRepeat = instantFromWallClock('2026-10-25T02:30', 'Europe/Zagreb')
+  const nextStart = instantFromWallClock('2026-10-25T05:00', 'Europe/Zagreb')
   expect(late >= day.start && late < day.end).toBe(true)
   expect(firstRepeat >= day.start && firstRepeat < day.end).toBe(true)
-  expect(nextMidnight.getTime()).toBe(day.end.getTime())
-  expect(nextMidnight < day.end).toBe(false)
+  expect(secondRepeat >= day.start && secondRepeat < day.end).toBe(true)
+  expect(nextStart.getTime()).toBe(day.end.getTime())
+  expect(nextStart < day.end).toBe(false)
+  expect(operationalDateInTimeZone('Europe/Zagreb', late)).toBe('2026-10-24')
+  expect(operationalDateInTimeZone('Europe/Zagreb', nextStart)).toBe('2026-10-25')
 })
 
 it('refuses a clock reading that is not a real minute', () => {

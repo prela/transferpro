@@ -1,6 +1,6 @@
 import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
@@ -45,15 +45,17 @@ async function addVehicle(page: Page, registrationPlate: string): Promise<string
 }
 
 /**
- * Records one Ride for today. The day list opens on that day.
- * Returns the pickup day and the Ride id.
+ * Records one Ride on the operational day the board opens on.
+ * `wall` is 05:00 or later, so the Ride stays on that day. Noon on the
+ * calendar date, when now is before 05:00, is the next operational day.
+ * Returns that day and the Ride id.
  */
 async function recordTodayRide(page: Page, guest: string, wall: string, places: {
   clientId: string
   startLocationId: string
   endLocationId: string
 }): Promise<{ day: string, rideId: string }> {
-  const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
   const recorded = await page.request.post('/api/transfers', {
     data: {
       clientId: places.clientId,
