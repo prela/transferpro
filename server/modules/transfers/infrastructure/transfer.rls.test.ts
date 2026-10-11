@@ -395,3 +395,107 @@ it('refuses a Transfer that names another Tenant\'s Client or Location, and a Ri
       [foreign.transferId],
     ))).rejects.toMatchObject({ code: '23503' })
 })
+
+it('tenant B cannot read or write Tenant A landing time, and the ask lists only due Tenant ids', async () => {
+  const landing = '2026-01-15T09:30:00.000Z'
+  const seeded = await withTenant(tenantA, async (client) => {
+    const clientRow = await client.query<{ id: string }>(
+      `insert into app.clients (name, kind) values ('Agencija Let', 'agency') returning id`,
+    )
+    const start = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind, iata) values ('Zracna luka Dubrovnik', 'airport', 'DBV') returning id`,
+    )
+    const end = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Hotel Let', 'hotel') returning id`,
+    )
+    const transfer = await client.query<{ id: string }>(
+      `insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, flight_number, price, payment,
+        airport_mark, luggage_count, child_seat_count, landing_at
+      ) values ($1, now(), $2, $3, 1, 'Ana Anić', 'OU 384', 10, 'cash', true, 0, 0, $4)
+      returning id`,
+      [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id, landing],
+    )
+    await client.query(
+      `insert into app.rides (transfer_id, state) values ($1, 'unassigned')`,
+      [transfer.rows[0]?.id],
+    )
+    return transfer.rows[0]?.id
+  })
+
+  await withTenant(tenantB, async (client) => {
+    const clientRow = await client.query<{ id: string }>(
+      `insert into app.clients (name, kind) values ('Agencija Druga', 'agency') returning id`,
+    )
+    const start = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Hotel Druga', 'hotel') returning id`,
+    )
+    const end = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Adresa Druga', 'address') returning id`,
+    )
+    await client.query(
+      `insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, flight_number, price, payment,
+        airport_mark, luggage_count, child_seat_count
+      ) values ($1, now(), $2, $3, 1, 'Iva Druga', 'OU 392', 10, 'cash', false, 0, 0)`,
+      [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id],
+    )
+  })
+
+  const hidden = await withTenant(tenantB, async (client) => {
+    const selected = await client.query(
+      'select landing_at from app.transfers where id = $1',
+      [seeded],
+    )
+    const updated = await client.query(
+      `update app.transfers set landing_at = '2026-02-01T00:00:00.000Z' where id = $1`,
+      [seeded],
+    )
+    return { selected: selected.rows, updated: updated.rowCount }
+  })
+  expect(hidden.selected).toEqual([])
+  expect(hidden.updated).toBe(0)
+
+  const kept = await withTenant(tenantA, async (client) => {
+    return client.query<{ landing_at: Date }>(
+      'select landing_at from app.transfers where id = $1',
+      [seeded],
+    )
+  })
+  expect(kept.rows[0]?.landing_at.toISOString()).toBe(landing)
+
+  const client = await pool.connect()
+  try {
+    const listed = await client.query<{ tenant_id: string }>(
+      'select * from app.tenants_due_flight_landing(now())',
+    )
+    const ids = listed.rows.map(row => row.tenant_id)
+    expect(ids).not.toContain(tenantA)
+    expect(ids).not.toContain(tenantB)
+    for (const row of listed.rows)
+      expect(Object.keys(row)).toEqual(['tenant_id'])
+  }
+  finally {
+    client.release()
+  }
+
+  await withTenant(tenantA, async (client) => {
+    await client.query('update app.transfers set landing_at = null where id = $1', [seeded])
+  })
+  const clientAgain = await pool.connect()
+  try {
+    const listed = await clientAgain.query<{ tenant_id: string }>(
+      'select tenant_id from app.tenants_due_flight_landing(now())',
+    )
+    expect(listed.rows.map(row => row.tenant_id)).toContain(tenantA)
+    expect(listed.rows.map(row => row.tenant_id)).not.toContain(tenantB)
+    expect(JSON.stringify(listed.rows)).not.toContain('OU 384')
+    expect(JSON.stringify(listed.rows)).not.toContain('DBV')
+    expect(JSON.stringify(listed.rows)).not.toContain('Ana')
+  }
+  finally {
+    clientAgain.release()
+  }
+})

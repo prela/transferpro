@@ -51,6 +51,12 @@ function priceLabel(price: string): string {
   <p v-if="ride.flightNumber">
     {{ t('transfers.fields.flightNumber') }}: {{ ride.flightNumber }}
   </p>
+  <!-- The actual landing, in the Tenant zone. An estimate is not shown here. -->
+  <p v-if="ride.landingAt">
+    <time :datetime="ride.landingAt">
+      {{ t('transfers.fields.landingAt') }}: {{ pickupLabel(ride.landingAt) }}
+    </time>
+  </p>
   <!-- Empty text is a blank meet sign. The line is omitted, not shown as a dash. -->
   <p v-if="ride.tabla">
     {{ t('transfers.fields.tabla') }}: {{ ride.tabla }}

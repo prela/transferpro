@@ -11,6 +11,8 @@ export { driverUpcomingListSchema, driverUpcomingRideSchema, presentDriverRide }
 export type { DriverRideSource, DriverUpcomingList, DriverUpcomingRide } from './driver-ride'
 export { EXPIRING_DOCUMENT_KINDS, EXPIRING_DOCUMENT_STATUSES, expiringDocumentKindSchema, expiringDocumentListSchema, expiringDocumentSchema, expiringDocumentStatusSchema, EXPIRY_WINDOW_DAYS, selectExpiringDocuments } from './expiring-documents'
 export type { ExpiringDocument, ExpiringDocumentKind, ExpiringDocumentList, ExpiringDocumentStatus } from './expiring-documents'
+export { chooseFlightArrival, FLIGHT_ASK_EVERY_MINUTES, FLIGHT_ASK_LEAD_MS, FLIGHT_MATCH_WINDOW_MS, flightAskDates, flightDesignator, landingTimeInFuture, parseFlightArrivals, sameFlightDesignator } from './flight-landing'
+export type { FlightArrival, FlightArrivalChoice, FlightStatusName } from './flight-landing'
 export { formatInstant } from './format-instant'
 export { acceptErrorKey, invitationAcceptBodySchema, invitationPreviewBodySchema, invitationPreviewSchema, inviteInputSchema, inviteResultSchema, passwordLengthRule } from './invitation'
 export type { InvitationPreview, InviteResult, PasswordLengthLimits } from './invitation'

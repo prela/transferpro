@@ -100,6 +100,7 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
           to: to.name,
           passengerCount: row.passengerCount,
           flightNumber: row.flightNumber,
+          landingAt: row.landingAt,
           airportMark: row.airportMark,
           clientName: client.name,
           clientKind: client.kind,

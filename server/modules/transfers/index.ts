@@ -11,5 +11,7 @@ export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableE
 export { RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
 export { assignRide, rosterVehicleForRide } from './infrastructure/assign-access'
 export { listUpcomingRides } from './infrastructure/driver-ride-access'
+export { askFlightLandings, LandingTimeClosedError, LandingTimeInFutureError, recordLandingTime, refreshFlightLandings } from './infrastructure/flight-landing'
+export { startFlightLandingWorker } from './infrastructure/flight-landing-worker'
 export { readOfficeHome } from './infrastructure/office-home-access'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'

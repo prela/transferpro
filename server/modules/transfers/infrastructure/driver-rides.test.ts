@@ -34,6 +34,7 @@ it('asks only for this Driver, and only for assigned or accepted, with no pickup
     childSeatCount: 0,
     note: null as string | null,
     tabla: '',
+    landingAt: null as string | null,
     vehicleId,
   }
   const { transaction, queries } = fakeTransaction([{

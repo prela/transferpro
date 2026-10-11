@@ -24,6 +24,7 @@ export const driverUpcomingRideSchema = z.object({
   to: z.string().trim().min(1),
   passengerCount: z.number().int().min(PASSENGER_COUNT_MIN).max(PASSENGER_COUNT_MAX),
   flightNumber: z.string().trim().min(1).nullable(),
+  landingAt: z.iso.datetime().nullable(),
   airportMark: z.boolean(),
   clientName: clientNameSchema,
   clientKind: clientKindSchema,
@@ -74,6 +75,7 @@ export interface DriverRideSource {
   readonly to: string
   readonly passengerCount: number
   readonly flightNumber: string | null
+  readonly landingAt: string | null
   readonly airportMark: boolean
   readonly clientName: string
   readonly clientKind: 'agency' | 'hotel' | 'individual'
@@ -118,6 +120,7 @@ export function presentDriverRide(source: DriverRideSource): DriverUpcomingRide 
     to: source.to,
     passengerCount: source.passengerCount,
     flightNumber: source.flightNumber,
+    landingAt: source.landingAt,
     airportMark: source.airportMark,
     clientName: source.clientName,
     clientKind: source.clientKind,

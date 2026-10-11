@@ -28,6 +28,7 @@ const PERSONAL_KEYS = new Set([
   'flight',
   'flightnumber',
   'flightno',
+  'iata',
   'address',
   'street',
   'streetaddress',
