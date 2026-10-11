@@ -19,7 +19,7 @@ export const LOCATION_KINDS = ['airport', 'hotel', 'address', 'other'] as const
  * The only strings an audit row may store for a Location change.
  * Values (the name, the kind, the address) are not in this list.
  */
-export const LOCATION_FIELDS = ['name', 'kind', 'address'] as const
+export const LOCATION_FIELDS = ['name', 'kind', 'address', 'iata'] as const
 
 export const locationKindSchema = z.enum(LOCATION_KINDS)
 
@@ -44,11 +44,24 @@ export const locationAddressSchema = z.union([
   }).pipe(z.string().max(LOCATION_ADDRESS_MAX_LENGTH).nullable()),
 ])
 
+/**
+ * Three ASCII letters, or empty. Blank and null are the same: no code.
+ * The stored value is uppercase, so `dbv` and `DBV` are one code.
+ */
+export const locationIataSchema = z.union([
+  z.null(),
+  z.string().transform((value) => {
+    const trimmed = value.trim()
+    return trimmed === '' ? null : trimmed.toUpperCase()
+  }).pipe(z.string().regex(/^[A-Z]{3}$/).nullable()),
+])
+
 export const locationSchema = z.object({
   id: z.uuid(),
   name: locationNameSchema,
   kind: locationKindSchema,
   address: z.string().max(LOCATION_ADDRESS_MAX_LENGTH).nullable(),
+  iata: z.string().regex(/^[A-Z]{3}$/).nullable(),
   archivedAt: z.iso.datetime().nullable(),
 })
 
@@ -68,12 +81,14 @@ export const createLocationSchema = z.strictObject({
   name: locationNameSchema,
   kind: locationKindSchema,
   address: locationAddressSchema.optional(),
+  iata: locationIataSchema.optional(),
 })
 
 export interface CreateLocation {
   readonly name: string
   readonly kind: LocationKind
   readonly address: string | null
+  readonly iata: string | null
 }
 
 /**
@@ -84,6 +99,7 @@ export const locationPatchSchema = z.strictObject({
   name: locationNameSchema.optional(),
   kind: locationKindSchema.optional(),
   address: locationAddressSchema.optional(),
+  iata: locationIataSchema.optional(),
 })
 
 export type LocationPatch = z.infer<typeof locationPatchSchema>
@@ -103,10 +119,16 @@ export function parseCreateLocation(raw: unknown): CreateLocation {
   const parsed = createLocationSchema.safeParse(raw)
   if (!parsed.success)
     throw new LocationInputError()
+  const iata = parsed.data.iata === undefined ? null : parsed.data.iata
+  // A hotel, an address, or any other kind cannot carry a code. The writer
+  // repeats this once it can see the row the patch lands on.
+  if (parsed.data.kind !== 'airport' && iata !== null)
+    throw new LocationInputError()
   return {
     name: parsed.data.name,
     kind: parsed.data.kind,
     address: parsed.data.address === undefined ? null : parsed.data.address,
+    iata,
   }
 }
 
@@ -115,12 +137,18 @@ export function parseLocationPatch(raw: unknown): LocationPatch {
   const parsed = locationPatchSchema.safeParse(raw)
   if (!parsed.success)
     throw new LocationInputError()
+  // The body itself names a non-airport and a code. The current row is not
+  // needed to refuse that. A code on a row that is already a hotel is refused
+  // when the patch is applied.
+  if (parsed.data.kind !== undefined && parsed.data.kind !== 'airport' && parsed.data.iata)
+    throw new LocationInputError()
   return parsed.data
 }
 
 export type LocationNameError = 'empty' | 'too-long'
 export type LocationKindError = 'invalid'
 export type LocationAddressError = 'too-long'
+export type LocationIataError = 'invalid'
 
 /** What the add and edit forms can tell the person before a request. */
 export function locationNameError(name: string): LocationNameError | null {
@@ -138,4 +166,12 @@ export function locationKindError(kind: string): LocationKindError | null {
 
 export function locationAddressError(value: string): LocationAddressError | null {
   return value.trim().length > LOCATION_ADDRESS_MAX_LENGTH ? 'too-long' : null
+}
+
+/** Blank is allowed. Anything else must be three ASCII letters. */
+export function locationIataError(value: string): LocationIataError | null {
+  const trimmed = value.trim()
+  if (trimmed.length === 0)
+    return null
+  return /^[a-z]{3}$/i.test(trimmed) ? null : 'invalid'
 }

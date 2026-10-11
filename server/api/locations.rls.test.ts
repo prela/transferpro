@@ -195,6 +195,7 @@ it('a dispatcher and an admin can add, correct, list, and archive a Location, an
     name: place,
     kind: 'airport',
     address,
+    iata: null,
     archivedAt: null,
   })
 
@@ -294,16 +295,86 @@ it('another Tenant cannot read or change these Locations', async () => {
   const adminA = await signIn('hlc-iso-a-admin@example.test')
   const adminB = await signIn('hlc-iso-b-admin@example.test')
 
-  const added = await call('POST', '/api/locations', adminA, locationBody({ name: 'Hotel Park', address: null }))
+  const added = await call('POST', '/api/locations', adminA, locationBody({ name: 'Hotel Park', address: null, iata: 'dbv' }))
   expect(added.status).toBe(200)
   const row = await added.json()
+  expect(row.iata).toBe('DBV')
 
   expect(await (await call('GET', '/api/locations', adminB)).json()).toEqual({ locations: [] })
   expect((await call('GET', '/api/locations?includeArchived=true', adminB)).status).toBe(200)
   expect(await (await call('GET', '/api/locations?includeArchived=true', adminB)).json()).toEqual({ locations: [] })
   expect((await call('PATCH', `/api/locations/${row.id}`, adminB, { kind: 'other' })).status).toBe(404)
   expect((await call('POST', `/api/locations/${row.id}/archive`, adminB)).status).toBe(404)
+  expect((await call('PATCH', `/api/locations/${row.id}`, adminB, { iata: 'SPU' })).status).toBe(404)
   expect(await (await call('GET', '/api/locations', adminA)).json()).toEqual({
-    locations: [expect.objectContaining({ id: row.id, name: 'Hotel Park' })],
+    locations: [expect.objectContaining({ id: row.id, name: 'Hotel Park', iata: 'DBV' })],
   })
+})
+
+it('sets an airport code, refuses a bad code and a code on a hotel, clears it when the kind changes, and an archived Location cannot gain one', async () => {
+  const created = await tenant('hlc-iata', 'Iva Admin')
+  await addMember(created.tenantId, 'hlc-iata-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  await addMember(created.tenantId, 'hlc-iata-driver@example.test', 'Drago Driver', 'driver')
+  const admin = await signIn('hlc-iata-admin@example.test')
+  const dispatcher = await signIn('hlc-iata-dispatcher@example.test')
+  const driver = await signIn('hlc-iata-driver@example.test')
+
+  const added = await call('POST', '/api/locations', dispatcher, locationBody({ iata: ' dbv ' }))
+  expect(added.status).toBe(200)
+  const row = await added.json()
+  expect(row.iata).toBe('DBV')
+
+  const bad = await call('PATCH', `/api/locations/${row.id}`, admin, { iata: 'Dubrovnik' })
+  expect(bad.status).toBe(400)
+  const badText = await bad.text()
+  expect(badText).not.toContain('Dubrovnik')
+  expect(badText).not.toContain('DBV')
+
+  const hotel = await call('POST', '/api/locations', dispatcher, { name: 'Hotel Park', kind: 'hotel', iata: 'SPU' })
+  expect(hotel.status).toBe(400)
+  const hotelRow = await (await call('POST', '/api/locations', dispatcher, { name: 'Hotel Park', kind: 'hotel' })).json()
+  expect(hotelRow.iata).toBeNull()
+  const before = await auditRows(created.tenantId)
+  expect((await call('PATCH', `/api/locations/${hotelRow.id}`, admin, { iata: 'SPU' })).status).toBe(400)
+
+  expect((await call('PATCH', `/api/locations/${row.id}`, driver, { iata: 'SPU' })).status).toBe(403)
+  const untouched = await (await call('GET', '/api/locations', admin)).json()
+  expect(untouched.locations).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: row.id, iata: 'DBV' }),
+    expect.objectContaining({ id: hotelRow.id, iata: null }),
+  ]))
+  expect(await auditRows(created.tenantId)).toEqual(before)
+
+  const cleared = await call('PATCH', `/api/locations/${row.id}`, dispatcher, { iata: '   ' })
+  expect(cleared.status).toBe(200)
+  expect((await cleared.json()).iata).toBeNull()
+
+  const again = await call('PATCH', `/api/locations/${row.id}`, admin, { iata: 'dbv' })
+  expect((await again.json()).iata).toBe('DBV')
+
+  const moved = await call('PATCH', `/api/locations/${row.id}`, dispatcher, { kind: 'address' })
+  expect(moved.status).toBe(200)
+  expect(await moved.json()).toMatchObject({ kind: 'address', iata: null })
+
+  const airport = await (await call('POST', '/api/locations', admin, { name: 'Zračna luka Split', kind: 'airport', iata: 'SPU' })).json()
+  expect((await call('POST', `/api/locations/${airport.id}/archive`, dispatcher)).status).toBe(200)
+  const frozen = await call('PATCH', `/api/locations/${airport.id}`, admin, { iata: 'DBV' })
+  expect(frozen.status).toBe(409)
+  const listed = await (await call('GET', '/api/locations?includeArchived=true', admin)).json()
+  expect(listed.locations).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: airport.id, iata: 'SPU' }),
+  ]))
+
+  const rows = await auditRows(created.tenantId)
+  const text = JSON.stringify(rows)
+  expect(text).not.toContain('DBV')
+  expect(text).not.toContain('SPU')
+  expect(text).not.toContain('Dubrovnik')
+  const createdEntry = rows.find(entry => entry.action === 'location.created' && entry.data && typeof entry.data === 'object' && 'locationId' in entry.data && entry.data.locationId === row.id)
+  expect(createdEntry?.data).toEqual({ locationId: row.id, fields: ['name', 'kind', 'address', 'iata'] })
+  const fieldChanges = rows.filter(entry => entry.action === 'location.field_changed').map(entry => entry.data)
+  expect(fieldChanges).toEqual(expect.arrayContaining([
+    { locationId: row.id, field: 'iata' },
+    { locationId: row.id, field: 'kind' },
+  ]))
 })

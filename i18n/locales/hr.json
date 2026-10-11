@@ -206,11 +206,13 @@
     "name": "Ime",
     "kind": "Vrsta",
     "address": "Adresa",
+    "iata": "IATA oznaka",
     "chooseKind": "Odaberite vrstu",
     "nameEmpty": "Unesite ime.",
     "nameTooLong": "Ime može imati najviše 200 znakova.",
     "kindInvalid": "Odaberite vrstu: aerodrom, hotel, adresa ili ostalo.",
     "addressTooLong": "Adresa može imati najviše 200 znakova.",
+    "iataInvalid": "Unesite troslovnu oznaku aerodroma.",
     "archivedLocked": "Arhiviranu lokaciju nije moguće mijenjati. Prikažite arhivirane lokacije da je pronađete.",
     "submit": "Dodaj lokaciju",
     "submitting": "Dodavanje lokacije",
@@ -234,7 +236,8 @@
     "fields": {
       "name": "Ime",
       "kind": "Vrsta",
-      "address": "Adresa"
+      "address": "Adresa",
+      "iata": "IATA oznaka"
     }
   },
   "transfers": {

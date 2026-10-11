@@ -101,13 +101,44 @@ it('tenant B cannot read or change Tenant A locations', async () => {
   await expect(withTenant(tenantA, client => client.query('delete from app.locations'))).rejects.toMatchObject({ code: '42501' })
 
   const seenByA = await withTenant(tenantA, async (client) => {
-    return client.query(`select name, kind, address from app.locations`)
+    return client.query(`select name, kind, address, iata from app.locations`)
   })
   expect(seenByA.rows).toEqual([{
     name: 'Zračna luka Dubrovnik',
     kind: 'airport',
     address: 'Dobrota bb',
+    iata: null,
   }])
+})
+
+it('stores an airport code and hides it from the other Tenant', async () => {
+  await withTenant(tenantA, async (client) => {
+    await client.query(
+      `insert into app.locations (name, kind, iata) values ('Zračna luka Split', 'airport', 'SPU')`,
+    )
+  })
+
+  const seenByB = await withTenant(tenantB, async (client) => {
+    const selected = await client.query('select iata from app.locations')
+    const updated = await client.query(`update app.locations set iata = 'DBV'`)
+    return { rows: selected.rows, updated: updated.rowCount }
+  })
+  expect(seenByB.rows).toEqual([])
+  expect(seenByB.updated).toBe(0)
+
+  const seenByA = await withTenant(tenantA, async (client) => {
+    return client.query(`select iata from app.locations where name = 'Zračna luka Split'`)
+  })
+  expect(seenByA.rows).toEqual([{ iata: 'SPU' }])
+})
+
+it('refuses a code that is not three uppercase letters, and a code on a hotel', async () => {
+  await expect(withTenant(tenantA, client =>
+    client.query(`insert into app.locations (name, kind, iata) values ('Zračna luka Pula', 'airport', 'dbv')`))).rejects.toMatchObject({ code: '23514' })
+  await expect(withTenant(tenantA, client =>
+    client.query(`insert into app.locations (name, kind, iata) values ('Zračna luka Pula', 'airport', 'DB')`))).rejects.toMatchObject({ code: '23514' })
+  await expect(withTenant(tenantA, client =>
+    client.query(`insert into app.locations (name, kind, iata) values ('Hotel Park', 'hotel', 'DBV')`))).rejects.toMatchObject({ code: '23514' })
 })
 
 it('refuses an empty name, surrounding spaces, a long name, an unknown kind, and a long or blank address', async () => {

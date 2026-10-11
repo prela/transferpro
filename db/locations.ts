@@ -23,6 +23,11 @@ export const locations = tenantTable('locations', {
   name: text('name').notNull(),
   kind: text('kind').notNull(),
   address: text('address'),
+  /**
+   * Optional IATA code. Only kind airport may carry one (ADR-0028).
+   * Three ASCII letters, already uppercased by the writer. Null is no code.
+   */
+  iata: text('iata'),
   archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
 }, table => [
   check(
@@ -36,6 +41,14 @@ export const locations = tenantTable('locations', {
   check(
     'locations_address',
     sql`${table.address} is null or (${table.address} = btrim(${table.address}) and length(${table.address}) between 1 and ${addressMax})`,
+  ),
+  check(
+    'locations_iata',
+    sql`${table.iata} is null or ${table.iata} ~ '^[A-Z]{3}$'`,
+  ),
+  check(
+    'locations_iata_airport',
+    sql`${table.kind} = 'airport' or ${table.iata} is null`,
   ),
   uniqueIndex('locations_tenant_id_id').on(table.tenantId, table.id),
 ], { oneRowPerTenant: false })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Location, LocationKind } from '../../shared'
-import { locationAddressError, locationKindError, locationListSchema, locationNameError, locationSchema } from '../../shared'
+import { locationAddressError, locationIataError, locationKindError, locationListSchema, locationNameError, locationSchema } from '../../shared'
 
 const { t } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
@@ -15,9 +15,11 @@ const formErrorKey = ref<LocationFailure | null>(null)
 const name = ref('')
 const kind = ref<LocationKind>()
 const address = ref('')
+const iata = ref('')
 const nameErrorKey = ref<NameErrorKey | null>(null)
 const kindErrorKey = ref<'locations.kindInvalid' | null>(null)
 const addressErrorKey = ref<'locations.addressTooLong' | null>(null)
+const iataErrorKey = ref<'locations.iataInvalid' | null>(null)
 const pending = ref(false)
 const archivingId = ref<string | null>(null)
 
@@ -25,9 +27,11 @@ const editing = ref<Location | null>(null)
 const editName = ref('')
 const editKind = ref<LocationKind>()
 const editAddress = ref('')
+const editIata = ref('')
 const editNameErrorKey = ref<NameErrorKey | null>(null)
 const editKindErrorKey = ref<'locations.kindInvalid' | null>(null)
 const editAddressErrorKey = ref<'locations.addressTooLong' | null>(null)
+const editIataErrorKey = ref<'locations.iataInvalid' | null>(null)
 const editErrorKey = ref<LocationFailure | null>(null)
 const saving = ref(false)
 
@@ -45,6 +49,7 @@ const columns = computed(() => [
   { accessorKey: 'name' as const, header: t('locations.name') },
   { id: 'kind', header: t('locations.kind') },
   { accessorKey: 'address' as const, header: t('locations.address') },
+  { accessorKey: 'iata' as const, header: t('locations.iata') },
   { id: 'status', header: '' },
   { id: 'actions', header: '' },
 ])
@@ -91,6 +96,11 @@ function addressKey(value: string): 'locations.addressTooLong' | null {
   return locationAddressError(value) ? 'locations.addressTooLong' : null
 }
 
+/** A blank code is allowed. The field is only asked for an airport. */
+function iataKey(value: string): 'locations.iataInvalid' | null {
+  return locationIataError(value) ? 'locations.iataInvalid' : null
+}
+
 async function loadLocations() {
   loading.value = true
   loadErrorKey.value = null
@@ -112,18 +122,27 @@ async function addLocation() {
   nameErrorKey.value = nameKey(name.value)
   kindErrorKey.value = locationKindError(chosen ?? '') ? 'locations.kindInvalid' : null
   addressErrorKey.value = addressKey(address.value)
+  iataErrorKey.value = chosen === 'airport' ? iataKey(iata.value) : null
   formErrorKey.value = null
-  if (nameErrorKey.value || kindErrorKey.value || addressErrorKey.value || chosen === undefined)
+  if (nameErrorKey.value || kindErrorKey.value || addressErrorKey.value || iataErrorKey.value || chosen === undefined)
     return
   pending.value = true
   try {
     locationSchema.parse(await $fetch('/api/locations', {
       method: 'POST',
-      body: { name: name.value, kind: chosen, address: address.value },
+      body: {
+        name: name.value,
+        kind: chosen,
+        address: address.value,
+        // A hotel, an address, or other kind cannot carry a code, so the
+        // key stays off the body unless this row is an airport.
+        ...(chosen === 'airport' ? { iata: iata.value } : {}),
+      },
     }))
     name.value = ''
     kind.value = undefined
     address.value = ''
+    iata.value = ''
     notifyAuditChanged()
     await loadLocations()
   }
@@ -140,9 +159,11 @@ function openEdit(location: Location) {
   editName.value = location.name
   editKind.value = location.kind
   editAddress.value = location.address ?? ''
+  editIata.value = location.iata ?? ''
   editNameErrorKey.value = null
   editKindErrorKey.value = null
   editAddressErrorKey.value = null
+  editIataErrorKey.value = null
   editErrorKey.value = null
 }
 
@@ -154,14 +175,22 @@ async function saveEdit() {
   editNameErrorKey.value = nameKey(editName.value)
   editKindErrorKey.value = locationKindError(chosen ?? '') ? 'locations.kindInvalid' : null
   editAddressErrorKey.value = addressKey(editAddress.value)
+  editIataErrorKey.value = chosen === 'airport' ? iataKey(editIata.value) : null
   editErrorKey.value = null
-  if (editNameErrorKey.value || editKindErrorKey.value || editAddressErrorKey.value || chosen === undefined)
+  if (editNameErrorKey.value || editKindErrorKey.value || editAddressErrorKey.value || editIataErrorKey.value || chosen === undefined)
     return
   saving.value = true
   try {
     locationSchema.parse(await $fetch(`/api/locations/${current.id}`, {
       method: 'PATCH',
-      body: { name: editName.value, kind: chosen, address: editAddress.value },
+      body: {
+        name: editName.value,
+        kind: chosen,
+        address: editAddress.value,
+        // Leaving airport omits the key. The server clears the stored code
+        // in that same change. A blank airport code clears it too.
+        ...(chosen === 'airport' ? { iata: editIata.value } : {}),
+      },
     }))
     editing.value = null
     notifyAuditChanged()
@@ -276,6 +305,27 @@ onMounted(loadLocations)
           autocomplete="off"
           class="w-full"
           @update:model-value="addressErrorKey = null"
+        />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
+      </UFormField>
+      <UFormField
+        v-if="kind === 'airport'"
+        :label="t('locations.iata')"
+        name="iata"
+        class="mb-4"
+        size="xl"
+        :error="iataErrorKey ? t(iataErrorKey) : false"
+      >
+        <UInput
+          id="location-iata"
+          v-model="iata"
+          name="iata"
+          type="text"
+          autocomplete="off"
+          class="w-full"
+          @update:model-value="iataErrorKey = null"
         />
         <template #error="{ error }">
           <span role="alert">{{ error }}</span>
@@ -446,6 +496,27 @@ onMounted(loadLocations)
               autocomplete="off"
               class="w-full"
               @update:model-value="editAddressErrorKey = null"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            v-if="editKind === 'airport'"
+            :label="t('locations.iata')"
+            name="edit-iata"
+            class="mb-4"
+            size="xl"
+            :error="editIataErrorKey ? t(editIataErrorKey) : false"
+          >
+            <UInput
+              id="location-edit-iata"
+              v-model="editIata"
+              name="edit-iata"
+              type="text"
+              autocomplete="off"
+              class="w-full"
+              @update:model-value="editIataErrorKey = null"
             />
             <template #error="{ error }">
               <span role="alert">{{ error }}</span>
