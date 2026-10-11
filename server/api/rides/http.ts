@@ -1,7 +1,7 @@
 import { createError } from 'h3'
-import { AssignRideInputError } from '../../../shared'
+import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
-import { AcceptRideInputError, RideNotAcceptableError, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from '../../modules/transfers'
+import { AcceptRideInputError, RideNotAcceptableError, RideNotFoundError, RideNotOpenError, RideNotUnassignedError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
 
 /**
  * Turn an assignment or accept failure into an HTTP error. The message stays
@@ -9,10 +9,14 @@ import { AcceptRideInputError, RideNotAcceptableError, RideNotFoundError, RideNo
  * thrown error. `ride_vehicle_archived` is `ride.vehicleArchived`.
  * `ride_not_unassigned` is `ride.notUnassigned`. `ride_not_acceptable` is the
  * accept conflict: the flag is off, or the Ride is not `assigned`.
+ * `ride_not_open` is a vehicle change, a clear, or a reassignment on a Ride
+ * that is not `assigned` or `accepted`. `ride_vehicle_unchanged` is the same
+ * Vehicle. `ride_same_driver` is a reassignment to the Driver already on the Ride.
  */
 export function rideHttpError(error: unknown): never {
   if (
     error instanceof AssignRideInputError
+    || error instanceof RideCommandInputError
     || error instanceof AcceptRideInputError
     || error instanceof RideNotFoundError
     || error instanceof TenantAccessError
@@ -23,6 +27,9 @@ export function rideHttpError(error: unknown): never {
     error instanceof RideVehicleArchivedError
     || error instanceof RideNotUnassignedError
     || error instanceof RideNotAcceptableError
+    || error instanceof RideNotOpenError
+    || error instanceof RideVehicleUnchangedError
+    || error instanceof RideSameDriverError
   ) {
     throw createError({
       statusCode: error.statusCode,

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { clientKindSchema } from './client'
 import { driverFieldSchema } from './driver'
 import { locationFieldSchema } from './location'
-import { RIDE_ASSIGNMENT_FIELDS, rideAssignmentFieldSchema } from './ride-assignment'
+import { RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideAssignmentFieldSchema, rideVehicleChangeFieldSchema } from './ride-assignment'
 import { rosterDateSchema } from './roster'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, operationalDayStartHourSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
@@ -37,6 +37,9 @@ export const auditActions = [
   'ride.assigned',
   'ride.accepted',
   'ride.accepted_by_phone',
+  'ride.vehicle_changed',
+  'ride.cleared',
+  'ride.reassigned',
   'roster.assigned',
   'roster.changed',
   'roster.cleared',
@@ -303,6 +306,55 @@ const rideAcceptedByPhone = z.object({
 })
 
 /*
+ * A vehicle-only change keeps the Driver. The ids say which Ride, which
+ * Driver stayed, and which Vehicle is now on it. `fields` is only
+ * `vehicleId`: the state and the copied flag did not change. A plate, a
+ * phone, or the flag value would sit forever on a row that is never deleted.
+ */
+const rideVehicleChanged = z.object({
+  action: z.literal('ride.vehicle_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    driverId,
+    vehicleId,
+    fields: z.array(rideVehicleChangeFieldSchema).length(RIDE_VEHICLE_CHANGE_FIELDS.length),
+  }),
+})
+
+/*
+ * A clear returns the Ride to unassigned. The ids are the Driver and the
+ * Vehicle that were removed. `fields` names what was written. A plate, a
+ * phone, or the must-accept value is not a key. The actor is the entry's actor.
+ */
+const rideCleared = z.object({
+  action: z.literal('ride.cleared'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    driverId,
+    vehicleId,
+    fields: z.array(rideAssignmentFieldSchema).length(RIDE_ASSIGNMENT_FIELDS.length),
+  }),
+})
+
+/*
+ * A reassignment names the new Driver and the Vehicle. The previous Driver
+ * is not a key. `fields` names what was written. A plate, a phone, or the
+ * must-accept value stays off the row. The actor is the entry's actor.
+ */
+const rideReassigned = z.object({
+  action: z.literal('ride.reassigned'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    driverId,
+    vehicleId,
+    fields: z.array(rideAssignmentFieldSchema).length(RIDE_ASSIGNMENT_FIELDS.length),
+  }),
+})
+
+/*
  * A roster row is not a member. The data names the day and the ids.
  * A plate, a driver name, or a phone would stay forever on a row that
  * is never deleted, so none of those keys exist.
@@ -378,6 +430,9 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   rideAssigned,
   rideAccepted,
   rideAcceptedByPhone,
+  rideVehicleChanged,
+  rideCleared,
+  rideReassigned,
   rosterAssigned,
   rosterChanged,
   rosterCleared,
@@ -395,6 +450,8 @@ export type AuditFact = z.infer<typeof auditFactSchema>
  * `ride.accepted` carries the Driver name only. The plate is not joined.
  * `ride.accepted_by_phone` carries neither. The actor name is the office member.
  * A member who has left has a null actor name. The plate is not joined.
+ * `ride.vehicle_changed`, `ride.cleared`, and `ride.reassigned` carry the
+ * Driver name and the Vehicle plate, joined from the ids on the row.
  */
 const listed = {
   id: z.uuid(),
@@ -437,6 +494,21 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   }),
   // The office member is `actorName`. A plate or a Driver name is not joined.
   rideAcceptedByPhone.extend(listed),
+  rideVehicleChanged.extend({
+    ...listed,
+    driverName: z.string().nullable(),
+    vehiclePlate: z.string().nullable(),
+  }),
+  rideCleared.extend({
+    ...listed,
+    driverName: z.string().nullable(),
+    vehiclePlate: z.string().nullable(),
+  }),
+  rideReassigned.extend({
+    ...listed,
+    driverName: z.string().nullable(),
+    vehiclePlate: z.string().nullable(),
+  }),
   rosterAssigned.extend(listed),
   rosterChanged.extend(listed),
   rosterCleared.extend(listed),

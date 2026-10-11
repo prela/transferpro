@@ -195,7 +195,11 @@
       "idx": 27,
       "version": "7",
       "when": 1791400017000,
+<<<<<<< HEAD
       "tag": "0027_flight_landing",
+=======
+      "tag": "0027_ride_change",
+>>>>>>> fb54c2c (feat(transfers): change the vehicle, clear a ride, or reassign it)
       "breakpoints": true
     }
   ]
