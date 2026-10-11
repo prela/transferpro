@@ -11,6 +11,8 @@ const settingsRows = z.object({
     elsewhere_wait_minutes: z.number().int(),
     time_zone: z.string(),
     operational_day_start_hour: z.number().int(),
+    transfer_duration_minutes: z.number().int(),
+    relocation_gap_minutes: z.number().int(),
   })),
 })
 
@@ -56,13 +58,17 @@ export async function changeTenantSettings(
     operationalDayStartHour: operationalDayStartHourSchema.parse(
       patch.operationalDayStartHour ?? current.operationalDayStartHour,
     ),
+    transferDurationMinutes: waitMinutesSchema.parse(patch.transferDurationMinutes ?? current.transferDurationMinutes),
+    relocationGapMinutes: waitMinutesSchema.parse(patch.relocationGapMinutes ?? current.relocationGapMinutes),
   }
   await transaction.execute(sql`
     update app.tenant_settings
     set airport_wait_minutes = ${next.airportWaitMinutes},
         elsewhere_wait_minutes = ${next.elsewhereWaitMinutes},
         time_zone = ${next.timeZone},
-        operational_day_start_hour = ${next.operationalDayStartHour}
+        operational_day_start_hour = ${next.operationalDayStartHour},
+        transfer_duration_minutes = ${next.transferDurationMinutes},
+        relocation_gap_minutes = ${next.relocationGapMinutes}
   `)
   for (const fact of facts)
     await appendAuditEntry(transaction, { ...fact, actorUserId })
@@ -99,18 +105,34 @@ function changedFacts(current: TenantSettings, patch: TenantSettingsPatch): Audi
       data: { from: current.operationalDayStartHour, to: patch.operationalDayStartHour },
     })
   }
+  if (patch.transferDurationMinutes !== undefined && patch.transferDurationMinutes !== current.transferDurationMinutes) {
+    facts.push({
+      action: 'settings.transfer_duration_changed',
+      subjectUserId: null,
+      data: { from: current.transferDurationMinutes, to: patch.transferDurationMinutes },
+    })
+  }
+  if (patch.relocationGapMinutes !== undefined && patch.relocationGapMinutes !== current.relocationGapMinutes) {
+    facts.push({
+      action: 'settings.relocation_gap_changed',
+      subjectUserId: null,
+      data: { from: current.relocationGapMinutes, to: patch.relocationGapMinutes },
+    })
+  }
   return facts
 }
 
 async function readRow(transaction: TenantTransaction, lock: boolean): Promise<TenantSettings> {
   const query = lock
     ? sql`
-      select airport_wait_minutes, elsewhere_wait_minutes, time_zone, operational_day_start_hour
+      select airport_wait_minutes, elsewhere_wait_minutes, time_zone, operational_day_start_hour,
+             transfer_duration_minutes, relocation_gap_minutes
       from app.tenant_settings
       for update
     `
     : sql`
-      select airport_wait_minutes, elsewhere_wait_minutes, time_zone, operational_day_start_hour
+      select airport_wait_minutes, elsewhere_wait_minutes, time_zone, operational_day_start_hour,
+             transfer_duration_minutes, relocation_gap_minutes
       from app.tenant_settings
     `
   const selected = settingsRows.parse(await transaction.execute(query))
@@ -124,5 +146,7 @@ async function readRow(transaction: TenantTransaction, lock: boolean): Promise<T
     // stored; a later runtime list must not make the row unreadable.
     timeZone: storedTimeZoneSchema.parse(row.time_zone),
     operationalDayStartHour: operationalDayStartHourSchema.parse(row.operational_day_start_hour),
+    transferDurationMinutes: waitMinutesSchema.parse(row.transfer_duration_minutes),
+    relocationGapMinutes: waitMinutesSchema.parse(row.relocation_gap_minutes),
   }
 }

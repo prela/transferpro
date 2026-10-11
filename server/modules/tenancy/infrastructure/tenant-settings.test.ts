@@ -23,6 +23,8 @@ function fakeTransaction(timeZone: string) {
           elsewhere_wait_minutes: 25,
           time_zone: timeZone,
           operational_day_start_hour: 5,
+          transfer_duration_minutes: 60,
+          relocation_gap_minutes: 15,
         }],
       }
     }),
@@ -37,6 +39,8 @@ it('reads a stored zone that is no longer on the runtime list', async () => {
     elsewhereWaitMinutes: 25,
     timeZone: retiredZone,
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   })
 })
 
@@ -47,6 +51,8 @@ it('keeps that zone when another field changes, and records only the field that 
     elsewhereWaitMinutes: 25,
     timeZone: retiredZone,
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   })
   const actions = queries.map(query => query.params[0]).filter(param => typeof param === 'string' && param.startsWith('settings.'))
   expect(actions).toEqual(['settings.airport_wait_changed'])
@@ -63,6 +69,8 @@ it('refuses to write a zone the list does not include, and accepts a listed zone
     elsewhereWaitMinutes: 25,
     timeZone: 'Europe/Berlin',
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   })
   const zoneWrite = queries.find(query => query.params[0] === 'settings.time_zone_changed')
   expect(zoneWrite?.params[3]).toBe(JSON.stringify({ from: retiredZone, to: 'Europe/Berlin' }))
@@ -75,6 +83,8 @@ it('records a changed operational-day start and writes nothing when the hour is 
     elsewhereWaitMinutes: 25,
     timeZone: 'Europe/Zagreb',
     operationalDayStartHour: 6,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   })
   const hourWrite = changed.queries.find(query => query.params[0] === 'settings.operational_day_start_changed')
   expect(hourWrite?.params[2]).toBeNull()
@@ -85,5 +95,24 @@ it('records a changed operational-day start and writes nothing when the hour is 
   const same = fakeTransaction('Europe/Zagreb')
   await changeTenantSettings(same.transaction, actorUserId, { operationalDayStartHour: 5 })
   expect(same.queries.map(query => query.params[0])).not.toContain('settings.operational_day_start_changed')
+  expect(same.queries.some(query => query.sql.includes('update app.tenant_settings'))).toBe(false)
+})
+
+it('records a changed transfer duration and a changed relocation gap, and nothing when they stay', async () => {
+  const changed = fakeTransaction('Europe/Zagreb')
+  await expect(changeTenantSettings(changed.transaction, actorUserId, {
+    transferDurationMinutes: 90,
+    relocationGapMinutes: 20,
+  })).resolves.toMatchObject({
+    transferDurationMinutes: 90,
+    relocationGapMinutes: 20,
+  })
+  const actions = changed.queries.map(query => query.params[0]).filter(param => typeof param === 'string' && param.startsWith('settings.'))
+  expect(actions).toEqual(['settings.transfer_duration_changed', 'settings.relocation_gap_changed'])
+  expect(changed.queries.find(query => query.params[0] === 'settings.transfer_duration_changed')?.params[3]).toBe(JSON.stringify({ from: 60, to: 90 }))
+  expect(changed.queries.find(query => query.params[0] === 'settings.relocation_gap_changed')?.params[3]).toBe(JSON.stringify({ from: 15, to: 20 }))
+
+  const same = fakeTransaction('Europe/Zagreb')
+  await changeTenantSettings(same.transaction, actorUserId, { transferDurationMinutes: 60, relocationGapMinutes: 15 })
   expect(same.queries.some(query => query.sql.includes('update app.tenant_settings'))).toBe(false)
 })

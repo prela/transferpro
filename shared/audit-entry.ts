@@ -46,6 +46,8 @@ export const auditActions = [
   'tenant.renamed',
   'tenant.suspended',
   'tenant.reactivated',
+  'settings.transfer_duration_changed',
+  'settings.relocation_gap_changed',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -107,6 +109,20 @@ const settingsOperationalDayStartChanged = z.object({
   action: z.literal('settings.operational_day_start_changed'),
   subjectUserId: z.null(),
   data: z.strictObject({ from: operationalDayStartHourSchema, to: operationalDayStartHourSchema }),
+})
+
+/** The previous transfer duration and the next one, in minutes. No member is named. */
+const settingsTransferDurationChanged = z.object({
+  action: z.literal('settings.transfer_duration_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({ from: waitMinutesSchema, to: waitMinutesSchema }),
+})
+
+/** The previous relocation gap and the next one, in minutes. No member is named. */
+const settingsRelocationGapChanged = z.object({
+  action: z.literal('settings.relocation_gap_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({ from: waitMinutesSchema, to: waitMinutesSchema }),
 })
 
 /*
@@ -439,6 +455,8 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   tenantRenamed,
   tenantSuspended,
   tenantReactivated,
+  settingsTransferDurationChanged,
+  settingsRelocationGapChanged,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -515,6 +533,8 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   tenantRenamed.extend(listed),
   tenantSuspended.extend(listed),
   tenantReactivated.extend(listed),
+  settingsTransferDurationChanged.extend(listed),
+  settingsRelocationGapChanged.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

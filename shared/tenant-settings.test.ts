@@ -5,6 +5,7 @@ import {
   ianaTimeZoneSchema,
   OPERATIONAL_DAY_START_DEFAULT,
   parseTenantSettingsPatch,
+  RELOCATION_GAP_DEFAULT_MINUTES,
   TENANT_TIME_ZONE_DEFAULT,
   TenantSettingsError,
   tenantSettingsGetSchema,
@@ -13,22 +14,29 @@ import {
   tenantSettingsSchema,
   tenantTimeZoneIds,
   TIME_ZONE_MAX_LENGTH,
+  TRANSFER_DURATION_DEFAULT_MINUTES,
 } from './tenant-settings'
 
-it('a Tenant starts at a 90-minute airport wait, 25 minutes elsewhere, and Europe/Zagreb', () => {
+it('a Tenant starts at a 90-minute airport wait, 25 minutes elsewhere, a 60-minute transfer, a 15-minute gap, and Europe/Zagreb', () => {
   expect(AIRPORT_WAIT_DEFAULT_MINUTES).toBe(90)
   expect(ELSEWHERE_WAIT_DEFAULT_MINUTES).toBe(25)
+  expect(TRANSFER_DURATION_DEFAULT_MINUTES).toBe(60)
+  expect(RELOCATION_GAP_DEFAULT_MINUTES).toBe(15)
   expect(TENANT_TIME_ZONE_DEFAULT).toBe('Europe/Zagreb')
   expect(tenantSettingsSchema.parse({
     airportWaitMinutes: 90,
     elsewhereWaitMinutes: 25,
     timeZone: 'Europe/Zagreb',
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   })).toEqual({
     airportWaitMinutes: 90,
     elsewhereWaitMinutes: 25,
     timeZone: 'Europe/Zagreb',
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   })
 })
 
@@ -47,7 +55,13 @@ it('accepts an operational-day start from 00:00 through 08:00 and refuses an hou
     elsewhereWaitMinutes: 25,
     timeZone: 'Europe/Zagreb',
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   }).operationalDayStartHour).toBe(5)
+  expect(tenantSettingsPatchSchema.safeParse({ transferDurationMinutes: 60 }).success).toBe(true)
+  expect(tenantSettingsPatchSchema.safeParse({ relocationGapMinutes: 15 }).success).toBe(true)
+  expect(tenantSettingsPatchSchema.safeParse({ transferDurationMinutes: 0 }).success).toBe(false)
+  expect(tenantSettingsPatchSchema.safeParse({ relocationGapMinutes: 1441 }).success).toBe(false)
 })
 
 it('accepts a wait of 1 or 1440 minutes and refuses what is outside that, a fraction, or a string', () => {
@@ -80,6 +94,8 @@ it('a reply accepts a stored zone that is no longer on the list, and a write of 
     elsewhereWaitMinutes: 25,
     timeZone: 'US/Eastern',
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   }
   expect(tenantSettingsResponseSchema.parse(stored)).toEqual(stored)
   expect(tenantSettingsSchema.safeParse(stored).success).toBe(false)

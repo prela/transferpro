@@ -17,4 +17,5 @@ export { askFlightLandings, LandingTimeClosedError, LandingTimeInFutureError, re
 export { startFlightLandingWorker } from './infrastructure/flight-landing-worker'
 export { readOfficeHome } from './infrastructure/office-home-access'
 export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './infrastructure/ride-change'
+export { RideOverlapError } from './infrastructure/ride-schedule'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'

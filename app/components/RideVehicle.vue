@@ -24,6 +24,7 @@ const titleId = useId()
 
 const nextVehicleId = ref<string | undefined>()
 const pending = ref(false)
+const overlapOpen = ref(false)
 const formErrorKey = ref<RideFailure | null>(null)
 
 type RideFailure
@@ -82,7 +83,7 @@ function errorCode(error: unknown): string | undefined {
   return undefined
 }
 
-async function submit() {
+async function submit(confirm = false) {
   const chosen = nextVehicleId.value
   formErrorKey.value = null
   if (!chosen)
@@ -91,9 +92,16 @@ async function submit() {
   try {
     const saved = assignedRideSchema.parse(await $fetch(`/api/rides/${props.rideId}/vehicle`, {
       method: 'POST',
-      body: { vehicleId: chosen },
+      body: { vehicleId: chosen, ...(confirm ? { confirm: true } : {}) },
     }))
+    overlapOpen.value = false
     notifyAuditChanged()
+    if (saved.relocationWarnings.length > 0) {
+      toast.add({
+        title: t('ride.tightGap'),
+        color: 'warning',
+      })
+    }
     // The notice names the Driver by id. The name is already on the day list.
     // The response has no address, so the toast cannot show one.
     for (const notice of saved.workOrders) {
@@ -108,6 +116,11 @@ async function submit() {
     emit('saved')
   }
   catch (error) {
+    if (errorCode(error) === 'ride_overlap') {
+      overlapOpen.value = true
+      return
+    }
+    overlapOpen.value = false
     formErrorKey.value = failureKey(error)
   }
   finally {
@@ -120,7 +133,7 @@ async function submit() {
   <form
     class="mt-6"
     :aria-labelledby="titleId"
-    @submit.prevent="submit"
+    @submit.prevent="submit()"
   >
     <h2
       :id="titleId"
@@ -177,4 +190,9 @@ async function submit() {
       </UButton>
     </div>
   </form>
+  <RideOverlapDialog
+    v-model:open="overlapOpen"
+    :pending="pending"
+    @confirm="submit(true)"
+  />
 </template>

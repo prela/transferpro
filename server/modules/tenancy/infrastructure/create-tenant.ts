@@ -1,7 +1,7 @@
 import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { z } from 'zod'
-import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT, TENANT_TIME_ZONE_DEFAULT, tenantNameSchema } from '../../../../shared'
+import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT, RELOCATION_GAP_DEFAULT_MINUTES, TENANT_TIME_ZONE_DEFAULT, tenantNameSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../../../shared'
 
 /**
  * Creates one Tenant and its admin.
@@ -18,6 +18,7 @@ import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATION
  * zone only. The default locale is `hr` until the user chooses one.
  * A new Tenant waits 90 minutes at an airport and 25 minutes elsewhere.
  * The operational day starts at 05:00.
+ * A Ride occupies 60 minutes, and a gap under 15 minutes warns.
  */
 export interface CreateTenantInput {
   readonly name: string
@@ -193,10 +194,10 @@ async function insertSettings(connectionString: string, tenantId: string): Promi
     await pool.query(
       `insert into app.tenant_settings (
          tenant_id, default_locale, time_zone, airport_wait_minutes, elsewhere_wait_minutes,
-         operational_day_start_hour
+         operational_day_start_hour, transfer_duration_minutes, relocation_gap_minutes
        )
-       values ($1, $2, $3, $4, $5, $6)`,
-      [tenantId, TENANT_DEFAULT_LOCALE, TENANT_TIME_ZONE_DEFAULT, AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT],
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [tenantId, TENANT_DEFAULT_LOCALE, TENANT_TIME_ZONE_DEFAULT, AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT, TRANSFER_DURATION_DEFAULT_MINUTES, RELOCATION_GAP_DEFAULT_MINUTES],
     )
   }
   finally {

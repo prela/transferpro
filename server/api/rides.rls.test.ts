@@ -360,6 +360,7 @@ it('a driver cannot assign, and a dispatcher assign copies must-accept and names
       mustAccept: true,
     },
     workOrders: [{ driverId: driver.id, outcome: 'no_email' }],
+    relocationWarnings: [],
   })
   const audits = await assignmentAudits(world.tenantId)
   expect(audits).toHaveLength(1)
@@ -390,6 +391,50 @@ it('a driver cannot assign, and a dispatcher assign copies must-accept and names
   })
   expect(later.status).toBe(200)
   expect(await later.json()).toMatchObject({ ride: { mustAccept: false }, workOrders: [{ driverId: driver.id, outcome: 'no_email' }] })
+})
+
+it('an overlapping assign is 409 and writes nothing, and another Tenant Ride is not visible', async () => {
+  const world = await office('hasg-ovlp')
+  const other = await office('hasg-ovlp-b')
+  const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911110184' })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG184AA'))
+  const otherDriver = await createDriver(other.dispatcher, { ...driverBody, phone: '+385911110185' })
+  const otherVehicle = await createVehicle(other.dispatcher, vehicleBody('ZG184BB'))
+  const held = await createTransfer(world.dispatcher, transferBody(world, '2026-11-02T10:00:00.000Z'))
+  const next = await createTransfer(world.dispatcher, transferBody(world, '2026-11-02T10:30:00.000Z'))
+  const foreign = await createTransfer(other.dispatcher, transferBody(other, '2026-11-02T10:00:00.000Z'))
+  expect((await call('POST', `/api/rides/${held.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${foreign.ride.id}/assign`, other.dispatcher, {
+    driverId: otherDriver.id,
+    vehicleId: otherVehicle.id,
+  })).status).toBe(200)
+
+  const refused = await call('POST', `/api/rides/${next.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+  })
+  expect(refused.status).toBe(409)
+  expect(await refused.text()).toContain('ride_overlap')
+  expect(await rideRow(next.ride.id)).toEqual({
+    state: 'unassigned',
+    driver_id: null,
+    vehicle_id: null,
+    must_accept: null,
+  })
+  expect(await assignmentAudits(world.tenantId)).toHaveLength(1)
+
+  // The occupation read is this session’s assigned and accepted rows. RLS hides the other Tenant.
+  const seen = await withAppTenant(world.tenantId, async (client) => {
+    const result = await client.query<{ id: string }>(
+      `select r.id from app.rides as r where r.state in ('assigned', 'accepted')`,
+    )
+    return result.rows.map(row => row.id)
+  })
+  expect(seen).toContain(held.ride.id)
+  expect(seen).not.toContain(foreign.ride.id)
 })
 
 it('emails an assigned work order in the tenant locale, and a rejected send leaves the Ride assigned', async () => {
@@ -1172,6 +1217,7 @@ it('assigns when the Driver licences and the Vehicle expiry dates are already pa
       vehicleId: vehicle.id,
     },
     workOrders: [{ driverId: driver.id, outcome: 'no_email' }],
+    relocationWarnings: [],
   })
   expect(await rideRow(recorded.ride.id)).toMatchObject({
     state: 'assigned',
@@ -1204,6 +1250,7 @@ it('assigns a Driver with no linked account and copies must-accept', async () =>
       mustAccept: true,
     },
     workOrders: [{ driverId: driver.id, outcome: 'no_email' }],
+    relocationWarnings: [],
   })
   expect(await rideRow(recorded.ride.id)).toMatchObject({
     state: 'assigned',
@@ -1872,6 +1919,7 @@ it('changes the vehicle, reassigns, and clears, and a driver is refused with no 
       mustAccept: true,
     },
     workOrders: [{ driverId: first.driver.id, outcome: 'sent' }],
+    relocationWarnings: [],
   })
   expect(JSON.stringify(changedBody)).not.toContain('hasg-chg-a@example.test')
 
@@ -1901,6 +1949,7 @@ it('changes the vehicle, reassigns, and clears, and a driver is refused with no 
       { driverId: second.driver.id, outcome: 'sent' },
       { driverId: first.driver.id, outcome: 'sent' },
     ],
+    relocationWarnings: [],
   })
   expect((await listUpcomingRides(first.session)).rides.map(ride => ride.rideId)).not.toContain(recorded.ride.id)
   expect((await listUpcomingRides(second.session)).rides.map(ride => ride.rideId)).toContain(recorded.ride.id)
@@ -1917,6 +1966,7 @@ it('changes the vehicle, reassigns, and clears, and a driver is refused with no 
       mustAccept: null,
     },
     workOrders: [{ driverId: second.driver.id, outcome: 'sent' }],
+    relocationWarnings: [],
   })
   expect((await listUpcomingRides(second.session)).rides.map(ride => ride.rideId)).not.toContain(recorded.ride.id)
 

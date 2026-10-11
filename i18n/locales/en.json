@@ -108,7 +108,9 @@
         "airport_wait_changed": "Airport wait changed",
         "elsewhere_wait_changed": "Wait elsewhere changed",
         "time_zone_changed": "Time zone changed",
-        "operational_day_start_changed": "Operational day start changed"
+        "operational_day_start_changed": "Operational day start changed",
+        "transfer_duration_changed": "Transfer duration changed",
+        "relocation_gap_changed": "Relocation gap changed"
       },
       "client": {
         "created": "Client added",
@@ -154,9 +156,11 @@
   },
   "settings": {
     "title": "Settings",
-    "intro": "These are the No-show waits. Times on the screen use the time zone.",
+    "intro": "These are the No-show waits, how long a ride occupies a driver and a vehicle, and the gap that warns. Times on the screen use the time zone.",
     "airportWait": "Airport wait (minutes)",
     "elsewhereWait": "Wait elsewhere (minutes)",
+    "transferDuration": "Transfer duration (minutes)",
+    "relocationGap": "Relocation gap (minutes)",
     "timeZone": "Time zone",
     "operationalDayStart": "Operational day starts at",
     "timeZoneUnsupported": "{zone} (no longer supported)",
@@ -519,6 +523,10 @@
     "submitting": "Assigning",
     "vehicleArchived": "An archived vehicle cannot be assigned.",
     "notUnassigned": "Only an unassigned ride can be assigned.",
+    "overlapTitle": "This driver or vehicle is already on another ride",
+    "overlapBody": "The times overlap. Confirm to continue anyway.",
+    "overlapConfirm": "Continue anyway",
+    "tightGap": "The gap before or after another ride is tight.",
     "notFound": "That ride is not on the list.",
     "rejected": "The assignment was not accepted.",
     "forbidden": "A driver cannot assign a ride.",

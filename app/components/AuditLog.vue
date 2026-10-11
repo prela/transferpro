@@ -76,6 +76,8 @@ function detailText(entry: AuditEntry): string {
       return `${entry.data.from} → ${entry.data.to}`
     case 'settings.airport_wait_changed':
     case 'settings.elsewhere_wait_changed':
+    case 'settings.transfer_duration_changed':
+    case 'settings.relocation_gap_changed':
       return t('audit.minutesChange', { from: entry.data.from, to: entry.data.to })
     case 'settings.operational_day_start_changed':
       return `${formatOperationalDayStart(entry.data.from)} → ${formatOperationalDayStart(entry.data.to)}`

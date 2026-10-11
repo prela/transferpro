@@ -41,6 +41,8 @@ const initial = {
   elsewhereWaitMinutes: 25,
   timeZone: 'Europe/Zagreb',
   operationalDayStartHour: 5,
+  transferDurationMinutes: 60,
+  relocationGapMinutes: 15,
 }
 
 beforeAll(async () => {
@@ -161,6 +163,8 @@ it('each change of a wait or the time zone appends exactly one entry naming the 
     elsewhereWaitMinutes: 40,
     timeZone: 'Europe/Berlin',
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   })
   expect(JSON.stringify(entries)).not.toContain('@example.test')
 })
@@ -184,6 +188,8 @@ it('one request that changes two fields appends one entry for each and leaves th
     elsewhereWaitMinutes: 25,
     timeZone: 'Europe/Berlin',
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   })
 })
 
@@ -243,7 +249,7 @@ it('a dispatcher or a driver can read the settings and cannot change them', asyn
   const driver = await signIn('ts-roles-driver@example.test')
 
   await updateTenantSettings(admin, { airportWaitMinutes: 80 })
-  const changed = { airportWaitMinutes: 80, elsewhereWaitMinutes: 25, timeZone: 'Europe/Zagreb', operationalDayStartHour: 5 }
+  const changed = { airportWaitMinutes: 80, elsewhereWaitMinutes: 25, timeZone: 'Europe/Zagreb', operationalDayStartHour: 5, transferDurationMinutes: 60, relocationGapMinutes: 15 }
   expect(await readTenantSettings(dispatcher)).toEqual(changed)
   expect(await readTenantSettings(driver)).toEqual(changed)
 
@@ -272,12 +278,16 @@ it('another tenant cannot read or change these settings', async () => {
     elsewhereWaitMinutes: 30,
     timeZone: 'Europe/Zagreb',
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   })
   expect(await readTenantSettings(otherAdmin)).toEqual({
     airportWaitMinutes: 40,
     elsewhereWaitMinutes: 25,
     timeZone: 'Europe/Zagreb',
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   })
   expect(await entryCount(created.tenantId)).toBe(2)
   expect(await entryCount(other.tenantId)).toBe(1)

@@ -108,7 +108,9 @@
         "airport_wait_changed": "Promijenjeno čekanje na aerodromu",
         "elsewhere_wait_changed": "Promijenjeno čekanje izvan aerodroma",
         "time_zone_changed": "Promijenjena vremenska zona",
-        "operational_day_start_changed": "Promijenjen sat početka operativnog dana"
+        "operational_day_start_changed": "Promijenjen sat početka operativnog dana",
+        "transfer_duration_changed": "Promijenjeno trajanje transfera",
+        "relocation_gap_changed": "Promijenjen razmak za premještaj"
       },
       "client": {
         "created": "Klijent dodan",
@@ -154,9 +156,11 @@
   },
   "settings": {
     "title": "Postavke",
-    "intro": "Ovo su čekanja prije nedolaska. Vrijeme na zaslonu prikazuje se u ovoj vremenskoj zoni.",
+    "intro": "Ovo su čekanja prije nedolaska, koliko vožnja zauzima vozača i vozilo, i razmak koji upozorava. Vrijeme na zaslonu prikazuje se u ovoj vremenskoj zoni.",
     "airportWait": "Čekanje na aerodromu (minute)",
     "elsewhereWait": "Čekanje izvan aerodroma (minute)",
+    "transferDuration": "Trajanje transfera (minute)",
+    "relocationGap": "Razmak za premještaj (minute)",
     "timeZone": "Vremenska zona",
     "operationalDayStart": "Sat početka operativnog dana",
     "timeZoneUnsupported": "{zone} (više nije podržano)",
@@ -519,6 +523,10 @@
     "submitting": "Dodjeljivanje",
     "vehicleArchived": "Arhivirano vozilo ne može se dodijeliti.",
     "notUnassigned": "Dodijeliti se može samo vožnja koja još nema vozača i vozilo.",
+    "overlapTitle": "Ovaj vozač ili vozilo već ima drugu vožnju",
+    "overlapBody": "Vremena se preklapaju. Potvrdite da svejedno nastavite.",
+    "overlapConfirm": "Nastavi svejedno",
+    "tightGap": "Razmak prije ili poslije druge vožnje je uzak.",
     "notFound": "Ta vožnja nije na popisu.",
     "rejected": "Dodjela nije prihvaćena.",
     "forbidden": "Vozač ne može dodijeliti vožnju.",
