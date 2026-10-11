@@ -58,6 +58,10 @@ _Avoid_: deleted
 A Ride that has a Driver, is not finished, and is not waiting on acceptance, once its pickup is in the past. An earlier day's pickup stays in progress until the Ride is done, a no-show, or cancelled.
 _Avoid_: started, a Ride state
 
+**Unclosed mark**:
+An in-progress Ride once 60 minutes have passed since its scheduled pickup. A recorded landing does not move that instant.
+_Avoid_: warning, unassigned alarm, overdue
+
 **Operational-day start**:
 The hour in the Tenant's time zone at which an operational day begins. A new Tenant starts at 05:00. An admin can change it.
 _Avoid_: cutoff, midnight

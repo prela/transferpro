@@ -12,6 +12,14 @@ import { paymentMethodSchema, rideStateSchema, TABLA_MAX_LENGTH, transferPriceSc
 const UNASSIGNED_ALARM_MS = 4 * 60 * 60 * 1000
 
 /**
+ * Sixty minutes, in milliseconds. The unclosed mark includes this instant.
+ * It starts at the scheduled pickup, including an earlier day. A recorded
+ * landing does not move it. It is not the no-show wait and it sends
+ * nothing (ADR-0027).
+ */
+const UNCLOSED_MARK_MS = 60 * 60 * 1000
+
+/**
  * One Ride the office-home query already read. Names are display text.
  * `driverId` is how "has a Driver" is decided; it is not on the response.
  */
@@ -51,6 +59,10 @@ const officeHomeUnassignedSchema = officeHomeRowSchema.extend({
   unassignedAlarm: z.boolean(),
 }).strict()
 
+const officeHomeInProgressSchema = officeHomeRowSchema.extend({
+  unclosedMark: z.boolean(),
+}).strict()
+
 const officeHomeCountsSchema = z.strictObject({
   rides: z.number().int().nonnegative(),
   unassigned: z.number().int().nonnegative(),
@@ -63,13 +75,13 @@ const officeHomeCountsSchema = z.strictObject({
 
 /**
  * The three lists and the seven counts from one moment (ADR-0024).
- * Waiting and in progress have no alarm field. There is no week, month,
- * or euro total.
+ * Waiting has no mark. In progress carries the unclosed mark (ADR-0027).
+ * There is no week, month, or euro total.
  */
 export const officeHomeSchema = z.strictObject({
   unassigned: z.array(officeHomeUnassignedSchema),
   waitingOnAcceptance: z.array(officeHomeRowSchema),
-  inProgress: z.array(officeHomeRowSchema),
+  inProgress: z.array(officeHomeInProgressSchema),
   counts: officeHomeCountsSchema,
 })
 
@@ -135,7 +147,7 @@ export function buildOfficeHome(
 
   const unassigned: z.infer<typeof officeHomeUnassignedSchema>[] = []
   const waitingOnAcceptance: z.infer<typeof officeHomeRowSchema>[] = []
-  const inProgress: z.infer<typeof officeHomeRowSchema>[] = []
+  const inProgress: z.infer<typeof officeHomeInProgressSchema>[] = []
   const counts = {
     rides: 0,
     unassigned: 0,
@@ -191,7 +203,10 @@ export function buildOfficeHome(
       waitingOnAcceptance.push(shown)
     }
     else if (list === 'inProgress') {
-      inProgress.push(shown)
+      inProgress.push({
+        ...shown,
+        unclosedMark: nowMs - pickup >= UNCLOSED_MARK_MS,
+      })
     }
   }
 

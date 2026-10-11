@@ -499,7 +499,8 @@
     "empty": "Ovaj popis je prazan.",
     "counts": "Brojevi za operativni dan",
     "countRides": "Vožnje",
-    "unassignedAlarm": "Alarm za nedodijeljenu vožnju"
+    "unassignedAlarm": "Alarm za nedodijeljenu vožnju",
+    "unclosedMark": "Nije zatvoreno"
   },
   "expiringDocuments": {
     "title": "Dokumenti koji istječu",

@@ -303,6 +303,12 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
   })
 
   expect(snapshot.inProgress.map(row => row.guestName)).toEqual(['Progress Lara', 'Progress Today'])
+  expect(Object.fromEntries(snapshot.inProgress.map(row => [row.guestName, row.unclosedMark]))).toEqual({
+    'Progress Lara': true,
+    'Progress Today': true,
+  })
+  expect(snapshot.inProgress.every(row => !('unassignedAlarm' in row))).toBe(true)
+  expect(snapshot.waitingOnAcceptance.every(row => !('unclosedMark' in row))).toBe(true)
   expect(snapshot.inProgress[0]).toMatchObject({
     driverName: 'Ana Slobodna',
     vehiclePlate: 'DU200AA',

@@ -211,6 +211,73 @@ it('derives in progress from a past pickup, including an earlier day, and leaves
   expect(snapshot.waitingOnAcceptance).toEqual([])
 })
 
+it('marks an in-progress Ride once 60 minutes have passed since the scheduled pickup', () => {
+  const now = new Date('2026-06-15T10:00:00.000Z')
+  const driver = {
+    driverId: '00000000-0000-4000-8000-0000000000aa',
+    driverName: 'Marko',
+    vehiclePlate: 'DU100AA',
+  }
+  const snapshot = buildOfficeHome([
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000050',
+      guestName: 'Earlier day',
+      pickupAt: '2026-06-14T08:00:00.000Z',
+      state: 'accepted',
+      mustAccept: true,
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000051',
+      guestName: 'Hour',
+      pickupAt: '2026-06-15T09:00:00.000Z',
+      state: 'assigned',
+      mustAccept: false,
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000052',
+      guestName: 'Just under',
+      pickupAt: '2026-06-15T09:00:00.001Z',
+      state: 'accepted',
+      mustAccept: true,
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000053',
+      guestName: 'Waiting past',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      state: 'assigned',
+      mustAccept: true,
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000054',
+      guestName: 'Unassigned past',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      state: 'unassigned',
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000055',
+      guestName: 'Done past',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      state: 'done',
+      ...driver,
+    }),
+  ], now, zone)
+
+  expect(guests(snapshot.inProgress)).toEqual(['Earlier day', 'Hour', 'Just under'])
+  expect(Object.fromEntries(snapshot.inProgress.map(row => [row.guestName, row.unclosedMark]))).toEqual({
+    'Earlier day': true,
+    'Hour': true,
+    'Just under': false,
+  })
+  expect(snapshot.inProgress.every(row => !('unassignedAlarm' in row))).toBe(true)
+  expect(snapshot.waitingOnAcceptance.every(row => !('unclosedMark' in row))).toBe(true)
+  expect(snapshot.unassigned.every(row => !('unclosedMark' in row))).toBe(true)
+  expect(snapshot.counts.inProgress).toBe(2)
+})
+
 it('counts the stored hour, so a 05:30 pickup stays off today when the hour is 06:00 and still appears on the unassigned list', () => {
   const now = instantFromWallClock('2026-01-15T12:00', zone)
   const snapshot = buildOfficeHome([
