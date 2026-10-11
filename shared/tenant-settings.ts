@@ -13,6 +13,16 @@ export const AIRPORT_WAIT_DEFAULT_MINUTES = 90
 export const ELSEWHERE_WAIT_DEFAULT_MINUTES = 25
 
 /**
+ * How long a Ride occupies its Driver and Vehicle after the pickup, or
+ * after the landing when one is stored (ADR-0029). The same column is the
+ * transfer duration #183 reads. It is not a No-show wait.
+ */
+export const TRANSFER_DURATION_DEFAULT_MINUTES = 60
+
+/** Minutes between one Ride's end and the next pickup before the office is warned. */
+export const RELOCATION_GAP_DEFAULT_MINUTES = 15
+
+/**
  * The operational day starts at a whole hour. 0 is local midnight, so the
  * operational day is the calendar date. 8 is the latest morning an office
  * may draw the line. A new Tenant, and one that already exists, starts at 5.
@@ -82,6 +92,8 @@ export const tenantSettingsSchema = z.object({
   elsewhereWaitMinutes: waitMinutesSchema,
   timeZone: ianaTimeZoneSchema,
   operationalDayStartHour: operationalDayStartHourSchema,
+  transferDurationMinutes: waitMinutesSchema,
+  relocationGapMinutes: waitMinutesSchema,
 })
 
 export type TenantSettings = z.infer<typeof tenantSettingsSchema>
@@ -95,6 +107,8 @@ export const tenantSettingsResponseSchema = z.object({
   elsewhereWaitMinutes: waitMinutesSchema,
   timeZone: storedTimeZoneSchema,
   operationalDayStartHour: operationalDayStartHourSchema,
+  transferDurationMinutes: waitMinutesSchema,
+  relocationGapMinutes: waitMinutesSchema,
 })
 
 export type TenantSettingsResponse = z.infer<typeof tenantSettingsResponseSchema>
@@ -112,6 +126,8 @@ export const tenantSettingsPatchSchema = z.strictObject({
   elsewhereWaitMinutes: waitMinutesSchema.optional(),
   timeZone: ianaTimeZoneSchema.optional(),
   operationalDayStartHour: operationalDayStartHourSchema.optional(),
+  transferDurationMinutes: waitMinutesSchema.optional(),
+  relocationGapMinutes: waitMinutesSchema.optional(),
 })
 
 export type TenantSettingsPatch = z.infer<typeof tenantSettingsPatchSchema>
@@ -127,9 +143,10 @@ export class TenantSettingsError extends Error {
 }
 
 /**
- * Accepts a patch of the waits, the time zone, and the operational-day
- * start. Any other body throws first, so the caller does not open a session
- * and does not write. An absent hour stays as stored.
+ * Accepts a patch of the waits, the time zone, the operational-day start,
+ * the transfer duration, and the relocation gap. Any other body throws
+ * first, so the caller does not open a session and does not write. An
+ * absent field stays as stored.
  */
 export function parseTenantSettingsPatch(raw: unknown): TenantSettingsPatch {
   const parsed = tenantSettingsPatchSchema.safeParse(raw)

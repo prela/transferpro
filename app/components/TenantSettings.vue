@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TenantSettingsResponse } from '../../shared'
-import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, formatOperationalDayStart, OPERATIONAL_DAY_START_DEFAULT, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, TENANT_TIME_ZONE_DEFAULT, tenantSettingsGetSchema, tenantSettingsResponseSchema, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../../shared'
+import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, formatOperationalDayStart, OPERATIONAL_DAY_START_DEFAULT, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, RELOCATION_GAP_DEFAULT_MINUTES, TENANT_TIME_ZONE_DEFAULT, tenantSettingsGetSchema, tenantSettingsResponseSchema, TRANSFER_DURATION_DEFAULT_MINUTES, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../../shared'
 
 defineProps<{
   isAdmin: boolean
@@ -20,6 +20,8 @@ const airportWaitMinutes = ref(AIRPORT_WAIT_DEFAULT_MINUTES)
 const elsewhereWaitMinutes = ref(ELSEWHERE_WAIT_DEFAULT_MINUTES)
 const timeZone = ref(TENANT_TIME_ZONE_DEFAULT)
 const operationalDayStartHour = ref(OPERATIONAL_DAY_START_DEFAULT)
+const transferDurationMinutes = ref(TRANSFER_DURATION_DEFAULT_MINUTES)
+const relocationGapMinutes = ref(RELOCATION_GAP_DEFAULT_MINUTES)
 const hourItems = Array.from(
   { length: OPERATIONAL_DAY_START_MAX - OPERATIONAL_DAY_START_MIN + 1 },
   (_, index) => {
@@ -56,6 +58,8 @@ const airportId = useId()
 const elsewhereId = useId()
 const timeZoneId = useId()
 const operationalDayStartId = useId()
+const transferDurationId = useId()
+const relocationGapId = useId()
 // autofocus stays off so a phone keyboard does not cover the list.
 // The placeholder is not a label, so the search field keeps the time-zone name.
 const timeZoneSearchInput = computed(() => ({
@@ -87,6 +91,8 @@ function apply(next: TenantSettingsResponse) {
   elsewhereWaitMinutes.value = next.elsewhereWaitMinutes
   timeZone.value = next.timeZone
   operationalDayStartHour.value = next.operationalDayStartHour
+  transferDurationMinutes.value = next.transferDurationMinutes
+  relocationGapMinutes.value = next.relocationGapMinutes
 }
 
 async function save() {
@@ -94,10 +100,19 @@ async function save() {
   saved.value = false
   pending.value = true
   try {
-    const body: { airportWaitMinutes: number, elsewhereWaitMinutes: number, operationalDayStartHour: number, timeZone?: string } = {
+    const body: {
+      airportWaitMinutes: number
+      elsewhereWaitMinutes: number
+      operationalDayStartHour: number
+      transferDurationMinutes: number
+      relocationGapMinutes: number
+      timeZone?: string
+    } = {
       airportWaitMinutes: airportWaitMinutes.value,
       elsewhereWaitMinutes: elsewhereWaitMinutes.value,
       operationalDayStartHour: operationalDayStartHour.value,
+      transferDurationMinutes: transferDurationMinutes.value,
+      relocationGapMinutes: relocationGapMinutes.value,
     }
     // An unchanged zone stays off the body, including one the list has dropped.
     if (settings.value && timeZone.value !== settings.value.timeZone)
@@ -209,6 +224,40 @@ onMounted(loadSettings)
         />
       </UFormField>
       <UFormField
+        :label="t('settings.transferDuration')"
+        class="mb-4"
+        size="xl"
+      >
+        <UInput
+          :id="transferDurationId"
+          v-model.number="transferDurationMinutes"
+          type="number"
+          inputmode="numeric"
+          :min="WAIT_MINUTES_MIN"
+          :max="WAIT_MINUTES_MAX"
+          step="1"
+          required
+          class="w-full"
+        />
+      </UFormField>
+      <UFormField
+        :label="t('settings.relocationGap')"
+        class="mb-4"
+        size="xl"
+      >
+        <UInput
+          :id="relocationGapId"
+          v-model.number="relocationGapMinutes"
+          type="number"
+          inputmode="numeric"
+          :min="WAIT_MINUTES_MIN"
+          :max="WAIT_MINUTES_MAX"
+          step="1"
+          required
+          class="w-full"
+        />
+      </UFormField>
+      <UFormField
         :label="t('settings.timeZone')"
         class="mb-4"
         size="xl"
@@ -245,6 +294,14 @@ onMounted(loadSettings)
         {{ t('settings.operationalDayStart') }}
       </p>
       <p>{{ formatOperationalDayStart(settings.operationalDayStartHour) }}</p>
+      <p class="mt-4 text-sm text-muted">
+        {{ t('settings.transferDuration') }}
+      </p>
+      <p>{{ settings.transferDurationMinutes }}</p>
+      <p class="mt-4 text-sm text-muted">
+        {{ t('settings.relocationGap') }}
+      </p>
+      <p>{{ settings.relocationGapMinutes }}</p>
       <p class="mt-4 text-sm text-muted">
         {{ t('settings.timeZone') }}
       </p>

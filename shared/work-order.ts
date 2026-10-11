@@ -157,13 +157,23 @@ export const workOrderNoticeSchema = z.object({
 
 export type WorkOrderNotice = z.infer<typeof workOrderNoticeSchema>
 
+export const relocationWarningSchema = z.object({
+  resource: z.enum(['driver', 'vehicle']),
+  rideId: z.uuid(),
+})
+
+export type RelocationWarning = z.infer<typeof relocationWarningSchema>
+
 /**
- * The assign action. One notice for the Driver who received the Ride.
+ * The assign, vehicle-change, clear, or reassign action.
+ * `relocationWarnings` names a tight gap. It is empty when the gap is enough.
+ * A true overlap is a 409 and is not in this list. Clear leaves the list empty.
  * The address is not on this object.
  */
 export const assignedRideSchema = z.object({
   ride: rideSchema,
   workOrders: z.array(workOrderNoticeSchema),
+  relocationWarnings: z.array(relocationWarningSchema),
 })
 
 export type AssignedRide = z.infer<typeof assignedRideSchema>

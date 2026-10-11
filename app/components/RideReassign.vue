@@ -25,6 +25,7 @@ const titleId = useId()
 const nextDriverId = ref<string | undefined>()
 const vehicleId = ref<string | undefined>()
 const pending = ref(false)
+const overlapOpen = ref(false)
 const formErrorKey = ref<RideFailure | null>(null)
 const rosterVehicleId = ref<string | null>(null)
 
@@ -129,7 +130,7 @@ async function prefillVehicle(chosenDriverId: string, ticket: number, snapshot: 
   }
 }
 
-async function submit() {
+async function submit(confirm = false) {
   const chosenDriver = nextDriverId.value
   const chosenVehicle = vehicleId.value
   formErrorKey.value = null
@@ -139,9 +140,20 @@ async function submit() {
   try {
     const saved = assignedRideSchema.parse(await $fetch(`/api/rides/${props.rideId}/reassign`, {
       method: 'POST',
-      body: { driverId: chosenDriver, vehicleId: chosenVehicle },
+      body: {
+        driverId: chosenDriver,
+        vehicleId: chosenVehicle,
+        ...(confirm ? { confirm: true } : {}),
+      },
     }))
+    overlapOpen.value = false
     notifyAuditChanged()
+    if (saved.relocationWarnings.length > 0) {
+      toast.add({
+        title: t('ride.tightGap'),
+        color: 'warning',
+      })
+    }
     // One toast per Driver. The new Driver is first, then the previous one.
     // The response has no address, so neither toast can show one.
     for (const notice of saved.workOrders) {
@@ -156,6 +168,11 @@ async function submit() {
     emit('saved')
   }
   catch (error) {
+    if (errorCode(error) === 'ride_overlap') {
+      overlapOpen.value = true
+      return
+    }
+    overlapOpen.value = false
     formErrorKey.value = failureKey(error)
   }
   finally {
@@ -168,7 +185,7 @@ async function submit() {
   <form
     class="mt-6"
     :aria-labelledby="titleId"
-    @submit.prevent="submit"
+    @submit.prevent="submit()"
   >
     <h2
       :id="titleId"
@@ -247,4 +264,9 @@ async function submit() {
       </UButton>
     </div>
   </form>
+  <RideOverlapDialog
+    v-model:open="overlapOpen"
+    :pending="pending"
+    @confirm="submit(true)"
+  />
 </template>

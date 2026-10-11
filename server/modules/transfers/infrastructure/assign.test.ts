@@ -7,6 +7,7 @@ import { RosterInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
 import { TenantSettingsMissingError } from '../../tenancy'
 import { assignUnassignedRide, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError, suggestRosterVehicle } from './assign'
+import { RideOverlapError } from './ride-schedule'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
@@ -22,6 +23,9 @@ interface Script {
   vehicle?: 'active' | 'archived' | 'missing'
   updateWins?: boolean
   pickupAt?: Date
+  occupying?: Array<{ id: string, driverId: string, vehicleId: string, pickupAt: Date, landingAt: Date | null }>
+  schedulePickup?: Date
+  landingAt?: Date | null
   rosterVehicleId?: string | null
   rosterVehicle?: 'active' | 'archived' | 'missing'
   /** Throw this message when the statement text includes `failSql`. The bound ids stay in that message. */
@@ -77,6 +81,16 @@ function fakeTransaction(script: Script) {
           }],
         }
       }
+      if (text.includes('for share') && text.includes('app.rides'))
+        return { rows: script.occupying ?? [] }
+      if (text.includes('landing_at') && text.includes('app.rides')) {
+        return {
+          rows: [{
+            pickupAt: script.schedulePickup ?? new Date('2026-06-01T10:00:00.000Z'),
+            landingAt: script.landingAt ?? null,
+          }],
+        }
+      }
       if (text.includes('update app.rides')) {
         if (script.updateWins === false)
           return { rows: [] }
@@ -99,7 +113,7 @@ function fakeTransaction(script: Script) {
       if (text.includes('from app.tenant_settings')) {
         if (script.missingSettings)
           return { rows: [] }
-        return { rows: [{ airport_wait_minutes: 90, elsewhere_wait_minutes: 25, time_zone: 'Europe/Zagreb', operational_day_start_hour: 5 }] }
+        return { rows: [{ airport_wait_minutes: 90, elsewhere_wait_minutes: 25, time_zone: 'Europe/Zagreb', operational_day_start_hour: 5, transfer_duration_minutes: 60, relocation_gap_minutes: 15 }] }
       }
       if (text.includes('from app.roster')) {
         if (script.rosterVehicleId == null)
@@ -131,12 +145,15 @@ function logLine(error: unknown): string {
 it('assigns only from unassigned, copies must-accept, and names fields not a plate or a phone', async () => {
   const { transaction, queries } = fakeTransaction({ driverMustAccept: true })
   await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).resolves.toEqual({
-    id: rideId,
-    transferId,
-    state: 'assigned',
-    driverId,
-    vehicleId,
-    mustAccept: true,
+    ride: {
+      id: rideId,
+      transferId,
+      state: 'assigned',
+      driverId,
+      vehicleId,
+      mustAccept: true,
+    },
+    relocationWarnings: [],
   })
   const driverQuery = queries.find(query => query.sql.includes('from app.drivers'))
   expect(driverQuery?.sql).toContain('must_accept')
@@ -165,7 +182,8 @@ it('assigns only from unassigned, copies must-accept, and names fields not a pla
 it('copies false when that is the Driver setting at the call', async () => {
   const { transaction, queries } = fakeTransaction({ driverMustAccept: false })
   await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).resolves.toMatchObject({
-    mustAccept: false,
+    ride: { mustAccept: false },
+    relocationWarnings: [],
   })
   expect(queries.find(query => query.sql.includes('update app.rides'))?.params[2]).toBe(false)
 })
@@ -290,7 +308,7 @@ it('keeps a roster input error from the pre-fill', async () => {
     if (text.includes('from app.drivers'))
       return { rows: [{ id: driverId }] }
     if (text.includes('from app.tenant_settings'))
-      return { rows: [{ airport_wait_minutes: 90, elsewhere_wait_minutes: 25, time_zone: 'Europe/Zagreb', operational_day_start_hour: 5 }] }
+      return { rows: [{ airport_wait_minutes: 90, elsewhere_wait_minutes: 25, time_zone: 'Europe/Zagreb', operational_day_start_hour: 5, transfer_duration_minutes: 60, relocation_gap_minutes: 15 }] }
     if (text.includes('from app.roster'))
       throw new RosterInputError()
     return { rows: [] }
@@ -348,4 +366,87 @@ it('refuses a pre-fill when the Ride or the Driver is not in this Tenant', async
   const missingDriver = fakeTransaction({ pickupAt: new Date('2026-10-05T21:59:00.000Z'), driverMustAccept: 'missing' })
   await expect(suggestRosterVehicle(missingDriver.transaction, rideId, driverId)).rejects.toBeInstanceOf(RideNotFoundError)
   expect(missingDriver.queries.some(query => query.sql.includes('from app.roster'))).toBe(false)
+})
+
+const otherRideId = 'e2e2e2e2-3333-4333-8333-333333333333'
+
+it('refuses an assign that truly overlaps the same Driver, and writes nothing', async () => {
+  const { transaction, queries } = fakeTransaction({
+    occupying: [{
+      id: otherRideId,
+      driverId,
+      vehicleId: otherVehicleId,
+      pickupAt: new Date('2026-06-01T10:30:00.000Z'),
+      landingAt: null,
+    }],
+  })
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideOverlapError)
+  expect(wroteAssignment(queries)).toBe(false)
+  const occupying = queries.find(query => query.sql.includes('for share') && query.sql.includes('app.rides'))
+  expect(occupying?.sql).toContain('\'assigned\'')
+  expect(occupying?.sql).toContain('\'accepted\'')
+  expect(occupying?.sql).not.toContain('\'done\'')
+  expect(occupying?.sql).not.toContain('\'cancelled\'')
+  expect(occupying?.sql).toContain('<>')
+})
+
+it('assigns when the overlap is confirmed, and still writes the work-order path\'s ride', async () => {
+  const { transaction, queries } = fakeTransaction({
+    occupying: [{
+      id: otherRideId,
+      driverId,
+      vehicleId: otherVehicleId,
+      pickupAt: new Date('2026-06-01T10:30:00.000Z'),
+      landingAt: null,
+    }],
+  })
+  await expect(assignUnassignedRide(transaction, actorUserId, {
+    rideId,
+    driverId,
+    vehicleId,
+    confirm: true,
+  })).resolves.toMatchObject({
+    ride: { state: 'assigned', driverId, vehicleId },
+    relocationWarnings: [],
+  })
+  expect(wroteAssignment(queries)).toBe(true)
+})
+
+it('assigns through a tight gap and reports the warning', async () => {
+  const { transaction, queries } = fakeTransaction({
+    occupying: [{
+      id: otherRideId,
+      driverId,
+      vehicleId: otherVehicleId,
+      pickupAt: new Date('2026-06-01T11:10:00.000Z'),
+      landingAt: null,
+    }],
+  })
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).resolves.toEqual({
+    ride: {
+      id: rideId,
+      transferId,
+      state: 'assigned',
+      driverId,
+      vehicleId,
+      mustAccept: false,
+    },
+    relocationWarnings: [{ resource: 'driver', rideId: otherRideId }],
+  })
+  expect(wroteAssignment(queries)).toBe(true)
+})
+
+it('treats a landing that stretches the window as a true overlap', async () => {
+  const { transaction, queries } = fakeTransaction({
+    landingAt: new Date('2026-06-01T10:30:00.000Z'),
+    occupying: [{
+      id: otherRideId,
+      driverId,
+      vehicleId: otherVehicleId,
+      pickupAt: new Date('2026-06-01T11:20:00.000Z'),
+      landingAt: null,
+    }],
+  })
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideOverlapError)
+  expect(wroteAssignment(queries)).toBe(false)
 })

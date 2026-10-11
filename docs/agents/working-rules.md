@@ -83,6 +83,8 @@ An admin changes them with `PATCH /api/tenant-settings`. A dispatcher and a driv
 
 The operational-day start is a whole hour from 0 through 8 on the same row, default 5. The board and Home pass that hour into the shared operational-day bound. The roster and expiring documents stay on the calendar date. A real change appends `settings.operational_day_start_changed`. An unchanged hour appends nothing.
 
+The transfer duration and the relocation gap are whole minutes from 1 through 1440 on the same row. A new Tenant, and one that already exists, starts at 60 and 15. A real change appends `settings.transfer_duration_changed` or `settings.relocation_gap_changed`. These are not No-show waits (ADR-0029).
+
 ## i18n and theme
 
 A null user locale follows the Tenant default. `POST /api/locale` accepts `hr` or `en`. Ship both locales for every UI change. Ship both light and dark. `nuxt.config.ts` holds the locale strategy and the `transferpro-theme` key. Render instants with `formatInstant` (`shared/format-instant.ts`); do not add another date formatter.

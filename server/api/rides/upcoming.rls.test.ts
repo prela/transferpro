@@ -261,7 +261,9 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
       tabla: input.tabla ?? '',
     })
     if (input.assign) {
-      await assignRide(admin, { rideId: recorded.ride.id, driverId: input.assign, vehicleId: vehicle.id })
+      // These Rides share a Driver on purpose so the list can show several.
+      // The times overlap. The office records that with confirm.
+      await assignRide(admin, { rideId: recorded.ride.id, driverId: input.assign, vehicleId: vehicle.id, confirm: true })
       if (input.state || input.movePickupTo)
         await setRide(recorded.ride.id, { state: input.state, pickupAt: input.movePickupTo })
     }

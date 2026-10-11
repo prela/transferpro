@@ -23,6 +23,7 @@ const titleId = useId()
 const driverId = ref<string | undefined>()
 const vehicleId = ref<string | undefined>()
 const pending = ref(false)
+const overlapOpen = ref(false)
 const formErrorKey = ref<RideFailure | null>(null)
 const rosterVehicleId = ref<string | null>(null)
 
@@ -129,7 +130,7 @@ async function prefillVehicle(nextDriverId: string, ticket: number, snapshot: st
   }
 }
 
-async function assign() {
+async function assign(confirm = false) {
   const chosenDriver = driverId.value
   const chosenVehicle = vehicleId.value
   formErrorKey.value = null
@@ -139,9 +140,20 @@ async function assign() {
   try {
     const assigned = assignedRideSchema.parse(await $fetch(`/api/rides/${props.rideId}/assign`, {
       method: 'POST',
-      body: { driverId: chosenDriver, vehicleId: chosenVehicle },
+      body: {
+        driverId: chosenDriver,
+        vehicleId: chosenVehicle,
+        ...(confirm ? { confirm: true } : {}),
+      },
     }))
+    overlapOpen.value = false
     notifyAuditChanged()
+    if (assigned.relocationWarnings.length > 0) {
+      toast.add({
+        title: t('ride.tightGap'),
+        color: 'warning',
+      })
+    }
     // The notice names the Driver by id. The name is the one already on
     // this form. The response has no address, so the toast cannot show one.
     const notice = assigned.workOrders[0]
@@ -155,6 +167,11 @@ async function assign() {
     emit('assigned')
   }
   catch (error) {
+    if (errorCode(error) === 'ride_overlap') {
+      overlapOpen.value = true
+      return
+    }
+    overlapOpen.value = false
     formErrorKey.value = failureKey(error)
   }
   finally {
@@ -167,7 +184,7 @@ async function assign() {
   <form
     class="mt-6"
     :aria-labelledby="titleId"
-    @submit.prevent="assign"
+    @submit.prevent="assign()"
   >
     <h2
       :id="titleId"
@@ -246,4 +263,9 @@ async function assign() {
       </UButton>
     </div>
   </form>
+  <RideOverlapDialog
+    v-model:open="overlapOpen"
+    :pending="pending"
+    @confirm="assign(true)"
+  />
 </template>

@@ -21,12 +21,15 @@ export const assignRideSchema = z.strictObject({
   rideId: z.uuid(),
   driverId: z.uuid(),
   vehicleId: z.uuid(),
+  confirm: z.boolean().optional(),
 })
 
 export interface AssignRide {
   readonly rideId: string
   readonly driverId: string
   readonly vehicleId: string
+  /** Set only after a 409 `ride_overlap`. A tight gap does not use this. */
+  readonly confirm?: boolean
 }
 
 /** The body was not an assignment. Nothing is written. */
@@ -102,11 +105,14 @@ export const rideVehicleChangeFieldSchema = z.enum(RIDE_VEHICLE_CHANGE_FIELDS)
 export const changeRideVehicleSchema = z.strictObject({
   rideId: z.uuid(),
   vehicleId: z.uuid(),
+  confirm: z.boolean().optional(),
 })
 
 export interface ChangeRideVehicle {
   readonly rideId: string
   readonly vehicleId: string
+  /** Set only after a 409 `ride_overlap`. A tight gap does not use this. */
+  readonly confirm?: boolean
 }
 
 /**
@@ -117,12 +123,15 @@ export const reassignRideSchema = z.strictObject({
   rideId: z.uuid(),
   driverId: z.uuid(),
   vehicleId: z.uuid(),
+  confirm: z.boolean().optional(),
 })
 
 export interface ReassignRide {
   readonly rideId: string
   readonly driverId: string
   readonly vehicleId: string
+  /** Set only after a 409 `ride_overlap`. A tight gap does not use this. */
+  readonly confirm?: boolean
 }
 
 /** The body was not one of these commands. Nothing is written. */

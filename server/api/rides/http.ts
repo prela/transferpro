@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
-import { AcceptRideInputError, RideNotAcceptableError, RideNotFoundError, RideNotOpenError, RideNotUnassignedError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
+import { AcceptRideInputError, RideNotAcceptableError, RideNotFoundError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
 
 /**
  * Turn an assignment or accept failure into an HTTP error. The message stays
@@ -12,6 +12,7 @@ import { AcceptRideInputError, RideNotAcceptableError, RideNotFoundError, RideNo
  * `ride_not_open` is a vehicle change, a clear, or a reassignment on a Ride
  * that is not `assigned` or `accepted`. `ride_vehicle_unchanged` is the same
  * Vehicle. `ride_same_driver` is a reassignment to the Driver already on the Ride.
+ * `ride_overlap` is a true overlap of the Driver or the Vehicle. Nothing was written.
  */
 export function rideHttpError(error: unknown): never {
   if (
@@ -30,6 +31,7 @@ export function rideHttpError(error: unknown): never {
     || error instanceof RideNotOpenError
     || error instanceof RideVehicleUnchangedError
     || error instanceof RideSameDriverError
+    || error instanceof RideOverlapError
   ) {
     throw createError({
       statusCode: error.statusCode,

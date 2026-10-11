@@ -15,6 +15,12 @@ _Avoid_: Ride, job
 The execution of a Transfer. One Transfer may have several Rides. In v1 it has exactly one, created with the Transfer. A Ride is not deleted.
 _Avoid_: trip, job, leg
 
+**Transfer duration**:
+The minutes a Ride occupies after its pickup, or after its landing when a landing is stored. The Tenant's default is 60. It is not a No-show wait.
+
+**Relocation gap**:
+The minutes the office wants between the end of one occupied Ride and the pickup of the next for the same Driver or the same Vehicle. The Tenant's default is 15. A shorter gap warns. It does not block. A gap of exactly that length is not a warning.
+
 **Unassigned**:
 A Ride with no Driver and no Vehicle.
 
@@ -23,7 +29,7 @@ An unfinished unassigned Ride during the four hours before its pickup. It is not
 _Avoid_: acceptance deadline
 
 **Assigned**:
-A Ride with both a Driver and a Vehicle. When it requires acceptance, it is waiting on acceptance, including after an earlier acceptance was cleared. Whether it requires acceptance is copied from the Driver at assignment and stays on the Ride. The Vehicle on a new assignment starts as that Driver's roster Vehicle for the calendar day, and the office can still choose a different Vehicle for that one Ride. A roster change does not change a Ride already assigned.
+A Ride with both a Driver and a Vehicle. When it requires acceptance, it is waiting on acceptance, including after an earlier acceptance was cleared. Whether it requires acceptance is copied from the Driver at assignment and stays on the Ride. The Vehicle on a new assignment starts as that Driver's roster Vehicle for the calendar day, and the office can still choose a different Vehicle for that one Ride. A roster change does not change a Ride already assigned. An assigned Ride occupies its Driver and its Vehicle for the transfer duration, including when it is in progress. A true overlap blocks assign, a vehicle change, and a reassignment until the office confirms. Clear does not.
 _Avoid_: pending
 
 **Waiting on acceptance**:

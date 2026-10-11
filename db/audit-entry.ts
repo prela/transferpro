@@ -256,6 +256,8 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'settings.elsewhere_wait_changed' then ${table.subjectUserId} is null and ${minutesFromTo(table.data)}
     when 'settings.time_zone_changed' then ${table.subjectUserId} is null and ${zonesFromTo(table.data)}
     when 'settings.operational_day_start_changed' then ${table.subjectUserId} is null and ${hoursFromTo(table.data)}
+    when 'settings.transfer_duration_changed' then ${table.subjectUserId} is null and ${minutesFromTo(table.data)}
+    when 'settings.relocation_gap_changed' then ${table.subjectUserId} is null and ${minutesFromTo(table.data)}
     when 'client.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'kind')} and ${clientIdText(table.data)} and ${kindText(table.data, 'kind')}
     when 'client.name_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId')} and ${clientIdText(table.data)}
     when 'client.kind_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'from', 'to')} and ${clientIdText(table.data)} and ${kindText(table.data, 'from')} and ${kindText(table.data, 'to')}

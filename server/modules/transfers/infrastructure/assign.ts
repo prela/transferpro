@@ -1,5 +1,5 @@
 import type { SQL } from 'drizzle-orm'
-import type { AssignRide, Ride, RosterVehicleSuggestion } from '../../../../shared'
+import type { AssignRide, Ride, RosterVehicleSuggestion, ScheduleClash } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -10,6 +10,7 @@ import { driverIsInTenant, driverMustAcceptForAssign } from '../../drivers'
 import { vehicleIdForDriverOnDate } from '../../roster'
 import { loadTenantSettings, TenantSettingsMissingError } from '../../tenancy'
 import { vehiclePresence, vehiclePresenceForAssign } from '../../vehicles'
+import { checkRideSchedule } from './ride-schedule'
 
 const rideStateRows = z.object({
   rows: z.array(z.object({
@@ -87,7 +88,7 @@ export async function assignUnassignedRide(
   transaction: TenantTransaction,
   actorUserId: string,
   input: AssignRide,
-): Promise<Ride> {
+): Promise<{ ride: Ride, relocationWarnings: ScheduleClash[] }> {
   const current = rideStateRows.parse(await runRideStep(transaction, sql`
     select id, state
     from app.rides
@@ -108,6 +109,13 @@ export async function assignUnassignedRide(
     throw new RideNotFoundError()
   if (presence === 'archived')
     throw new RideVehicleArchivedError()
+
+  const relocationWarnings = await checkRideSchedule(transaction, {
+    rideId: input.rideId,
+    driverId: input.driverId,
+    vehicleId: input.vehicleId,
+    confirm: input.confirm === true,
+  })
 
   // The share lock held this boolean. The update does not read the Driver again.
   const mustAccept = driverFlag
@@ -142,7 +150,7 @@ export async function assignUnassignedRide(
       fields: [...RIDE_ASSIGNMENT_FIELDS],
     },
   }), 'Ride assignment failed')
-  return updated
+  return { ride: updated, relocationWarnings }
 }
 
 /**

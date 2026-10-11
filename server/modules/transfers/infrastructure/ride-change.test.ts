@@ -4,6 +4,7 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
 import { RideNotFoundError, RideVehicleArchivedError } from './assign'
 import { changeRideVehicle, clearAssignedRide, reassignAssignedRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './ride-change'
+import { RideOverlapError } from './ride-schedule'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
@@ -21,6 +22,7 @@ interface Script {
   mustAccept?: boolean | null
   /** The Driver named on a reassignment. Missing means that Driver is not in this Tenant. */
   nextMustAccept?: boolean | 'missing'
+  occupying?: Array<{ id: string, driverId: string, vehicleId: string, pickupAt: Date, landingAt: Date | null }>
   vehicle?: 'active' | 'archived' | 'missing'
   updateWins?: boolean
 }
@@ -42,6 +44,28 @@ function fakeTransaction(script: Script) {
             driverId: script.driverId === undefined ? driverId : script.driverId,
             vehicleId: script.vehicleId === undefined ? vehicleId : script.vehicleId,
             mustAccept: script.mustAccept === undefined ? true : script.mustAccept,
+          }],
+        }
+      }
+      if (text.includes('for share') && text.includes('app.rides'))
+        return { rows: script.occupying ?? [] }
+      if (text.includes('landing_at') && text.includes('app.rides')) {
+        return {
+          rows: [{
+            pickupAt: new Date('2026-06-01T10:00:00.000Z'),
+            landingAt: null,
+          }],
+        }
+      }
+      if (text.includes('from app.tenant_settings')) {
+        return {
+          rows: [{
+            airport_wait_minutes: 90,
+            elsewhere_wait_minutes: 25,
+            time_zone: 'Europe/Zagreb',
+            operational_day_start_hour: 5,
+            transfer_duration_minutes: 60,
+            relocation_gap_minutes: 15,
           }],
         }
       }
@@ -114,12 +138,15 @@ function wrote(queries: Array<{ sql: string }>): boolean {
 it('changes only the Vehicle on an assigned Ride and keeps the state and the copied flag', async () => {
   const { transaction, queries } = fakeTransaction({ state: 'assigned', mustAccept: true })
   await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId })).resolves.toEqual({
-    id: rideId,
-    transferId,
-    state: 'assigned',
-    driverId,
-    vehicleId: otherVehicleId,
-    mustAccept: true,
+    ride: {
+      id: rideId,
+      transferId,
+      state: 'assigned',
+      driverId,
+      vehicleId: otherVehicleId,
+      mustAccept: true,
+    },
+    relocationWarnings: [],
   })
   const update = queries.find(query => query.sql.includes('update app.rides'))
   const setClause = update?.sql.slice(0, update.sql.indexOf('where')) ?? ''
@@ -143,10 +170,13 @@ it('changes only the Vehicle on an assigned Ride and keeps the state and the cop
 it('changes only the Vehicle on an accepted Ride and leaves it accepted', async () => {
   const { transaction, queries } = fakeTransaction({ state: 'accepted', mustAccept: true })
   await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId })).resolves.toMatchObject({
-    state: 'accepted',
-    driverId,
-    vehicleId: otherVehicleId,
-    mustAccept: true,
+    ride: {
+      state: 'accepted',
+      driverId,
+      vehicleId: otherVehicleId,
+      mustAccept: true,
+    },
+    relocationWarnings: [],
   })
   expect(queries.find(query => query.params[0] === 'ride.vehicle_changed')?.params[1]).toBe(actorUserId)
 })
@@ -232,6 +262,7 @@ it('reassigns an accepted Ride to another Driver, copies that Driver\'s flag, an
       mustAccept: false,
     },
     released: { driverId, vehicleId },
+    relocationWarnings: [],
   })
   const driverQuery = queries.find(query => query.sql.includes('from app.drivers'))
   expect(driverQuery?.sql).toContain('for share')
@@ -289,4 +320,87 @@ it('refuses a reassignment when the Ride is not open, and writes nothing', async
     vehicleId: otherVehicleId,
   })).rejects.toBeInstanceOf(RideNotOpenError)
   expect(wrote(queries)).toBe(false)
+})
+
+const otherRideId = 'e2e2e2e2-3333-4333-8333-333333333333'
+
+it('does not check the schedule when a Ride is cleared', async () => {
+  const { transaction, queries } = fakeTransaction({ state: 'assigned' })
+  await clearAssignedRide(transaction, actorUserId, rideId)
+  expect(queries.some(query => query.sql.includes('landing_at'))).toBe(false)
+  expect(queries.some(query => query.sql.includes('for share') && query.sql.includes('app.rides'))).toBe(false)
+})
+
+it('refuses a vehicle change that overlaps the same Vehicle, and writes nothing', async () => {
+  const { transaction, queries } = fakeTransaction({
+    occupying: [{
+      id: otherRideId,
+      driverId: otherDriverId,
+      vehicleId: otherVehicleId,
+      pickupAt: new Date('2026-06-01T10:30:00.000Z'),
+      landingAt: null,
+    }],
+  })
+  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId })).rejects.toBeInstanceOf(RideOverlapError)
+  expect(wrote(queries)).toBe(false)
+})
+
+it('changes the Vehicle when that overlap is confirmed', async () => {
+  const { transaction, queries } = fakeTransaction({
+    occupying: [{
+      id: otherRideId,
+      driverId: otherDriverId,
+      vehicleId: otherVehicleId,
+      pickupAt: new Date('2026-06-01T10:30:00.000Z'),
+      landingAt: null,
+    }],
+  })
+  await expect(changeRideVehicle(transaction, actorUserId, {
+    rideId,
+    vehicleId: otherVehicleId,
+    confirm: true,
+  })).resolves.toMatchObject({ ride: { vehicleId: otherVehicleId } })
+  expect(wrote(queries)).toBe(true)
+})
+
+it('refuses a reassignment that overlaps the new Driver, and writes nothing', async () => {
+  const { transaction, queries } = fakeTransaction({
+    nextMustAccept: false,
+    occupying: [{
+      id: otherRideId,
+      driverId: otherDriverId,
+      vehicleId,
+      pickupAt: new Date('2026-06-01T10:30:00.000Z'),
+      landingAt: null,
+    }],
+  })
+  await expect(reassignAssignedRide(transaction, actorUserId, {
+    rideId,
+    driverId: otherDriverId,
+    vehicleId: otherVehicleId,
+  })).rejects.toBeInstanceOf(RideOverlapError)
+  expect(wrote(queries)).toBe(false)
+})
+
+it('reassigns when that overlap is confirmed', async () => {
+  const { transaction, queries } = fakeTransaction({
+    nextMustAccept: false,
+    occupying: [{
+      id: otherRideId,
+      driverId: otherDriverId,
+      vehicleId,
+      pickupAt: new Date('2026-06-01T10:30:00.000Z'),
+      landingAt: null,
+    }],
+  })
+  await expect(reassignAssignedRide(transaction, actorUserId, {
+    rideId,
+    driverId: otherDriverId,
+    vehicleId: otherVehicleId,
+    confirm: true,
+  })).resolves.toMatchObject({
+    ride: { driverId: otherDriverId, vehicleId: otherVehicleId },
+    relocationWarnings: [],
+  })
+  expect(wrote(queries)).toBe(true)
 })

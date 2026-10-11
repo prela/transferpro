@@ -30,13 +30,13 @@ export async function assignRide(
   const input = parseAssignRide(raw)
   const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    const ride = await assignUnassignedRide(transaction, actor.userId, input)
-    const order = await readAssignedWorkOrder(transaction, ride.id)
-    return { ride, order }
+    const assigned = await assignUnassignedRide(transaction, actor.userId, input)
+    const order = await readAssignedWorkOrder(transaction, assigned.ride.id)
+    return { ride: assigned.ride, order, relocationWarnings: assigned.relocationWarnings }
   })
   const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
   const notice = await deliverAssignedWorkOrder(saved.order, mailer, delivery?.logger)
-  return { ride: saved.ride, workOrders: [notice] }
+  return { ride: saved.ride, workOrders: [notice], relocationWarnings: saved.relocationWarnings }
 }
 
 /**

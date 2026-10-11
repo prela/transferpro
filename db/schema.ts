@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { check, integer, text } from 'drizzle-orm/pg-core'
-import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, TIME_ZONE_MAX_LENGTH, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, RELOCATION_GAP_DEFAULT_MINUTES, TIME_ZONE_MAX_LENGTH, TRANSFER_DURATION_DEFAULT_MINUTES, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { tenantTable } from './tenant-table'
 
 export { auditAction, auditEntry } from './audit-entry'
@@ -20,6 +20,8 @@ export { vehicles } from './vehicles'
  * The waits are read when a No-show is attempted. They are not copied onto a Ride.
  * `time_zone` is the IANA zone used to display instants.
  * `operational_day_start_hour` is the local hour that starts the operational day.
+ * `transfer_duration_minutes` is how long a Ride occupies its Driver and Vehicle.
+ * `relocation_gap_minutes` is the gap that warns, and does not block.
  * FORCE RLS is already on this table (0000). The policy is the row, so the new columns are covered.
  */
 
@@ -35,6 +37,8 @@ export const tenantSettings = tenantTable('tenant_settings', {
   airportWaitMinutes: integer('airport_wait_minutes').notNull().default(AIRPORT_WAIT_DEFAULT_MINUTES),
   elsewhereWaitMinutes: integer('elsewhere_wait_minutes').notNull().default(ELSEWHERE_WAIT_DEFAULT_MINUTES),
   operationalDayStartHour: integer('operational_day_start_hour').notNull().default(OPERATIONAL_DAY_START_DEFAULT),
+  transferDurationMinutes: integer('transfer_duration_minutes').notNull().default(TRANSFER_DURATION_DEFAULT_MINUTES),
+  relocationGapMinutes: integer('relocation_gap_minutes').notNull().default(RELOCATION_GAP_DEFAULT_MINUTES),
 }, table => [
   check(
     'tenant_settings_default_locale',
@@ -55,5 +59,13 @@ export const tenantSettings = tenantTable('tenant_settings', {
   check(
     'tenant_settings_operational_day_start_hour',
     sql`${table.operationalDayStartHour} between ${operationalDayStartMin} and ${operationalDayStartMax}`,
+  ),
+  check(
+    'tenant_settings_transfer_duration_minutes',
+    sql`${table.transferDurationMinutes} between ${waitMin} and ${waitMax}`,
+  ),
+  check(
+    'tenant_settings_relocation_gap_minutes',
+    sql`${table.relocationGapMinutes} between ${waitMin} and ${waitMax}`,
   ),
 ])

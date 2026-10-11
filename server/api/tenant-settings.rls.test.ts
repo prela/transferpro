@@ -45,6 +45,8 @@ const initial = {
   elsewhereWaitMinutes: 25,
   timeZone: 'Europe/Zagreb',
   operationalDayStartHour: 5,
+  transferDurationMinutes: 60,
+  relocationGapMinutes: 15,
 }
 
 beforeAll(async () => {
@@ -198,6 +200,8 @@ it('patch without a time zone succeeds when the stored zone is off the list', as
     elsewhereWaitMinutes: 25,
     timeZone: 'US/Eastern',
     operationalDayStartHour: 5,
+    transferDurationMinutes: 60,
+    relocationGapMinutes: 15,
   })
 
   const got = await call(readSettings, 'GET', admin)

@@ -1,5 +1,5 @@
 import type { SQL } from 'drizzle-orm'
-import type { AssignedRide, ChangeRideVehicle, ReassignRide, Ride } from '../../../../shared'
+import type { AssignedRide, ChangeRideVehicle, ReassignRide, Ride, ScheduleClash } from '../../../../shared'
 import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
@@ -11,6 +11,7 @@ import { driverMustAcceptForAssign } from '../../drivers'
 import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { vehiclePresenceForAssign } from '../../vehicles'
 import { RideNotFoundError, RideVehicleArchivedError } from './assign'
+import { checkRideSchedule } from './ride-schedule'
 import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
 
 /**
@@ -116,7 +117,7 @@ export async function changeRideVehicle(
   transaction: TenantTransaction,
   actorUserId: string,
   input: ChangeRideVehicle,
-): Promise<Ride> {
+): Promise<{ ride: Ride, relocationWarnings: ScheduleClash[] }> {
   const current = await lockOpenRide(transaction, input.rideId)
   if (current.vehicleId === input.vehicleId)
     throw new RideVehicleUnchangedError()
@@ -126,6 +127,13 @@ export async function changeRideVehicle(
     throw new RideNotFoundError()
   if (presence === 'archived')
     throw new RideVehicleArchivedError()
+
+  const relocationWarnings = await checkRideSchedule(transaction, {
+    rideId: input.rideId,
+    driverId: current.driverId,
+    vehicleId: input.vehicleId,
+    confirm: input.confirm === true,
+  })
 
   const updated = keptRows.parse(await runStep(transaction, sql`
     update app.rides
@@ -156,7 +164,7 @@ export async function changeRideVehicle(
       fields: [...RIDE_VEHICLE_CHANGE_FIELDS],
     },
   }), 'Ride vehicle change failed')
-  return updated
+  return { ride: updated, relocationWarnings }
 }
 
 /**
@@ -221,7 +229,7 @@ export async function reassignAssignedRide(
   transaction: TenantTransaction,
   actorUserId: string,
   input: ReassignRide,
-): Promise<{ ride: Ride, released: ReleasedAssignment }> {
+): Promise<{ ride: Ride, released: ReleasedAssignment, relocationWarnings: ScheduleClash[] }> {
   const current = await lockOpenRide(transaction, input.rideId)
   if (current.driverId === input.driverId)
     throw new RideSameDriverError()
@@ -235,6 +243,13 @@ export async function reassignAssignedRide(
     throw new RideNotFoundError()
   if (presence === 'archived')
     throw new RideVehicleArchivedError()
+
+  const relocationWarnings = await checkRideSchedule(transaction, {
+    rideId: input.rideId,
+    driverId: input.driverId,
+    vehicleId: input.vehicleId,
+    confirm: input.confirm === true,
+  })
 
   const mustAccept = driverFlag
   const updated = reassignedRows.parse(await runStep(transaction, sql`
@@ -272,6 +287,7 @@ export async function reassignAssignedRide(
   return {
     ride: updated,
     released: { driverId: current.driverId, vehicleId: current.vehicleId },
+    relocationWarnings,
   }
 }
 
@@ -292,12 +308,12 @@ export async function changeVehicle(headers: Headers, raw: unknown, delivery?: D
   const input = parseChangeRideVehicle(raw)
   const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    const ride = await changeRideVehicle(transaction, actor.userId, input)
-    const order = await readAssignedWorkOrder(transaction, ride.id)
-    return { ride, order }
+    const changed = await changeRideVehicle(transaction, actor.userId, input)
+    const order = await readAssignedWorkOrder(transaction, changed.ride.id)
+    return { ride: changed.ride, order, relocationWarnings: changed.relocationWarnings }
   })
   const notice = await deliverAssignedWorkOrder(saved.order, mailerFrom(delivery), delivery?.logger, 'changed')
-  return { ride: saved.ride, workOrders: [notice] }
+  return { ride: saved.ride, workOrders: [notice], relocationWarnings: saved.relocationWarnings }
 }
 
 /**
@@ -315,7 +331,7 @@ export async function clearRide(headers: Headers, rawRideId: unknown, rawBody: u
     return { ride: cleared.ride, order }
   })
   const notice = await deliverAssignedWorkOrder(saved.order, mailerFrom(delivery), delivery?.logger, 'no_longer_yours')
-  return { ride: saved.ride, workOrders: [notice] }
+  return { ride: saved.ride, workOrders: [notice], relocationWarnings: [] }
 }
 
 /**
@@ -332,14 +348,14 @@ export async function reassignRide(headers: Headers, raw: unknown, delivery?: De
     const moved = await reassignAssignedRide(transaction, actor.userId, input)
     const next = await readAssignedWorkOrder(transaction, moved.ride.id)
     const previous = await readAssignedWorkOrder(transaction, moved.ride.id, moved.released)
-    return { ride: moved.ride, next, previous }
+    return { ride: moved.ride, next, previous, relocationWarnings: moved.relocationWarnings }
   })
   const mailer = mailerFrom(delivery)
   const workOrders = [
     await deliverAssignedWorkOrder(saved.next, mailer, delivery?.logger, 'assigned'),
     await deliverAssignedWorkOrder(saved.previous, mailer, delivery?.logger, 'no_longer_yours'),
   ]
-  return { ride: saved.ride, workOrders }
+  return { ride: saved.ride, workOrders, relocationWarnings: saved.relocationWarnings }
 }
 
 function mailerFrom(delivery?: Delivery): Mailer {

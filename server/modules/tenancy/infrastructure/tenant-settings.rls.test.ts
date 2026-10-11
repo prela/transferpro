@@ -90,7 +90,7 @@ it('a settings row that omits the waits stores 90 minutes at an airport and 25 e
       `insert into app.tenant_settings (default_locale, time_zone) values ('hr', 'Europe/Zagreb')`,
     )
     return client.query(
-      'select airport_wait_minutes, elsewhere_wait_minutes, time_zone, operational_day_start_hour from app.tenant_settings',
+      'select airport_wait_minutes, elsewhere_wait_minutes, time_zone, operational_day_start_hour, transfer_duration_minutes, relocation_gap_minutes from app.tenant_settings',
     )
   })
 
@@ -99,6 +99,8 @@ it('a settings row that omits the waits stores 90 minutes at an airport and 25 e
     elsewhere_wait_minutes: 25,
     time_zone: 'Europe/Zagreb',
     operational_day_start_hour: 5,
+    transfer_duration_minutes: 60,
+    relocation_gap_minutes: 15,
   }])
 })
 
@@ -157,6 +159,10 @@ it('refuses a wait outside 1 to 1440 minutes and a time zone name that is empty 
     client.query('update app.tenant_settings set operational_day_start_hour = -1'))).rejects.toMatchObject({ code: '23514' })
   await expect(withTenant(tenantC, async client =>
     client.query('update app.tenant_settings set operational_day_start_hour = 9'))).rejects.toMatchObject({ code: '23514' })
+  await expect(withTenant(tenantC, async client =>
+    client.query('update app.tenant_settings set transfer_duration_minutes = 0'))).rejects.toMatchObject({ code: '23514' })
+  await expect(withTenant(tenantC, async client =>
+    client.query('update app.tenant_settings set relocation_gap_minutes = 1441'))).rejects.toMatchObject({ code: '23514' })
 
   const kept = await withTenant(tenantC, async (client) => {
     await client.query('update app.tenant_settings set airport_wait_minutes = 1440, elsewhere_wait_minutes = 1')
