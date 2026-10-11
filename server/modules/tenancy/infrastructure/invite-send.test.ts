@@ -19,6 +19,7 @@ it('keeps the invite and reports a failed send without rethrowing', async () => 
       async sendInvitation() {
         throw new Error('Invitation email was not sent.')
       },
+      async sendWorkOrder() {},
     }, mail, logs.logger)
   })
   expect(state.emailSent).toBe(false)
@@ -32,6 +33,7 @@ it('warns on a failed send without the address or the invite link', async () => 
       async sendInvitation() {
         throw new Error('Invitation email was not sent.')
       },
+      async sendWorkOrder() {},
     }, mail, logs.logger)
   })
   expect(state.emailSent).toBe(false)
@@ -55,6 +57,7 @@ it('marks the send as delivered when the mailer succeeds', async () => {
   await inviteSendState.run(state, async () => {
     await deliverInvitationEmail({
       async sendInvitation() {},
+      async sendWorkOrder() {},
     }, mail)
   })
   expect(state.emailSent).toBe(true)
@@ -65,5 +68,6 @@ it('still fails the request when the Resend transport is selected in test', asyn
     async sendInvitation() {
       throw new ResendTransportError()
     },
+    async sendWorkOrder() {},
   }, mail)).rejects.toBeInstanceOf(ResendTransportError)
 })
