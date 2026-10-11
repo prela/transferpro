@@ -3,7 +3,7 @@ import type { CreateLocation, Location, LocationField, LocationPatch } from '../
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { LOCATION_FIELDS, locationKindSchema, locationSchema } from '../../../../shared'
+import { LOCATION_FIELDS, LocationInputError, locationKindSchema, locationSchema } from '../../../../shared'
 import { appendAuditEntry } from '../../audit'
 
 const locationRowSchema = z.object({
@@ -11,6 +11,7 @@ const locationRowSchema = z.object({
   name: z.string(),
   kind: locationKindSchema,
   address: z.string().nullable(),
+  iata: z.string().nullable(),
   archivedAt: z.unknown().nullable(),
 })
 
@@ -40,7 +41,7 @@ export class LocationArchivedError extends Error {
 }
 
 const locationColumns = sql`
-  id, name, kind, address, archived_at as "archivedAt"
+  id, name, kind, address, iata, archived_at as "archivedAt"
 `
 
 /**
@@ -84,7 +85,7 @@ export async function loadLocation(
 /**
  * Insert one Location and append `location.created` on this transaction.
  * The entry names the fields that were set. It does not store the name,
- * the kind, or the address.
+ * the kind, the address, or the code.
  * The caller has already required a dispatcher or an admin.
  */
 export async function addLocation(
@@ -93,8 +94,8 @@ export async function addLocation(
   input: CreateLocation,
 ): Promise<Location> {
   const selected = locationRows.parse(await writeLocation(transaction, sql`
-    insert into app.locations (name, kind, address)
-    values (${input.name}, ${input.kind}, ${input.address})
+    insert into app.locations (name, kind, address, iata)
+    values (${input.name}, ${input.kind}, ${input.address}, ${input.iata})
     returning ${locationColumns}
   `))
   const row = selected.rows[0]
@@ -136,7 +137,8 @@ export async function correctLocation(
     update app.locations
     set name = ${next.name},
         kind = ${next.kind},
-        address = ${next.address}
+        address = ${next.address},
+        iata = ${next.iata}
     where id = ${next.id}
   `)
 
@@ -187,6 +189,8 @@ function createdFields(input: CreateLocation): LocationField[] {
   const set = new Set<LocationField>(['name', 'kind'])
   if (input.address !== null)
     set.add('address')
+  if (input.iata !== null)
+    set.add('iata')
   return LOCATION_FIELDS.filter(field => set.has(field))
 }
 
@@ -195,13 +199,30 @@ function changedFields(current: Location, next: Location): LocationField[] {
 }
 
 function applyPatch(current: Location, patch: LocationPatch): Location {
+  const kind = patch.kind === undefined ? current.kind : patch.kind
+  const iata = nextIata(current, patch, kind)
   return locationSchema.parse({
     id: current.id,
     name: patch.name === undefined ? current.name : patch.name,
-    kind: patch.kind === undefined ? current.kind : patch.kind,
+    kind,
     address: patch.address === undefined ? current.address : patch.address,
+    iata,
     archivedAt: current.archivedAt,
   })
+}
+
+/**
+ * Only an airport keeps a code. Leaving that kind clears it in this same
+ * change. Sending a code onto a hotel, an address, or any other kind is
+ * refused, and the caller writes nothing.
+ */
+function nextIata(current: Location, patch: LocationPatch, kind: Location['kind']): string | null {
+  if (kind !== 'airport') {
+    if (patch.iata)
+      throw new LocationInputError()
+    return null
+  }
+  return patch.iata === undefined ? current.iata : patch.iata
 }
 
 async function lockLocation(transaction: TenantTransaction, locationId: string): Promise<Location> {

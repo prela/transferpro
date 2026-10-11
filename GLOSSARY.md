@@ -123,7 +123,7 @@ A subcontractor company a Ride is handed to. *(draft)*
 An agency, hotel, or individual who books a Transfer. *(draft)*
 
 **Location**:
-A place a Ride starts or ends.
+A place a Ride starts or ends. An airport Location may carry an optional IATA code of three letters. A hotel, an address, or any other kind does not.
 _Avoid_: place, stop
 
 **BookingSource**:

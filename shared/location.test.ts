@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH, locationAddressError, LocationInputError, locationKindError, locationListSchema, locationNameError, parseCreateLocation, parseLocationPatch } from './location'
+import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH, locationAddressError, locationIataError, LocationInputError, locationKindError, locationListSchema, locationNameError, parseCreateLocation, parseLocationPatch } from './location'
 
 const name = 'Zračna luka Dubrovnik'
 const address = 'Dobrota bb, Čilipi'
@@ -14,6 +14,7 @@ it('accepts a Location, trims the name, and stores a missing address as null', (
     name,
     kind: 'airport',
     address: null,
+    iata: null,
   })
   expect(parseCreateLocation({ ...createBody, kind: 'hotel' }).kind).toBe('hotel')
   expect(parseCreateLocation({ ...createBody, kind: 'address' }).kind).toBe('address')
@@ -35,6 +36,35 @@ it('refuses an empty name, a long name, an unknown kind, and a key that is not a
   expect(() => parseCreateLocation({ ...createBody, archivedAt: '2026-10-05T00:00:00.000Z' })).toThrow(LocationInputError)
   const { name: _name, ...withoutName } = createBody
   expect(() => parseCreateLocation(withoutName)).toThrow(LocationInputError)
+})
+
+it('stores an airport code in uppercase and treats a blank as no code', () => {
+  expect(parseCreateLocation({ ...createBody, iata: ' dbv ' }).iata).toBe('DBV')
+  expect(parseCreateLocation({ ...createBody, iata: 'DBV' }).iata).toBe('DBV')
+  expect(parseCreateLocation(createBody).iata).toBeNull()
+  expect(parseCreateLocation({ ...createBody, iata: '   ' }).iata).toBeNull()
+  expect(parseCreateLocation({ ...createBody, iata: null }).iata).toBeNull()
+  expect(parseLocationPatch({ iata: 'dbv' })).toEqual({ iata: 'DBV' })
+  expect(parseLocationPatch({ iata: '' })).toEqual({ iata: null })
+  expect(parseLocationPatch({ iata: null })).toEqual({ iata: null })
+})
+
+it('refuses a code that is not three letters, and a code on a hotel, address, or other Location', () => {
+  expect(() => parseCreateLocation({ ...createBody, iata: 'DB' })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, iata: 'DBVX' })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, iata: 'DB1' })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, iata: 'D B' })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, iata: 'ßa' })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, iata: 'ﬃ' })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, kind: 'hotel', iata: 'DBV' })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, kind: 'address', iata: 'DBV' })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, kind: 'other', iata: 'DBV' })).toThrow(LocationInputError)
+  expect(parseCreateLocation({ ...createBody, kind: 'hotel' }).iata).toBeNull()
+  expect(() => parseLocationPatch({ kind: 'hotel', iata: 'DBV' })).toThrow(LocationInputError)
+  expect(() => parseLocationPatch({ iata: 'Dubrovnik' })).toThrow(LocationInputError)
+  expect(locationIataError('DB')).toBe('invalid')
+  expect(locationIataError('   ')).toBeNull()
+  expect(locationIataError('dbv')).toBeNull()
 })
 
 it('accepts a correction of one field and an empty patch', () => {
@@ -79,6 +109,7 @@ it('reads a list of Locations, including one that is archived', () => {
       name,
       kind: 'airport',
       address,
+      iata: 'DBV',
       archivedAt: '2026-10-05T10:00:00.000Z',
     }],
   })

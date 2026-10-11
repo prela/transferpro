@@ -4,6 +4,7 @@ import type { TenantTransaction } from '../../../core/index'
 import { Writable } from 'node:stream'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
+import { LocationInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
 import { addLocation, archiveStoredLocation, correctLocation, loadLocation, loadLocations, LocationArchivedError, LocationNotFoundError } from './locations'
 
@@ -18,6 +19,7 @@ const stored: Location = {
   name,
   kind: 'airport',
   address: null,
+  iata: null,
   archivedAt: null,
 }
 
@@ -40,6 +42,7 @@ function fakeTransaction(
             name: compiled.params[0],
             kind: compiled.params[1],
             address: compiled.params[2] ?? null,
+            iata: compiled.params[3] ?? null,
             archivedAt: null,
           }],
         }
@@ -84,6 +87,7 @@ const input = {
   name,
   kind: 'airport' as const,
   address: null,
+  iata: null,
 }
 
 it('adds a Location and records field names, not the name or the address', async () => {
@@ -93,6 +97,7 @@ it('adds a Location and records field names, not the name or the address', async
     name,
     kind: 'airport',
     address,
+    iata: null,
     archivedAt: null,
   })
   expect(auditPayloads(queries)).toEqual([
@@ -209,10 +214,62 @@ it('does not find a Location the session cannot see', async () => {
   expect(auditPayloads(queries)).toEqual([])
 })
 
+it('stores an airport code in uppercase and names the field, not the code', async () => {
+  const { transaction, queries } = fakeTransaction([])
+  await expect(addLocation(transaction, actorUserId, { ...input, iata: 'DBV' })).resolves.toMatchObject({
+    iata: 'DBV',
+  })
+  expect(auditPayloads(queries)).toEqual([
+    JSON.stringify({ locationId, fields: ['name', 'kind', 'iata'] }),
+  ])
+  expect(JSON.stringify(auditPayloads(queries))).not.toContain('DBV')
+})
+
+it('clears a blank code and records the field name', async () => {
+  const { transaction, queries } = fakeTransaction([{ ...stored, iata: 'DBV' }])
+  await expect(correctLocation(transaction, actorUserId, locationId, { iata: null })).resolves.toMatchObject({
+    iata: null,
+  })
+  expect(auditPayloads(queries)).toEqual([
+    JSON.stringify({ locationId, field: 'iata' }),
+  ])
+  expect(JSON.stringify(auditPayloads(queries))).not.toContain('DBV')
+})
+
+it('writes nothing when the code is already the same', async () => {
+  const { transaction, queries } = fakeTransaction([{ ...stored, iata: 'DBV' }])
+  await expect(correctLocation(transaction, actorUserId, locationId, { iata: 'DBV' })).resolves.toMatchObject({
+    iata: 'DBV',
+  })
+  expect(queries.filter(query => query.sql.includes('update') && !query.sql.includes('for update'))).toEqual([])
+  expect(auditPayloads(queries)).toEqual([])
+})
+
+it('refuses a code on a hotel and writes nothing', async () => {
+  const hotel = { ...stored, kind: 'hotel' as const }
+  const { transaction, queries } = fakeTransaction([hotel])
+  await expect(correctLocation(transaction, actorUserId, locationId, { iata: 'DBV' })).rejects.toBeInstanceOf(LocationInputError)
+  expect(queries.filter(query => query.sql.includes('update') && !query.sql.includes('for update'))).toEqual([])
+  expect(auditPayloads(queries)).toEqual([])
+})
+
+it('clears the code when the kind leaves airport, in that same change', async () => {
+  const { transaction, queries } = fakeTransaction([{ ...stored, iata: 'DBV' }])
+  await expect(correctLocation(transaction, actorUserId, locationId, { kind: 'hotel' })).resolves.toMatchObject({
+    kind: 'hotel',
+    iata: null,
+  })
+  expect(auditPayloads(queries)).toEqual([
+    JSON.stringify({ locationId, field: 'kind' }),
+    JSON.stringify({ locationId, field: 'iata' }),
+  ])
+  expect(JSON.stringify(auditPayloads(queries))).not.toContain('DBV')
+})
+
 it('refuses a correction of an archived Location and writes nothing', async () => {
   const archived = { ...stored, archivedAt: '2026-10-05T10:00:00.000Z' }
   const { transaction, queries } = fakeTransaction([archived])
-  await expect(correctLocation(transaction, actorUserId, locationId, { kind: 'hotel' })).rejects.toBeInstanceOf(LocationArchivedError)
+  await expect(correctLocation(transaction, actorUserId, locationId, { iata: 'DBV' })).rejects.toBeInstanceOf(LocationArchivedError)
   expect(queries.filter(query => query.sql.includes('update') && !query.sql.includes('for update'))).toEqual([])
   expect(auditPayloads(queries)).toEqual([])
 })
