@@ -130,6 +130,7 @@ test('the change, reassign, and clear controls use English copy in the dark them
   await recordTodayRide(page, guest)
 
   await page.getByRole('link', { name: 'Transferi' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferi' })).toBeVisible()
   await switchLocale(page, 'en')
   await row(page, guest).getByRole('button', { name: `Assign: ${guest}` }).click()
   await chooseOption(page, page.getByRole('combobox', { name: 'Driver' }), driverName)
