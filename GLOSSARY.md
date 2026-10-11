@@ -87,8 +87,12 @@ A Tenant's record of a person who can be assigned to a Ride. It has one email. W
 _Avoid_: operator, external collaborator
 
 **Locale**:
-The language a user works in, Croatian or English. Each Tenant has a default locale, used only when that user has not chosen one.
+The language a user works in, Croatian or English. Each Tenant has a default locale, used when that user has not chosen one. A work order uses the Tenant default locale even when the Driver has chosen another.
 _Avoid_: language
+
+**Work order**:
+The email sent when a Ride is assigned. It uses the Tenant's default locale and time zone. The office sees one result for that Driver on the action: sent, no email, or send failed. The result names the Driver and not the address. The Ride stays saved when the send fails, and the send is not retried. The mail does not ask the Driver to accept and has no link. A cash Ride states the price; card and invoice to agency do not. The audit entry stays the assignment.
+_Avoid_: SMS, push
 
 **Vehicle**:
 A vehicle the office can assign. Kind is `fixed` or `occasional`. The registration plate identifies it in the Tenant; three expiry dates (registration, technical inspection, insurance) are calendar days. Archive hides it from the default list without deleting it. A Ride has a Vehicle only when it has a Driver.

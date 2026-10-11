@@ -30,6 +30,32 @@ it('writes the English invite', () => {
   expect(message.text).toContain('7 days')
 })
 
+it('posts a work order and refuses a failed send without echoing the body', async () => {
+  const seen: string[] = []
+  const mailer = createResendMailer('test-resend-key', async (input, init) => {
+    seen.push(String(init?.body))
+    return new Response('no', { status: 422 })
+  })
+  const workOrder = {
+    to: 'ana@example.test',
+    subject: 'Dodijeljeno · Zračna luka',
+    text: 'Gost: Ana',
+    html: '<p>Gost: Ana</p>',
+  }
+  await expect(mailer.sendWorkOrder(workOrder)).rejects.toThrow('Work order email was not sent.')
+  const body = JSON.parse(seen[0] ?? '{}') as { from: string, to: string[], text: string }
+  expect(body.from).toBe('Transferpro <noreply@transfers.prela.net>')
+  expect(body.to).toEqual(['ana@example.test'])
+  expect(body.text).toContain('Gost: Ana')
+  try {
+    await mailer.sendWorkOrder(workOrder)
+  }
+  catch (error) {
+    expect((error as Error).message).not.toContain('ana@example.test')
+    expect((error as Error).message).not.toContain('Zračna luka')
+  }
+})
+
 it('posts to Resend and refuses a failed send without echoing the link', async () => {
   const seen: { url: string, body: string, authorization: string }[] = []
   const mailer = createResendMailer('test-resend-key', async (input, init) => {
@@ -96,6 +122,24 @@ it('uses the console mailer in development unless MAILER=resend and the key are 
   finally {
     restoreNodeEnv(previous)
   }
+})
+
+it('logs a work order without the subject, the address, or the body', async () => {
+  const logs = captureLogs()
+  const mailer = createConsoleMailer(logs.logger)
+  await mailer.sendWorkOrder({
+    to: 'ana@example.test',
+    subject: 'Dodijeljeno · 16. 10. 2026. 00:30 · Zračna luka Dubrovnik',
+    text: 'Gost: Ana Tajna',
+    html: '<p>Gost: Ana Tajna</p>',
+  })
+  const [line] = logs.lines()
+  expect(line).toMatchObject({ event: 'mail.console', kind: 'work-order', domain: 'example.test' })
+  const text = JSON.stringify(line)
+  expect(text).not.toContain('ana@example.test')
+  expect(text).not.toContain('Zračna luka')
+  expect(text).not.toContain('Ana Tajna')
+  expect(text).not.toContain('Dodijeljeno')
 })
 
 it('logs only the subject and the recipient domain from the console mailer', async () => {

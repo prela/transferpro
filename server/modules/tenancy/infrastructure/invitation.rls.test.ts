@@ -51,6 +51,7 @@ const mailer = {
   async sendInvitation(mail: InvitationMail) {
     sent.push(mail)
   },
+  async sendWorkOrder() {},
 }
 
 const appPool = new pg.Pool({ connectionString: databaseUrl })

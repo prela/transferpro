@@ -4,7 +4,7 @@ import { getLogger, nodeEnv } from '../../../core/index'
 import { INVITATION_EXPIRES_DAYS } from './tenant-roles'
 
 /**
- * The only mail the app sends in this slice. Tests pass a fake.
+ * Invitation mail and a Driver work order. Tests pass a fake.
  * The Resend adapter is the production implementation and is not used in tests.
  */
 export interface InvitationMail {
@@ -15,8 +15,20 @@ export interface InvitationMail {
   readonly locale: DisplayLocale
 }
 
+/**
+ * A work order already composed by the transfers module. This adapter
+ * only delivers it. The subject names a place, so callers must not log it.
+ */
+export interface WorkOrderMail {
+  readonly to: string
+  readonly subject: string
+  readonly text: string
+  readonly html: string
+}
+
 export interface Mailer {
   sendInvitation: (mail: InvitationMail) => Promise<void>
+  sendWorkOrder: (mail: WorkOrderMail) => Promise<void>
 }
 
 /**
@@ -33,11 +45,14 @@ export class ResendTransportError extends Error {
 const resendMailers = new WeakSet<Mailer>()
 const consoleMailers = new WeakSet<Mailer>()
 
-/** Records the invite and does not call the network. */
-export function createFakeMailer(outbox: InvitationMail[] = []): Mailer {
+/** Records the invite and the work order, and does not call the network. */
+export function createFakeMailer(outbox: InvitationMail[] = [], workOrders: WorkOrderMail[] = []): Mailer {
   return {
     async sendInvitation(mail) {
       outbox.push({ ...mail })
+    },
+    async sendWorkOrder(mail) {
+      workOrders.push({ ...mail })
     },
   }
 }
@@ -51,19 +66,28 @@ export function isConsoleMailer(mailer: Mailer | undefined): boolean {
 }
 
 /**
- * Local delivery. The line carries the subject and the recipient's
- * domain only: the address, body, and invite link stay off the log.
+ * Local delivery. An invitation line carries the subject and the
+ * recipient's domain: the address, body, and invite link stay off the log.
+ * A work order's subject is the pickup place, so that line carries the
+ * kind and the domain only.
  */
 export function createConsoleMailer(log?: Logger): Mailer {
   const mailer: Mailer = {
     async sendInvitation(mail) {
-      const at = mail.to.lastIndexOf('@')
-      const domain = at === -1 ? undefined : mail.to.slice(at + 1)
       const logger = log ?? getLogger()
       logger.info({
         event: 'mail.console',
         subject: invitationEmail(mail).subject,
-        domain,
+        domain: recipientDomain(mail.to),
+      })
+    },
+    async sendWorkOrder(mail) {
+      // The subject is the pickup place. The address stays off the log too.
+      const logger = log ?? getLogger()
+      logger.info({
+        event: 'mail.console',
+        kind: 'work-order',
+        domain: recipientDomain(mail.to),
       })
     },
   }
@@ -143,37 +167,49 @@ export function invitationEmail(mail: InvitationMail): InvitationEmail {
  * eu-west-1 on the Resend side, not a different API host. ADR-0013.
  */
 export function createResendMailer(apiKey: string, fetchImpl: typeof fetch = fetch): Mailer {
+  async function post(message: { to: string, subject: string, text: string, html: string }, failure: string): Promise<void> {
+    // The default fetch is the real transport. A unit test passes its own
+    // fetch and never leaves the process. Test mode must not reach Resend.
+    if (nodeEnv() === 'test' && fetchImpl === globalThis.fetch)
+      throw new ResendTransportError()
+    const response = await fetchImpl('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'Transferpro <noreply@transfers.prela.net>',
+        to: [message.to],
+        subject: message.subject,
+        text: message.text,
+        html: message.html,
+      }),
+    })
+    if (!response.ok) {
+      // Drain the body so the socket can close. Do not put it on the error:
+      // Resend echoes the recipient and the body.
+      await response.arrayBuffer()
+      throw new Error(failure)
+    }
+  }
+
   const mailer: Mailer = {
     async sendInvitation(mail) {
-      // The default fetch is the real transport. A unit test passes its own
-      // fetch and never leaves the process. Test mode must not reach Resend.
-      if (nodeEnv() === 'test' && fetchImpl === globalThis.fetch)
-        throw new ResendTransportError()
       const message = invitationEmail(mail)
-      const response = await fetchImpl('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'Transferpro <noreply@transfers.prela.net>',
-          to: [mail.to],
-          subject: message.subject,
-          text: message.text,
-          html: message.html,
-        }),
-      })
-      if (!response.ok) {
-        // Drain the body so the socket can close. Do not put it on the error:
-        // Resend echoes the recipient and the link.
-        await response.arrayBuffer()
-        throw new Error('Invitation email was not sent.')
-      }
+      await post({ to: mail.to, ...message }, 'Invitation email was not sent.')
+    },
+    async sendWorkOrder(mail) {
+      await post(mail, 'Work order email was not sent.')
     },
   }
   resendMailers.add(mailer)
   return mailer
+}
+
+function recipientDomain(address: string): string | undefined {
+  const at = address.lastIndexOf('@')
+  return at === -1 ? undefined : address.slice(at + 1)
 }
 
 function escapeHtml(value: string): string {

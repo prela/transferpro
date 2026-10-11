@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam, readBody, toWebRequest } from 'h3'
-import { rideSchema } from '../../../../shared'
+import { assignedRideSchema } from '../../../../shared'
 import { assignRide } from '../../../modules/transfers'
 import { rideHttpError } from '../http'
 
@@ -10,6 +10,7 @@ import { rideHttpError } from '../http'
  * and is parsed before a session opens. A driver is 403. No session is 401.
  * An archived Vehicle is 409. A Ride that is not unassigned is 409.
  * The audit entry names the actor and the field names, not a plate or a phone.
+ * The body is the Ride plus one work-order result. The address is not on it.
  */
 export default defineEventHandler(async (event) => {
   const rideId = getRouterParam(event, 'id')
@@ -19,7 +20,7 @@ export default defineEventHandler(async (event) => {
     ? { ...body, rideId }
     : { rideId }
   try {
-    return rideSchema.parse(await assignRide(toWebRequest(event).headers, raw))
+    return assignedRideSchema.parse(await assignRide(toWebRequest(event).headers, raw))
   }
   catch (error) {
     rideHttpError(error)

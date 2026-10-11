@@ -5,12 +5,13 @@ import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../../shared'
+import { captureLogs } from '../core/testing'
 import { createClient } from '../modules/clients'
 import { createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
 import { setRosterDay } from '../modules/roster'
-import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
-import { createTransfer } from '../modules/transfers'
+import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale } from '../modules/tenancy'
+import { assignRide, createTransfer } from '../modules/transfers'
 import { archiveVehicle, createVehicle } from '../modules/vehicles'
 import postAcceptByPhone from './rides/[id]/accept-by-phone.post'
 import postAccept from './rides/[id]/accept.post'
@@ -341,12 +342,15 @@ it('a driver cannot assign, and a dispatcher assign copies must-accept and names
   })
   expect(assigned.status).toBe(200)
   expect(await assigned.json()).toEqual({
-    id: first.ride.id,
-    transferId: first.transfer.id,
-    state: 'assigned',
-    driverId: driver.id,
-    vehicleId: vehicle.id,
-    mustAccept: true,
+    ride: {
+      id: first.ride.id,
+      transferId: first.transfer.id,
+      state: 'assigned',
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+      mustAccept: true,
+    },
+    workOrders: [{ driverId: driver.id, outcome: 'no_email' }],
   })
   const audits = await assignmentAudits(world.tenantId)
   expect(audits).toHaveLength(1)
@@ -376,7 +380,114 @@ it('a driver cannot assign, and a dispatcher assign copies must-accept and names
     vehicleId: vehicle.id,
   })
   expect(later.status).toBe(200)
-  expect(await later.json()).toMatchObject({ mustAccept: false })
+  expect(await later.json()).toMatchObject({ ride: { mustAccept: false }, workOrders: [{ driverId: driver.id, outcome: 'no_email' }] })
+})
+
+it('emails an assigned work order in the tenant locale, and a rejected send leaves the Ride assigned', async () => {
+  const world = await office('hasg-order')
+  await updateUserLocale(world.dispatcher, 'en')
+  const address = 'ana-order@example.test'
+  const guestName = 'Gost Tajna'
+  const tabla = 'TABLA-TAJNA'
+  const plate = 'ZG9ORDER'
+  const driver = await createDriver(world.dispatcher, {
+    ...driverBody,
+    phone: '+385911110088',
+    email: address,
+  })
+  const vehicle = await createVehicle(world.dispatcher, {
+    ...vehicleBody(plate),
+    description: 'Mercedes Vito',
+  })
+  const recorded = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-15T22:30:00.000Z'),
+    guestName,
+    passengerCount: 2,
+    luggageCount: 1,
+    flightNumber: 'OU412',
+    price: 77.5,
+    tabla,
+    note: 'Napomena za vozača',
+  })
+  const sent: Array<{ to: string, subject: string, text: string, html: string }> = []
+  const assigned = await assignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+  }, {
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder(mail) {
+        sent.push(mail)
+      },
+    },
+  })
+  expect(assigned.ride).toMatchObject({ state: 'assigned', driverId: driver.id, mustAccept: false })
+  expect(assigned.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(JSON.stringify(assigned)).not.toContain(address)
+  expect(sent).toHaveLength(1)
+  expect(sent[0]?.to).toBe(address)
+  expect(sent[0]?.subject).toBe('Dodijeljeno · 16. 10. 2026. 00:30 · Zračna luka Dubrovnik')
+  expect(sent[0]?.text).toContain('Gost: Gost Tajna')
+  expect(sent[0]?.text).toContain('Tabla: TABLA-TAJNA')
+  expect(sent[0]?.text).toContain('Let: OU412')
+  expect(sent[0]?.text).toContain('Odredište: Hotel Park')
+  expect(sent[0]?.text).toContain('Klijent: Agencija Mora')
+  expect(sent[0]?.text).toContain('Vozilo: Mercedes Vito')
+  expect(sent[0]?.text).toContain('Registracija: ZG9ORDER')
+  expect(sent[0]?.text).toContain('Napomena: Napomena za vozača')
+  expect(sent[0]?.text).toContain('Cijena: 77,50')
+  expect(sent[0]?.text).toContain('Plaćanje: Gotovina')
+  expect(sent[0]?.html).not.toContain('href=')
+  expect(sent[0]?.text.toLowerCase()).not.toContain('prihvat')
+  const audits = await assignmentAudits(world.tenantId)
+  expect(audits).toHaveLength(1)
+  expect(audits[0]?.data).toEqual({
+    rideId: recorded.ride.id,
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    fields: ['state', 'driverId', 'vehicleId', 'mustAccept'],
+  })
+  expect(JSON.stringify(audits)).not.toContain(address)
+  expect(JSON.stringify(audits)).not.toContain(guestName)
+
+  const logs = captureLogs()
+  const failedRide = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-16T22:30:00.000Z'),
+    guestName,
+    price: 77.5,
+    tabla,
+  })
+  const failed = await assignRide(world.dispatcher, {
+    rideId: failedRide.ride.id,
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+  }, {
+    logger: logs.logger,
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder() {
+        throw new Error(`rejected ${address} ${guestName} ${tabla} ${plate}`)
+      },
+    },
+  })
+  expect(failed.workOrders).toEqual([{ driverId: driver.id, outcome: 'failed' }])
+  expect(await rideRow(failedRide.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: driver.id,
+    vehicle_id: vehicle.id,
+  })
+  expect(await assignmentAudits(world.tenantId)).toHaveLength(2)
+  const [line] = logs.lines()
+  const text = JSON.stringify(line)
+  expect(text).toContain(failedRide.ride.id)
+  expect(text).toContain(driver.id)
+  expect(text).not.toContain(address)
+  expect(text).not.toContain(guestName)
+  expect(text).not.toContain(tabla)
+  expect(text).not.toContain(plate)
+  expect(text).not.toContain('77.50')
+  expect(text).not.toContain('77,50')
 })
 
 it('refuses another Tenant\'s Driver or Vehicle, and that Tenant cannot read or change the Ride', async () => {
@@ -489,7 +600,7 @@ it('refuses an archived Vehicle with no transition and no audit row, and still a
     vehicleId: other.id,
   })
   expect(assigned.status).toBe(200)
-  expect(await assigned.json()).toMatchObject({ vehicleId: other.id, state: 'assigned' })
+  expect(await assigned.json()).toMatchObject({ ride: { vehicleId: other.id, state: 'assigned' } })
 })
 
 it('pre-fills the roster Vehicle for the pickup local day, skips an archived one, and a roster change does not rewrite the Ride', async () => {
@@ -527,7 +638,7 @@ it('pre-fills the roster Vehicle for the pickup local day, skips an archived one
     vehicleId: otherVehicle.id,
   })
   expect(assigned.status).toBe(200)
-  expect(await assigned.json()).toMatchObject({ vehicleId: otherVehicle.id })
+  expect(await assigned.json()).toMatchObject({ ride: { vehicleId: otherVehicle.id } })
 
   await setRosterDay(world.dispatcher, { rosterDate: beforeDay, driverId: driver.id, vehicleId: beforeVehicle.id })
   const replacement = await createVehicle(world.dispatcher, vehicleBody('ZG4004AA'))
@@ -555,10 +666,10 @@ it('lets exactly one of two concurrent assigns win', async () => {
   const statuses = [first.status, second.status].sort()
   expect(statuses).toEqual([200, 409])
   const winner = first.status === 200 ? await first.json() : await second.json()
-  expect(winner).toMatchObject({ state: 'assigned', driverId: driver.id })
-  expect([vehicle.id, other.id]).toContain(winner.vehicleId)
+  expect(winner).toMatchObject({ ride: { state: 'assigned', driverId: driver.id } })
+  expect([vehicle.id, other.id]).toContain(winner.ride.vehicleId)
   const row = await rideRow(recorded.ride.id)
-  expect(row).toMatchObject({ state: 'assigned', driver_id: driver.id, vehicle_id: winner.vehicleId })
+  expect(row).toMatchObject({ state: 'assigned', driver_id: driver.id, vehicle_id: winner.ride.vehicleId })
   const audits = await assignmentAudits(world.tenantId)
   expect(audits).toHaveLength(1)
   expect(audits[0]?.data.rideId).toBe(recorded.ride.id)
@@ -783,7 +894,7 @@ it('blocks on an open must-accept correction and copies the committed value', as
 
     const response = await pending
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ mustAccept: true, state: 'assigned' })
+    expect(await response.json()).toMatchObject({ ride: { mustAccept: true, state: 'assigned' } })
     expect(await rideRow(recorded.ride.id)).toMatchObject({ must_accept: true, state: 'assigned' })
   }
   finally {
@@ -827,10 +938,13 @@ it('assigns when the Driver licences and the Vehicle expiry dates are already pa
   })
   expect(assigned.status).toBe(200)
   expect(await assigned.json()).toMatchObject({
-    id: recorded.ride.id,
-    state: 'assigned',
-    driverId: driver.id,
-    vehicleId: vehicle.id,
+    ride: {
+      id: recorded.ride.id,
+      state: 'assigned',
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+    },
+    workOrders: [{ driverId: driver.id, outcome: 'no_email' }],
   })
   expect(await rideRow(recorded.ride.id)).toMatchObject({
     state: 'assigned',
@@ -854,12 +968,15 @@ it('assigns a Driver with no linked account and copies must-accept', async () =>
   })
   expect(assigned.status).toBe(200)
   expect(await assigned.json()).toEqual({
-    id: recorded.ride.id,
-    transferId: recorded.transfer.id,
-    state: 'assigned',
-    driverId: driver.id,
-    vehicleId: vehicle.id,
-    mustAccept: true,
+    ride: {
+      id: recorded.ride.id,
+      transferId: recorded.transfer.id,
+      state: 'assigned',
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+      mustAccept: true,
+    },
+    workOrders: [{ driverId: driver.id, outcome: 'no_email' }],
   })
   expect(await rideRow(recorded.ride.id)).toMatchObject({
     state: 'assigned',
