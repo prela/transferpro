@@ -170,6 +170,8 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   driverId: z.uuid().nullable(),
   vehicleId: z.uuid().nullable(),
   mustAccept: z.boolean().nullable(),
+  // Empty until the aircraft has landed. Shown in the Tenant time zone.
+  landingAt: z.iso.datetime().nullable(),
 })
 
 export type TransferDayRide = z.infer<typeof transferDayRideSchema>

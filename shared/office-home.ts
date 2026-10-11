@@ -36,6 +36,7 @@ export interface OfficeHomeRide {
   readonly price: string
   readonly payment: PaymentMethod
   readonly flightNumber: string | null
+  readonly landingAt: string | null
   readonly tabla: string
   readonly mustAccept: boolean | null
 }
@@ -52,6 +53,7 @@ const officeHomeRowSchema = z.strictObject({
   price: transferPriceSchema,
   payment: paymentMethodSchema,
   flightNumber: z.string().trim().min(1).nullable(),
+  landingAt: z.iso.datetime().nullable(),
   tabla: z.string().max(TABLA_MAX_LENGTH),
 })
 
@@ -174,6 +176,7 @@ export function buildOfficeHome(
       price: ride.price,
       payment: ride.payment,
       flightNumber: ride.flightNumber,
+      landingAt: ride.landingAt,
       tabla: ride.tabla,
     }
 

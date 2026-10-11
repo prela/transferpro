@@ -107,6 +107,7 @@ const kindItems = computed(() => [
 // Reserved ride states are labeled. This screen does not set them.
 const columns = computed(() => [
   { id: 'pickup', header: t('transfers.pickupAt') },
+  { id: 'landing', header: t('transfers.fields.landingAt') },
   { accessorKey: 'guestName' as const, header: t('transfers.guest') },
   { id: 'tabla', header: t('transfers.tabla') },
   { id: 'start', header: t('transfers.start') },
@@ -587,6 +588,14 @@ onMounted(loadAll)
         <template #pickup-cell="{ row }">
           <time :datetime="row.original.pickupAt">
             {{ formatInstant(new Date(row.original.pickupAt), timeZone, locale) }}
+          </time>
+        </template>
+        <template #landing-cell="{ row }">
+          <time
+            v-if="row.original.landingAt"
+            :datetime="row.original.landingAt"
+          >
+            {{ formatInstant(new Date(row.original.landingAt), timeZone, locale) }}
           </time>
         </template>
         <template #tabla-cell="{ row }">

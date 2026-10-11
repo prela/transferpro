@@ -126,6 +126,10 @@ An agency, hotel, or individual who books a Transfer. *(draft)*
 A place a Ride starts or ends. An airport Location may carry an optional IATA code of three letters. A hotel, an address, or any other kind does not.
 _Avoid_: place, stop
 
+**Landing time**:
+The actual time the aircraft landed, on an airport pickup. It stays empty until then. A live status writes it only while it is empty and the time is not still in the future. A time a person recorded stays until they clear it. The expected arrival is a different fact and does not start the airport wait.
+_Avoid_: expected arrival, ETA
+
 **BookingSource**:
 A port through which bookings are imported. *(draft)*
 

@@ -38,6 +38,8 @@ export const transfers = tenantTable('transfers', {
   passengerCount: integer('passenger_count').notNull(),
   guestName: text('guest_name').notNull(),
   flightNumber: text('flight_number'),
+  // Empty until the aircraft has landed. The feed writes it only while it is empty.
+  landingAt: timestamp('landing_at', { withTimezone: true, mode: 'date' }),
   price: numeric('price', { precision: 10, scale: 2 }).notNull(),
   payment: text('payment').notNull(),
   airportMark: boolean('airport_mark').notNull(),

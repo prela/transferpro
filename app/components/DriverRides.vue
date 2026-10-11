@@ -255,6 +255,16 @@ onMounted(loadRides)
               </dt>
               <dd>{{ ride.flightNumber }}</dd>
             </div>
+            <div v-if="ride.landingAt">
+              <dt class="text-sm text-muted">
+                {{ t('driverRides.landing') }}
+              </dt>
+              <dd>
+                <time :datetime="ride.landingAt">
+                  {{ pickupLabel(ride.landingAt) }}
+                </time>
+              </dd>
+            </div>
             <div v-if="ride.note">
               <dt class="text-sm text-muted">
                 {{ t('transfers.note') }}
