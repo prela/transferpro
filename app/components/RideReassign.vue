@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Driver, Vehicle } from '../../shared'
-import { rideSchema, rosterVehicleSuggestionSchema } from '../../shared'
+import { assignedRideSchema, rosterVehicleSuggestionSchema } from '../../shared'
+import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
   rideId: string
@@ -136,12 +137,22 @@ async function submit() {
     return
   pending.value = true
   try {
-    rideSchema.parse(await $fetch(`/api/rides/${props.rideId}/reassign`, {
+    const saved = assignedRideSchema.parse(await $fetch(`/api/rides/${props.rideId}/reassign`, {
       method: 'POST',
       body: { driverId: chosenDriver, vehicleId: chosenVehicle },
     }))
     notifyAuditChanged()
-    toast.add({ title: t('ride.reassigned'), color: 'success' })
+    // One toast per Driver. The new Driver is first, then the previous one.
+    // The response has no address, so neither toast can show one.
+    for (const notice of saved.workOrders) {
+      const shown = workOrderNotice(notice.outcome)
+      const name = props.drivers.find(driver => driver.id === notice.driverId)?.name ?? t('ride.unknownDriver')
+      toast.add({
+        title: t('ride.reassigned'),
+        description: t(shown.key, { name }),
+        color: shown.color,
+      })
+    }
     emit('saved')
   }
   catch (error) {

@@ -37,9 +37,25 @@ export interface WorkOrderMessage {
   readonly html: string
 }
 
+export const WORK_ORDER_STATUSES = ['assigned', 'changed', 'no_longer_yours'] as const
+
+export type WorkOrderStatus = typeof WORK_ORDER_STATUSES[number]
+
+const STATUS_COPY = {
+  hr: {
+    assigned: 'Dodijeljeno',
+    changed: 'Promijenjeno',
+    no_longer_yours: 'Više nije vaše',
+  },
+  en: {
+    assigned: 'Assigned',
+    changed: 'Changed',
+    no_longer_yours: 'No longer yours',
+  },
+} as const
+
 const COPY = {
   hr: {
-    status: 'Dodijeljeno',
     departure: 'Polazak',
     pickup: 'Polazište',
     dropOff: 'Odredište',
@@ -58,7 +74,6 @@ const COPY = {
     cash: 'Gotovina',
   },
   en: {
-    status: 'Assigned',
     departure: 'Departure',
     pickup: 'Pickup',
     dropOff: 'Drop-off',
@@ -81,13 +96,19 @@ const COPY = {
 /**
  * Subject is the status, the departure, and the pickup place.
  * The flight line is omitted when the number is blank. Card and
- * invoice-to-agency have no price and no payment line.
+ * invoice-to-agency have no price and no payment line. No longer yours
+ * never states a price, even for cash.
+ * ADR-0026.
  */
-export function composeAssignedWorkOrder(facts: AssignedWorkOrderFacts): WorkOrderMessage {
+export function composeWorkOrder(
+  facts: AssignedWorkOrderFacts,
+  status: WorkOrderStatus = 'assigned',
+): WorkOrderMessage {
   const copy = COPY[facts.locale]
+  const statusLabel = STATUS_COPY[facts.locale][status]
   const departure = formatInstant(facts.pickupAt, facts.timeZone, facts.locale)
   const lines = [
-    copy.status,
+    statusLabel,
     line(copy.departure, departure),
     line(copy.pickup, facts.pickupPlace),
     line(copy.dropOff, facts.dropOffPlace),
@@ -106,9 +127,9 @@ export function composeAssignedWorkOrder(facts: AssignedWorkOrderFacts): WorkOrd
     lines.push(line(copy.vehicle, vehicleName))
   lines.push(line(copy.plate, facts.vehiclePlate))
   lines.push(line(copy.note, facts.note ?? ''))
-  // Assigned cash is the only case this slice mails. The price stays off
-  // every other method, including when a fare is stored on the Transfer.
-  if (facts.payment === 'cash') {
+  // Assigned and changed cash state the price. No longer yours never does.
+  // Card and invoice-to-agency stay silent, including when a fare is stored.
+  if (status !== 'no_longer_yours' && facts.payment === 'cash') {
     const shown = facts.locale === 'hr' ? facts.price.replace('.', ',') : facts.price
     lines.push(line(copy.price, shown))
     lines.push(line(copy.payment, copy.cash))
@@ -116,10 +137,15 @@ export function composeAssignedWorkOrder(facts: AssignedWorkOrderFacts): WorkOrd
   const text = lines.join('\n')
   const html = lines.map(item => `<p>${escapeHtml(item)}</p>`).join('')
   return {
-    subject: `${copy.status} · ${departure} · ${facts.pickupPlace}`,
+    subject: `${statusLabel} · ${departure} · ${facts.pickupPlace}`,
     text,
     html,
   }
+}
+
+/** Assigned mail. A change or a clear passes its status to `composeWorkOrder`. */
+export function composeAssignedWorkOrder(facts: AssignedWorkOrderFacts): WorkOrderMessage {
+  return composeWorkOrder(facts, 'assigned')
 }
 
 export const WORK_ORDER_OUTCOMES = ['sent', 'no_email', 'failed'] as const

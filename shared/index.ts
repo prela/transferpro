@@ -43,5 +43,5 @@ export { CHILD_SEAT_COUNT_MAX, CHILD_SEAT_COUNT_MIN, childSeatCountError, create
 export type { CountError, CreateTransfer, GuestNameError, LineError, PaymentMethod, PriceError, RecordedTransfer, Ride, RideState, Transfer, TransferDay, TransferDayRide, TransferField } from './transfer'
 export { parseCreateVehicle, parseVehiclePatch, VEHICLE_DESCRIPTION_MAX_LENGTH, VEHICLE_FIELDS, VEHICLE_KINDS, VEHICLE_PLATE_MAX_LENGTH, vehicleDateError, vehicleDateSchema, vehicleDescriptionError, vehicleDescriptionSchema, vehicleFieldSchema, VehicleInputError, vehicleKindError, vehicleKindSchema, vehicleListSchema, vehiclePlateError, vehiclePlateSchema, vehicleSchema } from './vehicle'
 export type { CreateVehicle, Vehicle, VehicleDateError, VehicleDescriptionError, VehicleField, VehicleKind, VehicleKindError, VehicleList, VehiclePatch, VehiclePlateError } from './vehicle'
-export { assignedRideSchema, composeAssignedWorkOrder, WORK_ORDER_OUTCOMES, workOrderNoticeSchema } from './work-order'
-export type { AssignedRide, AssignedWorkOrderFacts, WorkOrderMessage, WorkOrderNotice } from './work-order'
+export { assignedRideSchema, composeAssignedWorkOrder, composeWorkOrder, WORK_ORDER_OUTCOMES, WORK_ORDER_STATUSES, workOrderNoticeSchema } from './work-order'
+export type { AssignedRide, AssignedWorkOrderFacts, WorkOrderMessage, WorkOrderNotice, WorkOrderStatus } from './work-order'

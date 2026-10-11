@@ -1,15 +1,17 @@
 import type { SQL } from 'drizzle-orm'
-import type { ChangeRideVehicle, ReassignRide, Ride } from '../../../../shared'
-import type { TenantTransaction } from '../../../core/index'
+import type { AssignedRide, ChangeRideVehicle, ReassignRide, Ride } from '../../../../shared'
+import type { Logger, TenantTransaction } from '../../../core/index'
+import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { parseChangeRideVehicle, parseClearRide, parseReassignRide, RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideChangeAllowed } from '../../../../shared'
-import { hideDatabaseError } from '../../../core/index'
+import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { driverMustAcceptForAssign } from '../../drivers'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { vehiclePresenceForAssign } from '../../vehicles'
 import { RideNotFoundError, RideVehicleArchivedError } from './assign'
+import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
 
 /**
  * The Ride is not `assigned` or `accepted`, including when a concurrent
@@ -92,6 +94,17 @@ const reassignedRows = z.object({
 
 type LockedRide = z.infer<typeof lockedRows>['rows'][number]
 
+/** The Driver and Vehicle the command took off the Ride. The mail still names them. */
+interface ReleasedAssignment {
+  readonly driverId: string
+  readonly vehicleId: string
+}
+
+interface Delivery {
+  mailer: Mailer
+  logger?: Logger
+}
+
 /**
  * Change only the Vehicle. The Driver, the state, and the copied flag stay.
  * An `assigned` Ride stays `assigned`. An `accepted` Ride stays `accepted`.
@@ -157,7 +170,7 @@ export async function clearAssignedRide(
   transaction: TenantTransaction,
   actorUserId: string,
   rideId: string,
-): Promise<Ride> {
+): Promise<{ ride: Ride, released: ReleasedAssignment }> {
   const current = await lockOpenRide(transaction, rideId)
   const updated = clearedRows.parse(await runStep(transaction, sql`
     update app.rides
@@ -190,7 +203,10 @@ export async function clearAssignedRide(
       fields: [...RIDE_ASSIGNMENT_FIELDS],
     },
   }), 'Ride clear failed')
-  return updated
+  return {
+    ride: updated,
+    released: { driverId: current.driverId, vehicleId: current.vehicleId },
+  }
 }
 
 /**
@@ -205,7 +221,7 @@ export async function reassignAssignedRide(
   transaction: TenantTransaction,
   actorUserId: string,
   input: ReassignRide,
-): Promise<Ride> {
+): Promise<{ ride: Ride, released: ReleasedAssignment }> {
   const current = await lockOpenRide(transaction, input.rideId)
   if (current.driverId === input.driverId)
     throw new RideSameDriverError()
@@ -253,7 +269,10 @@ export async function reassignAssignedRide(
       fields: [...RIDE_ASSIGNMENT_FIELDS],
     },
   }), 'Ride reassignment failed')
-  return updated
+  return {
+    ride: updated,
+    released: { driverId: current.driverId, vehicleId: current.vehicleId },
+  }
 }
 
 function officeOnly(role: string): void {
@@ -265,38 +284,66 @@ function officeOnly(role: string): void {
 
 /**
  * Change only the Vehicle. The body is parsed first. A driver is 403.
- * The update and `ride.vehicle_changed` commit together. No work order is sent.
+ * The update and `ride.vehicle_changed` commit together. The current Driver
+ * is mailed changed after that commit. A rejected send leaves the Vehicle
+ * change in place and is not retried. Tests pass a mailer.
  */
-export async function changeVehicle(headers: Headers, raw: unknown): Promise<Ride> {
+export async function changeVehicle(headers: Headers, raw: unknown, delivery?: Delivery): Promise<AssignedRide> {
   const input = parseChangeRideVehicle(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return changeRideVehicle(transaction, actor.userId, input)
+    const ride = await changeRideVehicle(transaction, actor.userId, input)
+    const order = await readAssignedWorkOrder(transaction, ride.id)
+    return { ride, order }
   })
+  const notice = await deliverAssignedWorkOrder(saved.order, mailerFrom(delivery), delivery?.logger, 'changed')
+  return { ride: saved.ride, workOrders: [notice] }
 }
 
 /**
  * Clear the Driver and the Vehicle. The body is parsed first. A driver is 403.
- * The update and `ride.cleared` commit together. No work order is sent.
+ * The update and `ride.cleared` commit together. The Driver who lost the Ride
+ * is mailed no longer yours after that commit, with no price. A rejected send
+ * leaves the clear in place. Tests pass a mailer.
  */
-export async function clearRide(headers: Headers, rawRideId: unknown, rawBody: unknown): Promise<Ride> {
+export async function clearRide(headers: Headers, rawRideId: unknown, rawBody: unknown, delivery?: Delivery): Promise<AssignedRide> {
   const rideId = parseClearRide(rawRideId, rawBody)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return clearAssignedRide(transaction, actor.userId, rideId)
+    const cleared = await clearAssignedRide(transaction, actor.userId, rideId)
+    const order = await readAssignedWorkOrder(transaction, cleared.ride.id, cleared.released)
+    return { ride: cleared.ride, order }
   })
+  const notice = await deliverAssignedWorkOrder(saved.order, mailerFrom(delivery), delivery?.logger, 'no_longer_yours')
+  return { ride: saved.ride, workOrders: [notice] }
 }
 
 /**
  * Reassign to another Driver and a Vehicle. The body is parsed first. A driver
- * is 403. The update and `ride.reassigned` commit together. No work order is sent.
+ * is 403. The update and `ride.reassigned` commit together. After that commit
+ * the new Driver is mailed assigned and the previous Driver is mailed no longer
+ * yours. Each result is its own. A rejection of one does not skip the other
+ * and does not undo the reassignment. Tests pass a mailer.
  */
-export async function reassignRide(headers: Headers, raw: unknown): Promise<Ride> {
+export async function reassignRide(headers: Headers, raw: unknown, delivery?: Delivery): Promise<AssignedRide> {
   const input = parseReassignRide(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return reassignAssignedRide(transaction, actor.userId, input)
+    const moved = await reassignAssignedRide(transaction, actor.userId, input)
+    const next = await readAssignedWorkOrder(transaction, moved.ride.id)
+    const previous = await readAssignedWorkOrder(transaction, moved.ride.id, moved.released)
+    return { ride: moved.ride, next, previous }
   })
+  const mailer = mailerFrom(delivery)
+  const workOrders = [
+    await deliverAssignedWorkOrder(saved.next, mailer, delivery?.logger, 'assigned'),
+    await deliverAssignedWorkOrder(saved.previous, mailer, delivery?.logger, 'no_longer_yours'),
+  ]
+  return { ride: saved.ride, workOrders }
+}
+
+function mailerFrom(delivery?: Delivery): Mailer {
+  return delivery?.mailer ?? mailerForApp(loadAppEnv())
 }
 
 async function lockOpenRide(transaction: TenantTransaction, rideId: string): Promise<LockedRide & { driverId: string, vehicleId: string }> {

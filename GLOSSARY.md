@@ -91,7 +91,7 @@ The language a user works in, Croatian or English. Each Tenant has a default loc
 _Avoid_: language
 
 **Work order**:
-The email sent when a Ride is assigned. It uses the Tenant's default locale and time zone. The office sees one result for that Driver on the action: sent, no email, or send failed. The result names the Driver and not the address. The Ride stays saved when the send fails, and the send is not retried. The mail does not ask the Driver to accept and has no link. A cash Ride states the price; card and invoice to agency do not. The audit entry stays the assignment.
+The email sent when a Ride is assigned, when the office changes its Vehicle, when it is cleared, or when it is reassigned. It uses the Tenant's default locale and time zone. A Vehicle change uses changed and still states the cash price. Assign, and the new Driver on a reassign, use assigned. Clear, and the previous Driver on a reassign, use no longer yours and state no price. The office sees one result per Driver on the action: sent, no email, or send failed. The result names the Driver and not the address. The Ride stays saved when a send fails, and the send is not retried. The mail does not ask the Driver to accept and has no link. A cash Ride states the price on assigned and changed; card and invoice to agency do not. The audit entry stays the Ride change. It does not gain an "email sent" row.
 _Avoid_: SMS, push
 
 **Vehicle**:

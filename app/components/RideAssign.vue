@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Driver, Vehicle } from '../../shared'
 import { assignedRideSchema, rosterVehicleSuggestionSchema } from '../../shared'
+import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
   rideId: string
@@ -58,22 +59,6 @@ const canSubmit = computed(() => Boolean(driverId.value) && Boolean(vehicleId.va
  * The copy comes from `error.data.code`, the same way VehicleList reads a conflict.
  * The thrown message is never shown: it can carry an id or a stack.
  */
-function workOrderColor(outcome: 'sent' | 'no_email' | 'failed' | undefined): 'success' | 'warning' | 'error' {
-  if (outcome === 'failed')
-    return 'error'
-  if (outcome === 'no_email')
-    return 'warning'
-  return 'success'
-}
-
-function workOrderCopy(outcome: 'sent' | 'no_email' | 'failed'): 'ride.workOrderSent' | 'ride.workOrderNoEmail' | 'ride.workOrderFailed' {
-  if (outcome === 'sent')
-    return 'ride.workOrderSent'
-  if (outcome === 'no_email')
-    return 'ride.workOrderNoEmail'
-  return 'ride.workOrderFailed'
-}
-
 function failureKey(error: unknown): RideFailure {
   if (errorCode(error) === 'ride_vehicle_archived')
     return 'ride.vehicleArchived'
@@ -161,10 +146,11 @@ async function assign() {
     // this form. The response has no address, so the toast cannot show one.
     const notice = assigned.workOrders[0]
     const driverName = props.drivers.find(driver => driver.id === notice?.driverId)?.name ?? t('ride.unknownDriver')
+    const shown = notice === undefined ? undefined : workOrderNotice(notice.outcome)
     toast.add({
       title: t('ride.assigned'),
-      description: notice === undefined ? undefined : t(workOrderCopy(notice.outcome), { name: driverName }),
-      color: workOrderColor(notice?.outcome),
+      description: shown === undefined ? undefined : t(shown.key, { name: driverName }),
+      color: shown?.color ?? 'success',
     })
     emit('assigned')
   }
