@@ -22,7 +22,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0004 | Job queue: pg-boss on Postgres | accepted |
 | ADR-0005 | Ride states | accepted; partially superseded by ADR-0008 |
 | ADR-0006 | Driver acceptance | accepted; partially superseded by ADR-0008 |
-| ADR-0007 | No-show | accepted; partially superseded by ADR-0028 |
+| ADR-0007 | No-show | accepted |
 | ADR-0008 | Office acceptance, confirmed by phone | accepted |
 | ADR-0009 | Driver sees the price when payment is cash | accepted |
 | ADR-0010 | Re-acceptance after the pickup, the places, or the flight change | accepted |
@@ -42,4 +42,3 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0024 | One office home read | accepted |
 | ADR-0025 | Operational-day start | accepted |
 | ADR-0027 | Unclosed mark | accepted |
-| ADR-0028 | Live flight: landing time and expected arrival | accepted |
