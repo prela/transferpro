@@ -42,7 +42,14 @@ export async function listTransferDay(headers: Headers, rawDate: unknown, now: D
     const date = requested ?? operationalDateInTimeZone(settings.timeZone, now, startHour)
     return {
       date,
-      rides: await loadRidesForDay(transaction, date, settings.timeZone, startHour),
+      rides: await loadRidesForDay(
+        transaction,
+        date,
+        settings.timeZone,
+        startHour,
+        now,
+        settings.transferDurationMinutes,
+      ),
     }
   })
 }

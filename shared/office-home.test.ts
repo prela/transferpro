@@ -279,6 +279,91 @@ it('marks an in-progress Ride once 60 minutes have passed since the scheduled pi
   expect(snapshot.counts.inProgress).toBe(2)
 })
 
+it('shows a landing alarm 60 minutes after the landing plus the transfer duration, and leaves a Ride with no landing on the unclosed mark', () => {
+  const now = new Date('2026-06-15T10:00:00.000Z')
+  const driver = {
+    driverId: '00000000-0000-4000-8000-0000000000aa',
+    driverName: 'Marko',
+    vehiclePlate: 'DU100AA',
+  }
+  const snapshot = buildOfficeHome([
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000060',
+      guestName: 'Landed',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      landingAt: '2026-06-15T08:00:00.000Z',
+      state: 'assigned',
+      mustAccept: false,
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000061',
+      guestName: 'Just short',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      landingAt: '2026-06-15T08:00:00.001Z',
+      state: 'accepted',
+      mustAccept: true,
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000062',
+      guestName: 'No landing',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      landingAt: null,
+      state: 'assigned',
+      mustAccept: false,
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000063',
+      guestName: 'Fresh pickup',
+      pickupAt: '2026-06-15T09:30:00.000Z',
+      landingAt: '2026-06-15T07:00:00.000Z',
+      state: 'assigned',
+      mustAccept: false,
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000064',
+      guestName: 'Waiting landed',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      landingAt: '2026-06-15T07:00:00.000Z',
+      state: 'assigned',
+      mustAccept: true,
+      ...driver,
+    }),
+  ], now, zone)
+
+  expect(Object.fromEntries(snapshot.inProgress.map(row => [row.guestName, row.landingAlarm]))).toEqual({
+    'Landed': true,
+    'Just short': false,
+    'No landing': false,
+    'Fresh pickup': true,
+  })
+  expect(Object.fromEntries(snapshot.inProgress.map(row => [row.guestName, row.unclosedMark]))).toEqual({
+    'Landed': true,
+    'Just short': true,
+    'No landing': true,
+    'Fresh pickup': false,
+  })
+  expect(snapshot.waitingOnAcceptance.every(row => !('landingAlarm' in row))).toBe(true)
+  expect(guests(snapshot.waitingOnAcceptance)).toEqual(['Waiting landed'])
+
+  const longer = buildOfficeHome([
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000060',
+      guestName: 'Landed',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      landingAt: '2026-06-15T08:00:00.000Z',
+      state: 'assigned',
+      mustAccept: false,
+      ...driver,
+    }),
+  ], now, zone, 5, 90)
+  expect(longer.inProgress[0]?.landingAlarm).toBe(false)
+  expect(longer.inProgress[0]?.unclosedMark).toBe(true)
+})
+
 it('counts the stored hour, so a 05:30 pickup stays off today when the hour is 06:00 and still appears on the unassigned list', () => {
   const now = instantFromWallClock('2026-01-15T12:00', zone)
   const snapshot = buildOfficeHome([

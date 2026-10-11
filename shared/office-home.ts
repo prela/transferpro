@@ -1,7 +1,8 @@
 import type { PaymentMethod, RideState } from './transfer'
 import { z } from 'zod'
 import { localDayBounds, operationalDateInTimeZone } from './date'
-import { OPERATIONAL_DAY_START_DEFAULT } from './tenant-settings'
+import { landingAlarmOn, rideIsInProgress } from './landing-alarm'
+import { OPERATIONAL_DAY_START_DEFAULT, TRANSFER_DURATION_DEFAULT_MINUTES } from './tenant-settings'
 import { paymentMethodSchema, rideStateSchema, TABLA_MAX_LENGTH, transferPriceSchema } from './transfer'
 
 /**
@@ -63,6 +64,7 @@ const officeHomeUnassignedSchema = officeHomeRowSchema.extend({
 
 const officeHomeInProgressSchema = officeHomeRowSchema.extend({
   unclosedMark: z.boolean(),
+  landingAlarm: z.boolean(),
 }).strict()
 
 const officeHomeCountsSchema = z.strictObject({
@@ -77,8 +79,8 @@ const officeHomeCountsSchema = z.strictObject({
 
 /**
  * The three lists and the seven counts from one moment (ADR-0024).
- * Waiting has no mark. In progress carries the unclosed mark (ADR-0027).
- * There is no week, month, or euro total.
+ * Waiting has no mark. In progress carries the unclosed mark (ADR-0027)
+ * and the landing alarm (ADR-0030). There is no week, month, or euro total.
  */
 export const officeHomeSchema = z.strictObject({
   unassigned: z.array(officeHomeUnassignedSchema),
@@ -102,8 +104,7 @@ function attentionList(ride: OfficeHomeRide, pickup: number, nowMs: number): Att
     return 'unassigned'
   if (ride.state === 'assigned' && ride.mustAccept === true)
     return 'waitingOnAcceptance'
-  const finished = ride.state === 'done' || ride.state === 'no-show' || ride.state === 'cancelled'
-  if (!finished && ride.driverId !== null && pickup < nowMs)
+  if (rideIsInProgress(ride.state, ride.mustAccept, ride.driverId, pickup, nowMs))
     return 'inProgress'
   return null
 }
@@ -138,6 +139,7 @@ export function buildOfficeHome(
   now: Date,
   timeZone: string,
   startHour = OPERATIONAL_DAY_START_DEFAULT,
+  transferDurationMinutes = TRANSFER_DURATION_DEFAULT_MINUTES,
 ): OfficeHome {
   if (Number.isNaN(now.getTime()))
     throw new RangeError('Instant is not a valid time.')
@@ -209,6 +211,7 @@ export function buildOfficeHome(
       inProgress.push({
         ...shown,
         unclosedMark: nowMs - pickup >= UNCLOSED_MARK_MS,
+        landingAlarm: landingAlarmOn(ride.landingAt, nowMs, transferDurationMinutes, true),
       })
     }
   }

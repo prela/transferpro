@@ -68,6 +68,10 @@ _Avoid_: started, a Ride state
 An in-progress Ride once 60 minutes have passed since its scheduled pickup. A recorded landing does not move that instant.
 _Avoid_: warning, unassigned alarm, overdue
 
+**Landing alarm**:
+An in-progress Ride with a stored landing time, once 60 minutes have passed after that landing plus the transfer duration. A Ride with no landing time does not take it. It sends nothing.
+_Avoid_: unclosed mark, unassigned alarm, warning
+
 **Operational-day start**:
 The hour in the Tenant's time zone at which an operational day begins. A new Tenant starts at 05:00. An admin can change it.
 _Avoid_: cutoff, midnight

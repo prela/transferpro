@@ -275,6 +275,16 @@ onMounted(() => {
               >
                 {{ t('officeHome.unclosedMark') }}
               </p>
+              <!--
+                A stored landing starts its own clock. The unclosed mark
+                stays on the scheduled pickup (ADR-0027, ADR-0030).
+              -->
+              <p
+                v-if="ride.landingAlarm"
+                class="mt-1"
+              >
+                {{ t('officeHome.landingAlarm') }}
+              </p>
               <OfficeHomeRideFacts
                 :ride="ride"
                 :time-zone="timeZone"

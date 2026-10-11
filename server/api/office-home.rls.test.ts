@@ -307,6 +307,10 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
     'Progress Lara': true,
     'Progress Today': true,
   })
+  expect(Object.fromEntries(snapshot.inProgress.map(row => [row.guestName, row.landingAlarm]))).toEqual({
+    'Progress Lara': false,
+    'Progress Today': false,
+  })
   expect(snapshot.inProgress.every(row => !('unassignedAlarm' in row))).toBe(true)
   expect(snapshot.waitingOnAcceptance.every(row => !('unclosedMark' in row))).toBe(true)
   expect(snapshot.inProgress[0]).toMatchObject({
@@ -392,4 +396,65 @@ it('counts the stored hour, and a pickup before that hour stays on the unassigne
     unassigned: 0,
     done: 2,
   })
+})
+
+it('turns the landing alarm on from the stored landing plus the Tenant transfer duration, and leaves the unclosed mark on the pickup', async () => {
+  const created = await tenant('ohm-land', 'Hana Admin')
+  await addMember(created.tenantId, 'ohm-land-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const admin = await signIn('ohm-land-admin@example.test')
+  const dispatcher = await signIn('ohm-land-dispatcher@example.test')
+  const calendar = calendarDateInTimeZone(zone, new Date())
+  const now = instantFromWallClock(`${calendar}T12:00`, zone)
+  const client = await createClient(admin, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(admin, { name: 'Hotel Excelsior', kind: 'hotel' })
+  const driver = await createDriver(admin, {
+    name: 'Ana Slobodna',
+    kind: 'own',
+    phone: '+385911110183',
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const vehicle = await createVehicle(admin, {
+    registrationPlate: 'DU183AA',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const recorded = await createTransfer(admin, {
+    clientId: client.id,
+    pickupAt: instantFromWallClock(`${calendar}T10:30`, zone).toISOString(),
+    startLocationId: start.id,
+    endLocationId: end.id,
+    passengerCount: 1,
+    guestName: 'Landed Lana',
+    price: 10,
+    payment: 'cash',
+    airportMark: true,
+    luggageCount: 0,
+    childSeatCount: 0,
+  })
+  await assignRide(admin, { rideId: recorded.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  // 150 minutes before noon: duration 60 alarms (end + 60 is 30 minutes ago); duration 120 does not.
+  const landing = new Date(now.getTime() - 150 * 60 * 1000)
+  await ownerPool.query(
+    `update app.transfers set landing_at = $1 where id = $2`,
+    [landing.toISOString(), recorded.transfer.id],
+  )
+
+  const audits = await auditCount(created.tenantId)
+  const marked = officeHomeSchema.parse(await readOfficeHome(admin, now))
+  expect(officeHomeSchema.parse(await readOfficeHome(dispatcher, now))).toEqual(marked)
+  expect(marked.inProgress.map(row => row.guestName)).toEqual(['Landed Lana'])
+  expect(marked.inProgress[0]).toMatchObject({ landingAlarm: true, unclosedMark: true })
+  expect(await auditCount(created.tenantId)).toBe(audits)
+
+  await ownerPool.query(
+    'update app.tenant_settings set transfer_duration_minutes = 120 where tenant_id = $1',
+    [created.tenantId],
+  )
+  const longer = officeHomeSchema.parse(await readOfficeHome(admin, now))
+  expect(longer.inProgress[0]).toMatchObject({ landingAlarm: false, unclosedMark: true })
+  expect(await auditCount(created.tenantId)).toBe(audits)
 })

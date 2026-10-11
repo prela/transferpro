@@ -294,3 +294,56 @@ it('loads the Zagreb operational day as a half-open range of local 05:00 and map
   expect(queries[1]?.sql.toLowerCase()).not.toContain('::date')
   expect(queries[2]?.sql.toLowerCase()).not.toContain('::date')
 })
+
+it('marks a landing alarm on an in-progress Ride 60 minutes after landing plus the transfer duration', async () => {
+  const now = new Date('2026-06-15T10:00:00.000Z')
+  const driverId = 'c1c1c1c1-3333-4333-8333-333333333333'
+  const vehicleId = 'f1f1f1f1-4444-4444-8444-444444444444'
+  function dayRide(id: string, guestName: string, state: 'assigned' | 'accepted' | 'done' | 'unassigned', landingAt: Date | null, mustAccept: boolean | null) {
+    return {
+      rideId: id,
+      transferId,
+      state,
+      driverId: state === 'unassigned' ? null : driverId,
+      vehicleId: state === 'unassigned' ? null : vehicleId,
+      mustAccept,
+      clientId,
+      pickupAt: new Date('2026-06-15T08:00:00.000Z'),
+      startLocationId,
+      endLocationId,
+      passengerCount: 1,
+      guestName,
+      flightNumber: null,
+      price: '10.00',
+      payment: 'cash' as const,
+      airportMark: true,
+      luggageCount: 0,
+      childSeatCount: 0,
+      note: null,
+      tabla: '',
+      landingAt,
+    }
+  }
+  const { transaction } = fakeTransaction({
+    dayRows: [
+      dayRide(rideId, 'Landed', 'assigned', new Date('2026-06-15T08:00:00.000Z'), false),
+      dayRide('e2e2e2e2-2222-4222-8222-222222222222', 'Just short', 'accepted', new Date('2026-06-15T08:00:00.001Z'), true),
+      dayRide('e3e3e3e3-2222-4222-8222-222222222222', 'No landing', 'assigned', null, false),
+      dayRide('e4e4e4e4-2222-4222-8222-222222222222', 'Done', 'done', new Date('2026-06-15T07:00:00.000Z'), false),
+      dayRide('e5e5e5e5-2222-4222-8222-222222222222', 'Waiting', 'assigned', new Date('2026-06-15T07:00:00.000Z'), true),
+      dayRide('e6e6e6e6-2222-4222-8222-222222222222', 'Unassigned', 'unassigned', new Date('2026-06-15T07:00:00.000Z'), null),
+    ],
+  })
+  const rides = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 60)
+  expect(Object.fromEntries(rides.map(row => [row.guestName, row.landingAlarm]))).toEqual({
+    'Landed': true,
+    'Just short': false,
+    'No landing': false,
+    'Done': false,
+    'Waiting': false,
+    'Unassigned': false,
+  })
+
+  const longer = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 90)
+  expect(longer.find(row => row.guestName === 'Landed')?.landingAlarm).toBe(false)
+})

@@ -3,7 +3,7 @@ import type { CreateTransfer, Ride, Transfer, TransferDayRide, TransferField } f
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { localDayBounds, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideStateSchema, TRANSFER_FIELDS, transferPriceSchema } from '../../../../shared'
+import { landingAlarmOn, localDayBounds, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, transferPriceSchema } from '../../../../shared'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
@@ -139,13 +139,20 @@ export async function recordTransfer(
  * missing hour of a daylight-saving night. A pickup before the start hour is
  * not in this interval; it belongs to the previous operational day.
  * Omitting the hour uses 05:00. The day list passes the stored hour.
+ * The landing alarm uses `now` and the Tenant transfer duration. The day
+ * only chooses which Rides are listed (ADR-0030).
  */
 export async function loadRidesForDay(
   transaction: TenantTransaction,
   day: string,
   timeZone: string,
   startHour = OPERATIONAL_DAY_START_DEFAULT,
+  now: Date = new Date(),
+  transferDurationMinutes = TRANSFER_DURATION_DEFAULT_MINUTES,
 ): Promise<TransferDayRide[]> {
+  const nowMs = now.getTime()
+  if (Number.isNaN(nowMs))
+    throw new RangeError('Instant is not a valid time.')
   const bounds = localDayBounds(day, timeZone, startHour)
   const selected = z.object({ rows: z.array(dayRowSchema) }).parse(await transaction.execute(sql`
     select
@@ -175,7 +182,7 @@ export async function loadRidesForDay(
     where t.pickup_at >= ${bounds.start.toISOString()} and t.pickup_at < ${bounds.end.toISOString()}
     order by t.pickup_at, r.id
   `))
-  return selected.rows.map(toDayRide)
+  return selected.rows.map(row => toDayRide(row, nowMs, transferDurationMinutes))
 }
 
 function createdFields(input: CreateTransfer): TransferField[] {
@@ -218,7 +225,14 @@ function toTransfer(row: z.infer<typeof transferRowSchema>): Transfer {
   }
 }
 
-function toDayRide(row: z.infer<typeof dayRowSchema>): TransferDayRide {
+function toDayRide(
+  row: z.infer<typeof dayRowSchema>,
+  nowMs: number,
+  transferDurationMinutes: number,
+): TransferDayRide {
+  const pickupAt = toInstant(row.pickupAt)
+  const landingAt = row.landingAt == null ? null : toInstant(row.landingAt)
+  const pickupMs = new Date(pickupAt).getTime()
   return {
     rideId: row.rideId,
     transferId: row.transferId,
@@ -227,7 +241,7 @@ function toDayRide(row: z.infer<typeof dayRowSchema>): TransferDayRide {
     vehicleId: row.vehicleId,
     mustAccept: row.mustAccept,
     clientId: row.clientId,
-    pickupAt: toInstant(row.pickupAt),
+    pickupAt,
     startLocationId: row.startLocationId,
     endLocationId: row.endLocationId,
     passengerCount: row.passengerCount,
@@ -240,7 +254,13 @@ function toDayRide(row: z.infer<typeof dayRowSchema>): TransferDayRide {
     childSeatCount: row.childSeatCount,
     note: row.note,
     tabla: row.tabla,
-    landingAt: row.landingAt == null ? null : toInstant(row.landingAt),
+    landingAt,
+    landingAlarm: landingAlarmOn(
+      landingAt,
+      nowMs,
+      transferDurationMinutes,
+      rideIsInProgress(row.state, row.mustAccept, row.driverId, pickupMs, nowMs),
+    ),
   }
 }
 

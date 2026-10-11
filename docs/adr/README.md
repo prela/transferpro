@@ -45,3 +45,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0027 | Unclosed mark | accepted |
 | ADR-0028 | Live flight | accepted |
 | ADR-0029 | Ride occupation | accepted |
+| ADR-0030 | Landing alarm | accepted |

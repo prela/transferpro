@@ -736,7 +736,16 @@ onMounted(loadAll)
           {{ placeLabel(row.original.endLocationId) }}
         </template>
         <template #state-cell="{ row }">
-          {{ t(`transfers.states.${row.original.state}`) }}
+          <span>{{ t(`transfers.states.${row.original.state}`) }}</span>
+          <!--
+            Text, not color. The alarm does not hide the row actions.
+          -->
+          <p
+            v-if="row.original.landingAlarm"
+            class="mt-1 whitespace-normal"
+          >
+            {{ t('officeHome.landingAlarm') }}
+          </p>
         </template>
         <template #driver-cell="{ row }">
           {{ driverLabel(row.original.driverId) }}

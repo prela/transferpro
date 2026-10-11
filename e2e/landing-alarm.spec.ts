@@ -1,0 +1,136 @@
+import type { APIResponse } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import pg from 'pg'
+import { operationalDateInTimeZone } from '../shared/date'
+import { seedTenant } from './fixtures/seed'
+import { signIn, switchLocale, switchTheme } from './fixtures/ui'
+
+function required(name: string): string {
+  const value = process.env[name]
+  if (value === undefined || value === '')
+    throw new Error(`${name} is required`)
+  return value
+}
+
+async function createdId(response: APIResponse): Promise<string> {
+  if (!response.ok())
+    throw new Error(`${response.status()} ${await response.text()}`)
+  const body = await response.json() as { id: string }
+  return body.id
+}
+
+async function storeLanding(rideId: string, landingAt: string): Promise<void> {
+  const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
+  try {
+    await pool.query(
+      `update app.transfers set landing_at = $1
+       where id = (select transfer_id from app.rides where id = $2)`,
+      [landingAt, rideId],
+    )
+  }
+  finally {
+    await pool.end()
+  }
+}
+
+test('an in-progress Ride with a landing shows the landing alarm on home and the day board, and a Ride without one does not', async ({ page }) => {
+  const tenant = await seedTenant('landing-alarm')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+
+  const licence = '2031-01-01'
+  const clientId = await createdId(await page.request.post('/api/clients', {
+    data: { name: 'Agencija Mora', kind: 'agency' },
+  }))
+  const startLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Zračna luka Dubrovnik', kind: 'airport' },
+  }))
+  const endLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Hotel Excelsior', kind: 'hotel' },
+  }))
+  const driverId = await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Ana Slobodna',
+      kind: 'own',
+      phone: '+38595555183',
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+    },
+  }))
+  const vehicleId = await createdId(await page.request.post('/api/vehicles', {
+    data: {
+      registrationPlate: 'DU183AA',
+      kind: 'fixed',
+      registrationExpiresOn: licence,
+      technicalInspectionExpiresOn: licence,
+      insuranceExpiresOn: licence,
+    },
+  }))
+
+  const now = new Date()
+  const pickup = new Date(now.getTime() - 90 * 60 * 1000)
+  const landing = new Date(now.getTime() - 150 * 60 * 1000)
+  async function record(guestName: string): Promise<string> {
+    const response = await page.request.post('/api/transfers', {
+      data: {
+        clientId,
+        pickupAt: pickup.toISOString(),
+        startLocationId,
+        endLocationId,
+        passengerCount: 1,
+        guestName,
+        price: 10,
+        payment: 'cash',
+        airportMark: true,
+        luggageCount: 0,
+        childSeatCount: 0,
+        note: null,
+        tabla: '',
+      },
+    })
+    if (!response.ok())
+      throw new Error(`${response.status()} ${await response.text()}`)
+    const body = await response.json() as { ride: { id: string } }
+    const assigned = await page.request.post(`/api/rides/${body.ride.id}/assign`, {
+      data: { driverId, vehicleId },
+    })
+    if (!assigned.ok())
+      throw new Error(`${assigned.status()} ${await assigned.text()}`)
+    return body.ride.id
+  }
+
+  const landedId = await record('Landed Lana')
+  await storeLanding(landedId, landing.toISOString())
+  await record('Open Lara')
+
+  await page.getByRole('button', { name: 'Osvježi početnu', exact: true }).click()
+  const progress = page.getByRole('region', { name: 'U tijeku' })
+  const landed = progress.getByRole('listitem').filter({ hasText: 'Landed Lana' })
+  const open = progress.getByRole('listitem').filter({ hasText: 'Open Lara' })
+  await expect(landed).toContainText('Alarm slijetanja')
+  await expect(landed).toContainText('Nije zatvoreno')
+  await expect(open).toContainText('Nije zatvoreno')
+  await expect(open).not.toContainText('Alarm slijetanja')
+
+  await switchLocale(page, 'en')
+  const progressEn = page.getByRole('region', { name: 'In progress' })
+  await expect(progressEn.getByRole('listitem').filter({ hasText: 'Landed Lana' })).toContainText('Landing alarm')
+  await expect(progressEn.getByRole('listitem').filter({ hasText: 'Open Lara' })).not.toContainText('Landing alarm')
+  await switchTheme(page, 'dark')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(progressEn.getByRole('listitem').filter({ hasText: 'Landed Lana' })).toContainText('Landing alarm')
+  await switchTheme(page, 'light')
+
+  await page.goto('/transfers')
+  const day = operationalDateInTimeZone('Europe/Zagreb', pickup)
+  await page.locator('#transfer-day').fill(day)
+  const boardLanded = page.getByRole('row').filter({ hasText: 'Landed Lana' })
+  const boardOpen = page.getByRole('row').filter({ hasText: 'Open Lara' })
+  await expect(boardLanded).toContainText('Landing alarm')
+  await expect(boardLanded.getByRole('button', { name: 'Change vehicle: Landed Lana' })).toBeVisible()
+  await expect(boardOpen).not.toContainText('Landing alarm')
+  await expect(boardOpen.getByRole('button', { name: 'Change vehicle: Open Lara' })).toBeVisible()
+  await switchLocale(page, 'hr')
+  await expect(page.getByRole('row').filter({ hasText: 'Landed Lana' })).toContainText('Alarm slijetanja')
+  await switchTheme(page, 'dark')
+  await expect(page.getByRole('row').filter({ hasText: 'Landed Lana' })).toContainText('Alarm slijetanja')
+})
