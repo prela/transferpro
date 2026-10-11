@@ -37,12 +37,13 @@ for (const theme of ['light', 'dark'] as const) {
     await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
     await page.getByRole('link', { name: 'Lokacije' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Lokacije' })).toBeVisible()
-    await expect(page.getByLabel('Ime')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Dodaj lokaciju', exact: true })).toBeVisible()
+    await expect(page.getByText('Još nema lokacija.')).toBeVisible()
+    await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+    await expect(page.getByRole('dialog').getByLabel('Ime')).toBeVisible()
 
     await switchLocale(page, 'en')
     await expect(page.getByRole('heading', { level: 1, name: 'Locations' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Add location', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Add a location', exact: true })).toBeVisible()
   })
 
   test(`transfers page is usable in ${theme} mode`, async ({ page }) => {

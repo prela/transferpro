@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
 import type { Location, LocationKind } from '../../shared'
-import { locationAddressError, locationIataError, locationKindError, locationListSchema, locationNameError, locationSchema } from '../../shared'
+import { z } from 'zod'
+import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, locationAddressSchema, locationIataError, locationIataSchema, locationListSchema, locationSchema } from '../../shared'
 
 const { t } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
-const titleId = useId()
 const listTitleId = useId()
 
 const locations = ref<Location[]>([])
@@ -12,31 +13,27 @@ const includeArchived = ref(false)
 const loading = ref(false)
 const loadErrorKey = ref<LocationFailure | null>(null)
 const formErrorKey = ref<LocationFailure | null>(null)
-const name = ref('')
-const kind = ref<LocationKind>()
-const address = ref('')
-const iata = ref('')
-const nameErrorKey = ref<NameErrorKey | null>(null)
-const kindErrorKey = ref<'locations.kindInvalid' | null>(null)
-const addressErrorKey = ref<'locations.addressTooLong' | null>(null)
-const iataErrorKey = ref<'locations.iataInvalid' | null>(null)
-const pending = ref(false)
+const archiveErrorKey = ref<LocationFailure | null>(null)
+const saving = ref(false)
 const archivingId = ref<string | null>(null)
 
-const editing = ref<Location | null>(null)
-const editName = ref('')
-const editKind = ref<LocationKind>()
-const editAddress = ref('')
-const editIata = ref('')
-const editNameErrorKey = ref<NameErrorKey | null>(null)
-const editKindErrorKey = ref<'locations.kindInvalid' | null>(null)
-const editAddressErrorKey = ref<'locations.addressTooLong' | null>(null)
-const editIataErrorKey = ref<'locations.iataInvalid' | null>(null)
-const editErrorKey = ref<LocationFailure | null>(null)
-const saving = ref(false)
+/** Add and correct share one slideover. Archive stays a separate confirm. */
+const formMode = ref<'add' | 'edit' | null>(null)
+const editingId = ref<string | null>(null)
+const confirming = ref<Location | null>(null)
+const state = reactive<{ name: string, kind?: LocationKind, address: string, iata: string }>({
+  name: '',
+  address: '',
+  iata: '',
+})
 
-type NameErrorKey = 'locations.nameEmpty' | 'locations.nameTooLong'
 type LocationFailure = 'locations.loadFailed' | 'locations.rejected' | 'locations.notFound' | 'locations.forbidden' | 'locations.signedOut' | 'locations.saveFailed' | 'locations.archivedLocked'
+interface LocationForm {
+  name: string
+  kind: LocationKind
+  address: string
+  iata: string
+}
 
 const kindItems = computed(() => [
   { label: t('locations.kinds.airport'), value: 'airport' as const },
@@ -56,12 +53,43 @@ const columns = computed(() => [
   { id: 'actions', header: '' },
 ])
 
-const editOpen = computed({
-  get: () => editing.value !== null,
+/** Messages follow the active Locale. A blank airport code is allowed. */
+const schema = computed(() => z.object({
+  name: z.string().trim().min(1, t('locations.nameEmpty')).max(LOCATION_NAME_MAX_LENGTH, t('locations.nameTooLong')),
+  kind: z.enum(LOCATION_KINDS, { error: t('locations.kindInvalid') }),
+  address: z.string().trim().max(LOCATION_ADDRESS_MAX_LENGTH, t('locations.addressTooLong')),
+  iata: z.string(),
+}).superRefine((value, ctx) => {
+  if (value.kind === 'airport' && locationIataError(value.iata)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: t('locations.iataInvalid'),
+      path: ['iata'],
+    })
+  }
+}))
+
+const formOpen = computed({
+  get: () => formMode.value !== null,
   set(open: boolean) {
     if (!open && !saving.value)
-      editing.value = null
+      formMode.value = null
   },
+})
+
+const archiveOpen = computed({
+  get: () => confirming.value !== null,
+  set(open: boolean) {
+    if (!open && archivingId.value === null)
+      confirming.value = null
+  },
+})
+
+const formTitle = computed(() => formMode.value === 'edit' ? t('locations.edit') : t('locations.add'))
+const submitLabel = computed(() => {
+  if (saving.value)
+    return formMode.value === 'edit' ? t('locations.saving') : t('locations.submitting')
+  return formMode.value === 'edit' ? t('locations.save') : t('locations.submit')
 })
 
 function failureKey(error: unknown): LocationFailure {
@@ -85,22 +113,21 @@ function locationErrorCode(error: unknown): string | undefined {
   return typeof data.code === 'string' ? data.code : undefined
 }
 
-function nameKey(value: string): NameErrorKey | null {
-  const problem = locationNameError(value)
-  if (problem === 'empty')
-    return 'locations.nameEmpty'
-  if (problem === 'too-long')
-    return 'locations.nameTooLong'
-  return null
-}
-
-function addressKey(value: string): 'locations.addressTooLong' | null {
-  return locationAddressError(value) ? 'locations.addressTooLong' : null
-}
-
-/** A blank code is allowed. The field is only asked for an airport. */
-function iataKey(value: string): 'locations.iataInvalid' | null {
-  return locationIataError(value) ? 'locations.iataInvalid' : null
+function locationActions(location: Location): DropdownMenuItem[][] {
+  if (location.archivedAt !== null)
+    return []
+  return [[
+    {
+      label: t('locations.edit'),
+      icon: 'i-lucide-pencil',
+      onSelect: () => openEdit(location),
+    },
+    {
+      label: t('locations.archive'),
+      icon: 'i-lucide-archive',
+      onSelect: () => askArchive(location),
+    },
+  ]]
 }
 
 async function loadLocations() {
@@ -119,103 +146,94 @@ async function loadLocations() {
   }
 }
 
-async function addLocation() {
-  const chosen = kind.value
-  nameErrorKey.value = nameKey(name.value)
-  kindErrorKey.value = locationKindError(chosen ?? '') ? 'locations.kindInvalid' : null
-  addressErrorKey.value = addressKey(address.value)
-  iataErrorKey.value = chosen === 'airport' ? iataKey(iata.value) : null
+function resetForm() {
+  state.name = ''
+  state.kind = undefined
+  state.address = ''
+  state.iata = ''
   formErrorKey.value = null
-  if (nameErrorKey.value || kindErrorKey.value || addressErrorKey.value || iataErrorKey.value || chosen === undefined)
-    return
-  pending.value = true
+}
+
+function openAdd() {
+  editingId.value = null
+  resetForm()
+  formMode.value = 'add'
+}
+
+function openEdit(location: Location) {
+  editingId.value = location.id
+  state.name = location.name
+  state.kind = location.kind
+  state.address = location.address ?? ''
+  state.iata = location.iata ?? ''
+  formErrorKey.value = null
+  formMode.value = 'edit'
+}
+
+function locationBody(data: LocationForm) {
+  const address = locationAddressSchema.parse(data.address)
+  return {
+    name: data.name,
+    kind: data.kind,
+    address,
+    // A hotel, an address, or other kind cannot carry a code, so the key
+    // stays off the body unless this row is an airport. Leaving airport
+    // omits the key. The server clears a stored code in that same change.
+    ...(data.kind === 'airport' ? { iata: locationIataSchema.parse(data.iata) } : {}),
+  }
+}
+
+async function onSubmit(event: FormSubmitEvent<LocationForm>) {
+  formErrorKey.value = null
+  saving.value = true
   try {
-    locationSchema.parse(await $fetch('/api/locations', {
-      method: 'POST',
-      body: {
-        name: name.value,
-        kind: chosen,
-        address: address.value,
-        // A hotel, an address, or other kind cannot carry a code, so the
-        // key stays off the body unless this row is an airport.
-        ...(chosen === 'airport' ? { iata: iata.value } : {}),
-      },
-    }))
-    name.value = ''
-    kind.value = undefined
-    address.value = ''
-    iata.value = ''
+    const body = locationBody(event.data)
+    if (formMode.value === 'edit') {
+      const id = editingId.value
+      if (!id)
+        return
+      locationSchema.parse(await $fetch(`/api/locations/${id}`, {
+        method: 'PATCH',
+        body,
+      }))
+    }
+    else {
+      locationSchema.parse(await $fetch('/api/locations', {
+        method: 'POST',
+        body,
+      }))
+    }
+    formMode.value = null
     notifyAuditChanged()
     await loadLocations()
   }
   catch (error) {
     formErrorKey.value = failureKey(error)
-  }
-  finally {
-    pending.value = false
-  }
-}
-
-function openEdit(location: Location) {
-  editing.value = location
-  editName.value = location.name
-  editKind.value = location.kind
-  editAddress.value = location.address ?? ''
-  editIata.value = location.iata ?? ''
-  editNameErrorKey.value = null
-  editKindErrorKey.value = null
-  editAddressErrorKey.value = null
-  editIataErrorKey.value = null
-  editErrorKey.value = null
-}
-
-async function saveEdit() {
-  const current = editing.value
-  const chosen = editKind.value
-  if (!current)
-    return
-  editNameErrorKey.value = nameKey(editName.value)
-  editKindErrorKey.value = locationKindError(chosen ?? '') ? 'locations.kindInvalid' : null
-  editAddressErrorKey.value = addressKey(editAddress.value)
-  editIataErrorKey.value = chosen === 'airport' ? iataKey(editIata.value) : null
-  editErrorKey.value = null
-  if (editNameErrorKey.value || editKindErrorKey.value || editAddressErrorKey.value || editIataErrorKey.value || chosen === undefined)
-    return
-  saving.value = true
-  try {
-    locationSchema.parse(await $fetch(`/api/locations/${current.id}`, {
-      method: 'PATCH',
-      body: {
-        name: editName.value,
-        kind: chosen,
-        address: editAddress.value,
-        // Leaving airport omits the key. The server clears the stored code
-        // in that same change. A blank airport code clears it too.
-        ...(chosen === 'airport' ? { iata: editIata.value } : {}),
-      },
-    }))
-    editing.value = null
-    notifyAuditChanged()
-    await loadLocations()
-  }
-  catch (error) {
-    editErrorKey.value = failureKey(error)
   }
   finally {
     saving.value = false
   }
 }
 
-async function archiveLocation(location: Location) {
+function askArchive(location: Location) {
+  archiveErrorKey.value = null
+  confirming.value = location
+}
+
+async function confirmArchive() {
+  const location = confirming.value
+  if (!location || archivingId.value)
+    return
   archivingId.value = location.id
-  formErrorKey.value = null
+  archiveErrorKey.value = null
   try {
     locationSchema.parse(await $fetch(`/api/locations/${location.id}/archive`, { method: 'POST' }))
+    confirming.value = null
     notifyAuditChanged()
     await loadLocations()
   }
   catch (error) {
-    formErrorKey.value = failureKey(error)
+    archiveErrorKey.value = failureKey(error)
   }
   finally {
     archivingId.value = null
@@ -237,115 +255,19 @@ onMounted(loadLocations)
 
 <template>
   <section>
-    <h2
-      :id="titleId"
-      class="mb-4 text-xl font-semibold"
+    <UButton
+      type="button"
+      size="xl"
+      icon="i-lucide-plus"
+      class="mb-4"
+      @click="openAdd"
     >
       {{ t('locations.add') }}
-    </h2>
-    <UAlert
-      v-if="formErrorKey"
-      color="error"
-      variant="subtle"
-      role="alert"
-      class="mb-4"
-      :description="t(formErrorKey)"
-    />
-    <form @submit.prevent="addLocation">
-      <UFormField
-        :label="t('locations.name')"
-        name="name"
-        class="mb-4"
-        size="xl"
-        :error="nameErrorKey ? t(nameErrorKey) : false"
-      >
-        <UInput
-          id="location-name"
-          v-model="name"
-          name="name"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="nameErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('locations.kind')"
-        name="kind"
-        class="mb-4"
-        size="xl"
-        :error="kindErrorKey ? t(kindErrorKey) : false"
-      >
-        <USelect
-          id="location-kind"
-          v-model="kind"
-          name="kind"
-          :items="kindItems"
-          :placeholder="t('locations.chooseKind')"
-          class="w-full"
-          @update:model-value="kindErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('locations.address')"
-        name="address"
-        class="mb-4"
-        size="xl"
-        :error="addressErrorKey ? t(addressErrorKey) : false"
-      >
-        <UInput
-          id="location-address"
-          v-model="address"
-          name="address"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="addressErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        v-if="kind === 'airport'"
-        :label="t('locations.iata')"
-        name="iata"
-        class="mb-4"
-        size="xl"
-        :error="iataErrorKey ? t(iataErrorKey) : false"
-      >
-        <UInput
-          id="location-iata"
-          v-model="iata"
-          name="iata"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="iataErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UButton
-        type="submit"
-        size="xl"
-        class="w-full justify-center sm:w-auto"
-        :disabled="pending"
-      >
-        {{ pending ? t('locations.submitting') : t('locations.submit') }}
-      </UButton>
-    </form>
+    </UButton>
 
     <h2
       :id="listTitleId"
-      class="mt-8 mb-4 text-xl font-semibold"
+      class="mb-4 text-xl font-semibold"
     >
       {{ t('locations.title') }}
     </h2>
@@ -365,15 +287,6 @@ onMounted(loadLocations)
       role="alert"
       :description="t(loadErrorKey)"
     />
-    <p
-      v-else-if="loading"
-      role="status"
-    >
-      {{ t('locations.loading') }}
-    </p>
-    <p v-else-if="locations.length === 0">
-      {{ t('locations.empty') }}
-    </p>
     <div
       v-else
       class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -384,6 +297,7 @@ onMounted(loadLocations)
       <UTable
         :data="locations"
         :columns="columns"
+        :loading="loading"
         class="whitespace-nowrap"
       >
         <template #kind-cell="{ row }">
@@ -398,136 +312,147 @@ onMounted(loadLocations)
         <template #status-cell="{ row }">
           {{ row.original.archivedAt ? t('locations.archived') : '' }}
         </template>
+        <template #actions-header>
+          <span class="sr-only">{{ t('locations.actions') }}</span>
+        </template>
         <template #actions-cell="{ row }">
-          <div class="flex flex-wrap gap-2">
+          <UDropdownMenu
+            v-if="row.original.archivedAt === null"
+            :items="locationActions(row.original)"
+            size="xl"
+          >
             <UButton
-              v-if="row.original.archivedAt === null"
               type="button"
               color="neutral"
               variant="outline"
               size="xl"
-              :aria-label="`${t('locations.edit')}: ${row.original.name}`"
-              @click="openEdit(row.original)"
-            >
-              {{ t('locations.edit') }}
-            </UButton>
-            <UButton
-              v-if="row.original.archivedAt === null"
-              type="button"
-              color="neutral"
-              variant="outline"
-              size="xl"
-              :loading="archivingId === row.original.id"
-              :aria-label="`${t('locations.archive')}: ${row.original.name}`"
-              @click="archiveLocation(row.original)"
-            >
-              {{ t('locations.archive') }}
-            </UButton>
+              icon="i-lucide-ellipsis-vertical"
+              :aria-label="t('locations.actionsFor', { name: row.original.name })"
+            />
+          </UDropdownMenu>
+        </template>
+        <template #loading>
+          <div
+            role="status"
+            class="space-y-2 py-2"
+          >
+            <p>{{ t('locations.loading') }}</p>
+            <USkeleton class="h-8 w-full" />
+            <USkeleton class="h-8 w-full" />
           </div>
+        </template>
+        <template #empty>
+          <UEmpty
+            :title="t('locations.empty')"
+            icon="i-lucide-map-pin"
+            variant="naked"
+          />
         </template>
       </UTable>
     </div>
 
-    <UModal
-      v-model:open="editOpen"
-      :title="t('locations.edit')"
+    <USlideover
+      v-model:open="formOpen"
+      :title="formTitle"
       :dismissible="!saving"
       :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
     >
       <template #body>
         <UAlert
-          v-if="editErrorKey"
+          v-if="formErrorKey"
           color="error"
           variant="subtle"
           role="alert"
           class="mb-4"
-          :description="t(editErrorKey)"
+          :description="t(formErrorKey)"
         />
-        <form
-          id="location-edit"
-          @submit.prevent="saveEdit"
+        <UForm
+          id="location-form"
+          :schema="schema"
+          :state="state"
+          :validate-on="[]"
+          class="space-y-4"
+          @submit="onSubmit"
+          @error="formErrorKey = null"
         >
           <UFormField
             :label="t('locations.name')"
-            name="edit-name"
-            class="mb-4"
+            name="name"
             size="xl"
-            :error="editNameErrorKey ? t(editNameErrorKey) : false"
           >
             <UInput
-              id="location-edit-name"
-              v-model="editName"
-              name="edit-name"
+              v-model="state.name"
+              name="name"
               type="text"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editNameErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('locations.kind')"
-            name="edit-kind"
-            class="mb-4"
+            name="kind"
             size="xl"
-            :error="editKindErrorKey ? t(editKindErrorKey) : false"
           >
             <USelect
-              id="location-edit-kind"
-              v-model="editKind"
-              name="edit-kind"
+              v-model="state.kind"
+              name="kind"
               :items="kindItems"
+              :placeholder="t('locations.chooseKind')"
               class="w-full"
-              @update:model-value="editKindErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('locations.address')"
-            name="edit-address"
-            class="mb-4"
+            name="address"
             size="xl"
-            :error="editAddressErrorKey ? t(editAddressErrorKey) : false"
           >
             <UInput
-              id="location-edit-address"
-              v-model="editAddress"
-              name="edit-address"
+              v-model="state.address"
+              name="address"
               type="text"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editAddressErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
-            v-if="editKind === 'airport'"
+            v-if="state.kind === 'airport'"
             :label="t('locations.iata')"
-            name="edit-iata"
-            class="mb-4"
+            name="iata"
             size="xl"
-            :error="editIataErrorKey ? t(editIataErrorKey) : false"
           >
             <UInput
-              id="location-edit-iata"
-              v-model="editIata"
-              name="edit-iata"
+              v-model="state.iata"
+              name="iata"
               type="text"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editIataErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
-        </form>
+        </UForm>
       </template>
       <template #footer>
         <UButton
@@ -537,7 +462,54 @@ onMounted(loadLocations)
           size="xl"
           class="w-full justify-center sm:w-auto"
           :disabled="saving"
-          @click="editing = null"
+          @click="formOpen = false"
+        >
+          {{ t('locations.cancel') }}
+        </UButton>
+        <UButton
+          type="submit"
+          form="location-form"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :loading="saving"
+        >
+          {{ submitLabel }}
+        </UButton>
+      </template>
+    </USlideover>
+
+    <UModal
+      v-model:open="archiveOpen"
+      :title="t('locations.archive')"
+      :dismissible="archivingId === null"
+      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
+    >
+      <template #body>
+        <p
+          v-if="confirming"
+          class="mb-2 font-medium"
+        >
+          {{ confirming.name }}
+        </p>
+        <p>{{ t('locations.confirmArchive') }}</p>
+        <UAlert
+          v-if="archiveErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mt-4"
+          :description="t(archiveErrorKey)"
+        />
+      </template>
+      <template #footer>
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :disabled="archivingId !== null"
+          @click="archiveOpen = false"
         >
           {{ t('locations.cancel') }}
         </UButton>
@@ -545,10 +517,10 @@ onMounted(loadLocations)
           type="button"
           size="xl"
           class="w-full justify-center sm:w-auto"
-          :loading="saving"
-          @click="saveEdit"
+          :loading="archivingId !== null"
+          @click="confirmArchive"
         >
-          {{ saving ? t('locations.saving') : t('locations.save') }}
+          {{ t('locations.archive') }}
         </UButton>
       </template>
     </UModal>

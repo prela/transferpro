@@ -54,8 +54,13 @@ export async function switchLocale(page: Page, locale: 'hr' | 'en') {
   await page.getByRole('button', { name: localeButton[locale], exact: true }).click()
   await saved
   await expect(page.getByRole('heading', { level: 1, name: profileHeading[locale] })).toBeVisible()
-  if (new URL(returnTo).pathname !== '/settings/profile')
+  if (new URL(returnTo).pathname !== '/settings/profile') {
     await page.goto(returnTo)
+    // The returned screen's first click is a Vue handler. Fields that were
+    // already in the document survived a click during hydration; a slideover
+    // does not.
+    await hydrated(page)
+  }
 }
 
 /**
@@ -77,8 +82,10 @@ export async function switchTheme(page: Page, theme: 'light' | 'dark') {
   await page.addInitScript((value) => {
     localStorage.setItem('transferpro-theme', value)
   }, theme)
-  if (new URL(returnTo).pathname !== '/settings/profile')
+  if (new URL(returnTo).pathname !== '/settings/profile') {
     await page.goto(returnTo)
+    await hydrated(page)
+  }
 }
 
 /** Apply light or dark theme before the next navigation so color-mode paints the right variant. */
