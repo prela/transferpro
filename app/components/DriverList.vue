@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Driver, DriverKind } from '../../shared'
-import { driverDateError, driverKindError, driverListSchema, driverNameError, driverPhoneError, driverSchema, memberListSchema } from '../../shared'
+import { driverDateError, driverEmailError, driverKindError, driverListSchema, driverNameError, driverPhoneError, driverSchema, memberListSchema } from '../../shared'
 
 const props = defineProps<{
   isAdmin: boolean
@@ -28,12 +28,14 @@ const pending = ref(false)
 const name = ref('')
 const kind = ref<DriverKind>()
 const phone = ref('')
+const email = ref('')
 const driving = ref('')
 const transport = ref('')
 const memberUserId = ref(noAccount)
 const nameErrorKey = ref<NameErrorKey | null>(null)
 const kindErrorKey = ref<'drivers.kindInvalid' | null>(null)
 const phoneErrorKey = ref<PhoneErrorKey | null>(null)
+const emailErrorKey = ref<'drivers.emailInvalid' | null>(null)
 const drivingErrorKey = ref<'drivers.dateInvalid' | null>(null)
 const transportErrorKey = ref<'drivers.dateInvalid' | null>(null)
 
@@ -41,6 +43,7 @@ const editing = ref<Driver | null>(null)
 const editName = ref('')
 const editKind = ref<DriverKind>()
 const editPhone = ref('')
+const editEmail = ref('')
 const editDriving = ref('')
 const editTransport = ref('')
 const editMemberUserId = ref(noAccount)
@@ -48,6 +51,7 @@ const editMustAccept = ref(false)
 const editNameErrorKey = ref<NameErrorKey | null>(null)
 const editKindErrorKey = ref<'drivers.kindInvalid' | null>(null)
 const editPhoneErrorKey = ref<PhoneErrorKey | null>(null)
+const editEmailErrorKey = ref<'drivers.emailInvalid' | null>(null)
 const editDrivingErrorKey = ref<'drivers.dateInvalid' | null>(null)
 const editTransportErrorKey = ref<'drivers.dateInvalid' | null>(null)
 const editErrorKey = ref<DriverFailure | null>(null)
@@ -71,6 +75,7 @@ const columns = computed(() => [
   { accessorKey: 'name' as const, header: t('drivers.name') },
   { id: 'kind', header: t('drivers.kind') },
   { accessorKey: 'phone' as const, header: t('drivers.phone') },
+  { accessorKey: 'email' as const, header: t('drivers.email') },
   { id: 'driving', header: t('drivers.drivingLicenceExpiresOn') },
   { id: 'transport', header: t('drivers.transportLicenceExpiresOn') },
   { id: 'member', header: t('drivers.member') },
@@ -112,6 +117,10 @@ function phoneKey(value: string): PhoneErrorKey | null {
   if (problem === 'too-long')
     return 'drivers.phoneTooLong'
   return null
+}
+
+function emailKey(value: string): 'drivers.emailInvalid' | null {
+  return driverEmailError(value) === null ? null : 'drivers.emailInvalid'
 }
 
 /** The column is a calendar date. Format the parts so a zone cannot shift the day. */
@@ -159,15 +168,25 @@ function memberBody(value: string): { memberUserId: string } | Record<string, ne
   return value === noAccount ? {} : { memberUserId: value }
 }
 
+function emailBody(value: string, linked: boolean): { email: string } | Record<string, never> {
+  // A linked Driver takes the sign-in email. The office does not send another.
+  if (linked)
+    return {}
+  const trimmed = value.trim()
+  return trimmed === '' ? {} : { email: trimmed }
+}
+
 async function addDriver() {
   const chosen = kind.value
+  const linked = memberUserId.value !== noAccount
   nameErrorKey.value = nameKey(name.value)
   phoneErrorKey.value = phoneKey(phone.value)
+  emailErrorKey.value = linked ? null : emailKey(email.value)
   kindErrorKey.value = driverKindError(chosen ?? '') ? 'drivers.kindInvalid' : null
   drivingErrorKey.value = driverDateError(driving.value) ? 'drivers.dateInvalid' : null
   transportErrorKey.value = driverDateError(transport.value) ? 'drivers.dateInvalid' : null
   formErrorKey.value = null
-  if (nameErrorKey.value || phoneErrorKey.value || kindErrorKey.value || drivingErrorKey.value || transportErrorKey.value || chosen === undefined)
+  if (nameErrorKey.value || phoneErrorKey.value || emailErrorKey.value || kindErrorKey.value || drivingErrorKey.value || transportErrorKey.value || chosen === undefined)
     return
   pending.value = true
   try {
@@ -179,12 +198,14 @@ async function addDriver() {
         phone: phone.value,
         drivingLicenceExpiresOn: driving.value,
         transportLicenceExpiresOn: transport.value,
+        ...emailBody(email.value, linked),
         ...memberBody(memberUserId.value),
       },
     }))
     name.value = ''
     kind.value = undefined
     phone.value = ''
+    email.value = ''
     driving.value = ''
     transport.value = ''
     memberUserId.value = noAccount
@@ -204,6 +225,7 @@ function openEdit(driver: Driver) {
   editName.value = driver.name
   editKind.value = driver.kind
   editPhone.value = driver.phone
+  editEmail.value = driver.email ?? ''
   editDriving.value = driver.drivingLicenceExpiresOn
   editTransport.value = driver.transportLicenceExpiresOn
   editMemberUserId.value = driver.memberUserId ?? noAccount
@@ -211,6 +233,7 @@ function openEdit(driver: Driver) {
   editNameErrorKey.value = null
   editKindErrorKey.value = null
   editPhoneErrorKey.value = null
+  editEmailErrorKey.value = null
   editDrivingErrorKey.value = null
   editTransportErrorKey.value = null
   editErrorKey.value = null
@@ -219,19 +242,23 @@ function openEdit(driver: Driver) {
 async function saveEdit() {
   const current = editing.value
   const chosen = editKind.value
+  const linked = editMemberUserId.value !== noAccount
   if (!current)
     return
   editNameErrorKey.value = nameKey(editName.value)
   editPhoneErrorKey.value = phoneKey(editPhone.value)
+  editEmailErrorKey.value = linked ? null : emailKey(editEmail.value)
   editKindErrorKey.value = driverKindError(chosen ?? '') ? 'drivers.kindInvalid' : null
   editDrivingErrorKey.value = driverDateError(editDriving.value) ? 'drivers.dateInvalid' : null
   editTransportErrorKey.value = driverDateError(editTransport.value) ? 'drivers.dateInvalid' : null
   editErrorKey.value = null
-  if (editNameErrorKey.value || editPhoneErrorKey.value || editKindErrorKey.value || editDrivingErrorKey.value || editTransportErrorKey.value || chosen === undefined)
+  if (editNameErrorKey.value || editPhoneErrorKey.value || editEmailErrorKey.value || editKindErrorKey.value || editDrivingErrorKey.value || editTransportErrorKey.value || chosen === undefined)
     return
   saving.value = true
   try {
     const memberChanged = (current.memberUserId ?? noAccount) !== editMemberUserId.value
+    const trimmedEmail = editEmail.value.trim()
+    const emailChanged = trimmedEmail !== (current.email ?? '')
     driverSchema.parse(await $fetch(`/api/drivers/${current.id}`, {
       method: 'PATCH',
       body: {
@@ -244,6 +271,8 @@ async function saveEdit() {
         ...(memberChanged
           ? { memberUserId: editMemberUserId.value === noAccount ? null : editMemberUserId.value }
           : {}),
+        // A linked Driver keeps the sign-in email. The office edits the address only after the link is gone.
+        ...(!linked && emailChanged ? { email: trimmedEmail === '' ? null : trimmedEmail } : {}),
         // Starts off. Only an admin may turn it on or off, so a dispatcher omits it.
         ...(props.isAdmin ? { mustAccept: editMustAccept.value } : {}),
       },
@@ -292,7 +321,10 @@ onMounted(() => {
       class="mb-4"
       :description="t(formErrorKey)"
     />
-    <form @submit.prevent="addDriver">
+    <form
+      novalidate
+      @submit.prevent="addDriver"
+    >
       <UFormField
         :label="t('drivers.name')"
         name="name"
@@ -348,6 +380,27 @@ onMounted(() => {
           autocomplete="off"
           class="w-full"
           @update:model-value="phoneErrorKey = null"
+        />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
+      </UFormField>
+      <UFormField
+        v-if="memberUserId === noAccount"
+        :label="t('drivers.email')"
+        name="email"
+        class="mb-4"
+        size="xl"
+        :error="emailErrorKey ? t(emailErrorKey) : false"
+      >
+        <UInput
+          id="driver-email"
+          v-model="email"
+          name="email"
+          type="email"
+          autocomplete="off"
+          class="w-full"
+          @update:model-value="emailErrorKey = null"
         />
         <template #error="{ error }">
           <span role="alert">{{ error }}</span>
@@ -498,6 +551,7 @@ onMounted(() => {
         />
         <form
           id="driver-edit"
+          novalidate
           @submit.prevent="saveEdit"
         >
           <UFormField
@@ -555,6 +609,33 @@ onMounted(() => {
               class="w-full"
               @update:model-value="editPhoneErrorKey = null"
             />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('drivers.email')"
+            name="edit-email"
+            class="mb-4"
+            size="xl"
+            :error="editEmailErrorKey ? t(editEmailErrorKey) : false"
+          >
+            <UInput
+              id="driver-edit-email"
+              v-model="editEmail"
+              name="edit-email"
+              type="email"
+              autocomplete="off"
+              class="w-full"
+              :disabled="editMemberUserId !== noAccount"
+              @update:model-value="editEmailErrorKey = null"
+            />
+            <p
+              v-if="editMemberUserId !== noAccount"
+              class="mt-1 text-sm text-muted"
+            >
+              {{ t('drivers.emailFromAccount') }}
+            </p>
             <template #error="{ error }">
               <span role="alert">{{ error }}</span>
             </template>

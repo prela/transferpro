@@ -124,6 +124,14 @@ it('records a Driver by id and field names, and refuses the phone and the dates'
     ...changed,
     data: { driverId, field: 'phone', from: phone, to: '+385911110000' },
   }).success).toBe(false)
+  expect(auditFactSchema.parse({
+    ...changed,
+    data: { driverId, field: 'email' as const },
+  }).data).toEqual({ driverId, field: 'email' })
+  expect(auditFactSchema.safeParse({
+    ...changed,
+    data: { driverId, field: 'email', email: 'marko@example.test' },
+  }).success).toBe(false)
   expect(auditFactSchema.safeParse({
     ...changed,
     data: { driverId, field: 'notes' },

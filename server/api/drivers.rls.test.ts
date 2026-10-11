@@ -163,11 +163,13 @@ it('post answers 400 for a bad body and does not echo the phone, and no session 
   expect((await call('POST', '/api/drivers', undefined, driverBody({ kind: 'partner' }))).status).toBe(400)
   expect((await call('POST', '/api/drivers', undefined, driverBody({ drivingLicenceExpiresOn: '2026-02-31' }))).status).toBe(400)
   expect((await call('POST', '/api/drivers', undefined, driverBody({ mustAccept: true }))).status).toBe(400)
-  const unknown = await call('POST', '/api/drivers', undefined, driverBody({ email: 'marko@example.test' }))
+  const unknown = await call('POST', '/api/drivers', undefined, driverBody({ notes: 'call after 18' }))
   expect(unknown.status).toBe(400)
   const unknownText = await unknown.text()
   expect(unknownText).not.toContain(phone)
-  expect(unknownText).not.toContain('marko@example.test')
+  const malformed = await call('POST', '/api/drivers', undefined, driverBody({ email: 'not-an-email' }))
+  expect(malformed.status).toBe(400)
+  expect(await malformed.text()).not.toContain('not-an-email')
   expect((await call('PATCH', '/api/drivers/not-a-uuid', undefined, { name: 'Marko' })).status).toBe(400)
   expect((await call('GET', '/api/drivers')).status).toBe(401)
   expect((await call('POST', '/api/drivers', undefined, driverBody())).status).toBe(401)
@@ -204,6 +206,7 @@ it('a dispatcher and an admin can add, correct, and list a Driver, and a driver 
     drivingLicenceExpiresOn: '2027-06-01',
     transportLicenceExpiresOn: '2028-01-31',
     memberUserId: null,
+    email: null,
     mustAccept: false,
   })
 
@@ -236,6 +239,7 @@ it('a dispatcher and an admin can add, correct, and list a Driver, and a driver 
     drivingLicenceExpiresOn: '2029-03-03',
     mustAccept: true,
     memberUserId: null,
+    email: null,
   })
 
   expect((await call('PATCH', `/api/drivers/${row.id}`, driver, { name: 'Nope' })).status).toBe(403)
@@ -303,4 +307,69 @@ it('links a driver member, refuses a non-driver and a second Driver, and another
   const rows = await auditRows(first.tenantId)
   expect(JSON.stringify(rows)).not.toContain(phone)
   expect(JSON.stringify(rows)).not.toContain(driverMember)
+})
+
+it('records an optional email, copies the sign-in email, and does not audit the address', async () => {
+  const created = await tenant('hdr-email', 'Ema Admin')
+  await addMember(created.tenantId, 'hdr-email-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const driverMember = await addMember(created.tenantId, 'hdr-email-driver@example.test', 'Drago Driver', 'driver')
+  const signInEmail = 'hdr-email-driver@example.test'
+  const officeEmail = 'office@example.test'
+  const admin = await signIn('hdr-email-admin@example.test')
+  const dispatcher = await signIn('hdr-email-dispatcher@example.test')
+  const driver = await signIn(signInEmail)
+
+  expect((await call('POST', '/api/drivers', driver, driverBody({ email: officeEmail }))).status).toBe(403)
+  expect((await call('POST', '/api/drivers', admin, driverBody({ email: 'not-an-email' }))).status).toBe(400)
+  expect(await (await call('GET', '/api/drivers', admin)).json()).toEqual({ drivers: [] })
+
+  const added = await call('POST', '/api/drivers', dispatcher, driverBody({ email: `  ${officeEmail}  ` }))
+  expect(added.status).toBe(200)
+  const row = await added.json()
+  expect(row.email).toBe(officeEmail)
+  expect(await (await call('GET', '/api/drivers', admin)).json()).toEqual({ drivers: [row] })
+
+  const cleared = await call('PATCH', `/api/drivers/${row.id}`, dispatcher, { email: null })
+  expect(cleared.status).toBe(200)
+  expect((await cleared.json()).email).toBeNull()
+
+  const replaced = await call('PATCH', `/api/drivers/${row.id}`, admin, { email: 'next@example.test' })
+  expect(replaced.status).toBe(200)
+  expect((await replaced.json()).email).toBe('next@example.test')
+
+  expect((await call('POST', '/api/drivers', admin, driverBody({
+    name: 'S računom',
+    memberUserId: driverMember,
+    email: officeEmail,
+  }))).status).toBe(400)
+
+  const linked = await call('POST', '/api/drivers', admin, driverBody({
+    name: 'S računom',
+    memberUserId: driverMember,
+  }))
+  expect(linked.status).toBe(200)
+  const linkedRow = await linked.json()
+  expect(linkedRow.email).toBe(signInEmail)
+  expect((await call('PATCH', `/api/drivers/${linkedRow.id}`, dispatcher, { email: 'other@example.test' })).status).toBe(400)
+  expect((await call('PATCH', `/api/drivers/${linkedRow.id}`, driver, { email: null })).status).toBe(403)
+
+  const unlinked = await call('PATCH', `/api/drivers/${linkedRow.id}`, admin, { memberUserId: null })
+  expect(unlinked.status).toBe(200)
+  expect(await unlinked.json()).toMatchObject({ memberUserId: null, email: signInEmail })
+
+  const edited = await call('PATCH', `/api/drivers/${linkedRow.id}`, dispatcher, { email: 'kept@example.test' })
+  expect(edited.status).toBe(200)
+  expect((await edited.json()).email).toBe('kept@example.test')
+
+  const rows = await auditRows(created.tenantId)
+  const text = JSON.stringify(rows)
+  expect(text).not.toContain(officeEmail)
+  expect(text).not.toContain(signInEmail)
+  expect(text).not.toContain('next@example.test')
+  expect(text).not.toContain('kept@example.test')
+  expect(rows.filter(entry => entry.action === 'driver.field_changed').map(entry => entry.data)).toEqual(expect.arrayContaining([
+    { driverId: row.id, field: 'email' },
+    { driverId: linkedRow.id, field: 'memberUserId' },
+    { driverId: linkedRow.id, field: 'email' },
+  ]))
 })

@@ -25,8 +25,10 @@ const ride = {
   mustAccept: false,
 }
 
-it('shows the price and cash when the Ride is cash', () => {
-  expect(presentDriverRide(ride)).toEqual({
+it('shows the price and cash when the Ride is cash, and does not include a Driver email', () => {
+  const shown = presentDriverRide(ride)
+  expect(shown).not.toHaveProperty('email')
+  expect(shown).toEqual({
     rideId: ride.rideId,
     pickupAt: ride.pickupAt,
     guestName: ride.guestName,
