@@ -49,7 +49,9 @@ const columns = computed(() => [
   { accessorKey: 'name' as const, header: t('locations.name') },
   { id: 'kind', header: t('locations.kind') },
   { accessorKey: 'address' as const, header: t('locations.address') },
-  { accessorKey: 'iata' as const, header: t('locations.iata') },
+  // The labeled field is the airport form. This cell shows a stored code
+  // and stays blank for a hotel, an address, or other kind.
+  { id: 'iata', header: '' },
   { id: 'status', header: '' },
   { id: 'actions', header: '' },
 ])
@@ -389,6 +391,9 @@ onMounted(loadLocations)
         </template>
         <template #address-cell="{ row }">
           {{ row.original.address ?? '' }}
+        </template>
+        <template #iata-cell="{ row }">
+          {{ row.original.kind === 'airport' ? (row.original.iata ?? '') : '' }}
         </template>
         <template #status-cell="{ row }">
           {{ row.original.archivedAt ? t('locations.archived') : '' }}

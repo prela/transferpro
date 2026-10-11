@@ -52,7 +52,13 @@ export const locationIataSchema = z.union([
   z.null(),
   z.string().transform((value) => {
     const trimmed = value.trim()
-    return trimmed === '' ? null : trimmed.toUpperCase()
+    if (trimmed === '')
+      return null
+    // Uppercase only after the letters are already three ASCII letters.
+    // `ßa`.toUpperCase() is `SSA`, which would otherwise pass a later check.
+    if (!/^[a-z]{3}$/i.test(trimmed))
+      return trimmed
+    return trimmed.toUpperCase()
   }).pipe(z.string().regex(/^[A-Z]{3}$/).nullable()),
 ])
 

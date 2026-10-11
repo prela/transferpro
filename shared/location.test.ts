@@ -54,6 +54,8 @@ it('refuses a code that is not three letters, and a code on a hotel, address, or
   expect(() => parseCreateLocation({ ...createBody, iata: 'DBVX' })).toThrow(LocationInputError)
   expect(() => parseCreateLocation({ ...createBody, iata: 'DB1' })).toThrow(LocationInputError)
   expect(() => parseCreateLocation({ ...createBody, iata: 'D B' })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, iata: 'ßa' })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, iata: 'ﬃ' })).toThrow(LocationInputError)
   expect(() => parseCreateLocation({ ...createBody, kind: 'hotel', iata: 'DBV' })).toThrow(LocationInputError)
   expect(() => parseCreateLocation({ ...createBody, kind: 'address', iata: 'DBV' })).toThrow(LocationInputError)
   expect(() => parseCreateLocation({ ...createBody, kind: 'other', iata: 'DBV' })).toThrow(LocationInputError)
