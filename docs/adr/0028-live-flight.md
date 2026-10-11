@@ -35,3 +35,5 @@ A flight-number change throws away a landing time a person typed for the previou
 The unclosed mark can show while the flight is still in the air, because it does not follow the expected arrival. A Location with no IATA code is never tracked, so the pilot stays on a typed landing until that airport Location has a code. The Charter non-goal is not edited here.
 
 The notice is a later use of the ADR-0026 port. ADR-0026's rule stands for everything it already covers: a landing-time change still sends no work order. The 15-minute ask can notice a movement only at the next ask. No vendor is chosen, so this decision does not add an adapter.
+
+Which Tenants are due is `app.tenants_due_flight_landing`, owned by the migrator and `SECURITY DEFINER`. The app role has no session yet, so row-level security would hide every other Tenant, and this ask has no request to mint one from. The function returns tenant ids only. Its `search_path` is `pg_catalog, pg_temp`. `EXECUTE` is granted only to `transferpro_app`.

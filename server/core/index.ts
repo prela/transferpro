@@ -223,10 +223,18 @@ export interface JobHandlerScope {
   readonly transaction: TenantTransaction
 }
 
+/** A recurring job. It is not one Tenant, and it carries no request id. */
+export interface ScheduledJob {
+  readonly id: string
+  readonly name: string
+  readonly data: unknown
+}
+
 export interface JobQueue {
   /**
    * Insert one job in `transaction`. A rollback of that transaction
    * removes the job. The tenant is `context.tenantId`, not a field of `data`.
+   * The current request id, when one is open, is stored beside `tenantId`.
    */
   enqueue: (
     context: TenantContext,
@@ -237,12 +245,40 @@ export interface JobQueue {
 
   /**
    * Claim one waiting job and run `handle` inside a new tenant transaction.
+   * The envelope's request id is restored before that session opens.
    * Null when the queue has nothing to take.
    */
   handleNext: (
     name: string,
     handle: (job: QueuedJob, scope: JobHandlerScope) => Promise<void>,
   ) => Promise<QueuedJob | null>
+
+  /**
+   * Recurring send on this same queue. No tenant and no request exist
+   * at schedule time, so nothing is invented onto the stored payload.
+   */
+  schedule: (name: string, cron: string, data: unknown) => Promise<void>
+
+  /**
+   * Worker for `schedule`. No tenant session is opened.
+   * `publish` enqueues one tenant job through the envelope path.
+   */
+  workScheduled: (
+    name: string,
+    handle: (
+      job: ScheduledJob,
+      publish: (tenantId: string, name: string, data: unknown) => Promise<void>,
+    ) => Promise<void>,
+  ) => Promise<void>
+
+  /**
+   * Worker for jobs from `enqueue` and `publish`. Restores the envelope's
+   * request id, then opens the tenant session, then runs `handle`.
+   */
+  work: (
+    name: string,
+    handle: (job: QueuedJob, scope: JobHandlerScope) => Promise<void>,
+  ) => Promise<void>
 
   close: () => Promise<void>
 }

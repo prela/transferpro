@@ -163,6 +163,29 @@ it('restores the request id stamped at enqueue inside the tenant session', async
   expect(lines[1]?.tenant_id).toBeUndefined()
 })
 
+it('a worker restores the request id before the tenant session', async () => {
+  const workerQueue = 'foundation_worker'
+  const logs = captureLogs()
+  const request = '7c2f1d4b-3333-4333-8333-333333333333'
+  let finish: () => void = () => {}
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+
+  await queue.work(workerQueue, async () => {
+    logs.logger.info({ event: 'worker' })
+    finish()
+  })
+
+  await runWithRequestId(request, () =>
+    tenantTransaction(tenantA, transaction =>
+      queue.enqueue({ tenantId: tenantA }, transaction, workerQueue, { n: 1 }), true))
+
+  await finished
+  const lines = logs.lines()
+  expect(lines[0]).toMatchObject({ event: 'worker', request_id: request, tenant_id: tenantA })
+})
+
 it('the queue role cannot read tenant or auth tables, and the app role cannot create queue objects', async () => {
   const queuePool = new pg.Pool({ connectionString: queueDatabaseUrl })
   const queueClient = await queuePool.connect()

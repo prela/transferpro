@@ -86,24 +86,70 @@ export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
     ensured.add(name)
   }
 
+  /**
+   * The request id is not part of the caller's payload. It is whatever
+   * request is open now, so the worker can put it back on the log line.
+   * A caller outside a request stores none, and this does not invent one.
+   */
+  async function send(
+    context: TenantContext,
+    transaction: Parameters<typeof asDrizzle>[0],
+    name: string,
+    data: unknown,
+  ) {
+    raiseIfBossFailed()
+    const tenantId = z.uuid().parse(context.tenantId)
+    await ensureQueue(name)
+    const requestId = currentRequestId()
+    const stored = requestId === undefined
+      ? { tenantId, data }
+      : { tenantId, requestId, data }
+    // fromDrizzle runs the insert on the caller's transaction, so a
+    // rollback drops the job together with the rest of that unit of work.
+    const id = await boss.send(name, stored, {
+      db: fromDrizzle(asDrizzle(transaction), sql),
+    })
+    if (!id)
+      throw new Error(`pg-boss did not accept a job on ${name}`)
+  }
+
+  /**
+   * Request scope first, then the tenant session, so the handler keeps
+   * the restored request id. An unsafe or missing id is left unset.
+   * `complete` is only for `handleNext`: `work` lets pg-boss settle the job.
+   */
+  async function deliver(
+    transaction: Parameters<typeof asDrizzle>[0],
+    job: { id: string, name: string, data: unknown },
+    handle: (job: QueuedJob, scope: JobHandlerScope) => Promise<void>,
+    complete: boolean,
+  ) {
+    const envelope = envelopeSchema.parse(job.data)
+    const queued: QueuedJob = {
+      id: job.id,
+      name: job.name,
+      tenantId: envelope.tenantId,
+      data: envelope.data,
+    }
+    const scope: JobHandlerScope = { transaction }
+    const handleJob = async () => {
+      await openTenantSessionById(transaction, envelope.tenantId, async () => {
+        await handle(queued, scope)
+        if (complete)
+          await boss.complete(job.name, job.id, null, { db: fromDrizzle(asDrizzle(transaction), sql) })
+      })
+    }
+    const requestId = acceptRequestId(envelope.requestId)
+    if (requestId === undefined)
+      await handleJob()
+    else
+      await runWithRequestId(requestId, handleJob)
+    return queued
+  }
+
   return {
     async enqueue(context, transaction, name, data) {
-      raiseIfBossFailed()
-      const tenantId = z.uuid().parse(context.tenantId)
-      await ensureQueue(name)
-      // The request id is not part of the caller's payload. It is whatever
-      // request is open now, so the worker can put it back on the log line.
-      const requestId = currentRequestId()
-      const stored = requestId === undefined
-        ? { tenantId, data }
-        : { tenantId, requestId, data }
-      // fromDrizzle runs the insert on the caller's transaction, so a
-      // rollback drops the job together with the rest of that unit of work.
-      const id = await boss.send(name, stored, {
-        db: fromDrizzle(asDrizzle(transaction), sql),
-      })
-      if (!id)
-        throw new Error(`pg-boss did not accept a job on ${name}`)
+      await send(context, transaction, name, data)
     },
 
     async handleNext(name, handle) {
@@ -117,29 +163,45 @@ export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
         const [job] = await boss.fetch(name, { batchSize: 1, db })
         if (!job)
           return null
+        return deliver(transaction, job, handle, true)
+      })
+    },
 
-        const envelope = envelopeSchema.parse(job.data)
-        const queued: QueuedJob = {
-          id: job.id,
-          name: job.name,
-          tenantId: envelope.tenantId,
-          data: envelope.data,
+    async schedule(name, cron, data) {
+      raiseIfBossFailed()
+      await ensureQueue(name)
+      // `{ data }` only. A schedule is not a tenant and not a request.
+      await boss.schedule(name, cron, { data })
+    },
+
+    async workScheduled(name, handle) {
+      raiseIfBossFailed()
+      await ensureQueue(name)
+      const scheduled = z.object({ data: z.unknown() })
+      await boss.work(name, async (jobs) => {
+        for (const job of jobs) {
+          const payload = scheduled.parse(job.data)
+          await handle(
+            { id: job.id, name: job.name, data: payload.data },
+            async (tenantId, jobName, jobData) => {
+              await appDb.transaction(async (transaction) => {
+                await send({ tenantId }, transaction, jobName, jobData)
+              })
+            },
+          )
         }
-        const scope: JobHandlerScope = { transaction }
-        const handleJob = async () => {
-          await openTenantSessionById(transaction, envelope.tenantId, async () => {
-            await handle(queued, scope)
-            await boss.complete(name, job.id, null, { db })
+      })
+    },
+
+    async work(name, handle) {
+      raiseIfBossFailed()
+      await ensureQueue(name)
+      await boss.work(name, async (jobs) => {
+        for (const job of jobs) {
+          await appDb.transaction(async (transaction) => {
+            await deliver(transaction, job, handle, false)
           })
         }
-        // Request scope outside the tenant scope, so the tenant call keeps
-        // the restored request id. An unsafe or missing id is left unset.
-        const requestId = acceptRequestId(envelope.requestId)
-        if (requestId === undefined)
-          await handleJob()
-        else
-          await runWithRequestId(requestId, handleJob)
-        return queued
       })
     },
 

@@ -6,7 +6,8 @@ Out of scope: the expected-arrival notice, the will-not-arrive notice, a flight-
 
 - `landing_at` is on the Transfer. The feed writes it only while it is empty, the chosen arrival is `landed` at the pickup IATA code, and the instant is not after now. The Ride state is not updated. There is no audit entry for that write.
 - The arrival kept is the closest within 6 hours. An instant inside that window is on the pickup's calendar date or the day on either side in the Tenant zone. If that closest arrival is at another airport, or two are equally close, nothing is stored.
-- `app.tenants_due_flight_landing` returns Tenant ids only. The schedule opens one session per id. The job payload is empty and carries no request id. The status port in this process returns an empty list; a vendor is a later ticket.
+- `app.tenants_due_flight_landing` returns Tenant ids only. Why `SECURITY DEFINER` is acceptable is in ADR-0028: ids only, `search_path` fixed, `EXECUTE` only for `transferpro_app`.
+- The schedule and the worker are `JobQueue` from `createPgBossJobQueue`. Do not construct another PgBoss. The tick is not one Tenant and invents no request id. It enqueues one ask per Tenant. That envelope carries `tenantId` and, when a request is open, `requestId`. The worker restores it with `runWithRequestId` before the port opens the session. The status port in this process returns an empty list; a vendor is a later ticket.
 - `recordLandingTime` refuses a future instant and a finished Ride. It has no HTTP route. #27 owns the screen, the roles, and the audit.
 - After review, the unused notice port was removed. #175 and #176 add the moved and will-not-arrive facts.
 
