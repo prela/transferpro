@@ -11,12 +11,15 @@ import { createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
 import { setRosterDay } from '../modules/roster'
 import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale } from '../modules/tenancy'
-import { assignRide, createTransfer } from '../modules/transfers'
+import { assignRide, createTransfer, listUpcomingRides } from '../modules/transfers'
 import { archiveVehicle, createVehicle } from '../modules/vehicles'
 import postAcceptByPhone from './rides/[id]/accept-by-phone.post'
 import postAccept from './rides/[id]/accept.post'
 import postAssign from './rides/[id]/assign.post'
+import postClear from './rides/[id]/clear.post'
+import postReassign from './rides/[id]/reassign.post'
 import getRosterVehicle from './rides/[id]/roster-vehicle.get'
+import postVehicle from './rides/[id]/vehicle.post'
 
 /**
  * POST /api/rides/:id/assign, GET /api/rides/:id/roster-vehicle,
@@ -57,6 +60,12 @@ app.use('/api/rides', (event) => {
   event.context.params = { id: id ?? '' }
   if (action === 'assign' && event.method === 'POST')
     return postAssign(event)
+  if (action === 'vehicle' && event.method === 'POST')
+    return postVehicle(event)
+  if (action === 'clear' && event.method === 'POST')
+    return postClear(event)
+  if (action === 'reassign' && event.method === 'POST')
+    return postReassign(event)
   if (action === 'accept' && event.method === 'POST')
     return postAccept(event)
   if (action === 'accept-by-phone' && event.method === 'POST')
@@ -1570,4 +1579,162 @@ it('lets exactly one of two office accepts win', async () => {
     fields: ['state'],
   })
   expect(await acceptanceAudits(world.tenantId)).toEqual([])
+})
+
+async function changeAudits(tenantId: string) {
+  const result = await ownerPool.query<{
+    action: string
+    actor_user_id: string
+    subject_user_id: string | null
+    data: unknown
+  }>(
+    `select action::text as action, actor_user_id, subject_user_id, data from app.audit_entry
+     where tenant_id = $1 and action::text in ('ride.vehicle_changed', 'ride.cleared', 'ride.reassigned')
+     order by occurred_at, id`,
+    [tenantId],
+  )
+  return result.rows
+}
+
+it('changes the vehicle, reassigns, and clears, and a driver is refused with no transition', async () => {
+  const world = await office('hasg-chg')
+  const first = await linkedDriver(world, 'hasg-chg-a@example.test', 'Ana Prva', '+385911110071')
+  const second = await linkedDriver(world, 'hasg-chg-b@example.test', 'Iva Druga', '+385911110072')
+  await updateDriver(world.admin, first.driver.id, { mustAccept: true })
+  await updateDriver(world.admin, second.driver.id, { mustAccept: false })
+  const kept = await createVehicle(world.dispatcher, vehicleBody('ZG8301AA'))
+  const next = await createVehicle(world.dispatcher, vehicleBody('ZG8302AA'))
+  const archived = await createVehicle(world.dispatcher, vehicleBody('ZG8303AA'))
+  await archiveVehicle(world.dispatcher, archived.id)
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: first.driver.id,
+    vehicleId: kept.id,
+  })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.dispatcher, {})).status).toBe(200)
+
+  const driverVehicle = await call('POST', `/api/rides/${recorded.ride.id}/vehicle`, first.session, { vehicleId: next.id })
+  expect(driverVehicle.status).toBe(403)
+  const driverClear = await call('POST', `/api/rides/${recorded.ride.id}/clear`, first.session, {})
+  expect(driverClear.status).toBe(403)
+  const driverReassign = await call('POST', `/api/rides/${recorded.ride.id}/reassign`, first.session, {
+    driverId: second.driver.id,
+    vehicleId: next.id,
+  })
+  expect(driverReassign.status).toBe(403)
+  expect(await rideRow(recorded.ride.id)).toEqual({
+    state: 'accepted',
+    driver_id: first.driver.id,
+    vehicle_id: kept.id,
+    must_accept: true,
+  })
+  expect(await changeAudits(world.tenantId)).toEqual([])
+  expect((await listUpcomingRides(first.session)).rides.map(ride => ride.rideId)).toContain(recorded.ride.id)
+
+  const sameVehicle = await call('POST', `/api/rides/${recorded.ride.id}/vehicle`, world.dispatcher, { vehicleId: kept.id })
+  expect(sameVehicle.status).toBe(409)
+  expect(await sameVehicle.text()).toContain('ride_vehicle_unchanged')
+  expect(await changeAudits(world.tenantId)).toEqual([])
+
+  const archivedVehicle = await call('POST', `/api/rides/${recorded.ride.id}/vehicle`, world.dispatcher, { vehicleId: archived.id })
+  expect(archivedVehicle.status).toBe(409)
+  expect(await archivedVehicle.text()).toContain('ride_vehicle_archived')
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ vehicle_id: kept.id, state: 'accepted', must_accept: true })
+
+  const changed = await call('POST', `/api/rides/${recorded.ride.id}/vehicle`, world.dispatcher, { vehicleId: next.id })
+  expect(changed.status).toBe(200)
+  expect(await changed.json()).toEqual({
+    id: recorded.ride.id,
+    transferId: recorded.transfer.id,
+    state: 'accepted',
+    driverId: first.driver.id,
+    vehicleId: next.id,
+    mustAccept: true,
+  })
+
+  const sameDriver = await call('POST', `/api/rides/${recorded.ride.id}/reassign`, world.dispatcher, {
+    driverId: first.driver.id,
+    vehicleId: kept.id,
+  })
+  expect(sameDriver.status).toBe(409)
+  expect(await sameDriver.text()).toContain('ride_same_driver')
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'accepted', driver_id: first.driver.id, must_accept: true })
+
+  const moved = await call('POST', `/api/rides/${recorded.ride.id}/reassign`, world.admin, {
+    driverId: second.driver.id,
+    vehicleId: kept.id,
+  })
+  expect(moved.status).toBe(200)
+  expect(await moved.json()).toMatchObject({
+    state: 'assigned',
+    driverId: second.driver.id,
+    vehicleId: kept.id,
+    mustAccept: false,
+  })
+  expect((await listUpcomingRides(first.session)).rides.map(ride => ride.rideId)).not.toContain(recorded.ride.id)
+  expect((await listUpcomingRides(second.session)).rides.map(ride => ride.rideId)).toContain(recorded.ride.id)
+
+  const cleared = await call('POST', `/api/rides/${recorded.ride.id}/clear`, world.dispatcher, {})
+  expect(cleared.status).toBe(200)
+  expect(await cleared.json()).toEqual({
+    id: recorded.ride.id,
+    transferId: recorded.transfer.id,
+    state: 'unassigned',
+    driverId: null,
+    vehicleId: null,
+    mustAccept: null,
+  })
+  expect((await listUpcomingRides(second.session)).rides.map(ride => ride.rideId)).not.toContain(recorded.ride.id)
+
+  const again = await call('POST', `/api/rides/${recorded.ride.id}/clear`, world.dispatcher, {})
+  expect(again.status).toBe(409)
+  expect(await again.text()).toContain('ride_not_open')
+  expect(await rideRow(recorded.ride.id)).toMatchObject({
+    state: 'unassigned',
+    driver_id: null,
+    vehicle_id: null,
+    must_accept: null,
+  })
+
+  const audits = await changeAudits(world.tenantId)
+  expect(audits.map(row => row.action)).toEqual(['ride.vehicle_changed', 'ride.reassigned', 'ride.cleared'])
+  expect(audits[0]).toMatchObject({
+    actor_user_id: world.dispatcherId,
+    subject_user_id: null,
+    data: {
+      rideId: recorded.ride.id,
+      driverId: first.driver.id,
+      vehicleId: next.id,
+      fields: ['vehicleId'],
+    },
+  })
+  expect(audits[1]).toMatchObject({
+    actor_user_id: world.adminUserId,
+    subject_user_id: null,
+    data: {
+      rideId: recorded.ride.id,
+      driverId: second.driver.id,
+      vehicleId: kept.id,
+      fields: ['state', 'driverId', 'vehicleId', 'mustAccept'],
+    },
+  })
+  expect(audits[2]).toMatchObject({
+    actor_user_id: world.dispatcherId,
+    subject_user_id: null,
+    data: {
+      rideId: recorded.ride.id,
+      driverId: second.driver.id,
+      vehicleId: kept.id,
+      fields: ['state', 'driverId', 'vehicleId', 'mustAccept'],
+    },
+  })
+  const stored = JSON.stringify(audits)
+  expect(stored).not.toContain('+385911110071')
+  expect(stored).not.toContain('ZG8301AA')
+  expect(stored).not.toContain(guest)
+
+  const other = await office('hasg-chg-b')
+  const foreign = await call('POST', `/api/rides/${recorded.ride.id}/vehicle`, other.dispatcher, { vehicleId: next.id })
+  expect(foreign.status).toBe(404)
+  expect(await changeAudits(other.tenantId)).toEqual([])
 })

@@ -9,6 +9,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const toast = useToast()
 const { notifyAuditChanged } = useAuditRefresh()
 
 // The board opens on the operational day that contains now. A pickup form
@@ -21,6 +22,11 @@ const locations = ref<Location[]>([])
 const drivers = ref<Driver[]>([])
 const vehicles = ref<Vehicle[]>([])
 const assigning = ref<{ rideId: string, guestName: string } | null>(null)
+const changingVehicle = ref<{ rideId: string, guestName: string, vehicleId: string } | null>(null)
+const reassigning = ref<{ rideId: string, guestName: string, driverId: string } | null>(null)
+const clearing = ref<{ rideId: string, guestName: string } | null>(null)
+const clearPending = ref(false)
+const clearErrorKey = ref<'ride.notOpen' | 'ride.notFound' | 'ride.signedOut' | 'ride.changeFailed' | null>(null)
 // The Ride whose phone confirmation the office is about to record. Null closes the dialog.
 const acceptingByPhone = ref<{ rideId: string, guestName: string } | null>(null)
 const acceptByPhonePending = ref(false)
@@ -151,6 +157,8 @@ function focusAssignButton(rideId: string) {
 }
 
 function openAssign(ride: TransferDayRide) {
+  changingVehicle.value = null
+  reassigning.value = null
   assigning.value = { rideId: ride.rideId, guestName: ride.guestName }
 }
 
@@ -171,6 +179,118 @@ function closeAssign() {
  */
 function canRecordAcceptanceByPhone(ride: TransferDayRide): boolean {
   return ride.state === 'assigned' && ride.mustAccept === true
+}
+
+/** Assigned or accepted, with both a Driver and a Vehicle. Those are the three office commands. */
+function canChangeAssignment(ride: TransferDayRide): boolean {
+  return (ride.state === 'assigned' || ride.state === 'accepted')
+    && ride.driverId !== null
+    && ride.vehicleId !== null
+}
+
+function openVehicleChange(ride: TransferDayRide) {
+  if (!canChangeAssignment(ride) || ride.vehicleId === null)
+    return
+  assigning.value = null
+  reassigning.value = null
+  changingVehicle.value = { rideId: ride.rideId, guestName: ride.guestName, vehicleId: ride.vehicleId }
+}
+
+function openReassign(ride: TransferDayRide) {
+  if (!canChangeAssignment(ride) || ride.driverId === null)
+    return
+  assigning.value = null
+  changingVehicle.value = null
+  reassigning.value = { rideId: ride.rideId, guestName: ride.guestName, driverId: ride.driverId }
+}
+
+function closeVehicleChange() {
+  const rideId = changingVehicle.value?.rideId
+  changingVehicle.value = null
+  if (!rideId)
+    return
+  void nextTick(() => {
+    document.getElementById(`change-vehicle-${rideId}`)?.focus()
+  })
+}
+
+function closeReassign() {
+  const rideId = reassigning.value?.rideId
+  reassigning.value = null
+  if (!rideId)
+    return
+  void nextTick(() => {
+    document.getElementById(`reassign-ride-${rideId}`)?.focus()
+  })
+}
+
+async function onCommandSaved() {
+  changingVehicle.value = null
+  reassigning.value = null
+  await loadDay()
+  await nextTick()
+  dayListRegion.value?.focus()
+}
+
+function openClear(ride: TransferDayRide) {
+  if (!canChangeAssignment(ride) || clearPending.value)
+    return
+  clearErrorKey.value = null
+  clearing.value = { rideId: ride.rideId, guestName: ride.guestName }
+}
+
+function closeClear() {
+  if (clearPending.value)
+    return
+  const rideId = clearing.value?.rideId
+  clearErrorKey.value = null
+  clearing.value = null
+  if (!rideId)
+    return
+  void nextTick(() => {
+    document.getElementById(`clear-ride-${rideId}`)?.focus()
+  })
+}
+
+const clearOpen = computed({
+  get: () => clearing.value !== null,
+  set(open: boolean) {
+    if (!open)
+      closeClear()
+  },
+})
+
+async function confirmClear() {
+  const target = clearing.value
+  if (!target || clearPending.value)
+    return
+  clearPending.value = true
+  clearErrorKey.value = null
+  try {
+    rideSchema.parse(await $fetch(`/api/rides/${target.rideId}/clear`, {
+      method: 'POST',
+      body: {},
+    }))
+    notifyAuditChanged()
+    toast.add({ title: t('ride.cleared'), color: 'success' })
+    clearing.value = null
+    await loadDay()
+  }
+  catch (error) {
+    if (errorCode(error) === 'ride_not_open')
+      clearErrorKey.value = 'ride.notOpen'
+    else if (httpStatus(error) === 401)
+      clearErrorKey.value = 'ride.signedOut'
+    else if (httpStatus(error) === 404)
+      clearErrorKey.value = 'ride.notFound'
+    else
+      clearErrorKey.value = 'ride.changeFailed'
+    if (httpStatus(error) === 409)
+      await loadDay()
+  }
+  finally {
+    clearPending.value = false
+  }
 }
 
 function acceptByPhoneButtonId(rideId: string): string {
@@ -630,34 +750,71 @@ onMounted(loadAll)
           <span class="sr-only">{{ t('ride.actions') }}</span>
         </template>
         <template #actions-cell="{ row }">
-          <UButton
-            v-if="row.original.state === 'unassigned'"
-            :id="assignButtonId(row.original.rideId)"
-            type="button"
-            color="neutral"
-            variant="outline"
-            size="xl"
-            :aria-label="t('ride.assignFor', { guest: row.original.guestName })"
-            @click="openAssign(row.original)"
-          >
-            {{ t('ride.assign') }}
-          </UButton>
-          <!--
-            Assigned and the copied flag, both. Accepted still has the flag
-            and does not offer this. There is no note on the dialog.
-          -->
-          <UButton
-            v-if="canRecordAcceptanceByPhone(row.original)"
-            :id="acceptByPhoneButtonId(row.original.rideId)"
-            type="button"
-            color="neutral"
-            variant="outline"
-            size="xl"
-            :aria-label="t('ride.acceptByPhoneFor', { guest: row.original.guestName })"
-            @click="openAcceptByPhone(row.original)"
-          >
-            {{ t('ride.acceptByPhone') }}
-          </UButton>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              v-if="row.original.state === 'unassigned'"
+              :id="assignButtonId(row.original.rideId)"
+              type="button"
+              color="neutral"
+              variant="outline"
+              size="xl"
+              :aria-label="t('ride.assignFor', { guest: row.original.guestName })"
+              @click="openAssign(row.original)"
+            >
+              {{ t('ride.assign') }}
+            </UButton>
+            <!--
+              Assigned and the copied flag, both. Accepted still has the flag
+              and does not offer this. There is no note on the dialog.
+            -->
+            <UButton
+              v-if="canRecordAcceptanceByPhone(row.original)"
+              :id="acceptByPhoneButtonId(row.original.rideId)"
+              type="button"
+              color="neutral"
+              variant="outline"
+              size="xl"
+              :aria-label="t('ride.acceptByPhoneFor', { guest: row.original.guestName })"
+              @click="openAcceptByPhone(row.original)"
+            >
+              {{ t('ride.acceptByPhone') }}
+            </UButton>
+            <template v-if="canChangeAssignment(row.original)">
+              <UButton
+                :id="`change-vehicle-${row.original.rideId}`"
+                type="button"
+                color="neutral"
+                variant="outline"
+                size="xl"
+                :aria-label="t('ride.changeVehicleFor', { guest: row.original.guestName })"
+                @click="openVehicleChange(row.original)"
+              >
+                {{ t('ride.changeVehicle') }}
+              </UButton>
+              <UButton
+                :id="`reassign-ride-${row.original.rideId}`"
+                type="button"
+                color="neutral"
+                variant="outline"
+                size="xl"
+                :aria-label="t('ride.reassignFor', { guest: row.original.guestName })"
+                @click="openReassign(row.original)"
+              >
+                {{ t('ride.reassign') }}
+              </UButton>
+              <UButton
+                :id="`clear-ride-${row.original.rideId}`"
+                type="button"
+                color="neutral"
+                variant="outline"
+                size="xl"
+                :aria-label="t('ride.clearFor', { guest: row.original.guestName })"
+                @click="openClear(row.original)"
+              >
+                {{ t('ride.clear') }}
+              </UButton>
+            </template>
+          </div>
         </template>
       </UTable>
     </div>
@@ -672,6 +829,74 @@ onMounted(loadAll)
       @assigned="onAssigned"
       @cancel="closeAssign"
     />
+
+    <RideVehicle
+      v-if="changingVehicle"
+      :key="changingVehicle.rideId"
+      :ride-id="changingVehicle.rideId"
+      :guest-name="changingVehicle.guestName"
+      :vehicle-id="changingVehicle.vehicleId"
+      :vehicles="vehicles"
+      @saved="onCommandSaved"
+      @cancel="closeVehicleChange"
+    />
+
+    <RideReassign
+      v-if="reassigning"
+      :key="reassigning.rideId"
+      :ride-id="reassigning.rideId"
+      :guest-name="reassigning.guestName"
+      :driver-id="reassigning.driverId"
+      :drivers="drivers"
+      :vehicles="vehicles"
+      @saved="onCommandSaved"
+      @cancel="closeReassign"
+    />
+
+    <UModal
+      v-model:open="clearOpen"
+      :title="t('ride.clearTitle')"
+      :description="t('ride.clearBody')"
+      :dismissible="!clearPending"
+      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
+    >
+      <template #body>
+        <p v-if="clearing">
+          {{ clearing.guestName }}
+        </p>
+        <UAlert
+          v-if="clearErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mt-4"
+          :description="t(clearErrorKey)"
+        />
+      </template>
+      <template #footer>
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :disabled="clearPending"
+          @click="closeClear"
+        >
+          {{ t('ride.cancel') }}
+        </UButton>
+        <UButton
+          type="button"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :loading="clearPending"
+          :disabled="clearPending"
+          @click="confirmClear"
+        >
+          {{ clearPending ? t('ride.clearing') : t('ride.clearConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
 
     <UModal
       v-model:open="acceptByPhoneOpen"

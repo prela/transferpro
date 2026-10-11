@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RideNotAcceptableError, RideNotUnassignedError, RideVehicleArchivedError } from '../../modules/transfers'
+import { RideNotAcceptableError, RideNotOpenError, RideNotUnassignedError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
 import { rideHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -34,6 +34,30 @@ describe('rideHttpError', () => {
     expect(error).toMatchObject({
       statusCode: 409,
       data: { code: 'ride_not_acceptable' },
+    })
+  })
+
+  it('returns a distinct code when the ride is not open for a vehicle change, a clear, or a reassignment', () => {
+    const error = thrown(() => rideHttpError(new RideNotOpenError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'ride_not_open' },
+    })
+  })
+
+  it('returns a distinct code when the vehicle is already the one on the ride', () => {
+    const error = thrown(() => rideHttpError(new RideVehicleUnchangedError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'ride_vehicle_unchanged' },
+    })
+  })
+
+  it('returns a distinct code when the reassignment names the same driver', () => {
+    const error = thrown(() => rideHttpError(new RideSameDriverError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'ride_same_driver' },
     })
   })
 })

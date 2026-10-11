@@ -4,6 +4,7 @@
  * Assignment gives that Ride a Driver and a Vehicle together.
  * The Driver accepts that Ride when the copied flag is on.
  * The office records that same acceptance after confirming by phone.
+ * The office can change only the Vehicle, clear the Ride, or reassign it.
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
  * their index files, by id. Those modules do not import this one (ADR-0018).
  */
@@ -14,4 +15,5 @@ export { listUpcomingRides } from './infrastructure/driver-ride-access'
 export { askFlightLandings, LandingTimeClosedError, LandingTimeInFutureError, recordLandingTime, refreshFlightLandings } from './infrastructure/flight-landing'
 export { startFlightLandingWorker } from './infrastructure/flight-landing-worker'
 export { readOfficeHome } from './infrastructure/office-home-access'
+export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './infrastructure/ride-change'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'

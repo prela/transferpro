@@ -122,6 +122,14 @@ function detailText(entry: AuditEntry): string {
       const sentence = t('audit.actions.ride.accepted_by_phone')
       return entry.actorName === null ? sentence : `${entry.actorName} ${sentence}`
     }
+    case 'ride.vehicle_changed':
+    case 'ride.cleared':
+    case 'ride.reassigned':
+      // The name and the plate are joined from the ids. A clear's ids are the ones removed.
+      return t('audit.rideAssignedDetail', {
+        driver: entry.driverName ?? '',
+        vehicle: entry.vehiclePlate ?? '',
+      })
     case 'roster.assigned':
     case 'roster.changed':
     case 'roster.cleared':
