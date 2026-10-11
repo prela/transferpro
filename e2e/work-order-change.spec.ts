@@ -70,6 +70,13 @@ function row(page: Page, guest: string) {
   return page.getByRole('row', { name: guest })
 }
 
+// A result toast is dismissed after a few seconds, so an earlier action's toast
+// may or may not still be on screen. Match each toast by the title of the action
+// that raised it, not by a running count across actions.
+function notice(page: Page, title: string, sentence: string) {
+  return page.getByRole('listitem').filter({ hasText: title }).filter({ hasText: sentence })
+}
+
 test('a vehicle change, a reassign, and a clear each name the Driver, in Croatian, with an English smoke', async ({ page }) => {
   const tenant = await seedTenant('work-order-change')
   const firstPlate = 'DU167AA'
@@ -92,9 +99,9 @@ test('a vehicle change, a reassign, and a clear each name the Driver, in Croatia
   await row(page, 'Iva Change').getByRole('button', { name: 'Promijeni vozilo: Iva Change' }).click()
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), secondPlate)
   await page.getByRole('button', { name: 'Promijeni vozilo', exact: true }).click()
-  const sentToAna = page.getByRole('listitem').filter({ hasText: 'Radni nalog je poslan vozaču Ana Sent.' })
-  const blankAna = page.getByRole('listitem').filter({ hasText: 'Vozač Ana Blank nema e-poštu. Radni nalog nije poslan.' })
-  await expect(sentToAna).toHaveCount(1)
+  const sentToAna = 'Radni nalog je poslan vozaču Ana Sent.'
+  const blankAna = 'Vozač Ana Blank nema e-poštu. Radni nalog nije poslan.'
+  await expect(notice(page, 'Vozilo promijenjeno', sentToAna)).toHaveCount(1)
   await expect(page.getByText(sentAddress)).toHaveCount(0)
   await expect(row(page, 'Iva Change').getByRole('cell', { name: secondPlate, exact: true })).toBeVisible()
 
@@ -102,13 +109,14 @@ test('a vehicle change, a reassign, and a clear each name the Driver, in Croatia
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), 'Ana Blank')
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), firstPlate)
   await page.getByRole('button', { name: 'Prebaci vožnju', exact: true }).click()
-  await expect(blankAna).toHaveCount(1)
-  await expect(sentToAna).toHaveCount(2)
+  // A reassign raises one toast per Driver: the new Driver (no email), then the previous one (sent).
+  await expect(notice(page, 'Prebačeno', blankAna)).toHaveCount(1)
+  await expect(notice(page, 'Prebačeno', sentToAna)).toHaveCount(1)
   await expect(page.getByText(sentAddress)).toHaveCount(0)
 
   await row(page, 'Iva Change').getByRole('button', { name: 'Ukloni dodjelu: Iva Change' }).click()
   await page.getByRole('dialog', { name: 'Uklanjanje dodjele' }).getByRole('button', { name: 'Ukloni dodjelu', exact: true }).click()
-  await expect(blankAna).toHaveCount(2)
+  await expect(notice(page, 'Dodjela uklonjena', blankAna)).toHaveCount(1)
   await expect(row(page, 'Iva Change').getByRole('cell', { name: 'Nedodijeljeno', exact: true })).toBeVisible()
 
   await switchLocale(page, 'en')
