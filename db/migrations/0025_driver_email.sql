@@ -1,6 +1,6 @@
 -- One email on each Driver. A linked row copies the sign-in email before the
--- check that requires it. Unlinked rows stay null. The view is the privileged
--- read: the owner selects auth.user, and the app role is granted the view only.
+-- check that requires it. Unlinked rows stay null. The copy is read by the
+-- auth role. This migration does not grant the app role that address.
 ALTER TABLE "app"."audit_entry" DROP CONSTRAINT "audit_entry_shape";--> statement-breakpoint
 ALTER TABLE "app"."drivers" ADD COLUMN "email" text;--> statement-breakpoint
 UPDATE "app"."drivers" AS d
@@ -39,13 +39,4 @@ ALTER TABLE "app"."audit_entry" ADD CONSTRAINT "audit_entry_shape" CHECK ((case 
     when 'tenant.reactivated' then "app"."audit_entry"."subject_user_id" is null and "app"."audit_entry"."data" = '{}'::jsonb
     else false end) is true);--> statement-breakpoint
 ALTER TABLE "app"."drivers" ADD CONSTRAINT "drivers_email" CHECK ("app"."drivers"."email" is null or ("app"."drivers"."email" = btrim("app"."drivers"."email") and length("app"."drivers"."email") between 3 and 254 and position('@' in "app"."drivers"."email") > 1 and position(' ' in "app"."drivers"."email") = 0));--> statement-breakpoint
-ALTER TABLE "app"."drivers" ADD CONSTRAINT "drivers_email_when_linked" CHECK ("app"."drivers"."member_user_id" is null or "app"."drivers"."email" is not null);--> statement-breakpoint
-CREATE VIEW "app"."driver_sign_in_email" WITH (security_barrier = true, security_invoker = false) AS (
-  select "auth"."member"."user_id", "auth"."user"."email"
-  from "auth"."member"
-  inner join "auth"."user" on "auth"."user"."id" = "auth"."member"."user_id"
-  where "auth"."member"."organization_id" = app.current_tenant_id()::text
-    and "auth"."member"."role" = 'driver'
-);--> statement-breakpoint
-REVOKE ALL ON "app"."driver_sign_in_email" FROM PUBLIC;--> statement-breakpoint
-GRANT SELECT ON "app"."driver_sign_in_email" TO "transferpro_app";
+ALTER TABLE "app"."drivers" ADD CONSTRAINT "drivers_email_when_linked" CHECK ("app"."drivers"."member_user_id" is null or "app"."drivers"."email" is not null);

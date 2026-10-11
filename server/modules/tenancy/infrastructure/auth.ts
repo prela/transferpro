@@ -339,6 +339,18 @@ export function createAuth(
       return row.success ? row.data.id : null
     },
     /**
+     * The sign-in address for one account. The auth role reads auth.user.
+     * The app role does not. Callers copy the value onto a Driver row.
+     */
+    async emailByUserId(userId: string): Promise<string | null> {
+      const result = await pool.query(
+        'select email from auth."user" where id = $1',
+        [userId],
+      )
+      const row = z.object({ email: z.string().min(1) }).safeParse(result.rows[0])
+      return row.success ? row.data.email : null
+    },
+    /**
      * Same credential shape as the operator script. email_verified is true
      * because the invitation id is the proof of the mailbox.
      */

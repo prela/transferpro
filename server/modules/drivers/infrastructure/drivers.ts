@@ -116,14 +116,16 @@ export async function loadDriverLinkedToMember(transaction: TenantTransaction, m
  * The entry names the fields that were set. It does not store the phone,
  * the email, the licence dates, or the kind. Must-accept stays off: the
  * column default writes false, and that default is not a field the caller set.
- * A linked Driver stores the sign-in email. The app role reads that address
- * through `app.driver_sign_in_email`, not through `auth.user`.
+ * A linked Driver stores the sign-in email. The caller reads that address
+ * with the auth role, the same pool that reads an invitation email.
+ * The app role does not select auth.user.
  * The caller has already required a dispatcher or an admin.
  */
 export async function addDriver(
   transaction: TenantTransaction,
   actorUserId: string,
   input: CreateDriver,
+  readSignInEmail: (userId: string) => Promise<string | null> = async () => null,
 ): Promise<Driver> {
   // The parser already refuses an address on a linked create. Repeat it here
   // so a caller that skips the parser cannot store a second address.
@@ -131,7 +133,7 @@ export async function addDriver(
     throw new DriverInputError()
   const email = input.memberUserId === undefined
     ? input.email ?? null
-    : await linkedSignInEmail(transaction, input.memberUserId)
+    : await linkedSignInEmail(transaction, input.memberUserId, readSignInEmail)
 
   const selected = driverRows.parse(await writeDriver(transaction, sql`
     insert into app.drivers (
@@ -177,6 +179,7 @@ export async function correctDriver(
   role: string,
   driverId: string,
   patch: DriverPatch,
+  readSignInEmail: (userId: string) => Promise<string | null> = async () => null,
 ): Promise<Driver> {
   const current = await lockDriver(transaction, driverId)
   let next = applyPatch(current, patch)
@@ -186,7 +189,7 @@ export async function correctDriver(
   if (patch.email !== undefined && next.memberUserId !== null)
     throw new DriverInputError()
   if (next.memberUserId !== null && next.memberUserId !== current.memberUserId) {
-    const email = await linkedSignInEmail(transaction, next.memberUserId)
+    const email = await linkedSignInEmail(transaction, next.memberUserId, readSignInEmail)
     next = driverSchema.parse({ ...next, email })
   }
 
@@ -219,26 +222,21 @@ export async function correctDriver(
 }
 
 /**
- * One row, one address. A missing row, or an address this schema refuses,
- * is a bad request. The original database error is not rethrown: its message
+ * One address from the auth role. A missing account, or an address this
+ * schema refuses, is a bad request. A thrown reader is replaced: its message
  * can carry the address.
  */
-async function signInEmail(transaction: TenantTransaction, userId: string): Promise<string> {
-  let selected: unknown
+async function signInEmail(
+  userId: string,
+  readSignInEmail: (userId: string) => Promise<string | null>,
+): Promise<string> {
+  let email: string | null
   try {
-    selected = await transaction.execute(sql`
-      select email
-      from app.driver_sign_in_email
-      where user_id = ${userId}
-    `)
+    email = await readSignInEmail(userId)
   }
   catch {
     throw new Error('Driver read failed')
   }
-  const rows = z.object({
-    rows: z.array(z.object({ email: z.string() })),
-  }).safeParse(selected)
-  const email = rows.success && rows.data.rows.length === 1 ? rows.data.rows[0]?.email : undefined
   const parsed = driverEmailSchema.safeParse(email)
   if (!parsed.success)
     throw new DriverInputError()
@@ -275,12 +273,16 @@ function createdFields(input: CreateDriver, emailStored: boolean): DriverField[]
 
 /**
  * The member must be a driver of this Tenant, and the address is that
- * member's sign-in email. Both reads use views the app role may select.
- * `auth.user` stays unread on this connection.
+ * member's sign-in email. The member check uses `app.tenant_member`.
+ * The address comes from the auth role, not from a view the app role can select.
  */
-async function linkedSignInEmail(transaction: TenantTransaction, userId: string): Promise<string> {
+async function linkedSignInEmail(
+  transaction: TenantTransaction,
+  userId: string,
+  readSignInEmail: (userId: string) => Promise<string | null>,
+): Promise<string> {
   await requireDriverMember(transaction, userId)
-  return signInEmail(transaction, userId)
+  return signInEmail(userId, readSignInEmail)
 }
 
 function changedFields(current: Driver, next: Driver): DriverField[] {

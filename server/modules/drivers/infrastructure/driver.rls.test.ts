@@ -205,17 +205,3 @@ it('links a driver of this Tenant, and refuses another Tenant, a non-driver, and
   })
   expect(linked.rows).toEqual([{ name: 'Ana', member_user_id: driverA }])
 })
-
-it('shows a driver member email only inside that Tenant', async () => {
-  const own = await withTenant(tenantA, client => client.query(
-    'select user_id, email from app.driver_sign_in_email order by email',
-  ))
-  expect(own.rows).toEqual([{ user_id: driverA, email: 'drv-a@example.test' }])
-
-  const other = await withTenant(tenantB, client => client.query(
-    'select email from app.driver_sign_in_email',
-  ))
-  expect(other.rows).toEqual([{ email: 'drv-b@example.test' }])
-  expect(JSON.stringify(other.rows)).not.toContain('drv-a@example.test')
-  expect(JSON.stringify(other.rows)).not.toContain('office@example.test')
-})

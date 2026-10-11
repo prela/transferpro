@@ -1791,31 +1791,6 @@
   "roles": {},
   "policies": {},
   "views": {
-    "app.driver_sign_in_email": {
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "definition": "\n  select \"auth\".\"member\".\"user_id\", \"auth\".\"user\".\"email\"\n  from \"auth\".\"member\"\n  inner join \"auth\".\"user\" on \"auth\".\"user\".\"id\" = \"auth\".\"member\".\"user_id\"\n  where \"auth\".\"member\".\"organization_id\" = app.current_tenant_id()::text\n    and \"auth\".\"member\".\"role\" = 'driver'\n",
-      "name": "driver_sign_in_email",
-      "schema": "app",
-      "isExisting": false,
-      "with": {
-        "securityBarrier": true,
-        "securityInvoker": false
-      },
-      "materialized": false
-    },
     "app.tenant_invitation": {
       "columns": {
         "id": {

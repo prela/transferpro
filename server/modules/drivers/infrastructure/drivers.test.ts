@@ -29,11 +29,14 @@ const stored: Driver = {
 
 const signIn = 'marko@example.test'
 
+function signInReader(emails: Record<string, string> = { [memberUserId]: signIn }) {
+  return async (userId: string) => emails[userId] ?? null
+}
+
 function fakeTransaction(
   drivers: Driver[],
   members: Array<{ userId: string, role: string }> = [],
   fail?: { code: string, message: string, sql?: string },
-  emails: Record<string, string> = { [memberUserId]: signIn },
 ) {
   const queries: Array<{ sql: string, params: unknown[] }> = []
   const transaction: TenantTransaction = {
@@ -45,11 +48,6 @@ function fakeTransaction(
         // Drizzle puts the bound parameters on the outer error and the code on the cause.
         const cause = Object.assign(new Error('duplicate'), { code: fail.code, detail: `Failing row contains (${phone})` })
         throw Object.assign(new Error(fail.message), { cause })
-      }
-      if (text.includes('driver_sign_in_email')) {
-        const userId = String(compiled.params[0])
-        const address = emails[userId]
-        return { rows: address === undefined ? [] : [{ email: address }] }
       }
       if (text.includes('tenant_member')) {
         const userId = compiled.params[0]
@@ -150,7 +148,7 @@ it('adds a Driver with an email and records the field name, not the address', as
 
 it('adds a Driver linked to a driver member, copies the sign-in email, and does not record the address', async () => {
   const { transaction, queries } = fakeTransaction([], [{ userId: memberUserId, role: 'driver' }])
-  const added = await addDriver(transaction, actorUserId, { ...input, memberUserId })
+  const added = await addDriver(transaction, actorUserId, { ...input, memberUserId }, signInReader())
   expect(added.memberUserId).toBe(memberUserId)
   expect(added.email).toBe(signIn)
   expect(auditPayloads(queries)[0]).toContain('memberUserId')
@@ -174,7 +172,7 @@ it('drops a database error that carries the phone, so the log line does not', as
     code: '23505',
     message: `duplicate key ${phone}`,
   })
-  const error = await addDriver(transaction, actorUserId, { ...input, memberUserId }).catch(caught => caught)
+  const error = await addDriver(transaction, actorUserId, { ...input, memberUserId }, signInReader()).catch(caught => caught)
   expect(error).toBeInstanceOf(DriverInputError)
   expect(error).toMatchObject({ message: 'Bad request', statusCode: 400 })
   expect(JSON.stringify(error)).not.toContain(phone)
@@ -274,7 +272,7 @@ it('replaces a stored email with the sign-in email when an account is linked', a
   const { transaction, queries } = fakeTransaction([withAddress], [{ userId: memberUserId, role: 'driver' }])
   await expect(correctDriver(transaction, actorUserId, 'dispatcher', driverId, {
     memberUserId,
-  })).resolves.toMatchObject({ memberUserId, email: signIn })
+  }, signInReader())).resolves.toMatchObject({ memberUserId, email: signIn })
   const text = JSON.stringify(auditPayloads(queries))
   expect(text).toContain('memberUserId')
   expect(text).toContain('email')
