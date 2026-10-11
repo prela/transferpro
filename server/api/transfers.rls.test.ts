@@ -167,6 +167,17 @@ function pickupInsideWindow(): string {
 }
 
 /**
+ * Noon on the operational day the undated board opens on.
+ * An hour from now, in the hour before 05:00 Zagreb, is already the next
+ * operational day. The board and office home then omit the Ride, so a
+ * Tenant check on the open day would not see a row that was written.
+ */
+function pickupOnOpenBoard(): string {
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  return instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString()
+}
+
+/**
  * 00:30 local, two days ahead. That instant belongs only to the previous
  * operational day, in summer time and in winter time. The calendar date of
  * the instant stays empty.
@@ -409,7 +420,7 @@ it('an office user of Tenant B cannot record a Transfer that names Tenant A, and
   const beforeA = await tenantCounts(firmA.tenantId)
   const beforeB = await tenantCounts(firmB.tenantId)
   const body = {
-    pickupAt: pickupInsideWindow(),
+    pickupAt: pickupOnOpenBoard(),
     passengerCount: 1,
     guestName: guest,
     price: 10,
