@@ -68,8 +68,8 @@ export function isConsoleMailer(mailer: Mailer | undefined): boolean {
 /**
  * Local delivery. An invitation line carries the subject and the
  * recipient's domain: the address, body, and invite link stay off the log.
- * A work order's subject is the pickup place, so that line carries the
- * kind and the domain only.
+ * A work order's subject is the pickup place, and the address stays off
+ * the log, so that line carries only the kind.
  */
 export function createConsoleMailer(log?: Logger): Mailer {
   const mailer: Mailer = {
@@ -81,13 +81,12 @@ export function createConsoleMailer(log?: Logger): Mailer {
         domain: recipientDomain(mail.to),
       })
     },
-    async sendWorkOrder(mail) {
-      // The subject is the pickup place. The address stays off the log too.
+    async sendWorkOrder() {
+      // The subject is the pickup place. The address, including its domain, stays off the log.
       const logger = log ?? getLogger()
       logger.info({
         event: 'mail.console',
         kind: 'work-order',
-        domain: recipientDomain(mail.to),
       })
     },
   }

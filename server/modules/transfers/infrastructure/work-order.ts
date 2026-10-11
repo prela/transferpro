@@ -5,7 +5,10 @@ import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { composeAssignedWorkOrder, paymentMethodSchema } from '../../../../shared'
 import { getLogger, hideDatabaseError } from '../../../core/index'
+import { loadClient } from '../../clients'
+import { loadLocation } from '../../locations'
 import { ResendTransportError } from '../../tenancy'
+import { loadVehicle } from '../../vehicles'
 import { toPrice } from './transfers'
 
 /**
@@ -41,17 +44,16 @@ const snapshotRows = z.object({
     driverId: z.uuid(),
     email: z.string().nullable(),
     pickupAt: z.unknown(),
-    pickupPlace: z.string(),
-    dropOffPlace: z.string(),
+    startLocationId: z.uuid(),
+    endLocationId: z.uuid(),
     guestName: z.string(),
     tabla: z.string(),
     passengerCount: z.number().int(),
     luggageCount: z.number().int(),
     childSeatCount: z.number().int(),
     flightNumber: z.string().nullable(),
-    clientName: z.string(),
-    vehicleName: z.string().nullable(),
-    vehiclePlate: z.string(),
+    clientId: z.uuid(),
+    vehicleId: z.uuid(),
     note: z.string().nullable(),
     payment: paymentMethodSchema,
     price: z.union([z.string(), z.number()]),
@@ -62,8 +64,9 @@ const snapshotRows = z.object({
 
 /**
  * The Ride just assigned, with the names the work order has to state.
- * A missing row is a fixed error so a guest or a place cannot ride out
- * on a database message. The send itself waits until after commit.
+ * Clients, Locations, and Vehicles are read through their modules, by id
+ * (ADR-0018). A missing row is a fixed error so a guest or a place cannot
+ * ride out on a database message. The send itself waits until after commit.
  */
 export async function readAssignedWorkOrder(
   transaction: TenantTransaction,
@@ -75,17 +78,16 @@ export async function readAssignedWorkOrder(
         d.id as "driverId",
         d.email,
         t.pickup_at as "pickupAt",
-        start_place.name as "pickupPlace",
-        end_place.name as "dropOffPlace",
+        t.start_location_id as "startLocationId",
+        t.end_location_id as "endLocationId",
         t.guest_name as "guestName",
         t.tabla,
         t.passenger_count as "passengerCount",
         t.luggage_count as "luggageCount",
         t.child_seat_count as "childSeatCount",
         t.flight_number as "flightNumber",
-        c.name as "clientName",
-        v.description as "vehicleName",
-        v.registration_plate as "vehiclePlate",
+        t.client_id as "clientId",
+        r.vehicle_id as "vehicleId",
         t.note,
         t.payment,
         t.price,
@@ -94,16 +96,8 @@ export async function readAssignedWorkOrder(
       from app.rides as r
       join app.transfers as t
         on t.id = r.transfer_id and t.tenant_id = r.tenant_id
-      join app.clients as c
-        on c.id = t.client_id and c.tenant_id = t.tenant_id
-      join app.locations as start_place
-        on start_place.id = t.start_location_id and start_place.tenant_id = t.tenant_id
-      join app.locations as end_place
-        on end_place.id = t.end_location_id and end_place.tenant_id = t.tenant_id
       join app.drivers as d
         on d.id = r.driver_id and d.tenant_id = r.tenant_id
-      join app.vehicles as v
-        on v.id = r.vehicle_id and v.tenant_id = r.tenant_id
       join app.tenant_settings as s
         on s.tenant_id = r.tenant_id
       where r.id = ${rideId}
@@ -113,6 +107,12 @@ export async function readAssignedWorkOrder(
       throw new Error('missing')
     return row
   }, 'Work order read failed')
+  // One client, one statement at a time. Parallel reads on this
+  // transaction trip the driver.
+  const client = await loadClient(transaction, selected.clientId)
+  const pickup = await loadLocation(transaction, selected.startLocationId)
+  const dropOff = await loadLocation(transaction, selected.endLocationId)
+  const vehicle = await loadVehicle(transaction, selected.vehicleId)
   return {
     rideId,
     driverId: selected.driverId,
@@ -120,17 +120,17 @@ export async function readAssignedWorkOrder(
     locale: selected.locale,
     timeZone: selected.timeZone,
     pickupAt: toPickup(selected.pickupAt),
-    pickupPlace: selected.pickupPlace,
-    dropOffPlace: selected.dropOffPlace,
+    pickupPlace: pickup.name,
+    dropOffPlace: dropOff.name,
     guestName: selected.guestName,
     tabla: selected.tabla,
     passengerCount: selected.passengerCount,
     luggageCount: selected.luggageCount,
     childSeatCount: selected.childSeatCount,
     flightNumber: selected.flightNumber,
-    clientName: selected.clientName,
-    vehicleName: selected.vehicleName,
-    vehiclePlate: selected.vehiclePlate,
+    clientName: client.name,
+    vehicleName: vehicle.description,
+    vehiclePlate: vehicle.registrationPlate,
     note: selected.note,
     payment: selected.payment,
     price: toPrice(selected.price),

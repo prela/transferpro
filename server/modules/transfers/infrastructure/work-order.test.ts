@@ -1,4 +1,6 @@
+import type { SQL } from 'drizzle-orm'
 import type { TenantTransaction } from '../../../core/index'
+import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it } from 'vitest'
 import { captureLogs } from '../../../core/testing'
 import { ResendTransportError } from '../../tenancy'
@@ -110,29 +112,58 @@ it('reports send failed once, leaves the caller to keep the Ride, and logs ids o
 
 it('reads the tenant locale from the row, and a database failure drops the guest', async () => {
   const pickup = new Date('2026-10-15T22:30:00.000Z')
-  const row = {
-    driverId,
-    email,
-    pickupAt: pickup.toISOString(),
-    pickupPlace,
-    dropOffPlace,
-    guestName,
-    tabla,
-    passengerCount: 2,
-    luggageCount: 1,
-    childSeatCount: 0,
-    flightNumber: 'OU412',
-    clientName: 'Agencija Mora',
-    vehicleName: 'Mercedes Vito',
-    vehiclePlate,
-    note: 'Napomena',
-    payment: 'cash',
-    price: '77.5',
-    locale: 'en',
-    timeZone: 'Europe/Zagreb',
-  }
+  const clientId = 'a1a1a1a1-1111-4111-8111-111111111111'
+  const startLocationId = 'a2a2a2a2-2222-4222-8222-222222222222'
+  const endLocationId = 'a3a3a3a3-3333-4333-8333-333333333333'
+  const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
+  const dialect = new PgDialect()
   const transaction = {
-    execute: async () => ({ rows: [row] }),
+    execute: async (query: SQL) => {
+      const text = dialect.sqlToQuery(query).sql
+      if (text.includes('from app.clients'))
+        return { rows: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }] }
+      if (text.includes('from app.locations')) {
+        const id = String(dialect.sqlToQuery(query).params[0])
+        const name = id === endLocationId ? dropOffPlace : pickupPlace
+        return { rows: [{ id, name, kind: 'hotel', address: null, iata: null, archivedAt: null }] }
+      }
+      if (text.includes('from app.vehicles')) {
+        return {
+          rows: [{
+            id: vehicleId,
+            registrationPlate: vehiclePlate,
+            kind: 'fixed',
+            registrationExpiresOn: '2030-01-01',
+            technicalInspectionExpiresOn: '2030-01-01',
+            insuranceExpiresOn: '2030-01-01',
+            description: 'Mercedes Vito',
+            archivedAt: null,
+          }],
+        }
+      }
+      return {
+        rows: [{
+          driverId,
+          email,
+          pickupAt: pickup.toISOString(),
+          startLocationId,
+          endLocationId,
+          guestName,
+          tabla,
+          passengerCount: 2,
+          luggageCount: 1,
+          childSeatCount: 0,
+          flightNumber: 'OU412',
+          clientId,
+          vehicleId,
+          note: 'Napomena',
+          payment: 'cash',
+          price: '77.5',
+          locale: 'en',
+          timeZone: 'Europe/Zagreb',
+        }],
+      }
+    },
   } as unknown as TenantTransaction
   const snapshot = await readAssignedWorkOrder(transaction, rideId)
   expect(snapshot.locale).toBe('en')

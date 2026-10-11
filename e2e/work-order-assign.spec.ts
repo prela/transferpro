@@ -84,6 +84,7 @@ test('assign reports sent and no email, in Croatian, with an English smoke', asy
   await recordTodayRide(page, 'Iva Sent')
   await recordTodayRide(page, 'Iva Blank')
   await recordTodayRide(page, 'Iva English')
+  await recordTodayRide(page, 'Iva NoEmail')
 
   await assign(page, 'Iva Sent', 'Ana Sent', plate, 'Dodijeli vožnju')
   await expect(page.getByRole('listitem').filter({ hasText: 'Radni nalog je poslan vozaču Ana Sent.' })).toBeVisible()
@@ -100,4 +101,11 @@ test('assign reports sent and no email, in Croatian, with an English smoke', asy
   await page.getByRole('button', { name: 'Assign ride', exact: true }).click()
   await expect(page.getByRole('listitem').filter({ hasText: 'Work order sent to Ana Sent.' })).toBeVisible()
   await expect(page.getByText(sentAddress)).toHaveCount(0)
+
+  await page.getByRole('link', { name: 'Transfers' }).click()
+  await page.getByRole('row', { name: 'Iva NoEmail' }).getByRole('button', { name: 'Assign: Iva NoEmail' }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Driver' }), 'Ana Blank')
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vehicle' }), plate)
+  await page.getByRole('button', { name: 'Assign ride', exact: true }).click()
+  await expect(page.getByRole('listitem').filter({ hasText: 'Ana Blank has no email. No work order was sent.' })).toBeVisible()
 })

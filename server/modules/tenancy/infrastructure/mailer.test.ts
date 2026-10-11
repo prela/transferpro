@@ -134,9 +134,10 @@ it('logs a work order without the subject, the address, or the body', async () =
     html: '<p>Gost: Ana Tajna</p>',
   })
   const [line] = logs.lines()
-  expect(line).toMatchObject({ event: 'mail.console', kind: 'work-order', domain: 'example.test' })
+  expect(line).toMatchObject({ event: 'mail.console', kind: 'work-order' })
   const text = JSON.stringify(line)
   expect(text).not.toContain('ana@example.test')
+  expect(text).not.toContain('example.test')
   expect(text).not.toContain('Zračna luka')
   expect(text).not.toContain('Ana Tajna')
   expect(text).not.toContain('Dodijeljeno')
