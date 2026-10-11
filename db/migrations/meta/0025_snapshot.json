@@ -1,0 +1,1868 @@
+{
+  "id": "380aa686-5714-4654-9cb7-e92d0e1dce2f",
+  "prevId": "f858f36d-015d-4706-9e87-fbd3e737a97d",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "auth.account": {
+      "name": "account",
+      "schema": "auth",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "account_id": {
+          "name": "account_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access_token": {
+          "name": "access_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refresh_token": {
+          "name": "refresh_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id_token": {
+          "name": "id_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "access_token_expires_at": {
+          "name": "access_token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refresh_token_expires_at": {
+          "name": "refresh_token_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "password": {
+          "name": "password",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "account_user_id_user_id_fk": {
+          "name": "account_user_id_user_id_fk",
+          "tableFrom": "account",
+          "tableTo": "user",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "app.audit_entry": {
+      "name": "audit_entry",
+      "schema": "app",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "app.current_tenant_id()"
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "audit_action",
+          "typeSchema": "app",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_user_id": {
+          "name": "subject_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "audit_entry_tenant_occurred_at": {
+          "name": "audit_entry_tenant_occurred_at",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "transferpro_app"
+          ],
+          "using": "\"app\".\"audit_entry\".\"tenant_id\" = app.current_tenant_id()",
+          "withCheck": "\"app\".\"audit_entry\".\"tenant_id\" = app.current_tenant_id()"
+        }
+      },
+      "checkConstraints": {
+        "audit_entry_actor_user_id": {
+          "name": "audit_entry_actor_user_id",
+          "value": "\"app\".\"audit_entry\".\"actor_user_id\" <> ''"
+        },
+        "audit_entry_data": {
+          "name": "audit_entry_data",
+          "value": "jsonb_typeof(\"app\".\"audit_entry\".\"data\") = 'object'"
+        },
+        "audit_entry_shape": {
+          "name": "audit_entry_shape",
+          "value": "(case \"app\".\"audit_entry\".\"action\"::text\n    when 'member.invited' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{role}'::text[] = '{}'::jsonb and \"app\".\"audit_entry\".\"data\" ->> 'role' in ('admin', 'dispatcher', 'driver')\n    when 'member.role_changed' then \"app\".\"audit_entry\".\"subject_user_id\" <> '' and \"app\".\"audit_entry\".\"data\" - '{from,to}'::text[] = '{}'::jsonb and \"app\".\"audit_entry\".\"data\" ->> 'from' in ('admin', 'dispatcher', 'driver') and \"app\".\"audit_entry\".\"data\" ->> 'to' in ('admin', 'dispatcher', 'driver')\n    when 'member.removed' then \"app\".\"audit_entry\".\"subject_user_id\" <> '' and \"app\".\"audit_entry\".\"data\" - '{role}'::text[] = '{}'::jsonb and \"app\".\"audit_entry\".\"data\" ->> 'role' in ('admin', 'dispatcher', 'driver')\n    when 'settings.airport_wait_changed' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{from,to}'::text[] = '{}'::jsonb and (case when jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'from') = 'number' and (\"app\".\"audit_entry\".\"data\" ->> 'from') ~ '^[0-9]+$' then (\"app\".\"audit_entry\".\"data\" ->> 'from')::integer between 1 and 1440 else false end) and (case when jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'to') = 'number' and (\"app\".\"audit_entry\".\"data\" ->> 'to') ~ '^[0-9]+$' then (\"app\".\"audit_entry\".\"data\" ->> 'to')::integer between 1 and 1440 else false end)\n    when 'settings.elsewhere_wait_changed' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{from,to}'::text[] = '{}'::jsonb and (case when jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'from') = 'number' and (\"app\".\"audit_entry\".\"data\" ->> 'from') ~ '^[0-9]+$' then (\"app\".\"audit_entry\".\"data\" ->> 'from')::integer between 1 and 1440 else false end) and (case when jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'to') = 'number' and (\"app\".\"audit_entry\".\"data\" ->> 'to') ~ '^[0-9]+$' then (\"app\".\"audit_entry\".\"data\" ->> 'to')::integer between 1 and 1440 else false end)\n    when 'settings.time_zone_changed' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{from,to}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'from') = 'string' and length(\"app\".\"audit_entry\".\"data\" ->> 'from') between 1 and 64 and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'to') = 'string' and length(\"app\".\"audit_entry\".\"data\" ->> 'to') between 1 and 64\n    when 'settings.operational_day_start_changed' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{from,to}'::text[] = '{}'::jsonb and (case when jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'from') = 'number' and (\"app\".\"audit_entry\".\"data\" ->> 'from') ~ '^[0-9]+$' then (\"app\".\"audit_entry\".\"data\" ->> 'from')::integer between 0 and 8 else false end) and (case when jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'to') = 'number' and (\"app\".\"audit_entry\".\"data\" ->> 'to') ~ '^[0-9]+$' then (\"app\".\"audit_entry\".\"data\" ->> 'to')::integer between 0 and 8 else false end)\n    when 'client.created' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{clientId,kind}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'clientId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'clientId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and \"app\".\"audit_entry\".\"data\" ->> 'kind' in ('agency', 'hotel', 'individual')\n    when 'client.name_changed' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{clientId}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'clientId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'clientId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'\n    when 'client.kind_changed' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{clientId,from,to}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'clientId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'clientId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and \"app\".\"audit_entry\".\"data\" ->> 'from' in ('agency', 'hotel', 'individual') and \"app\".\"audit_entry\".\"data\" ->> 'to' in ('agency', 'hotel', 'individual')\n    when 'driver.created' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{driverId,fields}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'driverId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'driverId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'fields') = 'array' and jsonb_array_length(\"app\".\"audit_entry\".\"data\" -> 'fields') between 1 and 8 and \"app\".\"audit_entry\".\"data\" -> 'fields' <@ '[\"name\",\"kind\",\"phone\",\"email\",\"drivingLicenceExpiresOn\",\"transportLicenceExpiresOn\",\"memberUserId\",\"mustAccept\"]'::jsonb\n    when 'driver.field_changed' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{driverId,field}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'driverId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'driverId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'field') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'field' in ('name', 'kind', 'phone', 'email', 'drivingLicenceExpiresOn', 'transportLicenceExpiresOn', 'memberUserId', 'mustAccept')\n    when 'vehicle.created' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{vehicleId,fields}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'vehicleId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'vehicleId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'fields') = 'array' and jsonb_array_length(\"app\".\"audit_entry\".\"data\" -> 'fields') between 1 and 6 and \"app\".\"audit_entry\".\"data\" -> 'fields' <@ '[\"registrationPlate\",\"kind\",\"registrationExpiresOn\",\"technicalInspectionExpiresOn\",\"insuranceExpiresOn\",\"description\"]'::jsonb\n    when 'vehicle.field_changed' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{vehicleId,field}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'vehicleId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'vehicleId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'field') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'field' in ('registrationPlate', 'kind', 'registrationExpiresOn', 'technicalInspectionExpiresOn', 'insuranceExpiresOn', 'description')\n    when 'vehicle.archived' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{vehicleId}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'vehicleId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'vehicleId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'\n    when 'location.created' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{locationId,fields}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'locationId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'locationId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'fields') = 'array' and jsonb_array_length(\"app\".\"audit_entry\".\"data\" -> 'fields') between 1 and 3 and \"app\".\"audit_entry\".\"data\" -> 'fields' <@ '[\"name\",\"kind\",\"address\"]'::jsonb\n    when 'location.field_changed' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{locationId,field}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'locationId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'locationId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'field') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'field' in ('name', 'kind', 'address')\n    when 'location.archived' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{locationId}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'locationId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'locationId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'\n    when 'transfer.created' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{transferId,rideId,clientId,startLocationId,endLocationId,fields}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'transferId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'transferId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'rideId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'rideId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'clientId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'clientId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'startLocationId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'startLocationId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'endLocationId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'endLocationId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'fields') = 'array' and jsonb_array_length(\"app\".\"audit_entry\".\"data\" -> 'fields') between 1 and 11 and \"app\".\"audit_entry\".\"data\" -> 'fields' <@ '[\"pickupAt\",\"passengerCount\",\"guestName\",\"flightNumber\",\"price\",\"payment\",\"airportMark\",\"luggageCount\",\"childSeatCount\",\"note\",\"tabla\"]'::jsonb\n    when 'ride.assigned' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{rideId,driverId,vehicleId,fields}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'rideId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'rideId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'driverId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'driverId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'vehicleId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'vehicleId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'fields') = 'array' and jsonb_array_length(\"app\".\"audit_entry\".\"data\" -> 'fields') between 1 and 4 and \"app\".\"audit_entry\".\"data\" -> 'fields' <@ '[\"state\",\"driverId\",\"vehicleId\",\"mustAccept\"]'::jsonb\n    when 'ride.accepted' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{rideId,driverId,fields}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'rideId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'rideId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'driverId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'driverId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'fields') = 'array' and jsonb_array_length(\"app\".\"audit_entry\".\"data\" -> 'fields') between 1 and 1 and \"app\".\"audit_entry\".\"data\" -> 'fields' <@ '[\"state\"]'::jsonb\n    when 'ride.accepted_by_phone' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{rideId,driverId,fields}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'rideId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'rideId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'driverId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'driverId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'fields') = 'array' and jsonb_array_length(\"app\".\"audit_entry\".\"data\" -> 'fields') between 1 and 1 and \"app\".\"audit_entry\".\"data\" -> 'fields' <@ '[\"state\"]'::jsonb\n    when 'roster.assigned' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{rosterDate,driverId,vehicleId}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'rosterDate') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'rosterDate' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'driverId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'driverId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'vehicleId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'vehicleId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'\n    when 'roster.changed' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{rosterDate,driverId,fromVehicleId,toVehicleId}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'rosterDate') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'rosterDate' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'driverId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'driverId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'fromVehicleId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'fromVehicleId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'toVehicleId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'toVehicleId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'\n    when 'roster.cleared' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" - '{rosterDate,driverId,vehicleId}'::text[] = '{}'::jsonb and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'rosterDate') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'rosterDate' ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'driverId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'driverId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' and jsonb_typeof(\"app\".\"audit_entry\".\"data\" -> 'vehicleId') = 'string' and \"app\".\"audit_entry\".\"data\" ->> 'vehicleId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'\n    when 'tenant.renamed' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" = '{}'::jsonb\n    when 'tenant.suspended' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" = '{}'::jsonb\n    when 'tenant.reactivated' then \"app\".\"audit_entry\".\"subject_user_id\" is null and \"app\".\"audit_entry\".\"data\" = '{}'::jsonb\n    else false end) is true"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "app.clients": {
+      "name": "clients",
+      "schema": "app",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "app.current_tenant_id()"
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "clients_tenant_id_id": {
+          "name": "clients_tenant_id_id",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "transferpro_app"
+          ],
+          "using": "\"app\".\"clients\".\"tenant_id\" = app.current_tenant_id()",
+          "withCheck": "\"app\".\"clients\".\"tenant_id\" = app.current_tenant_id()"
+        }
+      },
+      "checkConstraints": {
+        "clients_name": {
+          "name": "clients_name",
+          "value": "\"app\".\"clients\".\"name\" = btrim(\"app\".\"clients\".\"name\") and length(\"app\".\"clients\".\"name\") between 1 and 200"
+        },
+        "clients_kind": {
+          "name": "clients_kind",
+          "value": "\"app\".\"clients\".\"kind\" in ('agency', 'hotel', 'individual')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "app.drivers": {
+      "name": "drivers",
+      "schema": "app",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "app.current_tenant_id()"
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "driving_licence_expires_on": {
+          "name": "driving_licence_expires_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "transport_licence_expires_on": {
+          "name": "transport_licence_expires_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_user_id": {
+          "name": "member_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "must_accept": {
+          "name": "must_accept",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {
+        "drivers_one_member": {
+          "name": "drivers_one_member",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "member_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"app\".\"drivers\".\"member_user_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "drivers_tenant_id_id": {
+          "name": "drivers_tenant_id_id",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "transferpro_app"
+          ],
+          "using": "\"app\".\"drivers\".\"tenant_id\" = app.current_tenant_id()",
+          "withCheck": "\"app\".\"drivers\".\"tenant_id\" = app.current_tenant_id()"
+        }
+      },
+      "checkConstraints": {
+        "drivers_name": {
+          "name": "drivers_name",
+          "value": "\"app\".\"drivers\".\"name\" = btrim(\"app\".\"drivers\".\"name\") and length(\"app\".\"drivers\".\"name\") between 1 and 200"
+        },
+        "drivers_kind": {
+          "name": "drivers_kind",
+          "value": "\"app\".\"drivers\".\"kind\" in ('own', 'external')"
+        },
+        "drivers_phone": {
+          "name": "drivers_phone",
+          "value": "\"app\".\"drivers\".\"phone\" = btrim(\"app\".\"drivers\".\"phone\") and length(\"app\".\"drivers\".\"phone\") between 1 and 40"
+        },
+        "drivers_email": {
+          "name": "drivers_email",
+          "value": "\"app\".\"drivers\".\"email\" is null or (\"app\".\"drivers\".\"email\" = btrim(\"app\".\"drivers\".\"email\") and length(\"app\".\"drivers\".\"email\") between 3 and 254 and position('@' in \"app\".\"drivers\".\"email\") > 1 and position(' ' in \"app\".\"drivers\".\"email\") = 0)"
+        },
+        "drivers_email_when_linked": {
+          "name": "drivers_email_when_linked",
+          "value": "\"app\".\"drivers\".\"member_user_id\" is null or \"app\".\"drivers\".\"email\" is not null"
+        },
+        "drivers_member_user_id": {
+          "name": "drivers_member_user_id",
+          "value": "\"app\".\"drivers\".\"member_user_id\" is null or (\"app\".\"drivers\".\"member_user_id\" = btrim(\"app\".\"drivers\".\"member_user_id\") and length(\"app\".\"drivers\".\"member_user_id\") between 1 and 64)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "auth.invitation": {
+      "name": "invitation",
+      "schema": "auth",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inviter_id": {
+          "name": "inviter_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "invitation_organization_id_organization_id_fk": {
+          "name": "invitation_organization_id_organization_id_fk",
+          "tableFrom": "invitation",
+          "tableTo": "organization",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "invitation_inviter_id_user_id_fk": {
+          "name": "invitation_inviter_id_user_id_fk",
+          "tableFrom": "invitation",
+          "tableTo": "user",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "inviter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "app.locations": {
+      "name": "locations",
+      "schema": "app",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "app.current_tenant_id()"
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "locations_tenant_id_id": {
+          "name": "locations_tenant_id_id",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "transferpro_app"
+          ],
+          "using": "\"app\".\"locations\".\"tenant_id\" = app.current_tenant_id()",
+          "withCheck": "\"app\".\"locations\".\"tenant_id\" = app.current_tenant_id()"
+        }
+      },
+      "checkConstraints": {
+        "locations_name": {
+          "name": "locations_name",
+          "value": "\"app\".\"locations\".\"name\" = btrim(\"app\".\"locations\".\"name\") and length(\"app\".\"locations\".\"name\") between 1 and 200"
+        },
+        "locations_kind": {
+          "name": "locations_kind",
+          "value": "\"app\".\"locations\".\"kind\" in ('airport', 'hotel', 'address', 'other')"
+        },
+        "locations_address": {
+          "name": "locations_address",
+          "value": "\"app\".\"locations\".\"address\" is null or (\"app\".\"locations\".\"address\" = btrim(\"app\".\"locations\".\"address\") and length(\"app\".\"locations\".\"address\") between 1 and 200)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "auth.member": {
+      "name": "member",
+      "schema": "auth",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "member_organization_id_organization_id_fk": {
+          "name": "member_organization_id_organization_id_fk",
+          "tableFrom": "member",
+          "tableTo": "organization",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "member_user_id_user_id_fk": {
+          "name": "member_user_id_user_id_fk",
+          "tableFrom": "member",
+          "tableTo": "user",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "auth.organization": {
+      "name": "organization",
+      "schema": "auth",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "logo": {
+          "name": "logo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "organization_slug_unique": {
+          "name": "organization_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "app.rides": {
+      "name": "rides",
+      "schema": "app",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "app.current_tenant_id()"
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "transfer_id": {
+          "name": "transfer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "driver_id": {
+          "name": "driver_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vehicle_id": {
+          "name": "vehicle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "must_accept": {
+          "name": "must_accept",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "rides_transfer_id": {
+          "name": "rides_transfer_id",
+          "columns": [
+            {
+              "expression": "transfer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "rides_transfer_fk": {
+          "name": "rides_transfer_fk",
+          "tableFrom": "rides",
+          "tableTo": "transfers",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "tenant_id",
+            "transfer_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "rides_driver_fk": {
+          "name": "rides_driver_fk",
+          "tableFrom": "rides",
+          "tableTo": "drivers",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "tenant_id",
+            "driver_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "rides_vehicle_fk": {
+          "name": "rides_vehicle_fk",
+          "tableFrom": "rides",
+          "tableTo": "vehicles",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "tenant_id",
+            "vehicle_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "transferpro_app"
+          ],
+          "using": "\"app\".\"rides\".\"tenant_id\" = app.current_tenant_id()",
+          "withCheck": "\"app\".\"rides\".\"tenant_id\" = app.current_tenant_id()"
+        }
+      },
+      "checkConstraints": {
+        "rides_state": {
+          "name": "rides_state",
+          "value": "\"app\".\"rides\".\"state\" in ('unassigned', 'assigned', 'accepted', 'done', 'no-show', 'cancelled')"
+        },
+        "rides_unassigned_open": {
+          "name": "rides_unassigned_open",
+          "value": "\"app\".\"rides\".\"state\" <> 'unassigned' or (\"app\".\"rides\".\"driver_id\" is null and \"app\".\"rides\".\"vehicle_id\" is null and \"app\".\"rides\".\"must_accept\" is null)"
+        },
+        "rides_assigned_pair": {
+          "name": "rides_assigned_pair",
+          "value": "\"app\".\"rides\".\"state\" <> 'assigned' or (\"app\".\"rides\".\"driver_id\" is not null and \"app\".\"rides\".\"vehicle_id\" is not null and \"app\".\"rides\".\"must_accept\" is not null)"
+        },
+        "rides_accepted_pair": {
+          "name": "rides_accepted_pair",
+          "value": "\"app\".\"rides\".\"state\" <> 'accepted' or (\"app\".\"rides\".\"driver_id\" is not null and \"app\".\"rides\".\"vehicle_id\" is not null and \"app\".\"rides\".\"must_accept\" is true)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "app.roster": {
+      "name": "roster",
+      "schema": "app",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "app.current_tenant_id()"
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "roster_date": {
+          "name": "roster_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "driver_id": {
+          "name": "driver_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vehicle_id": {
+          "name": "vehicle_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "roster_driver_day": {
+          "name": "roster_driver_day",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "roster_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "driver_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "roster_vehicle_day": {
+          "name": "roster_vehicle_day",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "roster_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "vehicle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "roster_driver_fk": {
+          "name": "roster_driver_fk",
+          "tableFrom": "roster",
+          "tableTo": "drivers",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "tenant_id",
+            "driver_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "roster_vehicle_fk": {
+          "name": "roster_vehicle_fk",
+          "tableFrom": "roster",
+          "tableTo": "vehicles",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "tenant_id",
+            "vehicle_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "transferpro_app"
+          ],
+          "using": "\"app\".\"roster\".\"tenant_id\" = app.current_tenant_id()",
+          "withCheck": "\"app\".\"roster\".\"tenant_id\" = app.current_tenant_id()"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "auth.session": {
+      "name": "session",
+      "schema": "auth",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active_organization_id": {
+          "name": "active_organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "session_user_id_user_id_fk": {
+          "name": "session_user_id_user_id_fk",
+          "tableFrom": "session",
+          "tableTo": "user",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "session_token_unique": {
+          "name": "session_token_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "token"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "app.tenant_settings": {
+      "name": "tenant_settings",
+      "schema": "app",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "app.current_tenant_id()"
+        },
+        "default_locale": {
+          "name": "default_locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "time_zone": {
+          "name": "time_zone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "airport_wait_minutes": {
+          "name": "airport_wait_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 90
+        },
+        "elsewhere_wait_minutes": {
+          "name": "elsewhere_wait_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 25
+        },
+        "operational_day_start_hour": {
+          "name": "operational_day_start_hour",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "transferpro_app"
+          ],
+          "using": "\"app\".\"tenant_settings\".\"tenant_id\" = app.current_tenant_id()",
+          "withCheck": "\"app\".\"tenant_settings\".\"tenant_id\" = app.current_tenant_id()"
+        }
+      },
+      "checkConstraints": {
+        "tenant_settings_default_locale": {
+          "name": "tenant_settings_default_locale",
+          "value": "\"app\".\"tenant_settings\".\"default_locale\" in ('hr', 'en')"
+        },
+        "tenant_settings_airport_wait_minutes": {
+          "name": "tenant_settings_airport_wait_minutes",
+          "value": "\"app\".\"tenant_settings\".\"airport_wait_minutes\" between 1 and 1440"
+        },
+        "tenant_settings_elsewhere_wait_minutes": {
+          "name": "tenant_settings_elsewhere_wait_minutes",
+          "value": "\"app\".\"tenant_settings\".\"elsewhere_wait_minutes\" between 1 and 1440"
+        },
+        "tenant_settings_time_zone": {
+          "name": "tenant_settings_time_zone",
+          "value": "length(\"app\".\"tenant_settings\".\"time_zone\") between 1 and 64"
+        },
+        "tenant_settings_operational_day_start_hour": {
+          "name": "tenant_settings_operational_day_start_hour",
+          "value": "\"app\".\"tenant_settings\".\"operational_day_start_hour\" between 0 and 8"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "app.transfers": {
+      "name": "transfers",
+      "schema": "app",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "app.current_tenant_id()"
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pickup_at": {
+          "name": "pickup_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_location_id": {
+          "name": "start_location_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_location_id": {
+          "name": "end_location_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "passenger_count": {
+          "name": "passenger_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "guest_name": {
+          "name": "guest_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "flight_number": {
+          "name": "flight_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "price": {
+          "name": "price",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payment": {
+          "name": "payment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "airport_mark": {
+          "name": "airport_mark",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "luggage_count": {
+          "name": "luggage_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "child_seat_count": {
+          "name": "child_seat_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tabla": {
+          "name": "tabla",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        }
+      },
+      "indexes": {
+        "transfers_tenant_id_id": {
+          "name": "transfers_tenant_id_id",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "transfers_tenant_pickup_at": {
+          "name": "transfers_tenant_pickup_at",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pickup_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "transfers_client_fk": {
+          "name": "transfers_client_fk",
+          "tableFrom": "transfers",
+          "tableTo": "clients",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "tenant_id",
+            "client_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfers_start_location_fk": {
+          "name": "transfers_start_location_fk",
+          "tableFrom": "transfers",
+          "tableTo": "locations",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "tenant_id",
+            "start_location_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfers_end_location_fk": {
+          "name": "transfers_end_location_fk",
+          "tableFrom": "transfers",
+          "tableTo": "locations",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "tenant_id",
+            "end_location_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "transferpro_app"
+          ],
+          "using": "\"app\".\"transfers\".\"tenant_id\" = app.current_tenant_id()",
+          "withCheck": "\"app\".\"transfers\".\"tenant_id\" = app.current_tenant_id()"
+        }
+      },
+      "checkConstraints": {
+        "transfers_passenger_count": {
+          "name": "transfers_passenger_count",
+          "value": "\"app\".\"transfers\".\"passenger_count\" between 1 and 60"
+        },
+        "transfers_guest_name": {
+          "name": "transfers_guest_name",
+          "value": "\"app\".\"transfers\".\"guest_name\" = btrim(\"app\".\"transfers\".\"guest_name\") and length(\"app\".\"transfers\".\"guest_name\") between 1 and 200"
+        },
+        "transfers_flight_number": {
+          "name": "transfers_flight_number",
+          "value": "\"app\".\"transfers\".\"flight_number\" is null or (\"app\".\"transfers\".\"flight_number\" = btrim(\"app\".\"transfers\".\"flight_number\") and length(\"app\".\"transfers\".\"flight_number\") between 1 and 20)"
+        },
+        "transfers_price": {
+          "name": "transfers_price",
+          "value": "\"app\".\"transfers\".\"price\" >= 0"
+        },
+        "transfers_payment": {
+          "name": "transfers_payment",
+          "value": "\"app\".\"transfers\".\"payment\" in ('cash', 'card', 'invoice_to_agency')"
+        },
+        "transfers_luggage_count": {
+          "name": "transfers_luggage_count",
+          "value": "\"app\".\"transfers\".\"luggage_count\" between 0 and 60"
+        },
+        "transfers_child_seat_count": {
+          "name": "transfers_child_seat_count",
+          "value": "\"app\".\"transfers\".\"child_seat_count\" between 0 and 10"
+        },
+        "transfers_note": {
+          "name": "transfers_note",
+          "value": "\"app\".\"transfers\".\"note\" is null or (\"app\".\"transfers\".\"note\" = btrim(\"app\".\"transfers\".\"note\") and length(\"app\".\"transfers\".\"note\") between 1 and 1000)"
+        },
+        "transfers_tabla": {
+          "name": "transfers_tabla",
+          "value": "\"app\".\"transfers\".\"tabla\" = btrim(\"app\".\"transfers\".\"tabla\") and length(\"app\".\"transfers\".\"tabla\") <= 200"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "auth.user": {
+      "name": "user",
+      "schema": "auth",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email_verified": {
+          "name": "email_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "image": {
+          "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "locale": {
+          "name": "locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "user_email_unique": {
+          "name": "user_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "user_locale": {
+          "name": "user_locale",
+          "value": "\"auth\".\"user\".\"locale\" is null or \"auth\".\"user\".\"locale\" in ('hr', 'en')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "app.vehicles": {
+      "name": "vehicles",
+      "schema": "app",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "app.current_tenant_id()"
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "registration_plate": {
+          "name": "registration_plate",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "registration_expires_on": {
+          "name": "registration_expires_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "technical_inspection_expires_on": {
+          "name": "technical_inspection_expires_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "insurance_expires_on": {
+          "name": "insurance_expires_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "vehicles_plate_active": {
+          "name": "vehicles_plate_active",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "registration_plate",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"app\".\"vehicles\".\"archived_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "vehicles_tenant_id_id": {
+          "name": "vehicles_tenant_id_id",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "transferpro_app"
+          ],
+          "using": "\"app\".\"vehicles\".\"tenant_id\" = app.current_tenant_id()",
+          "withCheck": "\"app\".\"vehicles\".\"tenant_id\" = app.current_tenant_id()"
+        }
+      },
+      "checkConstraints": {
+        "vehicles_registration_plate": {
+          "name": "vehicles_registration_plate",
+          "value": "\"app\".\"vehicles\".\"registration_plate\" = upper(regexp_replace(btrim(\"app\".\"vehicles\".\"registration_plate\"), '\\s+', '', 'g')) and length(\"app\".\"vehicles\".\"registration_plate\") between 1 and 16"
+        },
+        "vehicles_kind": {
+          "name": "vehicles_kind",
+          "value": "\"app\".\"vehicles\".\"kind\" in ('fixed', 'occasional')"
+        },
+        "vehicles_description": {
+          "name": "vehicles_description",
+          "value": "\"app\".\"vehicles\".\"description\" is null or (\"app\".\"vehicles\".\"description\" = btrim(\"app\".\"vehicles\".\"description\") and length(\"app\".\"vehicles\".\"description\") between 1 and 120)"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "auth.verification": {
+      "name": "verification",
+      "schema": "auth",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "identifier": {
+          "name": "identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "app.audit_action": {
+      "name": "audit_action",
+      "schema": "app",
+      "values": [
+        "member.invited",
+        "member.role_changed",
+        "member.removed",
+        "settings.airport_wait_changed",
+        "settings.elsewhere_wait_changed",
+        "settings.time_zone_changed",
+        "settings.operational_day_start_changed",
+        "client.created",
+        "client.name_changed",
+        "client.kind_changed",
+        "driver.created",
+        "driver.field_changed",
+        "vehicle.created",
+        "vehicle.field_changed",
+        "vehicle.archived",
+        "location.created",
+        "location.field_changed",
+        "location.archived",
+        "transfer.created",
+        "ride.assigned",
+        "ride.accepted",
+        "ride.accepted_by_phone",
+        "roster.assigned",
+        "roster.changed",
+        "roster.cleared",
+        "tenant.renamed",
+        "tenant.suspended",
+        "tenant.reactivated"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {
+    "app.tenant_invitation": {
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "definition": "\n  select \"auth\".\"invitation\".\"id\", \"auth\".\"invitation\".\"role\", \"auth\".\"invitation\".\"status\", \"auth\".\"invitation\".\"expires_at\"\n  from \"auth\".\"invitation\"\n  where \"auth\".\"invitation\".\"organization_id\" = app.current_tenant_id()::text\n",
+      "name": "tenant_invitation",
+      "schema": "app",
+      "isExisting": false,
+      "with": {
+        "securityBarrier": true,
+        "securityInvoker": false
+      },
+      "materialized": false
+    },
+    "app.tenant_member": {
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "definition": "\n  select \"auth\".\"member\".\"user_id\", \"auth\".\"user\".\"name\", \"auth\".\"member\".\"role\"\n  from \"auth\".\"member\"\n  inner join \"auth\".\"user\" on \"auth\".\"user\".\"id\" = \"auth\".\"member\".\"user_id\"\n  where \"auth\".\"member\".\"organization_id\" = app.current_tenant_id()::text\n",
+      "name": "tenant_member",
+      "schema": "app",
+      "isExisting": false,
+      "with": {
+        "securityBarrier": true,
+        "securityInvoker": false
+      },
+      "materialized": false
+    }
+  },
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

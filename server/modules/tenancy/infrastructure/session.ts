@@ -120,6 +120,15 @@ export async function withTenantFromSession<T>(
 }
 
 /**
+ * The sign-in address of one account, read by the auth role.
+ * The same pool already looks up an invitation email. The app role
+ * never selects auth.user. A missing account is null.
+ */
+export async function readSignInEmail(userId: string): Promise<string | null> {
+  return tenantRuntime().handle.emailByUserId(userId)
+}
+
+/**
  * The signed-in shell. One tenant session, via `withTenantFromSession`.
  * The user's locale is read from auth.user; a null locale becomes
  * the Tenant `default_locale`. The time zone is display only.

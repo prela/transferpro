@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { DRIVER_NAME_MAX_LENGTH, DRIVER_PHONE_MAX_LENGTH, driverDateError, DriverInputError, driverKindError, driverListSchema, driverNameError, driverPhoneError, parseCreateDriver, parseDriverPatch } from './driver'
+import { DRIVER_EMAIL_MAX_LENGTH, DRIVER_NAME_MAX_LENGTH, DRIVER_PHONE_MAX_LENGTH, driverDateError, driverEmailError, DriverInputError, driverKindError, driverListSchema, driverNameError, driverPhoneError, parseCreateDriver, parseDriverPatch } from './driver'
 
 const phone = '+385 91 111 2222'
 
@@ -35,11 +35,42 @@ it('refuses an empty name, a long phone, an unknown kind, and a key that is not 
   expect(() => parseCreateDriver({ ...createBody, phone: '1'.repeat(DRIVER_PHONE_MAX_LENGTH + 1) })).toThrow(DriverInputError)
   expect(() => parseCreateDriver({ ...createBody, name: 'A'.repeat(DRIVER_NAME_MAX_LENGTH + 1) })).toThrow(DriverInputError)
   expect(() => parseCreateDriver({ ...createBody, kind: 'partner' })).toThrow(DriverInputError)
-  expect(() => parseCreateDriver({ ...createBody, email: 'marko@example.test' })).toThrow(DriverInputError)
+  expect(() => parseCreateDriver({ ...createBody, notes: 'call after 18' })).toThrow(DriverInputError)
   // Must-accept starts off. The create body cannot turn it on.
   expect(() => parseCreateDriver({ ...createBody, mustAccept: true })).toThrow(DriverInputError)
   const { phone: _phone, ...withoutPhone } = createBody
   expect(() => parseCreateDriver(withoutPhone)).toThrow(DriverInputError)
+})
+
+it('keeps an optional email, treats a blank as none, and refuses a malformed address', () => {
+  expect(parseCreateDriver({ ...createBody, email: '  marko@example.test  ' }).email).toBe('marko@example.test')
+  expect(parseCreateDriver({ ...createBody, email: '   ' }).email).toBeUndefined()
+  expect(parseCreateDriver({ ...createBody, email: null }).email).toBeUndefined()
+  expect(() => parseCreateDriver({ ...createBody, email: 'not-an-email' })).toThrow(DriverInputError)
+  expect(() => parseCreateDriver({ ...createBody, email: `${'a'.repeat(DRIVER_EMAIL_MAX_LENGTH)}@example.test` })).toThrow(DriverInputError)
+  let message = ''
+  try {
+    parseCreateDriver({ ...createBody, email: 'not-an-email' })
+  }
+  catch (error) {
+    message = error instanceof Error ? `${error.name} ${error.message}` : ''
+  }
+  expect(message).toBe('DriverInputError Bad request')
+  expect(message).not.toContain('not-an-email')
+})
+
+it('refuses an email on a Driver who will have an account', () => {
+  const memberUserId = '6b1e0c3a-2222-4222-8222-222222222222'
+  expect(() => parseCreateDriver({ ...createBody, memberUserId, email: 'marko@example.test' })).toThrow(DriverInputError)
+  expect(() => parseCreateDriver({ ...createBody, memberUserId, email: null })).toThrow(DriverInputError)
+  expect(parseCreateDriver({ ...createBody, memberUserId }).email).toBeUndefined()
+  expect(() => parseDriverPatch({ memberUserId, email: 'marko@example.test' })).toThrow(DriverInputError)
+  expect(parseDriverPatch({ memberUserId: null, email: '  marko@example.test ' })).toEqual({
+    memberUserId: null,
+    email: 'marko@example.test',
+  })
+  expect(parseDriverPatch({ email: null })).toEqual({ email: null })
+  expect(parseDriverPatch({ email: '   ' })).toEqual({ email: null })
 })
 
 it('keeps an optional member id and refuses a blank one', () => {
@@ -66,6 +97,9 @@ it('names the field the form got wrong, and the error text never carries the pho
   expect(driverPhoneError('  ')).toBe('empty')
   expect(driverPhoneError('1'.repeat(DRIVER_PHONE_MAX_LENGTH + 1))).toBe('too-long')
   expect(driverPhoneError(phone)).toBeNull()
+  expect(driverEmailError('   ')).toBeNull()
+  expect(driverEmailError('not-an-email')).toBe('invalid')
+  expect(driverEmailError('marko@example.test')).toBeNull()
   expect(driverKindError('')).toBe('invalid')
   expect(driverKindError('own')).toBeNull()
   expect(driverDateError('')).toBe('invalid')
@@ -91,6 +125,7 @@ it('lists a Driver the office can correct later', () => {
       phone,
       drivingLicenceExpiresOn: '2027-06-01',
       transportLicenceExpiresOn: '2028-01-31',
+      email: null,
       memberUserId: null,
       mustAccept: false,
     }],

@@ -1,6 +1,6 @@
 import type { DriverList } from '../../../../shared'
 import { parseCreateDriver, parseDriverPatch } from '../../../../shared'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { readSignInEmail, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { addDriver, correctDriver, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers } from './drivers'
 
 export { DriverNotFoundError, loadDriverLinkedToMember, loadDrivers }
@@ -27,7 +27,7 @@ export async function createDriver(headers: Headers, raw: unknown) {
   const input = parseCreateDriver(raw)
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return addDriver(transaction, actor.userId, input)
+    return addDriver(transaction, actor.userId, input, readSignInEmail)
   })
 }
 
@@ -40,6 +40,6 @@ export async function updateDriver(headers: Headers, driverId: string, raw: unkn
   const patch = parseDriverPatch(raw)
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return correctDriver(transaction, actor.userId, actor.role, driverId, patch)
+    return correctDriver(transaction, actor.userId, actor.role, driverId, patch, readSignInEmail)
   })
 }

@@ -27,6 +27,7 @@ function driver(overrides: Pick<Driver, 'id' | 'name' | 'memberUserId' | 'drivin
   return {
     kind: 'own',
     phone,
+    email: null,
     mustAccept: false,
     ...overrides,
   }

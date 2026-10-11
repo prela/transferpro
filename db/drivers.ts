@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { boolean, check, date, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
-import { DRIVER_KINDS, DRIVER_MEMBER_ID_MAX_LENGTH, DRIVER_NAME_MAX_LENGTH, DRIVER_PHONE_MAX_LENGTH } from '../shared'
+import { DRIVER_EMAIL_MAX_LENGTH, DRIVER_KINDS, DRIVER_MEMBER_ID_MAX_LENGTH, DRIVER_NAME_MAX_LENGTH, DRIVER_PHONE_MAX_LENGTH } from '../shared'
 import { tenantTable } from './tenant-table'
 
 /**
@@ -11,6 +11,9 @@ import { tenantTable } from './tenant-table'
  * The licence columns are `date`: a calendar day, with no time and no zone.
  * `member_user_id` is optional. The partial unique index is one Driver per
  * member in the Tenant; several Drivers may have no account.
+ * `email` is one address. It is required when a member is linked, because
+ * that address is the sign-in email. It may be null when there is no account.
+ * Two Drivers may share an address. The writer trims it; a blank is null.
  * A trigger in the migration refuses a member who is not a driver of this
  * Tenant. The view `app.tenant_member` only returns the session's Tenant,
  * so a member of another Tenant fails that check.
@@ -24,12 +27,14 @@ const kinds = sql.raw(DRIVER_KINDS.map(kind => `'${kind}'`).join(', '))
 const nameMax = sql.raw(String(DRIVER_NAME_MAX_LENGTH))
 const phoneMax = sql.raw(String(DRIVER_PHONE_MAX_LENGTH))
 const memberMax = sql.raw(String(DRIVER_MEMBER_ID_MAX_LENGTH))
+const emailMax = sql.raw(String(DRIVER_EMAIL_MAX_LENGTH))
 
 export const drivers = tenantTable('drivers', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   kind: text('kind').notNull(),
   phone: text('phone').notNull(),
+  email: text('email'),
   drivingLicenceExpiresOn: date('driving_licence_expires_on', { mode: 'string' }).notNull(),
   transportLicenceExpiresOn: date('transport_licence_expires_on', { mode: 'string' }).notNull(),
   memberUserId: text('member_user_id'),
@@ -46,6 +51,14 @@ export const drivers = tenantTable('drivers', {
   check(
     'drivers_phone',
     sql`${table.phone} = btrim(${table.phone}) and length(${table.phone}) between 1 and ${phoneMax}`,
+  ),
+  check(
+    'drivers_email',
+    sql`${table.email} is null or (${table.email} = btrim(${table.email}) and length(${table.email}) between 3 and ${emailMax} and position('@' in ${table.email}) > 1 and position(' ' in ${table.email}) = 0)`,
+  ),
+  check(
+    'drivers_email_when_linked',
+    sql`${table.memberUserId} is null or ${table.email} is not null`,
   ),
   check(
     'drivers_member_user_id',

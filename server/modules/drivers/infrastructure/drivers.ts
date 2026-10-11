@@ -3,7 +3,7 @@ import type { CreateDriver, Driver, DriverField, DriverPatch } from '../../../..
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { DRIVER_FIELDS, driverDateSchema, DriverInputError, driverKindSchema, driverSchema } from '../../../../shared'
+import { DRIVER_FIELDS, driverDateSchema, driverEmailSchema, DriverInputError, driverKindSchema, driverSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { TenantAccessError } from '../../tenancy'
@@ -13,6 +13,7 @@ const driverRowSchema = z.object({
   name: z.string(),
   kind: driverKindSchema,
   phone: z.string(),
+  email: driverEmailSchema.nullable(),
   drivingLicenceExpiresOn: driverDateSchema,
   transportLicenceExpiresOn: driverDateSchema,
   memberUserId: z.string().nullable(),
@@ -38,7 +39,7 @@ export class DriverNotFoundError extends Error {
 }
 
 const driverColumns = sql`
-  id, name, kind, phone,
+  id, name, kind, phone, email,
   driving_licence_expires_on::text as "drivingLicenceExpiresOn",
   transport_licence_expires_on::text as "transportLicenceExpiresOn",
   member_user_id as "memberUserId",
@@ -113,26 +114,35 @@ export async function loadDriverLinkedToMember(transaction: TenantTransaction, m
 /**
  * Insert one Driver and append `driver.created` on this transaction.
  * The entry names the fields that were set. It does not store the phone,
- * the licence dates, or the kind. Must-accept stays off: the column default
- * writes false, and that default is not a field the caller set.
+ * the email, the licence dates, or the kind. Must-accept stays off: the
+ * column default writes false, and that default is not a field the caller set.
+ * A linked Driver stores the sign-in email. The caller reads that address
+ * with the auth role, the same pool that reads an invitation email.
+ * The app role does not select auth.user.
  * The caller has already required a dispatcher or an admin.
  */
 export async function addDriver(
   transaction: TenantTransaction,
   actorUserId: string,
   input: CreateDriver,
+  readSignInEmail: (userId: string) => Promise<string | null> = async () => null,
 ): Promise<Driver> {
-  if (input.memberUserId !== undefined)
-    await requireDriverMember(transaction, input.memberUserId)
+  // The parser already refuses an address on a linked create. Repeat it here
+  // so a caller that skips the parser cannot store a second address.
+  if (input.memberUserId !== undefined && input.email !== undefined)
+    throw new DriverInputError()
+  const email = input.memberUserId === undefined
+    ? input.email ?? null
+    : await linkedSignInEmail(transaction, input.memberUserId, readSignInEmail)
 
   const selected = driverRows.parse(await writeDriver(transaction, sql`
     insert into app.drivers (
-      name, kind, phone,
+      name, kind, phone, email,
       driving_licence_expires_on, transport_licence_expires_on,
       member_user_id
     )
     values (
-      ${input.name}, ${input.kind}, ${input.phone},
+      ${input.name}, ${input.kind}, ${input.phone}, ${email},
       ${input.drivingLicenceExpiresOn}, ${input.transportLicenceExpiresOn},
       ${input.memberUserId ?? null}
     )
@@ -146,17 +156,21 @@ export async function addDriver(
     action: 'driver.created',
     actorUserId,
     subjectUserId: null,
-    data: { driverId: driver.id, fields: createdFields(input) },
+    data: { driverId: driver.id, fields: createdFields(input, email !== null) },
   })
   return driver
 }
 
 /**
  * Correct the fields the patch names. One entry per field that changed,
- * and the entry stores the field name only.
+ * and the entry stores the field name only. An email change names `email`
+ * and does not store the address.
  * A patch that matches the locked row does not update and does not append.
  * A dispatcher who tries to change must-accept is refused before the update,
  * so the other fields in that patch are not written either.
+ * An address on a Driver who has, or will have, an account is refused and
+ * nothing is written. Linking copies the sign-in email over the stored one.
+ * Unlinking leaves the address in place.
  * A missing row is not found, including a row that belongs to another Tenant.
  */
 export async function correctDriver(
@@ -165,13 +179,19 @@ export async function correctDriver(
   role: string,
   driverId: string,
   patch: DriverPatch,
+  readSignInEmail: (userId: string) => Promise<string | null> = async () => null,
 ): Promise<Driver> {
   const current = await lockDriver(transaction, driverId)
-  const next = applyPatch(current, patch)
+  let next = applyPatch(current, patch)
   if (next.mustAccept !== current.mustAccept && role !== 'admin')
     throw new TenantAccessError(403)
-  if (next.memberUserId !== null && next.memberUserId !== current.memberUserId)
-    await requireDriverMember(transaction, next.memberUserId)
+  // The resulting row has an account, so the body may not choose the address.
+  if (patch.email !== undefined && next.memberUserId !== null)
+    throw new DriverInputError()
+  if (next.memberUserId !== null && next.memberUserId !== current.memberUserId) {
+    const email = await linkedSignInEmail(transaction, next.memberUserId, readSignInEmail)
+    next = driverSchema.parse({ ...next, email })
+  }
 
   const fields = changedFields(current, next)
   if (fields.length === 0)
@@ -182,6 +202,7 @@ export async function correctDriver(
     set name = ${next.name},
         kind = ${next.kind},
         phone = ${next.phone},
+        email = ${next.email},
         driving_licence_expires_on = ${next.drivingLicenceExpiresOn},
         transport_licence_expires_on = ${next.transportLicenceExpiresOn},
         member_user_id = ${next.memberUserId},
@@ -201,6 +222,28 @@ export async function correctDriver(
 }
 
 /**
+ * One address from the auth role. A missing account, or an address this
+ * schema refuses, is a bad request. A thrown reader is replaced: its message
+ * can carry the address.
+ */
+async function signInEmail(
+  userId: string,
+  readSignInEmail: (userId: string) => Promise<string | null>,
+): Promise<string> {
+  let email: string | null
+  try {
+    email = await readSignInEmail(userId)
+  }
+  catch {
+    throw new Error('Driver read failed')
+  }
+  const parsed = driverEmailSchema.safeParse(email)
+  if (!parsed.success)
+    throw new DriverInputError()
+  return parsed.data
+}
+
+/**
  * The member must be a driver of this Tenant. `app.tenant_member` is empty
  * for a user who belongs only to another Tenant, so the same check refuses
  * a cross-tenant link. The database trigger repeats it for a write that
@@ -217,16 +260,29 @@ async function requireDriverMember(transaction: TenantTransaction, userId: strin
     throw new DriverInputError()
 }
 
-const createdBase: DriverField[] = [
-  'name',
-  'kind',
-  'phone',
-  'drivingLicenceExpiresOn',
-  'transportLicenceExpiresOn',
-]
+function createdFields(input: CreateDriver, emailStored: boolean): DriverField[] {
+  const fields: DriverField[] = ['name', 'kind', 'phone']
+  // A blank address is the column default, the same way must-accept starts off.
+  if (emailStored)
+    fields.push('email')
+  fields.push('drivingLicenceExpiresOn', 'transportLicenceExpiresOn')
+  if (input.memberUserId !== undefined)
+    fields.push('memberUserId')
+  return fields
+}
 
-function createdFields(input: CreateDriver): DriverField[] {
-  return input.memberUserId === undefined ? createdBase : [...createdBase, 'memberUserId']
+/**
+ * The member must be a driver of this Tenant, and the address is that
+ * member's sign-in email. The member check uses `app.tenant_member`.
+ * The address comes from the auth role, not from a view the app role can select.
+ */
+async function linkedSignInEmail(
+  transaction: TenantTransaction,
+  userId: string,
+  readSignInEmail: (userId: string) => Promise<string | null>,
+): Promise<string> {
+  await requireDriverMember(transaction, userId)
+  return signInEmail(userId, readSignInEmail)
 }
 
 function changedFields(current: Driver, next: Driver): DriverField[] {
@@ -239,6 +295,7 @@ function applyPatch(current: Driver, patch: DriverPatch): Driver {
     name: patch.name === undefined ? current.name : patch.name,
     kind: patch.kind === undefined ? current.kind : patch.kind,
     phone: patch.phone === undefined ? current.phone : patch.phone,
+    email: patch.email === undefined ? current.email : patch.email,
     drivingLicenceExpiresOn: patch.drivingLicenceExpiresOn === undefined
       ? current.drivingLicenceExpiresOn
       : patch.drivingLicenceExpiresOn,

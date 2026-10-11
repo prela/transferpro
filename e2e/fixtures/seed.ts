@@ -145,16 +145,30 @@ export async function seedDriverRecord(tenantId: string, input: {
   readonly transportLicenceExpiresOn: string
   readonly memberUserId?: string
 }): Promise<void> {
+  let email: string | null = null
+  if (input.memberUserId !== undefined) {
+    const auth = new pg.Pool({ connectionString: required('AUTH_DATABASE_URL'), max: 1 })
+    try {
+      const found = await auth.query<{ email: string }>('select email from auth."user" where id = $1', [input.memberUserId])
+      email = found.rows[0]?.email ?? null
+    }
+    finally {
+      await auth.end()
+    }
+    if (email === null)
+      throw new Error('Seeded Driver has no sign-in email.')
+  }
   await withOwnerTransaction(tenantId, async (client) => {
     await client.query(
       `insert into app.drivers (
-         tenant_id, name, kind, phone,
+         tenant_id, name, kind, phone, email,
          driving_licence_expires_on, transport_licence_expires_on, member_user_id
-       ) values ($1, $2, 'own', $3, $4, $5, $6)`,
+       ) values ($1, $2, 'own', $3, $4, $5, $6, $7)`,
       [
         tenantId,
         input.name,
         input.phone,
+        email,
         input.drivingLicenceExpiresOn,
         input.transportLicenceExpiresOn,
         input.memberUserId ?? null,
