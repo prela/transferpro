@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { composeAssignedWorkOrder } from './work-order'
+import { composeAssignedWorkOrder, composeWorkOrder } from './work-order'
 
 /**
  * 15 Oct 2026 22:30 UTC is 16 Oct 00:30 in Europe/Zagreb (CEST, UTC+2).
@@ -88,6 +88,40 @@ it('uses the tenant locale on the facts, so an English tenant is English even fo
   expect(message.text).not.toContain('Cash')
   expect(message.text).not.toContain('Gotovina')
   expect(message.text.toLowerCase()).not.toContain('accept')
+})
+
+it('writes a changed work order with the same body, and a cash Ride still states the price', () => {
+  const message = composeWorkOrder(facts, 'changed')
+  expect(message.subject).toBe('Promijenjeno · 16. 10. 2026. 00:30 · Zračna luka <Dubrovnik>')
+  expect(message.text.startsWith('Promijenjeno\n')).toBe(true)
+  expect(message.text).toContain('Cijena: 42,50')
+  expect(message.text).toContain('Plaćanje: Gotovina')
+  expect(message.text).toContain('Vozilo: Mercedes Vito')
+  expect(message.html).not.toContain('<a')
+  expect(message.text.toLowerCase()).not.toContain('prihvat')
+})
+
+it('writes no longer yours without a price, even when the Ride was cash', () => {
+  const message = composeWorkOrder(facts, 'no_longer_yours')
+  expect(message.subject).toBe('Više nije vaše · 16. 10. 2026. 00:30 · Zračna luka <Dubrovnik>')
+  expect(message.text.startsWith('Više nije vaše\n')).toBe(true)
+  expect(message.text).toContain('Polazište: Zračna luka <Dubrovnik>')
+  expect(message.text).toContain('Registracija: DU100AA')
+  expect(message.text).not.toContain('Cijena')
+  expect(message.text).not.toContain('42,50')
+  expect(message.text).not.toContain('Plaćanje')
+  expect(message.text).not.toContain('Gotovina')
+})
+
+it('uses the English status words for a changed cash Ride and a card Ride that is no longer yours', () => {
+  const changed = composeWorkOrder({ ...facts, locale: 'en', timeZone: 'UTC' }, 'changed')
+  expect(changed.subject).toBe('Changed · 15/10/2026, 22:30 · Zračna luka <Dubrovnik>')
+  expect(changed.text).toContain('Price: 42.50')
+  expect(changed.text).toContain('Payment: Cash')
+  const lost = composeWorkOrder({ ...facts, locale: 'en', payment: 'card', price: '42.50' }, 'no_longer_yours')
+  expect(lost.text.startsWith('No longer yours\n')).toBe(true)
+  expect(lost.text).not.toContain('42.50')
+  expect(lost.text).not.toContain('Cash')
 })
 
 it('omits the payment line for invoice to agency and a blank flight', () => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Client, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
-import { calendarDateInTimeZone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema } from '../../shared'
+import { assignedRideSchema, calendarDateInTimeZone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema } from '../../shared'
+import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
   timeZone: string
@@ -267,12 +268,19 @@ async function confirmClear() {
   clearPending.value = true
   clearErrorKey.value = null
   try {
-    rideSchema.parse(await $fetch(`/api/rides/${target.rideId}/clear`, {
+    const cleared = assignedRideSchema.parse(await $fetch(`/api/rides/${target.rideId}/clear`, {
       method: 'POST',
       body: {},
     }))
     notifyAuditChanged()
-    toast.add({ title: t('ride.cleared'), color: 'success' })
+    // The notice names the Driver who lost the Ride. The address is not on the response.
+    const notice = cleared.workOrders[0]
+    const shown = notice === undefined ? undefined : workOrderNotice(notice.outcome)
+    toast.add({
+      title: t('ride.cleared'),
+      description: shown === undefined || notice === undefined ? undefined : t(shown.key, { name: driverLabel(notice.driverId) }),
+      color: shown?.color ?? 'success',
+    })
     clearing.value = null
     await loadDay()
   }
@@ -836,6 +844,7 @@ onMounted(loadAll)
       :ride-id="changingVehicle.rideId"
       :guest-name="changingVehicle.guestName"
       :vehicle-id="changingVehicle.vehicleId"
+      :drivers="drivers"
       :vehicles="vehicles"
       @saved="onCommandSaved"
       @cancel="closeVehicleChange"

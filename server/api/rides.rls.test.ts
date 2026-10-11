@@ -11,7 +11,7 @@ import { createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
 import { setRosterDay } from '../modules/roster'
 import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale } from '../modules/tenancy'
-import { assignRide, createTransfer, listUpcomingRides } from '../modules/transfers'
+import { assignRide, changeVehicle, clearRide, createTransfer, listUpcomingRides, reassignRide } from '../modules/transfers'
 import { archiveVehicle, createVehicle } from '../modules/vehicles'
 import postAcceptByPhone from './rides/[id]/accept-by-phone.post'
 import postAccept from './rides/[id]/accept.post'
@@ -497,6 +497,224 @@ it('emails an assigned work order in the tenant locale, and a rejected send leav
   expect(text).not.toContain(plate)
   expect(text).not.toContain('77.50')
   expect(text).not.toContain('77,50')
+})
+
+it('emails a changed work order with the cash price, and a rejected send leaves the Vehicle', async () => {
+  const world = await office('hasg-chg-mail')
+  await updateUserLocale(world.dispatcher, 'en')
+  const address = 'ana-change@example.test'
+  const guestName = 'Gost Promjena'
+  const driver = await createDriver(world.dispatcher, {
+    ...driverBody,
+    name: 'Ana Change',
+    phone: '+385911110181',
+    email: address,
+  })
+  const kept = await createVehicle(world.dispatcher, { ...vehicleBody('ZG9181AA'), description: 'Stari kombi' })
+  const next = await createVehicle(world.dispatcher, { ...vehicleBody('ZG9181BB'), description: 'Novi kombi' })
+  const recorded = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-15T22:30:00.000Z'),
+    guestName,
+    price: 42.5,
+    payment: 'cash',
+  })
+  await assignRide(world.dispatcher, { rideId: recorded.ride.id, driverId: driver.id, vehicleId: kept.id })
+  const sent: Array<{ to: string, subject: string, text: string }> = []
+  const changed = await changeVehicle(world.dispatcher, {
+    rideId: recorded.ride.id,
+    vehicleId: next.id,
+  }, {
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder(mail) {
+        sent.push(mail)
+      },
+    },
+  })
+  expect(changed.ride).toMatchObject({ state: 'assigned', driverId: driver.id, vehicleId: next.id })
+  expect(changed.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(JSON.stringify(changed)).not.toContain(address)
+  expect(sent).toHaveLength(1)
+  expect(sent[0]?.to).toBe(address)
+  expect(sent[0]?.subject).toBe('Promijenjeno · 16. 10. 2026. 00:30 · Zračna luka Dubrovnik')
+  expect(sent[0]?.text.startsWith('Promijenjeno\n')).toBe(true)
+  expect(sent[0]?.text).toContain('Vozilo: Novi kombi')
+  expect(sent[0]?.text).toContain('Registracija: ZG9181BB')
+  expect(sent[0]?.text).not.toContain('ZG9181AA')
+  expect(sent[0]?.text).toContain('Cijena: 42,50')
+  expect(sent[0]?.text).toContain('Plaćanje: Gotovina')
+  const audits = await changeAudits(world.tenantId)
+  expect(audits.map(row => row.action)).toEqual(['ride.vehicle_changed'])
+  expect(JSON.stringify(audits)).not.toContain(address)
+  expect(JSON.stringify(audits)).not.toContain('email')
+
+  const logs = captureLogs()
+  const failed = await changeVehicle(world.dispatcher, {
+    rideId: recorded.ride.id,
+    vehicleId: kept.id,
+  }, {
+    logger: logs.logger,
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder() {
+        throw new Error(`rejected ${address} ${guestName}`)
+      },
+    },
+  })
+  expect(failed.workOrders).toEqual([{ driverId: driver.id, outcome: 'failed' }])
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ vehicle_id: kept.id, driver_id: driver.id, state: 'assigned' })
+  expect(await changeAudits(world.tenantId)).toHaveLength(2)
+  const line = JSON.stringify(logs.lines()[0])
+  expect(line).toContain(recorded.ride.id)
+  expect(line).toContain(driver.id)
+  expect(line).not.toContain(address)
+  expect(line).not.toContain(guestName)
+})
+
+it('reports each Driver on a reassign, and a clear states no price even when the send fails', async () => {
+  const world = await office('hasg-move-mail')
+  const nextAddress = 'iva-next@example.test'
+  const previousAddress = 'ana-prev@example.test'
+  const guestName = 'Gost Prebacivanje'
+  const previous = await createDriver(world.dispatcher, {
+    ...driverBody,
+    name: 'Ana Prev',
+    phone: '+385911110182',
+    email: previousAddress,
+  })
+  const next = await createDriver(world.dispatcher, {
+    ...driverBody,
+    name: 'Iva Next',
+    phone: '+385911110183',
+    email: nextAddress,
+  })
+  const blank = await createDriver(world.dispatcher, {
+    ...driverBody,
+    name: 'Marko Blank',
+    phone: '+385911110184',
+  })
+  const oldVehicle = await createVehicle(world.dispatcher, { ...vehicleBody('ZG9182AA'), description: 'Stari kombi' })
+  const newVehicle = await createVehicle(world.dispatcher, { ...vehicleBody('ZG9182BB'), description: 'Novi kombi' })
+  const recorded = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-15T22:30:00.000Z'),
+    guestName,
+    price: 42.5,
+    payment: 'cash',
+  })
+  await assignRide(world.dispatcher, { rideId: recorded.ride.id, driverId: previous.id, vehicleId: oldVehicle.id })
+  const logs = captureLogs()
+  const sent: Array<{ to: string, subject: string, text: string }> = []
+  const moved = await reassignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: next.id,
+    vehicleId: newVehicle.id,
+  }, {
+    logger: logs.logger,
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder(mail) {
+        sent.push(mail)
+        if (mail.to === previousAddress)
+          throw new Error(`rejected ${previousAddress} ${guestName}`)
+      },
+    },
+  })
+  expect(moved.ride).toMatchObject({ state: 'assigned', driverId: next.id, vehicleId: newVehicle.id })
+  expect(moved.workOrders).toEqual([
+    { driverId: next.id, outcome: 'sent' },
+    { driverId: previous.id, outcome: 'failed' },
+  ])
+  expect(JSON.stringify(moved)).not.toContain(nextAddress)
+  expect(JSON.stringify(moved)).not.toContain(previousAddress)
+  expect(sent.map(mail => mail.to)).toEqual([nextAddress, previousAddress])
+  expect(sent[0]?.subject.startsWith('Dodijeljeno ·')).toBe(true)
+  expect(sent[0]?.text).toContain('Cijena: 42,50')
+  expect(sent[0]?.text).toContain('Plaćanje: Gotovina')
+  expect(sent[0]?.text).toContain('Registracija: ZG9182BB')
+  expect(sent[1]?.text.startsWith('Više nije vaše\n')).toBe(true)
+  expect(sent[1]?.text).toContain('Registracija: ZG9182AA')
+  expect(sent[1]?.text).not.toContain('Cijena')
+  expect(sent[1]?.text).not.toContain('42,50')
+  expect(sent[1]?.text).not.toContain('Plaćanje')
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ driver_id: next.id, vehicle_id: newVehicle.id, state: 'assigned' })
+  const audits = await changeAudits(world.tenantId)
+  expect(audits.map(row => row.action)).toEqual(['ride.reassigned'])
+  expect(JSON.stringify(audits)).not.toContain(nextAddress)
+  expect(JSON.stringify(audits[0]?.data)).not.toContain(previous.id)
+
+  const card = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-16T22:30:00.000Z'),
+    guestName: 'Gost Kartica',
+    price: 88,
+    payment: 'card',
+  })
+  await assignRide(world.dispatcher, { rideId: card.ride.id, driverId: next.id, vehicleId: newVehicle.id })
+  const cardSent: Array<{ to: string, text: string }> = []
+  const cardMoved = await reassignRide(world.dispatcher, {
+    rideId: card.ride.id,
+    driverId: blank.id,
+    vehicleId: oldVehicle.id,
+  }, {
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder(mail) {
+        cardSent.push(mail)
+      },
+    },
+  })
+  expect(cardMoved.workOrders).toEqual([
+    { driverId: blank.id, outcome: 'no_email' },
+    { driverId: next.id, outcome: 'sent' },
+  ])
+  expect(cardSent).toHaveLength(1)
+  expect(cardSent[0]?.to).toBe(nextAddress)
+  expect(cardSent[0]?.text.startsWith('Više nije vaše\n')).toBe(true)
+  expect(cardSent[0]?.text).not.toContain('88')
+  expect(cardSent[0]?.text).not.toContain('Gotovina')
+  expect(cardSent[0]?.text).not.toContain('Plaćanje')
+
+  const cleared = await clearRide(world.dispatcher, card.ride.id, {}, {
+    logger: logs.logger,
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder() {
+        throw new Error(`rejected ${previousAddress} ${guestName}`)
+      },
+    },
+  })
+  expect(cleared.ride).toMatchObject({ state: 'unassigned', driverId: null, vehicleId: null })
+  expect(cleared.workOrders).toEqual([{ driverId: blank.id, outcome: 'no_email' }])
+  expect(await rideRow(card.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null, vehicle_id: null })
+
+  const cashClear = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-17T22:30:00.000Z'),
+    guestName,
+    price: 42.5,
+    payment: 'cash',
+  })
+  await assignRide(world.dispatcher, { rideId: cashClear.ride.id, driverId: previous.id, vehicleId: oldVehicle.id })
+  const clearedMail: Array<{ to: string, text: string }> = []
+  const lost = await clearRide(world.dispatcher, cashClear.ride.id, {}, {
+    logger: logs.logger,
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder(mail) {
+        clearedMail.push(mail)
+        throw new Error(`rejected ${previousAddress} ${guestName}`)
+      },
+    },
+  })
+  expect(lost.workOrders).toEqual([{ driverId: previous.id, outcome: 'failed' }])
+  expect(lost.ride.state).toBe('unassigned')
+  expect(clearedMail[0]?.text.startsWith('Više nije vaše\n')).toBe(true)
+  expect(clearedMail[0]?.text).toContain('Registracija: ZG9182AA')
+  expect(clearedMail[0]?.text).not.toContain('Cijena')
+  expect(clearedMail[0]?.text).not.toContain('42,50')
+  expect(await rideRow(cashClear.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null })
+  expect((await changeAudits(world.tenantId)).map(row => row.action)).toEqual(['ride.reassigned', 'ride.reassigned', 'ride.cleared', 'ride.cleared'])
+  const failure = JSON.stringify(logs.lines())
+  expect(failure).not.toContain(previousAddress)
+  expect(failure).not.toContain(guestName)
 })
 
 it('refuses another Tenant\'s Driver or Vehicle, and that Tenant cannot read or change the Ride', async () => {
@@ -1643,14 +1861,19 @@ it('changes the vehicle, reassigns, and clears, and a driver is refused with no 
 
   const changed = await call('POST', `/api/rides/${recorded.ride.id}/vehicle`, world.dispatcher, { vehicleId: next.id })
   expect(changed.status).toBe(200)
-  expect(await changed.json()).toEqual({
-    id: recorded.ride.id,
-    transferId: recorded.transfer.id,
-    state: 'accepted',
-    driverId: first.driver.id,
-    vehicleId: next.id,
-    mustAccept: true,
+  const changedBody = await changed.json()
+  expect(changedBody).toEqual({
+    ride: {
+      id: recorded.ride.id,
+      transferId: recorded.transfer.id,
+      state: 'accepted',
+      driverId: first.driver.id,
+      vehicleId: next.id,
+      mustAccept: true,
+    },
+    workOrders: [{ driverId: first.driver.id, outcome: 'sent' }],
   })
+  expect(JSON.stringify(changedBody)).not.toContain('hasg-chg-a@example.test')
 
   const sameDriver = await call('POST', `/api/rides/${recorded.ride.id}/reassign`, world.dispatcher, {
     driverId: first.driver.id,
@@ -1665,11 +1888,19 @@ it('changes the vehicle, reassigns, and clears, and a driver is refused with no 
     vehicleId: kept.id,
   })
   expect(moved.status).toBe(200)
-  expect(await moved.json()).toMatchObject({
-    state: 'assigned',
-    driverId: second.driver.id,
-    vehicleId: kept.id,
-    mustAccept: false,
+  expect(await moved.json()).toEqual({
+    ride: {
+      id: recorded.ride.id,
+      transferId: recorded.transfer.id,
+      state: 'assigned',
+      driverId: second.driver.id,
+      vehicleId: kept.id,
+      mustAccept: false,
+    },
+    workOrders: [
+      { driverId: second.driver.id, outcome: 'sent' },
+      { driverId: first.driver.id, outcome: 'sent' },
+    ],
   })
   expect((await listUpcomingRides(first.session)).rides.map(ride => ride.rideId)).not.toContain(recorded.ride.id)
   expect((await listUpcomingRides(second.session)).rides.map(ride => ride.rideId)).toContain(recorded.ride.id)
@@ -1677,12 +1908,15 @@ it('changes the vehicle, reassigns, and clears, and a driver is refused with no 
   const cleared = await call('POST', `/api/rides/${recorded.ride.id}/clear`, world.dispatcher, {})
   expect(cleared.status).toBe(200)
   expect(await cleared.json()).toEqual({
-    id: recorded.ride.id,
-    transferId: recorded.transfer.id,
-    state: 'unassigned',
-    driverId: null,
-    vehicleId: null,
-    mustAccept: null,
+    ride: {
+      id: recorded.ride.id,
+      transferId: recorded.transfer.id,
+      state: 'unassigned',
+      driverId: null,
+      vehicleId: null,
+      mustAccept: null,
+    },
+    workOrders: [{ driverId: second.driver.id, outcome: 'sent' }],
   })
   expect((await listUpcomingRides(second.session)).rides.map(ride => ride.rideId)).not.toContain(recorded.ride.id)
 

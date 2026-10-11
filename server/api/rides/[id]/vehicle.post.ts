@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam, readBody, toWebRequest } from 'h3'
-import { rideSchema } from '../../../../shared'
+import { assignedRideSchema } from '../../../../shared'
 import { changeVehicle } from '../../../modules/transfers'
 import { rideHttpError } from '../http'
 
@@ -11,6 +11,8 @@ import { rideHttpError } from '../http'
  * A Ride that is not assigned or accepted is 409. The same Vehicle is 409.
  * An archived Vehicle is 409. Another Tenant's Ride or Vehicle is 404.
  * The audit entry names the office member and the field vehicleId.
+ * The body is the Ride plus one work-order result for the current Driver.
+ * The address is not on it. A rejected send does not undo the change.
  */
 export default defineEventHandler(async (event) => {
   const rideId = getRouterParam(event, 'id')
@@ -20,7 +22,7 @@ export default defineEventHandler(async (event) => {
     ? { ...body, rideId }
     : { rideId }
   try {
-    return rideSchema.parse(await changeVehicle(toWebRequest(event).headers, raw))
+    return assignedRideSchema.parse(await changeVehicle(toWebRequest(event).headers, raw))
   }
   catch (error) {
     rideHttpError(error)

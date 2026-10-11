@@ -1,9 +1,9 @@
-import type { DisplayLocale, PaymentMethod, WorkOrderNotice } from '../../../../shared'
+import type { DisplayLocale, PaymentMethod, WorkOrderNotice, WorkOrderStatus } from '../../../../shared'
 import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { composeAssignedWorkOrder, paymentMethodSchema } from '../../../../shared'
+import { composeWorkOrder, paymentMethodSchema } from '../../../../shared'
 import { getLogger, hideDatabaseError } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadLocation } from '../../locations'
@@ -67,11 +67,16 @@ const snapshotRows = z.object({
  * Clients, Locations, and Vehicles are read through their modules, by id
  * (ADR-0018). A missing row is a fixed error so a guest or a place cannot
  * ride out on a database message. The send itself waits until after commit.
+ * `held` names the Driver and Vehicle a clear or a reassign removed.
+ * After that update the Ride no longer stores them, and the mail still has to.
  */
 export async function readAssignedWorkOrder(
   transaction: TenantTransaction,
   rideId: string,
+  held?: { driverId: string, vehicleId: string },
 ): Promise<AssignedWorkOrder> {
+  const driverId = held?.driverId ?? null
+  const vehicleId = held?.vehicleId ?? null
   const selected = await hideDatabaseError(async () => {
     const parsed = snapshotRows.parse(await transaction.execute(sql`
       select
@@ -87,7 +92,7 @@ export async function readAssignedWorkOrder(
         t.child_seat_count as "childSeatCount",
         t.flight_number as "flightNumber",
         t.client_id as "clientId",
-        r.vehicle_id as "vehicleId",
+        coalesce(${vehicleId}::uuid, r.vehicle_id) as "vehicleId",
         t.note,
         t.payment,
         t.price,
@@ -97,7 +102,7 @@ export async function readAssignedWorkOrder(
       join app.transfers as t
         on t.id = r.transfer_id and t.tenant_id = r.tenant_id
       join app.drivers as d
-        on d.id = r.driver_id and d.tenant_id = r.tenant_id
+        on d.id = coalesce(${driverId}::uuid, r.driver_id) and d.tenant_id = r.tenant_id
       join app.tenant_settings as s
         on s.tenant_id = r.tenant_id
       where r.id = ${rideId}
@@ -147,11 +152,12 @@ export async function deliverAssignedWorkOrder(
   order: AssignedWorkOrder,
   mailer: Pick<Mailer, 'sendWorkOrder'>,
   log?: Logger,
+  status: WorkOrderStatus = 'assigned',
 ): Promise<WorkOrderNotice> {
   const address = order.email?.trim() ?? ''
   if (address === '')
     return { driverId: order.driverId, outcome: 'no_email' }
-  const message = composeAssignedWorkOrder(order)
+  const message = composeWorkOrder(order, status)
   try {
     await mailer.sendWorkOrder({ to: address, ...message })
   }

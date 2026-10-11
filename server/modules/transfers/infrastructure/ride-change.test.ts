@@ -182,12 +182,15 @@ it('clears an assigned or accepted Ride and names the actor and the ids that wer
   for (const state of ['assigned', 'accepted'] as const) {
     const { transaction, queries } = fakeTransaction({ state, mustAccept: true })
     await expect(clearAssignedRide(transaction, actorUserId, rideId)).resolves.toEqual({
-      id: rideId,
-      transferId,
-      state: 'unassigned',
-      driverId: null,
-      vehicleId: null,
-      mustAccept: null,
+      ride: {
+        id: rideId,
+        transferId,
+        state: 'unassigned',
+        driverId: null,
+        vehicleId: null,
+        mustAccept: null,
+      },
+      released: { driverId, vehicleId },
     })
     const update = queries.find(query => query.sql.includes('update app.rides'))
     expect(update?.sql).toContain('\'unassigned\'')
@@ -220,12 +223,15 @@ it('reassigns an accepted Ride to another Driver, copies that Driver\'s flag, an
     driverId: otherDriverId,
     vehicleId: otherVehicleId,
   })).resolves.toEqual({
-    id: rideId,
-    transferId,
-    state: 'assigned',
-    driverId: otherDriverId,
-    vehicleId: otherVehicleId,
-    mustAccept: false,
+    ride: {
+      id: rideId,
+      transferId,
+      state: 'assigned',
+      driverId: otherDriverId,
+      vehicleId: otherVehicleId,
+      mustAccept: false,
+    },
+    released: { driverId, vehicleId },
   })
   const driverQuery = queries.find(query => query.sql.includes('from app.drivers'))
   expect(driverQuery?.sql).toContain('for share')
@@ -251,7 +257,7 @@ it('copies true when that is the new Driver\'s setting, including from assigned'
     rideId,
     driverId: otherDriverId,
     vehicleId: otherVehicleId,
-  })).resolves.toMatchObject({ state: 'assigned', mustAccept: true, driverId: otherDriverId })
+  })).resolves.toMatchObject({ ride: { state: 'assigned', mustAccept: true, driverId: otherDriverId } })
 })
 
 it('refuses a reassignment to the same Driver, and writes nothing', async () => {

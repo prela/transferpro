@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import type { Vehicle } from '../../shared'
-import { rideSchema } from '../../shared'
+import type { Driver, Vehicle } from '../../shared'
+import { assignedRideSchema } from '../../shared'
+import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
   rideId: string
   guestName: string
   /** The Vehicle already on the Ride. It stays off the picker. */
   vehicleId: string
+  drivers: Driver[]
   vehicles: Vehicle[]
 }>()
 
@@ -87,12 +89,22 @@ async function submit() {
     return
   pending.value = true
   try {
-    rideSchema.parse(await $fetch(`/api/rides/${props.rideId}/vehicle`, {
+    const saved = assignedRideSchema.parse(await $fetch(`/api/rides/${props.rideId}/vehicle`, {
       method: 'POST',
       body: { vehicleId: chosen },
     }))
     notifyAuditChanged()
-    toast.add({ title: t('ride.vehicleChanged'), color: 'success' })
+    // The notice names the Driver by id. The name is already on the day list.
+    // The response has no address, so the toast cannot show one.
+    for (const notice of saved.workOrders) {
+      const shown = workOrderNotice(notice.outcome)
+      const name = props.drivers.find(driver => driver.id === notice.driverId)?.name ?? t('ride.unknownDriver')
+      toast.add({
+        title: t('ride.vehicleChanged'),
+        description: t(shown.key, { name }),
+        color: shown.color,
+      })
+    }
     emit('saved')
   }
   catch (error) {

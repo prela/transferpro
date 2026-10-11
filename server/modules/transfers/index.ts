@@ -5,6 +5,7 @@
  * The Driver accepts that Ride when the copied flag is on.
  * The office records that same acceptance after confirming by phone.
  * The office can change only the Vehicle, clear the Ride, or reassign it.
+ * Each of those mails a work order after the Ride is saved.
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
  * their index files, by id. Those modules do not import this one (ADR-0018).
  */
