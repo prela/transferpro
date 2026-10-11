@@ -69,6 +69,7 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   const cardAt = instantFromWallClock(`${day}T09:00`, 'Europe/Zagreb')
   const cashAt = instantFromWallClock(`${day}T15:30`, 'Europe/Zagreb')
   const invoiceAt = instantFromWallClock(`${day}T18:00`, 'Europe/Zagreb')
+  const doneAt = instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb')
 
   await useTheme(page, 'light')
   await page.setViewportSize({ width: 390, height: 844 })
@@ -103,6 +104,16 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   const vehicleId = await createdId(await page.request.post('/api/vehicles', {
     data: {
       registrationPlate: 'DU300AA',
+      kind: 'fixed',
+      registrationExpiresOn: licence,
+      technicalInspectionExpiresOn: licence,
+      insuranceExpiresOn: licence,
+    },
+  }))
+  // Iva's Ride runs at the same time, so it needs its own Vehicle (ADR-0029).
+  const otherVehicleId = await createdId(await page.request.post('/api/vehicles', {
+    data: {
+      registrationPlate: 'DU301AA',
       kind: 'fixed',
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
@@ -147,9 +158,9 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
     return body.ride.id
   }
 
-  async function assign(rideId: string, assignee: string) {
+  async function assign(rideId: string, assignee: string, vehicle = vehicleId) {
     const response = await page.request.post(`/api/rides/${rideId}/assign`, {
-      data: { driverId: assignee, vehicleId },
+      data: { driverId: assignee, vehicleId: vehicle },
     })
     if (!response.ok())
       throw new Error(`${response.status()} ${await response.text()}`)
@@ -172,8 +183,9 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   const invoiceRide = await record('Nika Agencija', invoiceAt, 'invoice_to_agency', 80)
   await assign(invoiceRide, ownDriverId)
   const otherRide = await record('Nika Druga', cashAt, 'cash', 15)
-  await assign(otherRide, otherDriverId)
-  const doneRide = await record('Nika Kraj', cashAt, 'cash', 11)
+  await assign(otherRide, otherDriverId, otherVehicleId)
+  // Same Driver and Vehicle, so it sits between the card and the cash Ride (ADR-0029).
+  const doneRide = await record('Nika Kraj', doneAt, 'cash', 11)
   await assign(doneRide, ownDriverId)
   await setRideState(doneRide, 'done')
   // The card still shows the place and the plate after both are archived.

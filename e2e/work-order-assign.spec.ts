@@ -35,7 +35,8 @@ async function addVehicle(page: Page, registrationPlate: string): Promise<void> 
   expect(response.ok()).toBeTruthy()
 }
 
-async function recordTodayRide(page: Page, guest: string): Promise<void> {
+/** Each Ride gets its own hour so one Vehicle carries them all without an overlap (ADR-0029). */
+async function recordTodayRide(page: Page, guest: string, time: string): Promise<void> {
   const client = await page.request.post('/api/clients', {
     data: { name: `Klijent ${guest}`, kind: 'agency' },
   })
@@ -47,7 +48,7 @@ async function recordTodayRide(page: Page, guest: string): Promise<void> {
   })
   expect(client.ok() && start.ok() && end.ok()).toBeTruthy()
   const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
-  const pickupAt = instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString()
+  const pickupAt = instantFromWallClock(`${day}T${time}`, 'Europe/Zagreb').toISOString()
   const recorded = await page.request.post('/api/transfers', {
     data: {
       clientId: (await client.json() as { id: string }).id,
@@ -81,10 +82,10 @@ test('assign reports sent and no email, in Croatian, with an English smoke', asy
   await addDriver(page, 'Ana Sent', sentAddress)
   await addDriver(page, 'Ana Blank')
   await addVehicle(page, plate)
-  await recordTodayRide(page, 'Iva Sent')
-  await recordTodayRide(page, 'Iva Blank')
-  await recordTodayRide(page, 'Iva English')
-  await recordTodayRide(page, 'Iva NoEmail')
+  await recordTodayRide(page, 'Iva Sent', '08:00')
+  await recordTodayRide(page, 'Iva Blank', '10:00')
+  await recordTodayRide(page, 'Iva English', '12:00')
+  await recordTodayRide(page, 'Iva NoEmail', '14:00')
 
   await assign(page, 'Iva Sent', 'Ana Sent', plate, 'Dodijeli vožnju')
   await expect(page.getByRole('listitem').filter({ hasText: 'Radni nalog je poslan vozaču Ana Sent.' })).toBeVisible()
