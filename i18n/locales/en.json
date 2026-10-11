@@ -499,7 +499,8 @@
     "empty": "This list is empty.",
     "counts": "Counts for the operational day",
     "countRides": "Rides",
-    "unassignedAlarm": "Unassigned alarm"
+    "unassignedAlarm": "Unassigned alarm",
+    "unclosedMark": "Unclosed mark"
   },
   "expiringDocuments": {
     "title": "Expiring documents",

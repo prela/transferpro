@@ -265,6 +265,16 @@ onMounted(() => {
               <h3 class="text-lg font-semibold">
                 {{ ride.guestName }}
               </h3>
+              <!--
+                The name is the mark. Color is not the signal (ADR-0027).
+                The mark sends no mail and changes no Ride command.
+              -->
+              <p
+                v-if="ride.unclosedMark"
+                class="mt-1"
+              >
+                {{ t('officeHome.unclosedMark') }}
+              </p>
               <OfficeHomeRideFacts
                 :ride="ride"
                 :time-zone="timeZone"

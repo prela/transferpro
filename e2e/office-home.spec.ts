@@ -91,6 +91,15 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
   }))
   const mustAccept = await page.request.patch(`/api/drivers/${driverId}`, { data: { mustAccept: true } })
   expect(mustAccept.ok()).toBeTruthy()
+  const plainDriverId = await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Ana Slobodna',
+      kind: 'own',
+      phone: '+38595555147',
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+    },
+  }))
   const vehicleId = await createdId(await page.request.post('/api/vehicles', {
     data: {
       registrationPlate: 'DU146AA',
@@ -130,6 +139,22 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
     data: { driverId, vehicleId },
   })
   expect(assigned.ok()).toBeTruthy()
+  const openRide = await record(page, 'Open Lara', new Date(now.getTime() - 90 * 60 * 1000), places, {
+    price: 10,
+    payment: 'cash',
+  })
+  const freshRide = await record(page, 'Fresh Ivo', new Date(now.getTime() - 20 * 60 * 1000), places, {
+    price: 10,
+    payment: 'cash',
+  })
+  const openAssigned = await page.request.post(`/api/rides/${openRide}/assign`, {
+    data: { driverId: plainDriverId, vehicleId },
+  })
+  const freshAssigned = await page.request.post(`/api/rides/${freshRide}/assign`, {
+    data: { driverId: plainDriverId, vehicleId },
+  })
+  expect(openAssigned.ok()).toBeTruthy()
+  expect(freshAssigned.ok()).toBeTruthy()
 
   await page.getByRole('button', { name: 'Osvježi početnu', exact: true }).click()
 
@@ -155,7 +180,15 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
   await expect(waitingRow).toContainText('Marko Vozač')
   await expect(waitingRow).toContainText('DU146AA')
   await expect(waitingRow).not.toContainText('Alarm za nedodijeljenu vožnju')
-  await expect(page.getByRole('region', { name: 'U tijeku' })).toContainText('Ovaj popis je prazan.')
+  await expect(waitingRow).not.toContainText('Nije zatvoreno')
+
+  const progress = page.getByRole('region', { name: 'U tijeku' })
+  const openRow = progress.getByRole('listitem').filter({ hasText: 'Open Lara' })
+  const freshRow = progress.getByRole('listitem').filter({ hasText: 'Fresh Ivo' })
+  await expect(openRow).toContainText('Nije zatvoreno')
+  await expect(openRow).toContainText('Ana Slobodna')
+  await expect(freshRow).toBeVisible()
+  await expect(freshRow).not.toContainText('Nije zatvoreno')
 
   const counts = page.getByRole('region', { name: 'Brojevi za operativni dan' })
   await expect(counts).toContainText('Vožnje')
@@ -168,12 +201,15 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
   await expect(page.getByRole('heading', { name: 'Counts for the operational day' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Meet sign: GOSPOĐA HORVAT')
   await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Unassigned alarm')
+  await expect(page.getByRole('region', { name: 'In progress' }).getByRole('listitem').filter({ hasText: 'Open Lara' })).toContainText('Unclosed mark')
+  await expect(page.getByRole('region', { name: 'In progress' }).getByRole('listitem').filter({ hasText: 'Fresh Ivo' })).not.toContainText('Unclosed mark')
   await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('42.50 EUR')
   await expect(page.getByRole('button', { name: 'English' })).toHaveCount(0)
 
   await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Unassigned alarm')
+  await expect(page.getByRole('region', { name: 'In progress' }).getByRole('listitem').filter({ hasText: 'Open Lara' })).toContainText('Unclosed mark')
   await switchTheme(page, 'light')
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toBeVisible()

@@ -41,3 +41,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0023 | Unassigned alarm | accepted |
 | ADR-0024 | One office home read | accepted |
 | ADR-0025 | Operational-day start | accepted |
+| ADR-0027 | Unclosed mark | accepted |
