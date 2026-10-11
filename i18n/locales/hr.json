@@ -546,7 +546,8 @@
     "counts": "Brojevi za operativni dan",
     "countRides": "Vožnje",
     "unassignedAlarm": "Alarm za nedodijeljenu vožnju",
-    "unclosedMark": "Nije zatvoreno"
+    "unclosedMark": "Nije zatvoreno",
+    "landingAlarm": "Alarm slijetanja"
   },
   "expiringDocuments": {
     "title": "Dokumenti koji istječu",

@@ -546,7 +546,8 @@
     "counts": "Counts for the operational day",
     "countRides": "Rides",
     "unassignedAlarm": "Unassigned alarm",
-    "unclosedMark": "Unclosed mark"
+    "unclosedMark": "Unclosed mark",
+    "landingAlarm": "Landing alarm"
   },
   "expiringDocuments": {
     "title": "Expiring documents",

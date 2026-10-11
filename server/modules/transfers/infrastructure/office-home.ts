@@ -101,7 +101,7 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
     }
   })
 
-  return buildOfficeHome(rides, now, timeZone, startHour)
+  return buildOfficeHome(rides, now, timeZone, startHour, settings.transferDurationMinutes)
 }
 
 /** A missing Driver or Vehicle for an id that is set fails the whole read. A null id is an empty name. */
