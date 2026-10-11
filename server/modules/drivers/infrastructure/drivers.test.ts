@@ -20,10 +20,17 @@ const stored: Driver = {
   name: 'Marko Marić',
   kind: 'own',
   phone,
+  email: null,
   drivingLicenceExpiresOn: '2027-06-01',
   transportLicenceExpiresOn: '2028-01-31',
   memberUserId: null,
   mustAccept: false,
+}
+
+const signIn = 'marko@example.test'
+
+function signInReader(emails: Record<string, string> = { [memberUserId]: signIn }) {
+  return async (userId: string) => emails[userId] ?? null
 }
 
 function fakeTransaction(
@@ -53,9 +60,10 @@ function fakeTransaction(
             name: compiled.params[0],
             kind: compiled.params[1],
             phone: compiled.params[2],
-            drivingLicenceExpiresOn: compiled.params[3],
-            transportLicenceExpiresOn: compiled.params[4],
-            memberUserId: compiled.params[5],
+            email: compiled.params[3],
+            drivingLicenceExpiresOn: compiled.params[4],
+            transportLicenceExpiresOn: compiled.params[5],
+            memberUserId: compiled.params[6],
             mustAccept: false,
           }],
         }
@@ -122,12 +130,31 @@ it('adds a Driver with no account and records field names, not the phone or the 
   expect(JSON.stringify(created)).not.toContain('Marko')
 })
 
-it('adds a Driver linked to a driver member and names that field', async () => {
+it('adds a Driver with an email and records the field name, not the address', async () => {
+  const { transaction, queries } = fakeTransaction([])
+  await expect(addDriver(transaction, actorUserId, { ...input, email: signIn })).resolves.toEqual({
+    ...stored,
+    email: signIn,
+  })
+  const created = auditPayloads(queries)
+  expect(created).toEqual([
+    JSON.stringify({
+      driverId,
+      fields: ['name', 'kind', 'phone', 'email', 'drivingLicenceExpiresOn', 'transportLicenceExpiresOn'],
+    }),
+  ])
+  expect(JSON.stringify(created)).not.toContain(signIn)
+})
+
+it('adds a Driver linked to a driver member, copies the sign-in email, and does not record the address', async () => {
   const { transaction, queries } = fakeTransaction([], [{ userId: memberUserId, role: 'driver' }])
-  const added = await addDriver(transaction, actorUserId, { ...input, memberUserId })
+  const added = await addDriver(transaction, actorUserId, { ...input, memberUserId }, signInReader())
   expect(added.memberUserId).toBe(memberUserId)
+  expect(added.email).toBe(signIn)
   expect(auditPayloads(queries)[0]).toContain('memberUserId')
+  expect(auditPayloads(queries)[0]).toContain('email')
   expect(JSON.stringify(auditPayloads(queries))).not.toContain(phone)
+  expect(JSON.stringify(auditPayloads(queries))).not.toContain(signIn)
 })
 
 it('refuses a member who is not a driver, and a member the session cannot see', async () => {
@@ -145,7 +172,7 @@ it('drops a database error that carries the phone, so the log line does not', as
     code: '23505',
     message: `duplicate key ${phone}`,
   })
-  const error = await addDriver(transaction, actorUserId, { ...input, memberUserId }).catch(caught => caught)
+  const error = await addDriver(transaction, actorUserId, { ...input, memberUserId }, signInReader()).catch(caught => caught)
   expect(error).toBeInstanceOf(DriverInputError)
   expect(error).toMatchObject({ message: 'Bad request', statusCode: 400 })
   expect(JSON.stringify(error)).not.toContain(phone)
@@ -228,6 +255,50 @@ it('lets an admin change must-accept and refuses a dispatcher before any write',
   })).rejects.toBeInstanceOf(TenantAccessError)
   expect(dispatcher.queries.filter(query => query.sql.includes('update') && !query.sql.includes('for update'))).toEqual([])
   expect(auditPayloads(dispatcher.queries)).toEqual([])
+})
+
+it('refuses an email on a linked Driver and writes nothing', async () => {
+  const linked = { ...stored, memberUserId, email: signIn }
+  const { transaction, queries } = fakeTransaction([linked])
+  await expect(correctDriver(transaction, actorUserId, 'dispatcher', driverId, {
+    email: 'other@example.test',
+  })).rejects.toBeInstanceOf(DriverInputError)
+  expect(queries.filter(query => query.sql.includes('update') && !query.sql.includes('for update'))).toEqual([])
+  expect(auditPayloads(queries)).toEqual([])
+})
+
+it('replaces a stored email with the sign-in email when an account is linked', async () => {
+  const withAddress = { ...stored, email: 'old@example.test' }
+  const { transaction, queries } = fakeTransaction([withAddress], [{ userId: memberUserId, role: 'driver' }])
+  await expect(correctDriver(transaction, actorUserId, 'dispatcher', driverId, {
+    memberUserId,
+  }, signInReader())).resolves.toMatchObject({ memberUserId, email: signIn })
+  const text = JSON.stringify(auditPayloads(queries))
+  expect(text).toContain('memberUserId')
+  expect(text).toContain('email')
+  expect(text).not.toContain(signIn)
+  expect(text).not.toContain('old@example.test')
+})
+
+it('leaves the email in place when the link is removed, then lets the office clear it', async () => {
+  const linked = { ...stored, memberUserId, email: signIn }
+  const unlinked = fakeTransaction([linked])
+  await expect(correctDriver(unlinked.transaction, actorUserId, 'dispatcher', driverId, {
+    memberUserId: null,
+  })).resolves.toMatchObject({ memberUserId: null, email: signIn })
+  expect(auditPayloads(unlinked.queries)).toEqual([
+    JSON.stringify({ driverId, field: 'memberUserId' }),
+  ])
+
+  const kept = { ...stored, email: signIn }
+  const cleared = fakeTransaction([kept])
+  await expect(correctDriver(cleared.transaction, actorUserId, 'admin', driverId, {
+    email: null,
+  })).resolves.toMatchObject({ email: null })
+  expect(auditPayloads(cleared.queries)).toEqual([
+    JSON.stringify({ driverId, field: 'email' }),
+  ])
+  expect(JSON.stringify(auditPayloads(cleared.queries))).not.toContain(signIn)
 })
 
 it('clears a member link and refuses a second shape that is not a driver', async () => {
