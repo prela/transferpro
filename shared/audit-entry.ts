@@ -38,6 +38,7 @@ export const auditActions = [
   'ride.accepted',
   'ride.accepted_by_phone',
   'ride.done',
+  'ride.cancelled',
   'ride.vehicle_changed',
   'ride.cleared',
   'ride.reassigned',
@@ -339,6 +340,22 @@ const rideDone = z.object({
 })
 
 /*
+ * Cancelling a Ride is the state change. The Driver and the Vehicle stay
+ * on the Ride. `fields` is only `state`. `driverId` is null when the Ride
+ * was unassigned. A name, a plate, a guest, or the flag value is not a key.
+ * The actor is the office member who cancelled. `subjectUserId` stays null.
+ */
+const rideCancelled = z.object({
+  action: z.literal('ride.cancelled'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    driverId: driverId.nullable(),
+    fields: z.array(rideAcceptedFieldSchema).length(RIDE_ACCEPTED_FIELDS.length),
+  }),
+})
+
+/*
  * A vehicle-only change keeps the Driver. The ids say which Ride, which
  * Driver stayed, and which Vehicle is now on it. `fields` is only
  * `vehicleId`: the state and the copied flag did not change. A plate, a
@@ -464,6 +481,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   rideAccepted,
   rideAcceptedByPhone,
   rideDone,
+  rideCancelled,
   rideVehicleChanged,
   rideCleared,
   rideReassigned,
@@ -488,6 +506,9 @@ export type AuditFact = z.infer<typeof auditFactSchema>
  * A member who has left has a null actor name. The plate is not joined.
  * `ride.done` carries the Driver name. The actor name is the person who
  * marked it done. The plate is not joined.
+ * `ride.cancelled` carries the Driver name when the Ride had a Driver.
+ * An unassigned cancel has a null Driver name. The actor name is the
+ * person who cancelled. The plate is not joined.
  * `ride.vehicle_changed`, `ride.cleared`, and `ride.reassigned` carry the
  * Driver name and the Vehicle plate, joined from the ids on the row.
  */
@@ -535,6 +556,11 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   rideDone.extend({
     ...listed,
     // The Driver name is joined from `driverId`. The person is `actorName`.
+    driverName: z.string().nullable(),
+  }),
+  rideCancelled.extend({
+    ...listed,
+    // The Driver name is joined when the Ride had a Driver. The person is `actorName`.
     driverName: z.string().nullable(),
   }),
   rideVehicleChanged.extend({

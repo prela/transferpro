@@ -230,6 +230,55 @@ it('append_entry accepts a ride marked done with the Ride id, the Driver id, and
   expect(await entriesOf(tenant)).toHaveLength(1)
 })
 
+it('append_entry accepts a cancelled Ride with a Driver id or null, and refuses an extra key', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const append = `select audit.append_entry($1, $2, $3, $4::jsonb)`
+  const withDriver = { rideId, driverId, fields: ['state'] }
+  const unassigned = { rideId, driverId: null, fields: ['state'] }
+  await inSession(appPool, tenant, client => client.query(append, [
+    'ride.cancelled',
+    actor,
+    null,
+    JSON.stringify(withDriver),
+  ]))
+  await inSession(appPool, tenant, client => client.query(append, [
+    'ride.cancelled',
+    actor,
+    null,
+    JSON.stringify(unassigned),
+  ]))
+  const stored = await entriesOf(tenant)
+  expect(stored).toHaveLength(2)
+  expect(stored).toEqual(expect.arrayContaining([
+    {
+      tenant_id: tenant,
+      action: 'ride.cancelled',
+      actor_user_id: actor,
+      subject_user_id: null,
+      data: withDriver,
+    },
+    {
+      tenant_id: tenant,
+      action: 'ride.cancelled',
+      actor_user_id: actor,
+      subject_user_id: null,
+      data: unassigned,
+    },
+  ]))
+
+  const extraKey = await refusal(appPool, tenant, append, [
+    'ride.cancelled',
+    actor,
+    null,
+    JSON.stringify({ ...unassigned, guestName: 'Ana Anić' }),
+  ])
+  expect(extraKey).toMatchObject({ code: '23514' })
+  expect(await entriesOf(tenant)).toHaveLength(2)
+})
+
 it('append_entry accepts an office acceptance by phone with the Ride id, the Driver id, and the field name state, and refuses an extra key or other fields', async () => {
   const tenant = crypto.randomUUID()
   const actor = crypto.randomUUID()

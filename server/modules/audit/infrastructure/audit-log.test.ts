@@ -150,6 +150,8 @@ it('lists a ride.accepted entry with the Driver name and does not join the plate
   expect(text).toContain('as "driverName"')
   expect(vehicleJoin).not.toContain('ride.accepted')
   expect(vehicleJoin).not.toContain('ride.done')
+  expect(text).toContain('ride.cancelled')
+  expect(vehicleJoin).not.toContain('ride.cancelled')
   expect(text).not.toContain('phone')
 })
 

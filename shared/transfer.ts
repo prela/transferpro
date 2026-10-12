@@ -91,6 +91,15 @@ export function canMarkRideDone(state: RideState, mustAccept: boolean | null): b
   return (state === 'assigned' && mustAccept === false) || (state === 'accepted' && mustAccept === true)
 }
 
+/**
+ * ADR-0005. A dispatcher or an admin may cancel from `unassigned`,
+ * `assigned`, or `accepted`. The copied flag does not matter. `done`,
+ * `no-show`, and a second cancel are terminal and are refused.
+ */
+export function canCancelRide(state: RideState): boolean {
+  return state === 'unassigned' || state === 'assigned' || state === 'accepted'
+}
+
 export const paymentMethodSchema = z.enum(PAYMENT_METHODS)
 
 export type PaymentMethod = z.infer<typeof paymentMethodSchema>

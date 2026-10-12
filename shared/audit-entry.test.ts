@@ -355,6 +355,35 @@ it('records a Ride marked done by the Ride id, the Driver id, and the field name
   expect(auditFactSchema.safeParse({ ...done, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records a cancelled Ride by the Ride id, a Driver id or null, and the field name state', () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const cancelled = {
+    action: 'ride.cancelled' as const,
+    subjectUserId: null,
+    data: {
+      rideId,
+      driverId,
+      fields: ['state'] as const,
+    },
+  }
+  expect(auditFactSchema.parse(cancelled)).toEqual(cancelled)
+  const unassigned = {
+    ...cancelled,
+    data: { ...cancelled.data, driverId: null },
+  }
+  expect(auditFactSchema.parse(unassigned)).toEqual(unassigned)
+  expect(auditFactSchema.safeParse({
+    ...cancelled,
+    data: { ...cancelled.data, name: 'Marko Vozač', phone: '+38591111', guestName: 'Ana Anić', mustAccept: true },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...cancelled,
+    data: { ...cancelled.data, fields: ['state', 'mustAccept'] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...cancelled, subjectUserId: memberId }).success).toBe(false)
+})
+
 it('records an office acceptance by phone as the Ride id, the Driver id, and the field name state', () => {
   const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'

@@ -215,6 +215,15 @@ function uuidText(data: AnyPgColumn, key: string) {
 }
 
 /**
+ * An id, or JSON null when the Ride had no Driver. A name cannot sit here.
+ * The key is still required, so a missing Driver is stored as null rather than omitted.
+ */
+function nullableUuidText(data: AnyPgColumn, key: string) {
+  const name = sql.raw(`'${key}'`)
+  return sql`(jsonb_typeof(${data} -> ${name}) = 'null' or (jsonb_typeof(${data} -> ${name}) = 'string' and ${data} ->> ${name} ~* ${sql.raw(`'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`)}))`
+}
+
+/**
  * A calendar date stored as text. Month and day are digits only.
  * Zod refuses 31 February; this check refuses a name or a plate in the same slot.
  */
@@ -274,6 +283,7 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'ride.accepted' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${rideAcceptedFieldsArray(table.data)}
     when 'ride.accepted_by_phone' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${rideAcceptedFieldsArray(table.data)}
     when 'ride.done' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${rideAcceptedFieldsArray(table.data)}
+    when 'ride.cancelled' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${nullableUuidText(table.data, 'driverId')} and ${rideAcceptedFieldsArray(table.data)}
     when 'ride.vehicle_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')} and ${rideVehicleChangeFieldsArray(table.data)}
     when 'ride.cleared' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')} and ${rideChangeFieldsArray(table.data)}
     when 'ride.reassigned' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')} and ${rideChangeFieldsArray(table.data)}
