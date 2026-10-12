@@ -9,12 +9,13 @@ for (const theme of ['light', 'dark'] as const) {
     await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
     await page.getByRole('link', { name: 'Vozači' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Vozači' })).toBeVisible()
-    await expect(page.getByLabel('Ime')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Dodaj vozača', exact: true })).toBeVisible()
+    await expect(page.getByText('Još nema vozača.')).toBeVisible()
+    await page.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()
+    await expect(page.getByRole('dialog').getByLabel('Ime')).toBeVisible()
 
     await switchLocale(page, 'en')
     await expect(page.getByRole('heading', { level: 1, name: 'Drivers' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Add driver', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Add a driver', exact: true })).toBeVisible()
   })
 
   test(`vehicles page is usable in ${theme} mode`, async ({ page }) => {
@@ -23,12 +24,13 @@ for (const theme of ['light', 'dark'] as const) {
     await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
     await page.getByRole('link', { name: 'Vozila' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Vozila' })).toBeVisible()
-    await expect(page.getByLabel('Registarska oznaka', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Dodaj vozilo', exact: true })).toBeVisible()
+    await expect(page.getByText('Još nema vozila.')).toBeVisible()
+    await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
+    await expect(page.getByRole('dialog').getByLabel('Registarska oznaka', { exact: true })).toBeVisible()
 
     await switchLocale(page, 'en')
     await expect(page.getByRole('heading', { level: 1, name: 'Vehicles' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Add vehicle', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Add a vehicle', exact: true })).toBeVisible()
   })
 
   test(`locations page is usable in ${theme} mode`, async ({ page }) => {
