@@ -11,7 +11,7 @@ import { createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
 import { setRosterDay } from '../modules/roster'
 import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale } from '../modules/tenancy'
-import { assignRide, changeVehicle, clearRide, createTransfer, listTransferDay, listUpcomingRides, reassignRide } from '../modules/transfers'
+import { assignRide, cancelRide, changeVehicle, clearRide, createTransfer, listTransferDay, listUpcomingRides, reassignRide } from '../modules/transfers'
 import { archiveVehicle, createVehicle } from '../modules/vehicles'
 import postAcceptByPhone from './rides/[id]/accept-by-phone.post'
 import postAccept from './rides/[id]/accept.post'
@@ -2364,21 +2364,27 @@ it('lets a dispatcher or an admin cancel from unassigned, assigned, and accepted
   const openCancel = await call('POST', `/api/rides/${open.ride.id}/cancel`, world.dispatcher, {})
   expect(openCancel.status).toBe(200)
   expect(await openCancel.json()).toEqual({
-    id: open.ride.id,
-    transferId: open.transfer.id,
-    state: 'cancelled',
-    driverId: null,
-    vehicleId: null,
-    mustAccept: null,
+    ride: {
+      id: open.ride.id,
+      transferId: open.transfer.id,
+      state: 'cancelled',
+      driverId: null,
+      vehicleId: null,
+      mustAccept: null,
+    },
+    workOrders: [],
   })
 
   const assignedCancel = await call('POST', `/api/rides/${assigned.ride.id}/cancel`, world.admin, {})
   expect(assignedCancel.status).toBe(200)
   expect(await assignedCancel.json()).toMatchObject({
-    state: 'cancelled',
-    driverId: linked.driver.id,
-    vehicleId: vehicle.id,
-    mustAccept: true,
+    ride: {
+      state: 'cancelled',
+      driverId: linked.driver.id,
+      vehicleId: vehicle.id,
+      mustAccept: true,
+    },
+    workOrders: [{ driverId: linked.driver.id, outcome: 'sent' }],
   })
 
   const acceptedCancel = await call('POST', `/api/rides/${accepted.ride.id}/cancel`, world.dispatcher, {})
@@ -2478,6 +2484,155 @@ it('refuses a driver, a terminal Ride, and a further transition, and writes no c
   expect(await cancelAudits(world.tenantId)).toHaveLength(1)
   await expect(withAppTenant(world.tenantId, client => client.query('delete from app.rides'))).rejects.toMatchObject({ code: '42501' })
   expect(await rideRow(held.ride.id)).toMatchObject({ state: 'cancelled' })
+})
+
+it('emails a cancelled work order with no price, and a rejected send leaves the Ride cancelled', async () => {
+  const world = await office('hasg-cancel-mail')
+  await updateUserLocale(world.dispatcher, 'en')
+  const address = 'ana-cancel@example.test'
+  const guestName = 'Gost Otkaz'
+  const tabla = 'TABLA-OTKAZ'
+  const pickup = 'Zračna luka Dubrovnik'
+  const dropOff = 'Hotel Park'
+  const driver = await createDriver(world.dispatcher, {
+    ...driverBody,
+    name: 'Ana Cancel',
+    phone: '+385911110185',
+    email: address,
+  })
+  const blank = await createDriver(world.dispatcher, {
+    ...driverBody,
+    name: 'Marko Blank',
+    phone: '+385911110186',
+  })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9185AA'))
+  const recorded = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-15T22:30:00.000Z'),
+    guestName,
+    price: 42.5,
+    payment: 'cash',
+    tabla,
+  })
+  await assignRide(world.dispatcher, { rideId: recorded.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  const sent: Array<{ to: string, subject: string, text: string, html: string }> = []
+  const cancelled = await cancelRide(world.dispatcher, recorded.ride.id, {}, {
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder(mail) {
+        sent.push(mail)
+      },
+      async notifyArrivalMoved() {},
+    },
+  })
+  expect(cancelled.ride).toMatchObject({
+    state: 'cancelled',
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+  })
+  expect(cancelled.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(JSON.stringify(cancelled)).not.toContain(address)
+  expect(sent).toHaveLength(1)
+  expect(sent[0]?.to).toBe(address)
+  expect(sent[0]?.subject).toBe('Otkazano · 16. 10. 2026. 00:30 · Zračna luka Dubrovnik')
+  expect(sent[0]?.text.startsWith('Otkazano\n')).toBe(true)
+  expect(sent[0]?.text).toContain(`Polazište: ${pickup}`)
+  expect(sent[0]?.text).toContain(`Odredište: ${dropOff}`)
+  expect(sent[0]?.text).toContain(`Gost: ${guestName}`)
+  expect(sent[0]?.text).toContain(`Tabla: ${tabla}`)
+  expect(sent[0]?.text).not.toContain('Cijena')
+  expect(sent[0]?.text).not.toContain('42,50')
+  expect(sent[0]?.text).not.toContain('Plaćanje')
+  expect(sent[0]?.text).not.toContain('Gotovina')
+  expect(sent[0]?.html).not.toContain('href=')
+  const audits = await cancelAudits(world.tenantId)
+  expect(audits.map(row => row.data.rideId)).toEqual([recorded.ride.id])
+  expect(JSON.stringify(audits)).not.toContain(address)
+  expect(JSON.stringify(audits)).not.toContain(guestName)
+  expect(JSON.stringify(audits)).not.toContain('email')
+
+  const quiet = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-16T22:30:00.000Z'),
+    guestName,
+    tabla,
+  })
+  const untouched: string[] = []
+  const none = await cancelRide(world.dispatcher, quiet.ride.id, {}, {
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder(mail) {
+        untouched.push(mail.to)
+      },
+      async notifyArrivalMoved() {},
+    },
+  })
+  expect(none.ride).toMatchObject({ state: 'cancelled', driverId: null, vehicleId: null })
+  expect(none.workOrders).toEqual([])
+  expect(untouched).toEqual([])
+
+  const blankRide = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-17T22:30:00.000Z'),
+    guestName,
+    price: 42.5,
+    payment: 'cash',
+    tabla,
+  })
+  await assignRide(world.dispatcher, { rideId: blankRide.ride.id, driverId: blank.id, vehicleId: vehicle.id })
+  const blankSent: string[] = []
+  const noEmail = await cancelRide(world.dispatcher, blankRide.ride.id, {}, {
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder(mail) {
+        blankSent.push(mail.to)
+      },
+      async notifyArrivalMoved() {},
+    },
+  })
+  expect(noEmail.ride.state).toBe('cancelled')
+  expect(noEmail.workOrders).toEqual([{ driverId: blank.id, outcome: 'no_email' }])
+  expect(blankSent).toEqual([])
+  expect(JSON.stringify(noEmail)).not.toContain(address)
+
+  const logs = captureLogs()
+  const failedRide = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-18T22:30:00.000Z'),
+    guestName,
+    price: 42.5,
+    payment: 'cash',
+    tabla,
+  })
+  await assignRide(world.dispatcher, { rideId: failedRide.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  const failed = await cancelRide(world.dispatcher, failedRide.ride.id, {}, {
+    logger: logs.logger,
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder() {
+        throw new Error(`rejected ${address} ${guestName} ${tabla} ${pickup} ${dropOff}`)
+      },
+      async notifyArrivalMoved() {},
+    },
+  })
+  expect(failed.workOrders).toEqual([{ driverId: driver.id, outcome: 'failed' }])
+  expect(failed.ride.state).toBe('cancelled')
+  expect(await rideRow(failedRide.ride.id)).toMatchObject({
+    state: 'cancelled',
+    driver_id: driver.id,
+    vehicle_id: vehicle.id,
+  })
+  const line = JSON.stringify(logs.lines()[0])
+  expect(line).toContain(failedRide.ride.id)
+  expect(line).toContain(driver.id)
+  expect(line).not.toContain(address)
+  expect(line).not.toContain(guestName)
+  expect(line).not.toContain(tabla)
+  expect(line).not.toContain(pickup)
+  expect(line).not.toContain(dropOff)
+  const stored = await ownerPool.query<{ action: string }>(
+    `select action::text as action from app.audit_entry
+     where tenant_id = $1 and data->>'rideId' = $2
+     order by occurred_at, id`,
+    [world.tenantId, failedRide.ride.id],
+  )
+  expect(stored.rows.map(row => row.action).filter(action => action.startsWith('ride.'))).toEqual(['ride.assigned', 'ride.cancelled'])
 })
 
 it('hides another Tenant from cancel and writes no audit row', async () => {

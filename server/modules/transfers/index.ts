@@ -9,6 +9,8 @@
  * The Driver declines from `assigned` only. The Ride returns to unassigned
  * and a decline alert names that Driver. No mail.
  * The office may cancel from `unassigned`, `assigned`, or `accepted`.
+ * That cancel mails the current Driver a work order with status cancelled
+ * and no price, after the Ride is saved. A Ride with no Driver sends nothing.
  * The office or the assigned Driver can record or clear a landing time
  * while the Ride is unfinished. The Ride state stays. No mail.
  * The office can correct the Transfer while the Ride is unfinished.

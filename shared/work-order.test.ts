@@ -101,6 +101,32 @@ it('writes a changed work order with the same body, and a cash Ride still states
   expect(message.text.toLowerCase()).not.toContain('prihvat')
 })
 
+it('writes a cancelled work order without a price, even when the Ride was cash', () => {
+  const message = composeWorkOrder(facts, 'cancelled')
+  expect(message.subject).toBe('Otkazano · 16. 10. 2026. 00:30 · Zračna luka <Dubrovnik>')
+  expect(message.text.startsWith('Otkazano\n')).toBe(true)
+  expect(message.text).toContain('Polazište: Zračna luka <Dubrovnik>')
+  expect(message.text).toContain('Odredište: Hotel Park')
+  expect(message.text).toContain('Gost: Ana & Iva')
+  expect(message.text).toContain('Tabla: ANA')
+  expect(message.text).toContain('Registracija: DU100AA')
+  expect(message.text).not.toContain('Cijena')
+  expect(message.text).not.toContain('42,50')
+  expect(message.text).not.toContain('Plaćanje')
+  expect(message.text).not.toContain('Gotovina')
+  expect(message.html).not.toContain('<a')
+  expect(message.text.toLowerCase()).not.toContain('prihvat')
+})
+
+it('uses the English word Cancelled and still states no price', () => {
+  const message = composeWorkOrder({ ...facts, locale: 'en', timeZone: 'UTC' }, 'cancelled')
+  expect(message.subject).toBe('Cancelled · 15/10/2026, 22:30 · Zračna luka <Dubrovnik>')
+  expect(message.text.startsWith('Cancelled\n')).toBe(true)
+  expect(message.text).not.toContain('42.50')
+  expect(message.text).not.toContain('Cash')
+  expect(message.text).not.toContain('Payment')
+})
+
 it('writes no longer yours without a price, even when the Ride was cash', () => {
   const message = composeWorkOrder(facts, 'no_longer_yours')
   expect(message.subject).toBe('Više nije vaše · 16. 10. 2026. 00:30 · Zračna luka <Dubrovnik>')
