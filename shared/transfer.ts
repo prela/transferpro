@@ -100,6 +100,15 @@ export function canCancelRide(state: RideState): boolean {
   return state === 'unassigned' || state === 'assigned' || state === 'accepted'
 }
 
+/**
+ * Decline is allowed from `assigned` only (ADR-0006). The copied flag does
+ * not matter: a Ride that must be accepted, and one that need not, can both
+ * be declined while they are still `assigned`. `accepted` is refused.
+ */
+export function canDeclineRide(state: RideState): boolean {
+  return state === 'assigned'
+}
+
 export const paymentMethodSchema = z.enum(PAYMENT_METHODS)
 
 export type PaymentMethod = z.infer<typeof paymentMethodSchema>
@@ -197,9 +206,25 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
 
 export type TransferDayRide = z.infer<typeof transferDayRideSchema>
 
+/**
+ * A decline the board shows for a Ride on this day. The name is joined from
+ * the Driver id when the screen renders. The row stores no name.
+ */
+export const declineAlertSchema = z.object({
+  id: z.uuid(),
+  rideId: z.uuid(),
+  driverId: z.uuid(),
+  // Joined at read. The stored row keeps the Driver id only.
+  driverName: z.string().min(1),
+  guestName: z.string().min(1),
+})
+
+export type DeclineAlert = z.infer<typeof declineAlertSchema>
+
 export const transferDaySchema = z.object({
   date: z.string().refine(isCalendarDate),
   rides: z.array(transferDayRideSchema),
+  declineAlerts: z.array(declineAlertSchema),
 })
 
 export type TransferDay = z.infer<typeof transferDaySchema>

@@ -39,6 +39,7 @@ export const auditActions = [
   'ride.accepted_by_phone',
   'ride.done',
   'ride.cancelled',
+  'ride.declined',
   'ride.vehicle_changed',
   'ride.cleared',
   'ride.reassigned',
@@ -356,6 +357,23 @@ const rideCancelled = z.object({
 })
 
 /*
+ * A decline returns the Ride to unassigned. The ids are the Driver who
+ * declined and the Vehicle that was cleared. `fields` names what was
+ * written. A name, a plate, a phone, a guest, or the must-accept value is
+ * not a key. The actor is that Driver. `subjectUserId` stays null.
+ */
+const rideDeclined = z.object({
+  action: z.literal('ride.declined'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    driverId,
+    vehicleId,
+    fields: z.array(rideAssignmentFieldSchema).length(RIDE_ASSIGNMENT_FIELDS.length),
+  }),
+})
+
+/*
  * A vehicle-only change keeps the Driver. The ids say which Ride, which
  * Driver stayed, and which Vehicle is now on it. `fields` is only
  * `vehicleId`: the state and the copied flag did not change. A plate, a
@@ -482,6 +500,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   rideAcceptedByPhone,
   rideDone,
   rideCancelled,
+  rideDeclined,
   rideVehicleChanged,
   rideCleared,
   rideReassigned,
@@ -509,6 +528,8 @@ export type AuditFact = z.infer<typeof auditFactSchema>
  * `ride.cancelled` carries the Driver name when the Ride had a Driver.
  * An unassigned cancel has a null Driver name. The actor name is the
  * person who cancelled. The plate is not joined.
+ * `ride.declined` carries the Driver name and the Vehicle plate. The actor
+ * is the Driver who declined. The ids are the ones that were cleared.
  * `ride.vehicle_changed`, `ride.cleared`, and `ride.reassigned` carry the
  * Driver name and the Vehicle plate, joined from the ids on the row.
  */
@@ -562,6 +583,12 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
     ...listed,
     // The Driver name is joined when the Ride had a Driver. The person is `actorName`.
     driverName: z.string().nullable(),
+  }),
+  rideDeclined.extend({
+    ...listed,
+    // The Driver who declined, and the plate that was cleared. Both are joined.
+    driverName: z.string().nullable(),
+    vehiclePlate: z.string().nullable(),
   }),
   rideVehicleChanged.extend({
     ...listed,

@@ -51,6 +51,9 @@ beforeAll(async () => {
   const auth = await authPool.connect()
   try {
     await owner.query('begin')
+    await owner.query(`delete from app.ride_alert where tenant_id::text in (
+      select id from auth.organization where slug like 'htr-%'
+    )`)
     await owner.query(`delete from app.rides where tenant_id::text in (
       select id from auth.organization where slug like 'htr-%'
     )`)
@@ -359,7 +362,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
 
   const calendarDay = await call('GET', `/api/transfers?date=${sample.calendar}`, admin)
   expect(calendarDay.status).toBe(200)
-  expect(await calendarDay.json()).toEqual({ date: sample.calendar, rides: [] })
+  expect(await calendarDay.json()).toEqual({ date: sample.calendar, rides: [], declineAlerts: [] })
 
   const operationalDay = await call('GET', `/api/transfers?date=${sample.operational}`, dispatcher)
   expect(operationalDay.status).toBe(200)

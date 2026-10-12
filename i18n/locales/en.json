@@ -140,6 +140,7 @@
         "accepted_by_phone": "Acceptance confirmed by phone",
         "done": "Ride marked done",
         "cancelled": "Ride cancelled",
+        "declined": "Ride declined",
         "vehicle_changed": "Vehicle changed",
         "cleared": "Ride cleared",
         "reassigned": "Ride reassigned"
@@ -261,6 +262,7 @@
     "loading": "Loading rides",
     "loadFailed": "The day list could not be loaded. Try again.",
     "empty": "No rides on this day.",
+    "declined": "{driver} declined the ride for {guest}.",
     "add": "Record a transfer",
     "client": "Client",
     "chooseClient": "Choose a client",
@@ -356,7 +358,14 @@
     "doneConfirm": "Mark done",
     "doneConfirming": "Marking",
     "doneConflict": "This ride can no longer be marked done.",
-    "doneFailed": "The ride was not marked done. Try again."
+    "doneFailed": "The ride was not marked done. Try again.",
+    "decline": "Decline ride",
+    "declineTitle": "Decline this ride",
+    "declineBody": "The ride returns to the board with no driver and no vehicle.",
+    "declineConfirm": "Decline",
+    "declineConfirming": "Declining",
+    "declineConflict": "This ride can no longer be declined.",
+    "declineFailed": "The ride was not declined. Try again."
   },
   "drivers": {
     "nav": "Drivers",

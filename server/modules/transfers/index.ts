@@ -6,6 +6,9 @@
  * The office records that same acceptance after confirming by phone.
  * The Driver or the office marks the Ride done: from `assigned` when the
  * copied flag is off, and only from `accepted` when the flag is on.
+ * The Driver declines from `assigned` only. The Ride returns to unassigned
+ * and a decline alert names that Driver. No mail.
+ * The office may cancel from `unassigned`, `assigned`, or `accepted`.
  * The office can change only the Vehicle, clear the Ride, or reassign it.
  * Each of those mails a work order after the Ride is saved.
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
@@ -15,6 +18,7 @@ export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableE
 export { RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
 export { assignRide, rosterVehicleForRide } from './infrastructure/assign-access'
 export { cancelRide, CancelRideInputError, RideNotCancellableError } from './infrastructure/cancel'
+export { declineRide, DeclineRideInputError, RideNotDeclinableError } from './infrastructure/decline'
 export { markRideDone, MarkRideDoneInputError, RideNotFinishableError } from './infrastructure/done'
 export { listUpcomingRides } from './infrastructure/driver-ride-access'
 export { askFlightLandings, LandingTimeClosedError, LandingTimeInFutureError, recordLandingTime, refreshFlightLandings } from './infrastructure/flight-landing'

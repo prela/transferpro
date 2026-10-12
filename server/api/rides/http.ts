@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
-import { AcceptRideInputError, CancelRideInputError, MarkRideDoneInputError, RideNotAcceptableError, RideNotCancellableError, RideNotFinishableError, RideNotFoundError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
+import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, MarkRideDoneInputError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
 
 /**
  * Turn an assignment or accept failure into an HTTP error. The message stays
@@ -17,6 +17,8 @@ import { AcceptRideInputError, CancelRideInputError, MarkRideDoneInputError, Rid
  * not allow it, or a concurrent command already won. Nothing was written.
  * `ride_not_cancellable` is a cancel from `done`, `no-show`, or `cancelled`,
  * or a concurrent command already won. Nothing was written.
+ * `ride_not_declinable` is a decline refused: the Ride is not `assigned`,
+ * or a concurrent command already won. Nothing was written.
  */
 export function rideHttpError(error: unknown): never {
   if (
@@ -25,6 +27,7 @@ export function rideHttpError(error: unknown): never {
     || error instanceof AcceptRideInputError
     || error instanceof MarkRideDoneInputError
     || error instanceof CancelRideInputError
+    || error instanceof DeclineRideInputError
     || error instanceof RideNotFoundError
     || error instanceof TenantAccessError
   ) {
@@ -36,6 +39,7 @@ export function rideHttpError(error: unknown): never {
     || error instanceof RideNotAcceptableError
     || error instanceof RideNotFinishableError
     || error instanceof RideNotCancellableError
+    || error instanceof RideNotDeclinableError
     || error instanceof RideNotOpenError
     || error instanceof RideVehicleUnchangedError
     || error instanceof RideSameDriverError

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayLocale, DriverUpcomingRide } from '../../shared'
-import { canMarkRideDone, driverUpcomingListSchema, formatInstant, rideSchema } from '../../shared'
+import { canDeclineRide, canMarkRideDone, driverUpcomingListSchema, formatInstant, rideSchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -21,6 +21,10 @@ const acceptingId = ref<string | null>(null)
 const markingDone = ref<DriverUpcomingRide | null>(null)
 const markDonePending = ref(false)
 const markDoneErrorKey = ref<'driverRides.doneConflict' | 'driverRides.doneFailed' | null>(null)
+// The Ride the Driver is about to decline. Null closes the dialog.
+const declining = ref<DriverUpcomingRide | null>(null)
+const declinePending = ref(false)
+const declineErrorKey = ref<'driverRides.declineConflict' | 'driverRides.declineFailed' | null>(null)
 // A 409 means the list the Driver tapped was already stale.
 const conflict = ref(false)
 // A slower reload must not replace the rows from a newer one.
@@ -70,6 +74,11 @@ function canFinish(ride: DriverUpcomingRide): boolean {
   return canMarkRideDone(ride.state, ride.mustAccept)
 }
 
+/** Assigned only. The copied flag does not matter (ADR-0006). */
+function canDecline(ride: DriverUpcomingRide): boolean {
+  return canDeclineRide(ride.state)
+}
+
 function httpStatus(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null)
     return undefined
@@ -88,7 +97,7 @@ function httpStatus(error: unknown): number | undefined {
  * the Driver can try again. This action does not send mail.
  */
 async function accept(rideId: string) {
-  if (acceptingId.value !== null)
+  if (acceptingId.value !== null || markDonePending.value || declinePending.value)
     return
   acceptingId.value = rideId
   try {
@@ -115,7 +124,7 @@ async function accept(rideId: string) {
 }
 
 function openMarkDone(ride: DriverUpcomingRide) {
-  if (!canFinish(ride) || markDonePending.value || acceptingId.value !== null)
+  if (!canFinish(ride) || markDonePending.value || acceptingId.value !== null || declinePending.value)
     return
   markDoneErrorKey.value = null
   markingDone.value = ride
@@ -168,6 +177,63 @@ async function confirmMarkDone() {
   }
   finally {
     markDonePending.value = false
+  }
+}
+
+function openDecline(ride: DriverUpcomingRide) {
+  if (!canDecline(ride) || declinePending.value || acceptingId.value !== null || markDonePending.value)
+    return
+  declineErrorKey.value = null
+  declining.value = ride
+}
+
+function closeDecline() {
+  if (declinePending.value)
+    return
+  declineErrorKey.value = null
+  declining.value = null
+}
+
+const declineOpen = computed({
+  get: () => declining.value !== null,
+  set(open: boolean) {
+    if (!open)
+      closeDecline()
+  },
+})
+
+/**
+ * POST /api/rides/:id/decline with an empty body. Success reloads the list,
+ * and the Ride leaves it because it is no longer this Driver's. A 409 or a
+ * 404 reloads and says the Ride can no longer be declined. No mail is sent.
+ */
+async function confirmDecline() {
+  const target = declining.value
+  if (!target || declinePending.value)
+    return
+  declinePending.value = true
+  declineErrorKey.value = null
+  try {
+    rideSchema.parse(await $fetch(`/api/rides/${target.rideId}/decline`, {
+      method: 'POST',
+      body: {},
+    }))
+    conflict.value = false
+    declining.value = null
+    await loadRides(true)
+  }
+  catch (error) {
+    const status = httpStatus(error)
+    if (status === 409 || status === 404) {
+      declineErrorKey.value = 'driverRides.declineConflict'
+      await loadRides(true)
+    }
+    else {
+      declineErrorKey.value = 'driverRides.declineFailed'
+    }
+  }
+  finally {
+    declinePending.value = false
   }
 }
 
@@ -384,17 +450,29 @@ onMounted(loadRides)
             size="xl"
             class="mt-4 w-full justify-center"
             :loading="acceptingId === ride.rideId"
-            :disabled="acceptingId !== null || markDonePending"
+            :disabled="acceptingId !== null || markDonePending || declinePending"
             @click="accept(ride.rideId)"
           >
             {{ acceptingId === ride.rideId ? t('driverRides.accepting') : t('driverRides.accept') }}
+          </UButton>
+          <UButton
+            v-if="canDecline(ride)"
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="xl"
+            class="mt-4 w-full justify-center"
+            :disabled="acceptingId !== null || markDonePending || declinePending"
+            @click="openDecline(ride)"
+          >
+            {{ t('driverRides.decline') }}
           </UButton>
           <UButton
             v-if="canFinish(ride)"
             type="button"
             size="xl"
             class="mt-4 w-full justify-center"
-            :disabled="acceptingId !== null || markDonePending"
+            :disabled="acceptingId !== null || markDonePending || declinePending"
             @click="openMarkDone(ride)"
           >
             {{ t('driverRides.done') }}
@@ -443,6 +521,51 @@ onMounted(loadRides)
           @click="confirmMarkDone"
         >
           {{ markDonePending ? t('driverRides.doneConfirming') : t('driverRides.doneConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
+    <UModal
+      v-model:open="declineOpen"
+      :title="t('driverRides.declineTitle')"
+      :description="t('driverRides.declineBody')"
+      :dismissible="!declinePending"
+      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
+    >
+      <template #body>
+        <p v-if="declining">
+          {{ declining.guestName }}
+        </p>
+        <UAlert
+          v-if="declineErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mt-4"
+          :description="t(declineErrorKey)"
+        />
+      </template>
+      <template #footer>
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :disabled="declinePending"
+          @click="closeDecline"
+        >
+          {{ t('ride.cancel') }}
+        </UButton>
+        <UButton
+          type="button"
+          color="error"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :loading="declinePending"
+          :disabled="declinePending"
+          @click="confirmDecline"
+        >
+          {{ declinePending ? t('driverRides.declineConfirming') : t('driverRides.declineConfirm') }}
         </UButton>
       </template>
     </UModal>

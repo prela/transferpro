@@ -9,7 +9,8 @@ import { transferHttpError } from './transfers/http'
  * Tenant time zone. That day runs from local 05:00 up to the next local
  * 05:00. A missing date is the operational day that contains now. A
  * dispatcher or an admin may read them. A driver is 403. No session is 401.
- * Another Tenant cannot: the tables have FORCE RLS.
+ * Another Tenant cannot: the tables have FORCE RLS. Decline alerts for
+ * Rides on that day are on the same response.
  */
 export default defineEventHandler(async (event) => {
   try {

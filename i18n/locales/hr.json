@@ -140,6 +140,7 @@
         "accepted_by_phone": "Prihvaćanje potvrđeno telefonom",
         "done": "Vožnja obavljena",
         "cancelled": "Vožnja otkazana",
+        "declined": "Vožnja odbijena",
         "vehicle_changed": "Vozilo promijenjeno",
         "cleared": "Dodjela uklonjena",
         "reassigned": "Vožnja prebačena"
@@ -261,6 +262,7 @@
     "loading": "Učitavanje vožnji",
     "loadFailed": "Dnevni popis nije se mogao učitati. Pokušajte ponovno.",
     "empty": "Nema vožnji ovaj dan.",
+    "declined": "{driver} je odbio vožnju za {guest}.",
     "add": "Zabilježi transfer",
     "client": "Klijent",
     "chooseClient": "Odaberite klijenta",
@@ -356,7 +358,14 @@
     "doneConfirm": "Označi obavljenom",
     "doneConfirming": "Označavanje",
     "doneConflict": "Ovu vožnju više nije moguće označiti obavljenom.",
-    "doneFailed": "Vožnja nije označena obavljenom. Pokušajte ponovno."
+    "doneFailed": "Vožnja nije označena obavljenom. Pokušajte ponovno.",
+    "decline": "Odbi vožnju",
+    "declineTitle": "Odbiti ovu vožnju",
+    "declineBody": "Vožnja se vraća na ploču bez vozača i bez vozila.",
+    "declineConfirm": "Odbi",
+    "declineConfirming": "Odbijanje",
+    "declineConflict": "Ovu vožnju više nije moguće odbiti.",
+    "declineFailed": "Vožnja nije odbijena. Pokušajte ponovno."
   },
   "drivers": {
     "nav": "Vozači",

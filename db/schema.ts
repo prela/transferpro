@@ -8,6 +8,7 @@ export { account, invitation, member, organization, session, user, verification 
 export { clients } from './clients'
 export { drivers } from './drivers'
 export { locations } from './locations'
+export { rideAlerts } from './ride-alert'
 export { roster } from './roster'
 export { tenantInvitation } from './tenant-invitation'
 export { tenantMember } from './tenant-member'

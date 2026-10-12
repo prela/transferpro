@@ -64,11 +64,21 @@ async function setCopiedMustAccept(rideId: string, mustAccept: boolean) {
   }
 }
 
-async function rideRow(rideId: string): Promise<{ state: string, must_accept: boolean | null }> {
+async function rideRow(rideId: string): Promise<{
+  state: string
+  must_accept: boolean | null
+  driver_id: string | null
+  vehicle_id: string | null
+}> {
   const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
   try {
-    const result = await pool.query<{ state: string, must_accept: boolean | null }>(
-      `select state, must_accept from app.rides where id = $1`,
+    const result = await pool.query<{
+      state: string
+      must_accept: boolean | null
+      driver_id: string | null
+      vehicle_id: string | null
+    }>(
+      `select state, must_accept, driver_id, vehicle_id from app.rides where id = $1`,
       [rideId],
     )
     const row = result.rows[0]
@@ -784,6 +794,124 @@ test('a driver marks a ride done and it leaves the upcoming list', async ({ page
   await expect(page.getByText('You have no upcoming rides.')).toBeVisible()
   expect(await rideRow(rideId)).toMatchObject({ state: 'done', must_accept: false })
   expect(mail).toEqual([])
+})
+
+test('a driver declines an assigned ride and the board names them', async ({ page }) => {
+  const tenant = await seedTenant('driver-decline')
+  const driver = await seedMember(tenant.tenantId, 'driver', 'Odbij')
+  const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
+  const pickupAt = instantFromWallClock(`${day}T16:00`, 'Europe/Zagreb')
+  const mail: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('resend.com'))
+      mail.push(request.url())
+  })
+
+  await useTheme(page, 'light')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const licence = '2030-01-01'
+  const ownDriverId = await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Nika Odbij',
+      kind: 'own',
+      phone: '+385911110024',
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+      memberUserId: driver.userId,
+    },
+  }))
+  const vehicleId = await createdId(await page.request.post('/api/vehicles', {
+    data: {
+      registrationPlate: 'DU024AA',
+      kind: 'fixed',
+      registrationExpiresOn: licence,
+      technicalInspectionExpiresOn: licence,
+      insuranceExpiresOn: licence,
+    },
+  }))
+  const clientId = await createdId(await page.request.post('/api/clients', {
+    data: { name: 'Klijent Odbij', kind: 'agency' },
+  }))
+  const startLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Polazak Odbij', kind: 'address' },
+  }))
+  const endLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Hotel Odbij', kind: 'hotel' },
+  }))
+  const recorded = await page.request.post('/api/transfers', {
+    data: {
+      clientId,
+      pickupAt: pickupAt.toISOString(),
+      startLocationId,
+      endLocationId,
+      passengerCount: 1,
+      guestName: 'Gost Odbij',
+      flightNumber: null,
+      price: 20,
+      payment: 'card',
+      airportMark: false,
+      luggageCount: 0,
+      childSeatCount: 0,
+    },
+  })
+  if (!recorded.ok())
+    throw new Error(`${recorded.status()} ${await recorded.text()}`)
+  const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
+  const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
+    data: { driverId: ownDriverId, vehicleId },
+  })
+  if (!assigned.ok())
+    throw new Error(`${assigned.status()} ${await assigned.text()}`)
+
+  await signOut(page)
+  await signIn(page, driver.email, driver.password, tenant.name)
+  const card = page.locator('article').filter({ hasText: 'Gost Odbij' })
+  await expect(card.getByRole('button', { name: 'Odbi vožnju', exact: true })).toBeVisible()
+  await card.getByRole('button', { name: 'Odbi vožnju', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('Vožnja se vraća na ploču bez vozača i bez vozila.')
+  await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(await rideRow(rideId)).toMatchObject({ state: 'assigned', driver_id: ownDriverId, vehicle_id: vehicleId })
+
+  await switchLocale(page, 'en')
+  await switchTheme(page, 'dark')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await card.getByRole('button', { name: 'Decline ride', exact: true }).click()
+  await expect(dialog).toContainText('The ride returns to the board with no driver and no vehicle.')
+  const declineResponse = page.waitForResponse(response =>
+    response.url().includes(`/api/rides/${rideId}/decline`) && response.request().method() === 'POST',
+  )
+  await dialog.getByRole('button', { name: 'Decline', exact: true }).click()
+  expect((await declineResponse).status()).toBe(200)
+  await expect(card).toHaveCount(0)
+  await expect(page.getByText('You have no upcoming rides.')).toBeVisible()
+  expect(await rideRow(rideId)).toMatchObject({
+    state: 'unassigned',
+    driver_id: null,
+    vehicle_id: null,
+    must_accept: null,
+  })
+  expect(mail).toEqual([])
+
+  // Sign-out copy is Croatian until the locale changes. The Driver just switched to English.
+  await switchLocale(page, 'hr')
+  await signOut(page)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await page.getByRole('link', { name: 'Transferi', exact: true }).click()
+  await page.locator('#transfer-day').fill(day)
+  await expect(page.getByRole('alert').filter({ hasText: 'Nika Odbij je odbio vožnju za Gost Odbij.' })).toBeVisible()
+  // The alert sits above the day list. The returned Ride stays on the board.
+  await expect(page.getByRole('cell', { name: 'Gost Odbij', exact: true })).toBeVisible()
+
+  await switchLocale(page, 'en')
+  await switchTheme(page, 'light')
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await page.locator('#transfer-day').fill(day)
+  await expect(page.getByRole('alert').filter({ hasText: 'Nika Odbij declined the ride for Gost Odbij.' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Gost Odbij', exact: true })).toBeVisible()
 })
 
 test('a driver with no linked Driver sees an empty list', async ({ page }) => {

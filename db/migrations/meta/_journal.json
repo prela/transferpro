@@ -225,6 +225,13 @@
       "when": 1791400021000,
       "tag": "0031_ride_cancelled",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791400022000,
+      "tag": "0032_ride_declined",
+      "breakpoints": true
     }
   ]
 }

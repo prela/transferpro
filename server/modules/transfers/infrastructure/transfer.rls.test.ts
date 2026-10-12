@@ -29,6 +29,7 @@ const tenantB = 'd2d2d2d2-d2d2-42d2-82d2-d2d2d2d2d2d2'
  * run after the file so a run cannot leave those rows behind.
  */
 async function deleteTransferFixtures(owner: pg.PoolClient): Promise<void> {
+  await owner.query('delete from app.ride_alert where tenant_id in ($1, $2)', [tenantA, tenantB])
   await owner.query('delete from app.rides where tenant_id in ($1, $2)', [tenantA, tenantB])
   await owner.query('delete from app.roster where tenant_id in ($1, $2)', [tenantA, tenantB])
   await owner.query('delete from app.transfers where tenant_id in ($1, $2)', [tenantA, tenantB])
@@ -96,16 +97,75 @@ it('forces row level security on transfers and rides', async () => {
       `select c.relname, c.relrowsecurity, c.relforcerowsecurity
        from pg_class c
        join pg_namespace n on n.oid = c.relnamespace
-       where n.nspname = 'app' and c.relname in ('transfers', 'rides')
+       where n.nspname = 'app' and c.relname in ('transfers', 'rides', 'ride_alert')
        order by c.relname`,
     )
     expect(seen.rows).toEqual([
+      { relname: 'ride_alert', relrowsecurity: true, relforcerowsecurity: true },
       { relname: 'rides', relrowsecurity: true, relforcerowsecurity: true },
       { relname: 'transfers', relrowsecurity: true, relforcerowsecurity: true },
     ])
   }
   finally {
     client.release()
+  }
+})
+
+it('tenant B cannot read or write Tenant A decline alerts', async () => {
+  const seeded = await withTenant(tenantA, async (client) => {
+    const clientRow = await client.query<{ id: string }>(
+      `insert into app.clients (name, kind) values ('Agencija Odbij', 'agency') returning id`,
+    )
+    const start = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Polazak Odbij', 'address') returning id`,
+    )
+    const end = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Dolazak Odbij', 'hotel') returning id`,
+    )
+    const driver = await client.query<{ id: string }>(
+      `insert into app.drivers (name, kind, phone, driving_licence_expires_on, transport_licence_expires_on)
+       values ('Marko Odbij', 'own', '+385911110861', '2030-01-01', '2030-01-01') returning id`,
+    )
+    const transfer = await client.query<{ id: string }>(
+      `insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, price, payment, airport_mark, luggage_count, child_seat_count
+      ) values ($1, '2026-10-06T22:30:00.000Z', $2, $3, 1, 'Gost Odbij', 10.00, 'cash', false, 0, 0)
+      returning id`,
+      [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id],
+    )
+    const ride = await client.query<{ id: string }>(
+      `insert into app.rides (transfer_id, state) values ($1, 'unassigned') returning id`,
+      [transfer.rows[0]?.id],
+    )
+    const alert = await client.query<{ id: string }>(
+      `insert into app.ride_alert (ride_id, driver_id, kind) values ($1, $2, 'declined') returning id`,
+      [ride.rows[0]?.id, driver.rows[0]?.id],
+    )
+    return { alertId: alert.rows[0]?.id, rideId: ride.rows[0]?.id, driverId: driver.rows[0]?.id }
+  })
+
+  const seenByB = await withTenant(tenantB, async (client) => {
+    return client.query('select id from app.ride_alert')
+  })
+  expect(seenByB.rows).toEqual([])
+
+  await expect(withTenant(tenantB, async (client) => {
+    await client.query(`update app.ride_alert set kind = 'declined'`)
+  })).rejects.toMatchObject({ code: '42501' })
+  await expect(withTenant(tenantB, client => client.query(
+    `insert into app.ride_alert (ride_id, driver_id, kind) values ($1, $2, 'declined')`,
+    [seeded.rideId, seeded.driverId],
+  ))).rejects.toThrow()
+  await expect(withTenant(tenantA, client => client.query('delete from app.ride_alert'))).rejects.toMatchObject({ code: '42501' })
+  expect(seeded.alertId).toEqual(expect.any(String))
+
+  const owner = await ownerPool.connect()
+  try {
+    await deleteTransferFixtures(owner)
+  }
+  finally {
+    owner.release()
   }
 })
 

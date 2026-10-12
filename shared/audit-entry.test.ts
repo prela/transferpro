@@ -384,6 +384,32 @@ it('records a cancelled Ride by the Ride id, a Driver id or null, and the field 
   expect(auditFactSchema.safeParse({ ...cancelled, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records a decline by the Ride id, the Driver id, the Vehicle id, and the assignment field names', () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
+  const declined = {
+    action: 'ride.declined' as const,
+    subjectUserId: null,
+    data: {
+      rideId,
+      driverId,
+      vehicleId,
+      fields: ['state', 'driverId', 'vehicleId', 'mustAccept'] as const,
+    },
+  }
+  expect(auditFactSchema.parse(declined)).toEqual(declined)
+  expect(auditFactSchema.safeParse({
+    ...declined,
+    data: { ...declined.data, name: 'Marko Vozač', phone: '+38591111', guestName: 'Ana Anić' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...declined,
+    data: { ...declined.data, fields: ['state'] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...declined, subjectUserId: memberId }).success).toBe(false)
+})
+
 it('records an office acceptance by phone as the Ride id, the Driver id, and the field name state', () => {
   const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'

@@ -1,5 +1,5 @@
 import type { SQL } from 'drizzle-orm'
-import type { CreateTransfer, Ride, Transfer, TransferDayRide, TransferField } from '../../../../shared'
+import type { CreateTransfer, DeclineAlert, Ride, Transfer, TransferDayRide, TransferField } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -183,6 +183,43 @@ export async function loadRidesForDay(
     order by t.pickup_at, r.id
   `))
   return selected.rows.map(row => toDayRide(row, nowMs, transferDurationMinutes))
+}
+
+/**
+ * Decline alerts whose Ride picks up on this operational day. The board
+ * shows them as soon as it reads the day. The name is not stored here.
+ */
+export async function loadDeclineAlertsForDay(
+  transaction: TenantTransaction,
+  day: string,
+  timeZone: string,
+  startHour = OPERATIONAL_DAY_START_DEFAULT,
+): Promise<DeclineAlert[]> {
+  const bounds = localDayBounds(day, timeZone, startHour)
+  const selected = z.object({
+    rows: z.array(z.object({
+      id: z.uuid(),
+      rideId: z.uuid(),
+      driverId: z.uuid(),
+      driverName: z.string().min(1),
+      guestName: z.string().min(1),
+    })),
+  }).parse(await transaction.execute(sql`
+    select a.id,
+           a.ride_id as "rideId",
+           a.driver_id as "driverId",
+           d.name as "driverName",
+           t.guest_name as "guestName"
+    from app.ride_alert as a
+    join app.rides as r on r.id = a.ride_id and r.tenant_id = a.tenant_id
+    join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
+    join app.drivers as d on d.id = a.driver_id and d.tenant_id = a.tenant_id
+    where a.kind = 'declined'
+      and t.pickup_at >= ${bounds.start.toISOString()}
+      and t.pickup_at < ${bounds.end.toISOString()}
+    order by a.created_at, a.id
+  `))
+  return selected.rows
 }
 
 function createdFields(input: CreateTransfer): TransferField[] {
