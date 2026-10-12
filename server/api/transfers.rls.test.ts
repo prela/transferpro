@@ -684,12 +684,32 @@ async function storedTransfer(transferId: string) {
     flight_number: string | null
     landing_at: Date | null
     airport_mark: boolean
+    expected_arrival_at: Date | null
+    expected_arrival_basis_at: Date | null
+    flight_will_not_arrive: boolean
+    flight_will_not_arrive_handed: boolean
   }>(
-    `select guest_name, payment, flight_number, landing_at, airport_mark
+    `select guest_name, payment, flight_number, landing_at, airport_mark,
+            expected_arrival_at, expected_arrival_basis_at,
+            flight_will_not_arrive, flight_will_not_arrive_handed
      from app.transfers where id = $1`,
     [transferId],
   )
   return result.rows[0]
+}
+
+/** The live-flight facts a designator change must clear or keep. */
+async function rememberLiveFlight(transferId: string, at: string): Promise<void> {
+  await ownerPool.query(
+    `update app.transfers
+     set landing_at = $2,
+         expected_arrival_at = $2,
+         expected_arrival_basis_at = $2,
+         flight_will_not_arrive = true,
+         flight_will_not_arrive_handed = true
+     where id = $1`,
+    [transferId, at],
+  )
 }
 
 it('refuses a bad correction before a session opens, and no session is 401', async () => {
@@ -846,16 +866,15 @@ it('returns an accepted Ride to assigned when the trip changes, alerts the Drive
   const spaced = await call('PATCH', `/api/transfers/${createdBody.transfer.id}`, admin, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
   expect(spaced.status).toBe(200)
   expect(await spaced.json()).toMatchObject({
-    ride: { state: 'assigned', driverId: driver.id, vehicleId: vehicle.id, mustAccept: true },
+    ride: { state: 'accepted', driverId: driver.id, vehicleId: vehicle.id, mustAccept: true },
   })
   expect((await storedTransfer(createdBody.transfer.id))?.landing_at).not.toBeNull()
   expect((await listUpcomingRides(driverSession)).rides[0]).toMatchObject({
-    state: 'assigned',
+    state: 'accepted',
     mustAccept: true,
     flightNumber: 'OU 384',
   })
 
-  await acceptRide(driverSession, createdBody.ride.id, {})
   const moved = new Date(new Date(pickupAt).getTime() + 3 * 60 * 60 * 1000).toISOString()
   const returned = await call('PATCH', `/api/transfers/${createdBody.transfer.id}`, dispatcher, correctionBody(client.id, start.id, later.id, moved, { flightNumber: 'OU392' }))
   expect(returned.status).toBe(200)
@@ -876,12 +895,6 @@ it('returns an accepted Ride to assigned when the trip changes, alerts the Drive
   expect(audits.filter(row => row.action === 'ride.returned_to_assigned')).toEqual([
     {
       action: 'ride.returned_to_assigned',
-      actor_user_id: created.adminUserId,
-      subject_user_id: null,
-      data: { rideId: createdBody.ride.id, driverId: driver.id, fields: ['state'] },
-    },
-    {
-      action: 'ride.returned_to_assigned',
       actor_user_id: dispatcherId,
       subject_user_id: null,
       data: { rideId: createdBody.ride.id, driverId: driver.id, fields: ['state'] },
@@ -889,6 +902,118 @@ it('returns an accepted Ride to assigned when the trip changes, alerts the Drive
   ])
   expect(JSON.stringify(audits)).not.toContain('OU392')
   expect(JSON.stringify(audits)).not.toContain(guest)
+})
+
+it('clears live-flight facts when the flight designator changes, and returns an accepted Ride to assigned', async () => {
+  const created = await tenant('htr-correct-designator', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-correct-designator-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const driverUserId = await addMember(created.tenantId, 'htr-correct-designator-driver@example.test', 'Drago Driver', 'driver')
+  const dispatcher = await signIn('htr-correct-designator-dispatcher@example.test')
+  const admin = await signIn('htr-correct-designator-admin@example.test')
+  const driverSession = await signIn('htr-correct-designator-driver@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  const driver = await createDriver(dispatcher, {
+    name: 'Drago Driver',
+    kind: 'own',
+    phone: '+385911110944',
+    drivingLicenceExpiresOn: '2031-01-01',
+    transportLicenceExpiresOn: '2031-01-01',
+    memberUserId: driverUserId,
+  })
+  await updateDriver(admin, driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(dispatcher, {
+    registrationPlate: 'ZG9441AA',
+    kind: 'fixed',
+    registrationExpiresOn: '2031-01-01',
+    technicalInspectionExpiresOn: '2031-01-01',
+    insuranceExpiresOn: '2031-01-01',
+  })
+  const pickupAt = pickupOnOpenBoard()
+  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
+  const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
+  await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  await acceptRide(driverSession, createdBody.ride.id, {})
+  await rememberLiveFlight(createdBody.transfer.id, pickupAt)
+
+  const changed = await call('PATCH', `/api/transfers/${createdBody.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 392' }))
+  expect(changed.status).toBe(200)
+  expect(await changed.json()).toMatchObject({
+    transfer: { flightNumber: 'OU 392' },
+    ride: { state: 'assigned', driverId: driver.id, vehicleId: vehicle.id, mustAccept: true },
+  })
+  const stored = await storedTransfer(createdBody.transfer.id)
+  expect(stored).toMatchObject({
+    flight_number: 'OU 392',
+    landing_at: null,
+    expected_arrival_at: null,
+    expected_arrival_basis_at: null,
+    flight_will_not_arrive: false,
+    flight_will_not_arrive_handed: false,
+  })
+  expect((await listUpcomingRides(driverSession)).rides[0]).toMatchObject({
+    state: 'assigned',
+    flightNumber: 'OU 392',
+    landingAt: null,
+    expectedArrival: null,
+  })
+})
+
+it('keeps live-flight facts and acceptance when only the flight designator spacing or case changes', async () => {
+  const created = await tenant('htr-correct-spacing', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-correct-spacing-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const driverUserId = await addMember(created.tenantId, 'htr-correct-spacing-driver@example.test', 'Drago Driver', 'driver')
+  const dispatcher = await signIn('htr-correct-spacing-dispatcher@example.test')
+  const admin = await signIn('htr-correct-spacing-admin@example.test')
+  const driverSession = await signIn('htr-correct-spacing-driver@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  const driver = await createDriver(dispatcher, {
+    name: 'Drago Driver',
+    kind: 'own',
+    phone: '+385911110945',
+    drivingLicenceExpiresOn: '2031-01-01',
+    transportLicenceExpiresOn: '2031-01-01',
+    memberUserId: driverUserId,
+  })
+  await updateDriver(admin, driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(dispatcher, {
+    registrationPlate: 'ZG9451AA',
+    kind: 'fixed',
+    registrationExpiresOn: '2031-01-01',
+    technicalInspectionExpiresOn: '2031-01-01',
+    insuranceExpiresOn: '2031-01-01',
+  })
+  const pickupAt = pickupOnOpenBoard()
+  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
+  const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
+  await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  await acceptRide(driverSession, createdBody.ride.id, {})
+  await rememberLiveFlight(createdBody.transfer.id, pickupAt)
+
+  const spaced = await call('PATCH', `/api/transfers/${createdBody.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'ou384' }))
+  expect(spaced.status).toBe(200)
+  expect(await spaced.json()).toMatchObject({
+    transfer: { flightNumber: 'ou384' },
+    ride: { state: 'accepted', driverId: driver.id, vehicleId: vehicle.id, mustAccept: true },
+  })
+  const stored = await storedTransfer(createdBody.transfer.id)
+  expect(stored?.flight_number).toBe('ou384')
+  expect(stored?.landing_at?.toISOString()).toBe(pickupAt)
+  expect(stored?.expected_arrival_at?.toISOString()).toBe(pickupAt)
+  expect(stored?.expected_arrival_basis_at?.toISOString()).toBe(pickupAt)
+  expect(stored).toMatchObject({
+    flight_will_not_arrive: true,
+    flight_will_not_arrive_handed: true,
+  })
+  expect((await listUpcomingRides(driverSession)).rides[0]).toMatchObject({
+    state: 'accepted',
+    flightNumber: 'ou384',
+    landingAt: pickupAt,
+    expectedArrival: pickupAt,
+  })
 })
 
 it('leaves an assigned Ride assigned, and a save of the same trip writes nothing', async () => {
@@ -954,6 +1079,36 @@ it('refuses a finished Ride and writes nothing', async () => {
     expect(refused.status).toBe(409)
     expect(await refused.text()).toContain('transfer_closed')
     expect(await storedTransfer(body.transfer.id)).toMatchObject({ guest_name: guest })
+    expect(await correctionAudits(created.tenantId)).toEqual(before)
+  }
+})
+
+it('refuses a flight-number change on a finished Ride and keeps the live-flight facts', async () => {
+  const created = await tenant('htr-correct-closed-flight', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-correct-closed-flight-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-correct-closed-flight-dispatcher@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  for (const state of ['done', 'no-show', 'cancelled'] as const) {
+    const pickupAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()
+    const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
+    const body = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
+    await ownerPool.query('update app.rides set state = $2 where id = $1', [body.ride.id, state])
+    await rememberLiveFlight(body.transfer.id, pickupAt)
+    const before = await correctionAudits(created.tenantId)
+    const refused = await call('PATCH', `/api/transfers/${body.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 392' }))
+    expect(refused.status).toBe(409)
+    expect(await refused.text()).toContain('transfer_closed')
+    const stored = await storedTransfer(body.transfer.id)
+    expect(stored?.flight_number).toBe('OU 384')
+    expect(stored?.landing_at?.toISOString()).toBe(pickupAt)
+    expect(stored?.expected_arrival_at?.toISOString()).toBe(pickupAt)
+    expect(stored?.expected_arrival_basis_at?.toISOString()).toBe(pickupAt)
+    expect(stored).toMatchObject({
+      flight_will_not_arrive: true,
+      flight_will_not_arrive_handed: true,
+    })
     expect(await correctionAudits(created.tenantId)).toEqual(before)
   }
 })
