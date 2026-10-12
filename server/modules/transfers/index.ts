@@ -11,6 +11,10 @@
  * The office may cancel from `unassigned`, `assigned`, or `accepted`.
  * The office or the assigned Driver can record or clear a landing time
  * while the Ride is unfinished. The Ride state stays. No mail.
+ * The office can correct the Transfer while the Ride is unfinished.
+ * A change of pickup, start, end, or flight number returns an accepted
+ * Ride to assigned and keeps the Driver, the Vehicle, and the copied flag.
+ * That correction sends no mail.
  * The office can change only the Vehicle, clear the Ride, or reassign it.
  * Each of those mails a work order after the Ride is saved.
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
@@ -20,6 +24,7 @@ export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableE
 export { RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
 export { assignRide, rosterVehicleForRide } from './infrastructure/assign-access'
 export { cancelRide, CancelRideInputError, RideNotCancellableError } from './infrastructure/cancel'
+export { correctTransfer, TransferNotCorrectableError, TransferNotFoundError } from './infrastructure/correct'
 export { declineRide, DeclineRideInputError, RideNotDeclinableError } from './infrastructure/decline'
 export { markRideDone, MarkRideDoneInputError, RideNotFinishableError } from './infrastructure/done'
 export { listUpcomingRides } from './infrastructure/driver-ride-access'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Client, DeclineAlert, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
-import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, canMarkRideDone, canRecordLandingTime, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema } from '../../shared'
+import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, canCorrectTransfer, canMarkRideDone, canRecordLandingTime, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema, wallClockInTimeZone } from '../../shared'
 import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
@@ -67,6 +67,9 @@ const loadError = ref(false)
 const pending = ref(false)
 const placePending = ref(false)
 const saved = ref(false)
+const corrected = ref(false)
+// The row being corrected. Null means the form records a new Transfer.
+const correcting = ref<TransferDayRide | null>(null)
 const formErrorKey = ref<TransferFailure | null>(null)
 const guestErrorKey = ref<'transfers.guestEmpty' | 'transfers.guestTooLong' | null>(null)
 const tablaErrorKey = ref<'transfers.tablaTooLong' | null>(null)
@@ -88,6 +91,7 @@ type TransferFailure
     | 'transfers.signedOut'
     | 'transfers.saveFailed'
     | 'transfers.locationArchived'
+    | 'transfers.closed'
     | 'locations.saveFailed'
 
 type AcceptByPhoneFailure
@@ -615,6 +619,8 @@ function errorCode(error: unknown): string | undefined {
 function failureKey(error: unknown): TransferFailure {
   if (errorCode(error) === 'location_archived')
     return 'transfers.locationArchived'
+  if (errorCode(error) === 'transfer_closed')
+    return 'transfers.closed'
   switch (httpStatus(error)) {
     case 400: return 'transfers.rejected'
     case 401: return 'transfers.signedOut'
@@ -806,8 +812,102 @@ function pickupFieldError(): 'transfers.pickupInvalid' | 'transfers.pickupTooEar
   return null
 }
 
+function priceForForm(price: string): string {
+  return props.locale === 'hr' ? price.replace('.', ',') : price
+}
+
+function resetBookingForm() {
+  guest.value = ''
+  tabla.value = ''
+  flight.value = ''
+  note.value = ''
+  correcting.value = null
+}
+
+/**
+ * Fills the booking form from the row. The landing time stays on the board.
+ * Cancel drops the values and does not save.
+ */
+function openCorrect(ride: TransferDayRide) {
+  correcting.value = ride
+  saved.value = false
+  corrected.value = false
+  formErrorKey.value = null
+  clientId.value = ride.clientId
+  pickupWall.value = wallClockInTimeZone(props.timeZone, new Date(ride.pickupAt))
+  startLocationId.value = ride.startLocationId
+  endLocationId.value = ride.endLocationId
+  passengers.value = String(ride.passengerCount)
+  guest.value = ride.guestName
+  tabla.value = ride.tabla
+  flight.value = ride.flightNumber ?? ''
+  price.value = priceForForm(ride.price)
+  payment.value = ride.payment
+  airportMark.value = ride.airportMark
+  luggage.value = String(ride.luggageCount)
+  childSeats.value = String(ride.childSeatCount)
+  note.value = ride.note ?? ''
+  void nextTick(() => {
+    document.getElementById('transfer-form')?.scrollIntoView({ block: 'start' })
+  })
+}
+
+function cancelCorrect() {
+  resetBookingForm()
+  formErrorKey.value = null
+  corrected.value = false
+}
+
+function bookingBody() {
+  return {
+    clientId: clientId.value,
+    pickupAt: instantFromWallClock(pickupWall.value.slice(0, 16), props.timeZone).toISOString(),
+    startLocationId: startLocationId.value,
+    endLocationId: endLocationId.value,
+    passengerCount: Number(passengers.value),
+    guestName: guest.value,
+    tabla: tabla.value,
+    flightNumber: flight.value,
+    price: priceFromInput(price.value),
+    payment: payment.value,
+    airportMark: airportMark.value,
+    luggageCount: Number(luggage.value),
+    childSeatCount: Number(childSeats.value),
+    note: note.value,
+  }
+}
+
+async function saveCorrection() {
+  const ride = correcting.value
+  saved.value = false
+  corrected.value = false
+  formErrorKey.value = null
+  if (!ride || !formReady() || !clientId.value || !startLocationId.value || !endLocationId.value || !payment.value) {
+    if (!clientId.value || !startLocationId.value || !endLocationId.value || !payment.value)
+      formErrorKey.value = 'transfers.rejected'
+    return
+  }
+  pending.value = true
+  try {
+    recordedTransferSchema.parse(await $fetch(`/api/transfers/${ride.transferId}`, {
+      method: 'PATCH',
+      body: bookingBody(),
+    }))
+    resetBookingForm()
+    corrected.value = true
+    await loadDay()
+  }
+  catch (error) {
+    formErrorKey.value = failureKey(error)
+  }
+  finally {
+    pending.value = false
+  }
+}
+
 async function record() {
   saved.value = false
+  corrected.value = false
   formErrorKey.value = null
   if (!formReady() || !clientId.value || !startLocationId.value || !endLocationId.value || !payment.value) {
     if (!clientId.value || !startLocationId.value || !endLocationId.value || !payment.value)
@@ -816,30 +916,11 @@ async function record() {
   }
   pending.value = true
   try {
-    const pickupAt = instantFromWallClock(pickupWall.value.slice(0, 16), props.timeZone).toISOString()
     const recorded = recordedTransferSchema.parse(await $fetch('/api/transfers', {
       method: 'POST',
-      body: {
-        clientId: clientId.value,
-        pickupAt,
-        startLocationId: startLocationId.value,
-        endLocationId: endLocationId.value,
-        passengerCount: Number(passengers.value),
-        guestName: guest.value,
-        tabla: tabla.value,
-        flightNumber: flight.value,
-        price: priceFromInput(price.value),
-        payment: payment.value,
-        airportMark: airportMark.value,
-        luggageCount: Number(luggage.value),
-        childSeatCount: Number(childSeats.value),
-        note: note.value,
-      },
+      body: bookingBody(),
     }))
-    guest.value = ''
-    tabla.value = ''
-    flight.value = ''
-    note.value = ''
+    resetBookingForm()
     saved.value = true
     day.value = operationalDateInTimeZone(props.timeZone, new Date(recorded.transfer.pickupAt), props.operationalDayStartHour)
     await loadDay()
@@ -854,6 +935,7 @@ async function record() {
 
 watch(day, () => {
   assigning.value = null
+  correcting.value = null
   // A different day is a different list. Drop the dialog. That does not post.
   acceptingByPhone.value = null
   acceptByPhoneErrorKey.value = null
@@ -983,6 +1065,17 @@ onMounted(loadAll)
         </template>
         <template #actions-cell="{ row }">
           <div class="flex flex-wrap gap-2">
+            <UButton
+              v-if="canCorrectTransfer(row.original.state)"
+              type="button"
+              color="neutral"
+              variant="outline"
+              size="xl"
+              :aria-label="t('transfers.correctFor', { guest: row.original.guestName })"
+              @click="openCorrect(row.original)"
+            >
+              {{ t('transfers.correct') }}
+            </UButton>
             <UButton
               v-if="canRecordLandingTime(row.original.state)"
               type="button"
@@ -1313,7 +1406,7 @@ onMounted(loadAll)
     </UModal>
 
     <h2 class="mt-6 mb-4 text-xl font-semibold">
-      {{ t('transfers.add') }}
+      {{ correcting ? t('transfers.correctTitle') : t('transfers.add') }}
     </h2>
     <UAlert
       v-if="clients.length === 0 && !loading"
@@ -1329,6 +1422,14 @@ onMounted(loadAll)
       role="status"
       class="mb-4"
       :description="t('transfers.recorded')"
+    />
+    <UAlert
+      v-if="corrected"
+      color="success"
+      variant="subtle"
+      role="status"
+      class="mb-4"
+      :description="t('transfers.corrected')"
     />
     <UAlert
       v-if="formErrorKey"
@@ -1409,7 +1510,10 @@ onMounted(loadAll)
       </UButton>
     </form>
 
-    <form @submit.prevent="record">
+    <form
+      id="transfer-form"
+      @submit.prevent="correcting ? saveCorrection() : record()"
+    >
       <UFormField
         :label="t('transfers.client')"
         name="client"
@@ -1675,13 +1779,30 @@ onMounted(loadAll)
           <span role="alert">{{ error }}</span>
         </template>
       </UFormField>
-      <UButton
-        type="submit"
-        size="xl"
-        :loading="pending"
-      >
-        {{ pending ? t('transfers.submitting') : t('transfers.submit') }}
-      </UButton>
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <UButton
+          v-if="correcting"
+          type="button"
+          color="neutral"
+          variant="outline"
+          size="xl"
+          :disabled="pending"
+          @click="cancelCorrect"
+        >
+          {{ t('transfers.cancelCorrect') }}
+        </UButton>
+        <UButton
+          type="submit"
+          size="xl"
+          :loading="pending"
+        >
+          {{
+            correcting
+              ? (pending ? t('transfers.savingCorrection') : t('transfers.saveCorrection'))
+              : (pending ? t('transfers.submitting') : t('transfers.submit'))
+          }}
+        </UButton>
+      </div>
     </form>
   </section>
 </template>

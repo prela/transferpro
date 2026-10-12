@@ -273,6 +273,47 @@ it('records a Transfer by ids and field names, and refuses the guest name, the f
   expect(auditFactSchema.safeParse({ ...created, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records a correction by ids and changed field names, and a return to assigned by the Ride id and the Driver id', () => {
+  const transferId = 'd1d1d1d1-1111-4111-8111-111111111111'
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
+  const endLocationId = 'b1b2c3d4-6666-4666-8666-666666666666'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const corrected = {
+    action: 'transfer.corrected' as const,
+    subjectUserId: null,
+    data: {
+      transferId,
+      rideId,
+      clientId,
+      startLocationId,
+      endLocationId,
+      fields: ['airportMark'] as const,
+    },
+  }
+  expect(auditFactSchema.parse(corrected)).toEqual(corrected)
+  expect(auditFactSchema.safeParse({
+    ...corrected,
+    data: { ...corrected.data, guestName: 'Ana Anić', flightNumber: 'OU 384', note: 'terminal', tabla: 'GOSPOĐA HORVAT', price: '42.50' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...corrected,
+    data: { ...corrected.data, fields: [] },
+  }).success).toBe(false)
+
+  const returned = {
+    action: 'ride.returned_to_assigned' as const,
+    subjectUserId: null,
+    data: { rideId, driverId, fields: ['state'] as const },
+  }
+  expect(auditFactSchema.parse(returned)).toEqual(returned)
+  expect(auditFactSchema.safeParse({
+    ...returned,
+    data: { ...returned.data, guestName: 'Ana Anić', mustAccept: true },
+  }).success).toBe(false)
+})
+
 it('records an assignment by ids and field names, and refuses a plate, a phone, or the must-accept value', () => {
   const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'

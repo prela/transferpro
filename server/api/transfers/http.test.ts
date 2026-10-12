@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LocationArchivedError } from '../../modules/locations'
+import { TransferNotCorrectableError } from '../../modules/transfers'
 import { transferHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -18,6 +19,15 @@ describe('transferHttpError', () => {
     expect(error).toMatchObject({
       statusCode: 409,
       data: { code: 'location_archived' },
+    })
+    expect(JSON.stringify(error)).not.toContain('Ana Anić')
+  })
+
+  it('returns the closed-transfer code and does not keep the guest name', () => {
+    const error = thrown(() => transferHttpError(new TransferNotCorrectableError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'transfer_closed' },
     })
     expect(JSON.stringify(error)).not.toContain('Ana Anić')
   })

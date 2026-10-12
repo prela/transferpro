@@ -1,0 +1,332 @@
+import type { SQL } from 'drizzle-orm'
+import type { CreateTransfer, RecordedTransfer, TransferCorrectionField } from '../../../../shared'
+import type { TenantTransaction } from '../../../core/index'
+import { sql } from 'drizzle-orm'
+import { z } from 'zod'
+import { canCorrectTransfer, changedTransferFields, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, parseCreateTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
+import { hideDatabaseError } from '../../../core/index'
+import { appendAuditEntry } from '../../audit'
+import { ClientNotFoundError, loadClients } from '../../clients'
+import { loadLocation, LocationArchivedError } from '../../locations'
+import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { toInstant, toPrice } from './transfers'
+
+/** The Transfer is not in this Tenant. Another Tenant's row looks the same. */
+export class TransferNotFoundError extends Error {
+  readonly statusCode = 404
+
+  constructor() {
+    super('Not Found')
+    this.name = 'TransferNotFoundError'
+  }
+}
+
+/**
+ * The Ride is finished. The booking stays as it was. Nothing is written.
+ */
+export class TransferNotCorrectableError extends Error {
+  readonly statusCode = 409
+  readonly code = 'transfer_closed'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'TransferNotCorrectableError'
+  }
+}
+
+const lockedRows = z.object({
+  rows: z.array(z.object({
+    id: z.uuid(),
+    clientId: z.uuid(),
+    pickupAt: z.unknown(),
+    startLocationId: z.uuid(),
+    endLocationId: z.uuid(),
+    passengerCount: z.number().int(),
+    guestName: z.string(),
+    flightNumber: z.string().nullable(),
+    price: z.union([z.string(), z.number()]),
+    payment: paymentMethodSchema,
+    airportMark: z.boolean(),
+    luggageCount: z.number().int(),
+    childSeatCount: z.number().int(),
+    note: z.string().nullable(),
+    tabla: z.string(),
+    rideId: z.uuid(),
+    state: rideStateSchema,
+    driverId: z.uuid().nullable(),
+    vehicleId: z.uuid().nullable(),
+    mustAccept: z.boolean().nullable(),
+  })),
+})
+
+type LockedTransfer = z.infer<typeof lockedRows>['rows'][number]
+
+const writtenRows = z.object({
+  rows: z.array(z.object({
+    id: z.uuid(),
+    transferId: z.uuid(),
+    state: rideStateSchema,
+    driverId: z.uuid().nullable(),
+    vehicleId: z.uuid().nullable(),
+    mustAccept: z.boolean().nullable(),
+  })),
+})
+
+/**
+ * Accepts a Transfer id and the same body as a new Transfer. A bad id or a
+ * bad body throws first, so the caller does not open a session.
+ */
+function parseCorrect(transferId: unknown, body: unknown): { id: string, input: CreateTransfer } {
+  const id = z.uuid().safeParse(transferId)
+  if (!id.success)
+    throw new TransferInputError()
+  return { id: id.data, input: parseCreateTransfer(body) }
+}
+
+function officeOnly(role: string): void {
+  if (role === 'admin' || role === 'dispatcher')
+    return
+  throw new TenantAccessError(403)
+}
+
+/**
+ * Correct a Transfer. The body is parsed first. A driver is refused and the
+ * booking is unchanged. A finished Ride is refused. A save that matches the
+ * stored booking writes nothing. A change of pickup, start, end, or flight
+ * number on an accepted Ride returns it to assigned and keeps the Driver,
+ * the Vehicle, and the copied flag. No mail is sent (#168).
+ */
+export async function correctTransfer(headers: Headers, rawId: unknown, rawBody: unknown): Promise<RecordedTransfer> {
+  const parsed = parseCorrect(rawId, rawBody)
+  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+    officeOnly(actor.role)
+    return correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input)
+  })
+}
+
+/**
+ * The office correction, on the caller's transaction. The role allow-list
+ * has already run. The audit rows commit with the writes.
+ */
+export async function correctTransferForOffice(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  transferId: string,
+  input: CreateTransfer,
+): Promise<RecordedTransfer> {
+  const current = await lockTransfer(transaction, transferId)
+  if (!current)
+    throw new TransferNotFoundError()
+  if (!canCorrectTransfer(current.state))
+    throw new TransferNotCorrectableError()
+
+  await requireLiveBooking(transaction, input)
+  const stored = toBooking(current)
+  const changed = changedTransferFields(stored, input)
+  if (changed.length === 0)
+    return toRecorded(current, stored)
+
+  const clearLanding = flightNumberChangeClearsLanding(stored.flightNumber, input.flightNumber)
+  await writeTransfer(transaction, transferId, input, clearLanding)
+  const returned = correctionReturnsAcceptedRide(current.state, changed)
+  const ride = returned
+    ? await returnAcceptedRide(transaction, current.rideId)
+    : {
+        id: current.rideId,
+        transferId: current.id,
+        state: current.state,
+        driverId: current.driverId,
+        vehicleId: current.vehicleId,
+        mustAccept: current.mustAccept,
+      }
+
+  await appendCorrected(transaction, actorUserId, {
+    transferId: current.id,
+    rideId: ride.id,
+    clientId: input.clientId,
+    startLocationId: input.startLocationId,
+    endLocationId: input.endLocationId,
+    fields: changed,
+  })
+  if (returned && ride.driverId)
+    await appendReturned(transaction, actorUserId, ride.id, ride.driverId)
+
+  return {
+    transfer: { id: current.id, ...input },
+    ride,
+  }
+}
+
+/** A hidden Location cannot be written onto the booking. The Client has to exist. */
+async function requireLiveBooking(transaction: TenantTransaction, input: CreateTransfer): Promise<void> {
+  const client = (await loadClients(transaction)).find(row => row.id === input.clientId)
+  if (!client)
+    throw new ClientNotFoundError()
+  const start = await loadLocation(transaction, input.startLocationId)
+  if (start.archivedAt !== null)
+    throw new LocationArchivedError()
+  const end = await loadLocation(transaction, input.endLocationId)
+  if (end.archivedAt !== null)
+    throw new LocationArchivedError()
+}
+
+async function lockTransfer(transaction: TenantTransaction, transferId: string): Promise<LockedTransfer | undefined> {
+  return lockedRows.parse(await runStep(transaction, sql`
+    select t.id,
+           t.client_id as "clientId",
+           t.pickup_at as "pickupAt",
+           t.start_location_id as "startLocationId",
+           t.end_location_id as "endLocationId",
+           t.passenger_count as "passengerCount",
+           t.guest_name as "guestName",
+           t.flight_number as "flightNumber",
+           t.price,
+           t.payment,
+           t.airport_mark as "airportMark",
+           t.luggage_count as "luggageCount",
+           t.child_seat_count as "childSeatCount",
+           t.note,
+           t.tabla,
+           r.id as "rideId",
+           r.state,
+           r.driver_id as "driverId",
+           r.vehicle_id as "vehicleId",
+           r.must_accept as "mustAccept"
+    from app.transfers as t
+    join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
+    where t.id = ${transferId}
+    for update
+  `)).rows[0]
+}
+
+function toBooking(row: LockedTransfer): CreateTransfer {
+  return {
+    clientId: row.clientId,
+    pickupAt: toInstant(row.pickupAt),
+    startLocationId: row.startLocationId,
+    endLocationId: row.endLocationId,
+    passengerCount: row.passengerCount,
+    guestName: row.guestName,
+    flightNumber: row.flightNumber,
+    price: toPrice(row.price),
+    payment: row.payment,
+    airportMark: row.airportMark,
+    luggageCount: row.luggageCount,
+    childSeatCount: row.childSeatCount,
+    note: row.note,
+    tabla: row.tabla,
+  }
+}
+
+function toRecorded(row: LockedTransfer, booking: CreateTransfer): RecordedTransfer {
+  return {
+    transfer: { id: row.id, ...booking },
+    ride: {
+      id: row.rideId,
+      transferId: row.id,
+      state: row.state,
+      driverId: row.driverId,
+      vehicleId: row.vehicleId,
+      mustAccept: row.mustAccept,
+    },
+  }
+}
+
+async function writeTransfer(
+  transaction: TenantTransaction,
+  transferId: string,
+  input: CreateTransfer,
+  clearLanding: boolean,
+): Promise<void> {
+  const written = z.object({ rows: z.array(z.object({ id: z.uuid() })) }).parse(await runStep(transaction, sql`
+    update app.transfers
+    set client_id = ${input.clientId},
+        pickup_at = ${input.pickupAt},
+        start_location_id = ${input.startLocationId},
+        end_location_id = ${input.endLocationId},
+        passenger_count = ${input.passengerCount},
+        guest_name = ${input.guestName},
+        flight_number = ${input.flightNumber},
+        price = ${input.price},
+        payment = ${input.payment},
+        airport_mark = ${input.airportMark},
+        luggage_count = ${input.luggageCount},
+        child_seat_count = ${input.childSeatCount},
+        note = ${input.note},
+        tabla = ${input.tabla},
+        landing_at = case when ${clearLanding} then null else landing_at end
+    where id = ${transferId}
+    returning id
+  `))
+  if (!written.rows[0])
+    throw new TransferNotCorrectableError()
+}
+
+/**
+ * Sets `assigned` only while the Ride is still `accepted`. The Driver, the
+ * Vehicle, and the copied flag are not rewritten. Zero rows means a
+ * concurrent command won.
+ */
+async function returnAcceptedRide(transaction: TenantTransaction, rideId: string) {
+  const updated = writtenRows.parse(await runStep(transaction, sql`
+    update app.rides
+    set state = 'assigned'
+    where id = ${rideId}
+      and state = 'accepted'
+    returning
+      id,
+      transfer_id as "transferId",
+      state,
+      driver_id as "driverId",
+      vehicle_id as "vehicleId",
+      must_accept as "mustAccept"
+  `)).rows[0]
+  if (!updated)
+    throw new TransferNotCorrectableError()
+  return updated
+}
+
+async function appendCorrected(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  data: {
+    transferId: string
+    rideId: string
+    clientId: string
+    startLocationId: string
+    endLocationId: string
+    fields: TransferCorrectionField[]
+  },
+): Promise<void> {
+  await hideDatabaseError(() => appendAuditEntry(transaction, {
+    action: 'transfer.corrected',
+    actorUserId,
+    subjectUserId: null,
+    data: {
+      ...data,
+      fields: TRANSFER_CORRECTION_FIELDS.filter(field => data.fields.includes(field)),
+    },
+  }), 'Transfer correct failed')
+}
+
+async function appendReturned(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  rideId: string,
+  driverId: string,
+): Promise<void> {
+  await hideDatabaseError(() => appendAuditEntry(transaction, {
+    action: 'ride.returned_to_assigned',
+    actorUserId,
+    subjectUserId: null,
+    data: {
+      rideId,
+      driverId,
+      fields: [...RIDE_ACCEPTED_FIELDS],
+    },
+  }), 'Transfer correct failed')
+}
+
+function runStep(transaction: TenantTransaction, query: SQL): Promise<unknown> {
+  return hideDatabaseError(() => transaction.execute(query), 'Transfer correct failed')
+}

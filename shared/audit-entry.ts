@@ -6,7 +6,7 @@ import { RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideAssignmentField
 import { rosterDateSchema } from './roster'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, operationalDayStartHourSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
-import { TRANSFER_FIELDS, transferFieldSchema } from './transfer'
+import { TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, transferCorrectionFieldSchema, transferFieldSchema } from './transfer'
 import { vehicleFieldSchema } from './vehicle'
 
 /**
@@ -34,9 +34,11 @@ export const auditActions = [
   'location.field_changed',
   'location.archived',
   'transfer.created',
+  'transfer.corrected',
   'ride.assigned',
   'ride.accepted',
   'ride.accepted_by_phone',
+  'ride.returned_to_assigned',
   'ride.done',
   'ride.cancelled',
   'ride.declined',
@@ -268,6 +270,25 @@ const transferCreated = z.object({
 })
 
 /*
+ * A correction is not a member. The ids are the booking after the save.
+ * `fields` names what changed. A guest name, a flight number, a note, a
+ * tabla, or a price is not a key. A save that changes nothing appends nothing.
+ * `subjectUserId` stays null. The actor is the office member.
+ */
+const transferCorrected = z.object({
+  action: z.literal('transfer.corrected'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    transferId,
+    rideId,
+    clientId,
+    startLocationId: locationId,
+    endLocationId: locationId,
+    fields: z.array(transferCorrectionFieldSchema).min(1).max(TRANSFER_CORRECTION_FIELDS.length),
+  }),
+})
+
+/*
  * An assignment is not a member. The ids say which rows. The field list
  * names what was written. The must-accept value stays on the Ride: a boolean
  * copied from the Driver would still be a value, and this row is never deleted.
@@ -325,6 +346,22 @@ const rideAccepted = z.object({
  */
 const rideAcceptedByPhone = z.object({
   action: z.literal('ride.accepted_by_phone'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    driverId,
+    fields: z.array(rideAcceptedFieldSchema).length(RIDE_ACCEPTED_FIELDS.length),
+  }),
+})
+
+/*
+ * A trip change returns an accepted Ride to assigned. The Driver and the
+ * Vehicle stay on the Ride. `fields` is only `state`. A name, a phone, a
+ * plate, a guest, or the must-accept value is not a key. The actor is the
+ * office member who corrected the Transfer. `subjectUserId` stays null.
+ */
+const rideReturnedToAssigned = z.object({
+  action: z.literal('ride.returned_to_assigned'),
   subjectUserId: z.null(),
   data: z.strictObject({
     rideId,
@@ -521,9 +558,11 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   locationFieldChanged,
   locationArchived,
   transferCreated,
+  transferCorrected,
   rideAssigned,
   rideAccepted,
   rideAcceptedByPhone,
+  rideReturnedToAssigned,
   rideDone,
   rideCancelled,
   rideDeclined,
@@ -591,6 +630,7 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   locationFieldChanged.extend(listed),
   locationArchived.extend(listed),
   transferCreated.extend(listed),
+  transferCorrected.extend(listed),
   rideAssigned.extend({
     ...listed,
     // Resolved at read time. The stored data keeps ids only (ADR-0014).
@@ -600,6 +640,11 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   rideAccepted.extend({
     ...listed,
     // The Driver name is joined from `driverId`. The plate is not.
+    driverName: z.string().nullable(),
+  }),
+  rideReturnedToAssigned.extend({
+    ...listed,
+    // The Driver name is joined from `driverId`. The actor is the office member.
     driverName: z.string().nullable(),
   }),
   // The office member is `actorName`. A plate or a Driver name is not joined.

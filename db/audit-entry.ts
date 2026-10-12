@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_LANDING_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_LANDING_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -174,6 +174,17 @@ function transferFieldsArray(data: AnyPgColumn) {
   return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${transferFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${transferFieldsJson}`
 }
 
+const transferCorrectionFieldsJson = sql.raw(`'${JSON.stringify([...TRANSFER_CORRECTION_FIELDS])}'::jsonb`)
+const transferCorrectionFieldCount = sql.raw(String(TRANSFER_CORRECTION_FIELDS.length))
+
+/**
+ * `fields` names what a correction changed. Containment refuses a guest
+ * name, a flight number, a note, a tabla, or a price sitting in the array.
+ */
+function transferCorrectionFieldsArray(data: AnyPgColumn) {
+  return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${transferCorrectionFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${transferCorrectionFieldsJson}`
+}
+
 const rideAssignmentFieldsJson = sql.raw(`'${JSON.stringify([...RIDE_ASSIGNMENT_FIELDS])}'::jsonb`)
 const rideAssignmentFieldCount = sql.raw(String(RIDE_ASSIGNMENT_FIELDS.length))
 
@@ -286,9 +297,11 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'location.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'locationId', 'field')} and ${locationIdText(table.data)} and ${locationFieldText(table.data)}
     when 'location.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'locationId')} and ${locationIdText(table.data)}
     when 'transfer.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'transferId', 'rideId', 'clientId', 'startLocationId', 'endLocationId', 'fields')} and ${uuidText(table.data, 'transferId')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'clientId')} and ${uuidText(table.data, 'startLocationId')} and ${uuidText(table.data, 'endLocationId')} and ${transferFieldsArray(table.data)}
+    when 'transfer.corrected' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'transferId', 'rideId', 'clientId', 'startLocationId', 'endLocationId', 'fields')} and ${uuidText(table.data, 'transferId')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'clientId')} and ${uuidText(table.data, 'startLocationId')} and ${uuidText(table.data, 'endLocationId')} and ${transferCorrectionFieldsArray(table.data)}
     when 'ride.assigned' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')} and ${rideAssignmentFieldsArray(table.data)}
     when 'ride.accepted' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${rideAcceptedFieldsArray(table.data)}
     when 'ride.accepted_by_phone' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${rideAcceptedFieldsArray(table.data)}
+    when 'ride.returned_to_assigned' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${rideAcceptedFieldsArray(table.data)}
     when 'ride.done' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${rideAcceptedFieldsArray(table.data)}
     when 'ride.cancelled' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${nullableUuidText(table.data, 'driverId')} and ${rideAcceptedFieldsArray(table.data)}
     when 'ride.declined' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')} and ${rideChangeFieldsArray(table.data)}

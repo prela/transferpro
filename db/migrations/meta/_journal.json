@@ -239,6 +239,13 @@
       "when": 1791400023000,
       "tag": "0033_ride_landing",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791400024000,
+      "tag": "0034_transfer_corrected",
+      "breakpoints": true
     }
   ]
 }

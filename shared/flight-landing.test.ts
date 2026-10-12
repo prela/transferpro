@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { chooseFlightArrival, flightAskDates, flightDesignator, landingTimeInFuture, parseFlightArrivals, sameFlightDesignator } from './flight-landing'
+import { chooseFlightArrival, flightAskDates, flightDesignator, flightNumberChangeClearsLanding, landingTimeInFuture, parseFlightArrivals, sameFlightDesignator } from './flight-landing'
 
 const pickup = new Date('2026-10-11T12:00:00.000Z')
 
@@ -20,6 +20,18 @@ function arrival(partial: {
       : new Date(partial.landedAt),
   }
 }
+
+it('clears a landing when the flight designator changes, and keeps it for spacing of the same designator', () => {
+  expect(flightNumberChangeClearsLanding('OU384', 'OU 384')).toBe(false)
+  expect(flightNumberChangeClearsLanding('OU384', 'OU384')).toBe(false)
+  expect(flightNumberChangeClearsLanding(null, null)).toBe(false)
+  expect(flightNumberChangeClearsLanding('OU384', 'OU392')).toBe(true)
+  expect(flightNumberChangeClearsLanding('OU384', null)).toBe(true)
+  expect(flightNumberChangeClearsLanding(null, 'OU384')).toBe(true)
+  expect(flightNumberChangeClearsLanding('OU384', 'VIP')).toBe(true)
+  expect(flightNumberChangeClearsLanding('VIP', 'VIP 2')).toBe(true)
+  expect(flightNumberChangeClearsLanding('VIP', 'meet at desk')).toBe(false)
+})
 
 it('treats OU384, OU 384, and ou 384 as one designator, and leaves a note alone', () => {
   expect(flightDesignator('OU384')).toBe('OU384')

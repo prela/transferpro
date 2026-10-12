@@ -3,6 +3,7 @@ import { QueryParamError, TransferInputError } from '../../../shared'
 import { ClientNotFoundError } from '../../modules/clients'
 import { LocationArchivedError, LocationNotFoundError } from '../../modules/locations'
 import { TenantAccessError } from '../../modules/tenancy'
+import { TransferNotCorrectableError, TransferNotFoundError } from '../../modules/transfers'
 
 /**
  * Turn a Transfer failure into an HTTP error. The message stays a fixed phrase
@@ -16,8 +17,15 @@ export function transferHttpError(error: unknown): never {
     || error instanceof ClientNotFoundError
     || error instanceof LocationNotFoundError
     || error instanceof TenantAccessError
+    || error instanceof TransferNotFoundError
   ) {
     throw createError({ statusCode: error.statusCode })
+  }
+  if (error instanceof TransferNotCorrectableError) {
+    throw createError({
+      statusCode: error.statusCode,
+      data: { code: error.code },
+    })
   }
   if (error instanceof LocationArchivedError) {
     throw createError({
