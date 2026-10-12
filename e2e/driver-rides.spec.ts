@@ -34,6 +34,25 @@ async function setRideState(rideId: string, state: 'done' | 'accepted') {
   }
 }
 
+/**
+ * The office took the Ride back. The phone still shows the old card until
+ * the Driver acts, and that accept is a 404.
+ */
+async function releaseRide(rideId: string) {
+  const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
+  try {
+    await pool.query(
+      `update app.rides
+       set state = 'unassigned', driver_id = null, vehicle_id = null, must_accept = null
+       where id = $1`,
+      [rideId],
+    )
+  }
+  finally {
+    await pool.end()
+  }
+}
+
 /** The copy taken at assignment. Turning it off makes the next accept a 409. */
 async function setCopiedMustAccept(rideId: string, mustAccept: boolean) {
   const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
@@ -467,6 +486,7 @@ test('a driver accepts a waiting ride, and a conflict reloads the list', async (
   const driver = await seedMember(tenant.tenantId, 'driver', 'Prihvat')
   const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
   const acceptAt = instantFromWallClock(`${day}T10:00`, 'Europe/Zagreb')
+  const lostAt = instantFromWallClock(`${day}T11:30`, 'Europe/Zagreb')
   const conflictAt = instantFromWallClock(`${day}T13:00`, 'Europe/Zagreb')
   const mail: string[] = []
   page.on('request', (request) => {
@@ -546,6 +566,8 @@ test('a driver accepts a waiting ride, and a conflict reloads the list', async (
     throw new Error(`${mustAccept.status()} ${await mustAccept.text()}`)
   const acceptRide = await record('Nika Prihvat', acceptAt)
   await assign(acceptRide)
+  const lostRide = await record('Nika Izgubljena', lostAt)
+  await assign(lostRide)
   const conflictRide = await record('Nika Sukob', conflictAt)
   await assign(conflictRide)
 
@@ -553,6 +575,7 @@ test('a driver accepts a waiting ride, and a conflict reloads the list', async (
   await signIn(page, driver.email, driver.password, tenant.name)
 
   const accepted = page.locator('article').filter({ hasText: 'Nika Prihvat' })
+  const lost = page.locator('article').filter({ hasText: 'Nika Izgubljena' })
   const conflicted = page.locator('article').filter({ hasText: 'Nika Sukob' })
   await expect(accepted.getByRole('button')).toHaveCount(1)
   await expect(accepted.getByRole('button', { name: 'Prihvati vožnju', exact: true })).toBeVisible()
@@ -572,6 +595,18 @@ test('a driver accepts a waiting ride, and a conflict reloads the list', async (
   await expect(accepted.getByRole('button')).toHaveCount(0)
   await expect(page.getByRole('alert')).toHaveCount(0)
   expect(await rideRow(acceptRide)).toMatchObject({ state: 'accepted', must_accept: true })
+  expect(mail).toEqual([])
+
+  await expect(lost.getByRole('button', { name: 'Prihvati vožnju', exact: true })).toBeVisible()
+  await releaseRide(lostRide)
+  const lostResponse = page.waitForResponse(response =>
+    response.url().includes(`/api/rides/${lostRide}/accept`) && response.request().method() === 'POST',
+  )
+  await lost.getByRole('button', { name: 'Prihvati vožnju', exact: true }).click()
+  expect((await lostResponse).status()).toBe(404)
+  await expect(page.getByRole('alert')).toContainText('Ovu vožnju više nije moguće prihvatiti.')
+  await expect(lost).toHaveCount(0)
+  expect(await rideRow(lostRide)).toMatchObject({ state: 'unassigned', must_accept: null })
   expect(mail).toEqual([])
 
   await setCopiedMustAccept(conflictRide, false)

@@ -8,10 +8,11 @@ import { rideHttpError } from '../http'
  * The Driver accepts their own assigned Ride when the copied flag is on.
  * The body is empty. Any key is 400 and is parsed before a session opens.
  * A dispatcher or an admin is 403. No session is 401.
- * A Ride that is not assigned, or whose copied flag is off, is 409.
- * Another Driver's Ride, another Tenant's Ride, and a member with no
- * linked Driver are 404. The audit entry names the Driver's member and
- * the field name state, not a plate, a phone, or a guest.
+ * A Ride this Driver still holds that is not assigned, or whose copied
+ * flag is off, is 409. A Ride they do not hold — cleared, reassigned, or
+ * never theirs — is 404, as are another Tenant's Ride and a member with
+ * no linked Driver. Nothing is written. The audit entry names the Driver's
+ * member and the field name state, not a plate, a phone, or a guest.
  */
 export default defineEventHandler(async (event) => {
   const rideId = getRouterParam(event, 'id')

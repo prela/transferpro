@@ -78,6 +78,7 @@ function parseAcceptRide(rideId: unknown, body: unknown): string {
  * The Driver linked to this member accepts their own `assigned` Ride when
  * the copied flag is on. The Ride becomes `accepted`. The Driver, the Vehicle,
  * and the flag stay. `ride.accepted` is appended on this transaction.
+ * A Ride this Driver does not hold is not found, and nothing is written.
  * The caller has already required the driver role.
  */
 export async function acceptAssignedRide(
@@ -97,9 +98,10 @@ export async function acceptAssignedRide(
   const current = await lockRideForAccept(transaction, rideId)
   if (!current)
     throw new RideNotFoundError()
-  // Another Driver's Ride is hidden the same way a missing Ride is.
-  // An unassigned Ride has no Driver, so it is not this case.
-  if (current.driverId !== null && current.driverId !== driver.id)
+  // A clear leaves no Driver. A reassignment leaves another Driver.
+  // Both are hidden the same way a missing Ride is. This Driver's own Ride
+  // in any other state, or with the copied flag off, is still a conflict.
+  if (current.driverId !== driver.id)
     throw new RideNotFoundError()
   if (current.state !== 'assigned' || current.mustAccept !== true)
     throw new RideNotAcceptableError()
