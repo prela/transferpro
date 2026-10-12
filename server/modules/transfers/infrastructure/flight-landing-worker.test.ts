@@ -78,6 +78,7 @@ describe('flight landing schedule', () => {
       },
       notices: {
         async notifyArrivalMoved() {},
+        async notifyFlightWillNotArrive() {},
       },
       now: () => askedAt,
       async listTenantIds() {

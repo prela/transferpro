@@ -558,6 +558,40 @@ it('tenant B cannot read or write Tenant A landing time, and the ask lists only 
   finally {
     clientAgain.release()
   }
+
+  await withTenant(tenantA, async (client) => {
+    await client.query(
+      'update app.transfers set flight_will_not_arrive = true, flight_will_not_arrive_handed = true where id = $1',
+      [seeded],
+    )
+  })
+  const handed = await pool.connect()
+  try {
+    const listed = await handed.query<{ tenant_id: string }>(
+      'select tenant_id from app.tenants_due_flight_landing(now())',
+    )
+    expect(listed.rows.map(row => row.tenant_id)).not.toContain(tenantA)
+  }
+  finally {
+    handed.release()
+  }
+
+  await withTenant(tenantA, async (client) => {
+    await client.query(
+      'update app.transfers set flight_will_not_arrive_handed = false where id = $1',
+      [seeded],
+    )
+  })
+  const waiting = await pool.connect()
+  try {
+    const listed = await waiting.query<{ tenant_id: string }>(
+      'select tenant_id from app.tenants_due_flight_landing(now())',
+    )
+    expect(listed.rows.map(row => row.tenant_id)).toContain(tenantA)
+  }
+  finally {
+    waiting.release()
+  }
 })
 
 it('tenant B cannot read or write Tenant A expected arrival', async () => {

@@ -1,7 +1,7 @@
 import type { SQL } from 'drizzle-orm'
 import type { RideState } from '../../../../shared'
 import type { Logger, TenantTransaction } from '../../../core/index'
-import type { ArrivalMovedNotice, Mailer } from '../../tenancy'
+import type { ArrivalMovedNotice, FlightWillNotArriveNotice, Mailer } from '../../tenancy'
 import type { FlightStatusPort } from './flight-landing'
 import { Writable } from 'node:stream'
 import { PgDialect } from 'drizzle-orm/pg-core'
@@ -32,6 +32,8 @@ interface StoredRide {
   landingAt: Date | null
   expectedArrival: Date | null
   expectedArrivalBasis: Date | null
+  willNotArrive: boolean
+  willNotArriveHanded: boolean
   driverId: string | null
   timeZone: string
 }
@@ -48,6 +50,8 @@ function ride(overrides: Partial<StoredRide> = {}): StoredRide {
     landingAt: null,
     expectedArrival: null,
     expectedArrivalBasis: null,
+    willNotArrive: false,
+    willNotArriveHanded: false,
     driverId: null,
     timeZone: 'Europe/Zagreb',
     ...overrides,
@@ -83,10 +87,23 @@ function fake(stored: StoredRide[]) {
             landingAt: row.landingAt,
             expectedArrival: row.expectedArrival,
             expectedArrivalBasis: row.expectedArrivalBasis,
+            willNotArrive: row.willNotArrive,
+            willNotArriveHanded: row.willNotArriveHanded,
             driverId: row.driverId,
             timeZone: row.timeZone,
           })),
         }
+      }
+      if (text.includes('flight_will_not_arrive')) {
+        const handed = compiled.params[0] === true
+        const row = stored.find(item => item.transferId === compiled.params[1])
+        if (row) {
+          row.expectedArrival = null
+          row.expectedArrivalBasis = null
+          row.willNotArrive = true
+          row.willNotArriveHanded = handed
+        }
+        return { rows: [] }
       }
       if (text.includes('set expected_arrival_at')) {
         const row = stored.find(item => item.transferId === compiled.params[2])
@@ -155,12 +172,20 @@ function logCapture(): { log: Logger, text: () => string } {
   }
 }
 
-function noticesPort(): Pick<Mailer, 'notifyArrivalMoved'> & { facts: ArrivalMovedNotice[] } {
+function noticesPort(): Pick<Mailer, 'notifyArrivalMoved' | 'notifyFlightWillNotArrive'> & {
+  facts: ArrivalMovedNotice[]
+  willNotArrive: FlightWillNotArriveNotice[]
+} {
   const facts: ArrivalMovedNotice[] = []
+  const willNotArrive: FlightWillNotArriveNotice[] = []
   return {
     facts,
+    willNotArrive,
     async notifyArrivalMoved(notice) {
       facts.push(notice)
+    },
+    async notifyFlightWillNotArrive(notice) {
+      willNotArrive.push(notice)
     },
   }
 }
@@ -241,8 +266,6 @@ it('stores nothing when the arrival is more than 6 hours away, tied, at another 
     landed(iata, '2026-10-11T15:00:00.000Z'),
   ])
   expect(tie.rows[0]?.landingAt).toBeNull()
-  const elsewhere = await ask([ride()], [landed('SPU')])
-  expect(elsewhere.rows[0]?.landingAt).toBeNull()
   const empty = await ask([ride()], [])
   expect(empty.rows[0]?.landingAt).toBeNull()
   expect(empty.log).not.toContain(flight)
@@ -388,4 +411,114 @@ it('stores a movement with no Driver, then hands it once on the next ask after a
   const again = await ask(stored, [expected(moved)])
   expect(again.notices.facts).toEqual([])
   expect(again.rows[0]?.state).toBe('accepted')
+})
+
+function cancelled(at = firstArrival) {
+  return {
+    arrivalAirport: iata,
+    status: 'cancelled' as const,
+    expectedArrival: at,
+    landedAt: '2026-10-11T13:00:00.000Z',
+  }
+}
+
+function diverted(at = firstArrival) {
+  return {
+    arrivalAirport: 'SPU',
+    status: 'diverted' as const,
+    expectedArrival: at,
+    landedAt: null,
+  }
+}
+
+it('clears the expected arrival when the flight is cancelled, writes no landing time, and hands will-not-arrive once', async () => {
+  const stored = [ride({
+    driverId,
+    expectedArrival: new Date(firstArrival),
+    expectedArrivalBasis: new Date(firstArrival),
+  })]
+  const result = await ask(stored, [cancelled('2026-10-11T14:40:00.000Z')])
+  expect(result.rows[0]?.expectedArrival).toBeNull()
+  expect(result.rows[0]?.landingAt).toBeNull()
+  expect(result.rows[0]?.state).toBe('accepted')
+  expect(result.rows[0]?.willNotArrive).toBe(true)
+  expect(result.notices.facts).toEqual([])
+  expect(result.notices.willNotArrive).toEqual([{ rideId, driverId }])
+  expect(result.queries.some(query => query.includes('set landing_at') || query.includes('landing_at ='))).toBe(false)
+  expect(result.queries.some(query => query.includes('update app.rides'))).toBe(false)
+  expect(result.log).not.toContain(flight)
+  expect(result.log).not.toContain(iata)
+  expect(result.log).not.toContain(guest)
+
+  const again = await ask(stored, [cancelled()])
+  expect(again.status.calls).toEqual([])
+  expect(again.notices.willNotArrive).toEqual([])
+  expect(again.notices.facts).toEqual([])
+  expect(again.rows[0]?.landingAt).toBeNull()
+})
+
+it('hands the same will-not-arrive fact when the flight is diverted to another airport', async () => {
+  const result = await ask([ride({
+    driverId,
+    expectedArrival: new Date(firstArrival),
+    expectedArrivalBasis: new Date(firstArrival),
+  })], [diverted()])
+  expect(result.rows[0]?.expectedArrival).toBeNull()
+  expect(result.rows[0]?.landingAt).toBeNull()
+  expect(result.notices.facts).toEqual([])
+  expect(result.notices.willNotArrive).toEqual([{ rideId, driverId }])
+  expect(result.rows[0]?.state).toBe('accepted')
+})
+
+it('leaves a landing time a person recorded when the status says the flight is cancelled', async () => {
+  const person = new Date('2026-10-11T10:00:00.000Z')
+  const kept = await ask([ride({
+    driverId,
+    landingAt: person,
+    expectedArrival: new Date(firstArrival),
+  })], [cancelled()])
+  expect(kept.status.calls).toEqual([])
+  expect(kept.rows[0]?.landingAt).toEqual(person)
+  expect(kept.rows[0]?.expectedArrival?.toISOString()).toBe(firstArrival)
+  expect(kept.notices.willNotArrive).toEqual([])
+  expect(kept.notices.facts).toEqual([])
+})
+
+it('stores will-not-arrive with no Driver, then hands it once on the next ask after assignment', async () => {
+  const stored = [ride({
+    expectedArrival: new Date(firstArrival),
+    expectedArrivalBasis: new Date(firstArrival),
+  })]
+  const held = await ask(stored, [cancelled()])
+  expect(held.notices.willNotArrive).toEqual([])
+  expect(held.notices.facts).toEqual([])
+  expect(held.rows[0]?.expectedArrival).toBeNull()
+  expect(held.rows[0]?.willNotArrive).toBe(true)
+  expect(held.rows[0]?.willNotArriveHanded).toBe(false)
+  expect(held.rows[0]?.landingAt).toBeNull()
+
+  stored[0]!.driverId = driverId
+  const told = await ask(stored, [cancelled()])
+  expect(told.status.calls).toEqual([])
+  expect(told.notices.facts).toEqual([])
+  expect(told.notices.willNotArrive).toEqual([{ rideId, driverId }])
+  expect(told.rows[0]?.willNotArriveHanded).toBe(true)
+
+  const again = await ask(stored, [cancelled()])
+  expect(again.status.calls).toEqual([])
+  expect(again.notices.willNotArrive).toEqual([])
+})
+
+it('leaves the expected arrival in place when the status result is empty', async () => {
+  const stored = [ride({
+    driverId,
+    expectedArrival: new Date(firstArrival),
+    expectedArrivalBasis: new Date(firstArrival),
+  })]
+  const empty = await ask(stored, [])
+  expect(empty.rows[0]?.expectedArrival?.toISOString()).toBe(firstArrival)
+  expect(empty.rows[0]?.willNotArrive).toBe(false)
+  expect(empty.notices.willNotArrive).toEqual([])
+  expect(empty.notices.facts).toEqual([])
+  expect(empty.rows[0]?.landingAt).toBeNull()
 })

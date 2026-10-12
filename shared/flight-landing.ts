@@ -104,7 +104,7 @@ export function parseFlightArrivals(value: unknown): FlightArrival[] | null {
 export type FlightArrivalChoice
   = | { readonly kind: 'none' }
     | { readonly kind: 'tie' }
-    | { readonly kind: 'elsewhere' }
+    | { readonly kind: 'will-not-arrive' }
     | { readonly kind: 'expected', readonly expectedArrival: Date }
     | { readonly kind: 'landed', readonly landedAt: Date, readonly expectedArrival: Date | null }
 
@@ -144,8 +144,8 @@ function arrivalInstant(arrival: FlightArrival): Date | null {
 
 /**
  * Among arrivals within 6 hours of the pickup, keep the closest. Two at
- * that same distance store nothing. A closest arrival at another airport
- * is not a landing here.
+ * that same distance store nothing. A cancellation, a diverted status, or
+ * a closest arrival at another airport will not arrive here.
  */
 export function chooseFlightArrival(
   arrivals: readonly FlightArrival[],
@@ -179,11 +179,17 @@ export function chooseFlightArrival(
   }
   if (ties > 1)
     return { kind: 'tie' }
-  if (best.arrival.arrivalAirport !== pickupIata)
-    return { kind: 'elsewhere' }
+  // A cancellation, a diverted status, or an arrival at another airport is
+  // not a landing here and not a moved estimate. ADR-0028.
+  if (
+    best.arrival.arrivalAirport !== pickupIata
+    || best.arrival.status === 'cancelled'
+    || best.arrival.status === 'diverted'
+  ) {
+    return { kind: 'will-not-arrive' }
+  }
   if (best.arrival.status === 'landed' && best.arrival.landedAt !== null)
     return { kind: 'landed', landedAt: best.arrival.landedAt, expectedArrival: best.arrival.expectedArrival }
-  // Cancelled and diverted are a later notice. An estimate on those is not stored here.
   if (best.arrival.status === 'expected' && best.arrival.expectedArrival !== null)
     return { kind: 'expected', expectedArrival: best.arrival.expectedArrival }
   return { kind: 'none' }
@@ -212,6 +218,30 @@ export function storeExpectedArrival(
     basis: reported,
     moved: { previous: memory.basis, next: reported },
   }
+}
+
+/**
+ * Whether this designator will not arrive here, and whether that fact has
+ * already been handed. Observed stays true. A Driver is told at most once.
+ * With no Driver the fact is stored and the port is not called.
+ */
+export interface WillNotArriveMemory {
+  readonly observed: boolean
+  readonly handed: boolean
+}
+
+export interface WillNotArriveUpdate {
+  readonly observed: true
+  readonly handed: boolean
+  readonly hand: boolean
+}
+
+export function rememberWillNotArrive(memory: WillNotArriveMemory, hasDriver: boolean): WillNotArriveUpdate {
+  if (memory.handed)
+    return { observed: true, handed: true, hand: false }
+  if (!hasDriver)
+    return { observed: true, handed: false, hand: false }
+  return { observed: true, handed: true, hand: true }
 }
 
 /** A landing time is an instant that has already happened. `now` is included. */

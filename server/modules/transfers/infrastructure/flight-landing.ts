@@ -3,7 +3,7 @@ import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { chooseFlightArrival, FLIGHT_ASK_LEAD_MS, flightAskDates, flightDesignator, landingTimeInFuture, parseFlightArrivals, storeExpectedArrival } from '../../../../shared'
+import { chooseFlightArrival, FLIGHT_ASK_LEAD_MS, flightAskDates, flightDesignator, landingTimeInFuture, parseFlightArrivals, rememberWillNotArrive, storeExpectedArrival } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 
 /**
@@ -31,6 +31,8 @@ interface TrackedRide {
   readonly landingAt: Date | null
   readonly expectedArrival: Date | null
   readonly expectedArrivalBasis: Date | null
+  readonly willNotArrive: boolean
+  readonly willNotArriveHanded: boolean
   readonly timeZone: string
 }
 
@@ -46,6 +48,8 @@ const trackedRowSchema = z.object({
   landingAt: z.unknown().nullable(),
   expectedArrival: z.unknown().nullable(),
   expectedArrivalBasis: z.unknown().nullable(),
+  willNotArrive: z.boolean(),
+  willNotArriveHanded: z.boolean(),
   timeZone: z.string().min(1),
 })
 
@@ -99,6 +103,8 @@ function toTracked(row: z.infer<typeof trackedRowSchema>): TrackedRide | null {
     landingAt: asInstant(row.landingAt),
     expectedArrival: asInstant(row.expectedArrival),
     expectedArrivalBasis: asInstant(row.expectedArrivalBasis),
+    willNotArrive: row.willNotArrive,
+    willNotArriveHanded: row.willNotArriveHanded,
     timeZone: row.timeZone,
   }
 }
@@ -106,9 +112,10 @@ function toTracked(row: z.infer<typeof trackedRowSchema>): TrackedRide | null {
 /**
  * Unfinished airport pickup, one designator, an IATA code, an empty landing
  * time, and a pickup no more than 12 hours ahead. A row outside that set
- * is not asked. The guest name is not read.
+ * is not asked. The guest name is not read. A designator already known not
+ * to arrive here is not asked of the status port.
  */
-function isAsked(ride: TrackedRide, now: Date): boolean {
+function isTrackable(ride: TrackedRide, now: Date): boolean {
   if (finished.includes(ride.state))
     return false
   if (!ride.airportMark)
@@ -137,6 +144,8 @@ async function loadTracked(transaction: TenantTransaction): Promise<TrackedRide[
         t.landing_at as "landingAt",
         t.expected_arrival_at as "expectedArrival",
         t.expected_arrival_basis_at as "expectedArrivalBasis",
+        t.flight_will_not_arrive as "willNotArrive",
+        t.flight_will_not_arrive_handed as "willNotArriveHanded",
         s.time_zone as "timeZone"
       from app.rides as r
       join app.transfers as t
@@ -200,11 +209,57 @@ async function writeExpectedArrival(
   )
 }
 
+/**
+ * Clears the estimate. Does not write `landing_at`, so a time a person
+ * already stored stays. The Ride state is not in this statement, and neither
+ * is the No-show clock or the unclosed mark.
+ */
+async function writeWillNotArrive(
+  transaction: TenantTransaction,
+  transferId: string,
+  handed: boolean,
+): Promise<void> {
+  await hideDatabaseError(
+    () => transaction.execute(sql`
+      update app.transfers
+      set expected_arrival_at = null,
+          expected_arrival_basis_at = null,
+          flight_will_not_arrive = true,
+          flight_will_not_arrive_handed = ${handed}
+      where id = ${transferId}
+    `),
+    'Flight will-not-arrive write failed',
+  )
+}
+
+async function tellWillNotArrive(
+  ask: FlightLandingAsk,
+  ride: TrackedRide,
+): Promise<void> {
+  const update = rememberWillNotArrive(
+    { observed: ride.willNotArrive, handed: ride.willNotArriveHanded },
+    ride.driverId !== null,
+  )
+  const changed = !ride.willNotArrive || ride.willNotArriveHanded !== update.handed
+  if (changed)
+    await writeWillNotArrive(ask.transaction, ride.transferId, update.handed)
+  if (update.hand && ride.driverId !== null) {
+    await ask.notices.notifyFlightWillNotArrive({
+      rideId: ride.rideId,
+      driverId: ride.driverId,
+    })
+    ask.log.info({ rideId: ride.rideId, outcome: 'will-not-arrive' }, 'flight landing ask')
+    return
+  }
+  if (!ride.willNotArrive)
+    ask.log.info({ rideId: ride.rideId, outcome: 'will-not-arrive-stored' }, 'flight landing ask')
+}
+
 export interface FlightLandingAsk {
   readonly now: Date
   readonly transaction: TenantTransaction
   readonly status: FlightStatusPort
-  readonly notices: Pick<Mailer, 'notifyArrivalMoved'>
+  readonly notices: Pick<Mailer, 'notifyArrivalMoved' | 'notifyFlightWillNotArrive'>
   readonly log: Logger
 }
 
@@ -216,8 +271,13 @@ export interface FlightLandingAsk {
 export async function refreshFlightLandings(ask: FlightLandingAsk): Promise<void> {
   const rides = await loadTracked(ask.transaction)
   for (const ride of rides) {
-    if (!isAsked(ride, ask.now))
+    if (!isTrackable(ride, ask.now))
       continue
+    if (ride.willNotArrive) {
+      // The fact is already stored. Later asks do not call the status port.
+      await tellWillNotArrive(ask, ride)
+      continue
+    }
     const designator = flightDesignator(ride.flightNumber)
     const iata = ride.iata
     if (designator === null || iata === null)
@@ -237,6 +297,10 @@ export async function refreshFlightLandings(ask: FlightLandingAsk): Promise<void
       continue
     }
     const choice = chooseFlightArrival(arrivals, ride.pickupAt, iata)
+    if (choice.kind === 'will-not-arrive') {
+      await tellWillNotArrive(ask, ride)
+      continue
+    }
     const reported = choice.kind === 'expected' || choice.kind === 'landed'
       ? choice.expectedArrival
       : null
@@ -287,7 +351,7 @@ export async function askFlightLandings(input: {
   readonly tenantIds: readonly string[]
   readonly withTenant: (tenantId: string, run: (transaction: TenantTransaction) => Promise<void>) => Promise<void>
   readonly status: FlightStatusPort
-  readonly notices: Pick<Mailer, 'notifyArrivalMoved'>
+  readonly notices: Pick<Mailer, 'notifyArrivalMoved' | 'notifyFlightWillNotArrive'>
   readonly log: Logger
 }): Promise<void> {
   for (const tenantId of input.tenantIds) {

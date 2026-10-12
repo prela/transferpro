@@ -37,10 +37,21 @@ export interface ArrivalMovedNotice {
   readonly next: string
 }
 
+/**
+ * The flight will not arrive at this airport. The wording of the mail is a
+ * later ticket. This is the same port, not a new channel, and it is not a
+ * moved arrival. No landing time is on it.
+ */
+export interface FlightWillNotArriveNotice {
+  readonly rideId: string
+  readonly driverId: string
+}
+
 export interface Mailer {
   sendInvitation: (mail: InvitationMail) => Promise<void>
   sendWorkOrder: (mail: WorkOrderMail) => Promise<void>
   notifyArrivalMoved: (notice: ArrivalMovedNotice) => Promise<void>
+  notifyFlightWillNotArrive: (notice: FlightWillNotArriveNotice) => Promise<void>
 }
 
 /**
@@ -62,6 +73,7 @@ export function createFakeMailer(
   outbox: InvitationMail[] = [],
   workOrders: WorkOrderMail[] = [],
   arrivalMoves: ArrivalMovedNotice[] = [],
+  willNotArrive: FlightWillNotArriveNotice[] = [],
 ): Mailer {
   return {
     async sendInvitation(mail) {
@@ -72,6 +84,9 @@ export function createFakeMailer(
     },
     async notifyArrivalMoved(notice) {
       arrivalMoves.push({ ...notice })
+    },
+    async notifyFlightWillNotArrive(notice) {
+      willNotArrive.push({ ...notice })
     },
   }
 }
@@ -114,6 +129,16 @@ export function createConsoleMailer(log?: Logger): Mailer {
       logger.info({
         event: 'mail.console',
         kind: 'arrival-moved',
+        rideId: notice.rideId,
+        driverId: notice.driverId,
+      })
+    },
+    async notifyFlightWillNotArrive(notice) {
+      // The address is not on this fact. The flight number stays off the log.
+      const logger = log ?? getLogger()
+      logger.info({
+        event: 'mail.console',
+        kind: 'will-not-arrive',
         rideId: notice.rideId,
         driverId: notice.driverId,
       })
@@ -232,6 +257,7 @@ export function createResendMailer(apiKey: string, fetchImpl: typeof fetch = fet
     },
     // The message text is a later ticket. The fact is accepted and no mail is sent.
     async notifyArrivalMoved() {},
+    async notifyFlightWillNotArrive() {},
   }
   resendMailers.add(mailer)
   return mailer
