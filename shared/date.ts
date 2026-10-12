@@ -53,6 +53,38 @@ export function calendarDateInTimeZone(timeZone: string, instant: Date): string 
 const wallClock = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/
 
 /**
+ * `YYYY-MM-DDTHH:mm` for an instant in an IANA zone. The landing form
+ * collects that clock reading. The row stores the instant. This is the
+ * inverse of {@link instantFromWallClock} at minute precision, not a
+ * display string.
+ */
+export function wallClockInTimeZone(timeZone: string, instant: Date): string {
+  if (Number.isNaN(instant.getTime()))
+    throw new RangeError('Instant is not a valid time.')
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    calendar: 'gregory',
+    numberingSystem: 'latn',
+  }).formatToParts(instant)
+  const value = (type: Intl.DateTimeFormatPartTypes) => {
+    const part = parts.find(item => item.type === type)
+    if (!part)
+      throw new RangeError(`Missing ${type} from the formatted date.`)
+    return part.value
+  }
+  // Some ICU builds report midnight as 24.
+  const hour = value('hour') === '24' ? '00' : value('hour')
+  return `${value('year')}-${value('month')}-${value('day')}T${hour}:${value('minute')}`
+}
+
+/**
  * A `YYYY-MM-DDTHH:mm` clock reading in an IANA zone, as a UTC instant.
  * The Transfer form collects the pickup in the Tenant time zone. The row
  * stores the instant. Two passes, because the first offset can sit on the

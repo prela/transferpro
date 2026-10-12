@@ -40,6 +40,7 @@ export const auditActions = [
   'ride.done',
   'ride.cancelled',
   'ride.declined',
+  'ride.landing_recorded',
   'ride.vehicle_changed',
   'ride.cleared',
   'ride.reassigned',
@@ -292,6 +293,14 @@ export const RIDE_ACCEPTED_FIELDS = ['state'] as const
 
 export const rideAcceptedFieldSchema = z.enum(RIDE_ACCEPTED_FIELDS)
 
+/**
+ * The only field name a landing-time change may store. The instant stays on
+ * the Transfer. This row is never deleted, so the time itself is not a key.
+ */
+export const RIDE_LANDING_FIELDS = ['landingAt'] as const
+
+export const rideLandingFieldSchema = z.enum(RIDE_LANDING_FIELDS)
+
 /*
  * An acceptance is not a member. The ids say which Ride and which Driver.
  * `fields` is only `state`: the transition is the state change. The actor
@@ -370,6 +379,23 @@ const rideDeclined = z.object({
     driverId,
     vehicleId,
     fields: z.array(rideAssignmentFieldSchema).length(RIDE_ASSIGNMENT_FIELDS.length),
+  }),
+})
+
+/*
+ * Recording or clearing a landing time does not move the Ride. `fields` is
+ * only `landingAt`. `driverId` is null when the Ride was unassigned. The
+ * instant stays on the Transfer: this row is never deleted. A name, a phone,
+ * a plate, or a guest is not a key. The actor is the person who changed it.
+ * `subjectUserId` stays null.
+ */
+const rideLandingRecorded = z.object({
+  action: z.literal('ride.landing_recorded'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    driverId: driverId.nullable(),
+    fields: z.array(rideLandingFieldSchema).length(RIDE_LANDING_FIELDS.length),
   }),
 })
 
@@ -501,6 +527,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   rideDone,
   rideCancelled,
   rideDeclined,
+  rideLandingRecorded,
   rideVehicleChanged,
   rideCleared,
   rideReassigned,
@@ -530,6 +557,9 @@ export type AuditFact = z.infer<typeof auditFactSchema>
  * person who cancelled. The plate is not joined.
  * `ride.declined` carries the Driver name and the Vehicle plate. The actor
  * is the Driver who declined. The ids are the ones that were cleared.
+ * `ride.landing_recorded` carries the Driver name when the Ride had a Driver.
+ * An unassigned change has a null Driver name. The actor name is the person
+ * who recorded or cleared the landing time. The instant and the plate are not joined.
  * `ride.vehicle_changed`, `ride.cleared`, and `ride.reassigned` carry the
  * Driver name and the Vehicle plate, joined from the ids on the row.
  */
@@ -589,6 +619,11 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
     // The Driver who declined, and the plate that was cleared. Both are joined.
     driverName: z.string().nullable(),
     vehiclePlate: z.string().nullable(),
+  }),
+  rideLandingRecorded.extend({
+    ...listed,
+    // The Driver name is joined when the Ride had a Driver. The person is `actorName`.
+    driverName: z.string().nullable(),
   }),
   rideVehicleChanged.extend({
     ...listed,

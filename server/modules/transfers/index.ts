@@ -9,6 +9,8 @@
  * The Driver declines from `assigned` only. The Ride returns to unassigned
  * and a decline alert names that Driver. No mail.
  * The office may cancel from `unassigned`, `assigned`, or `accepted`.
+ * The office or the assigned Driver can record or clear a landing time
+ * while the Ride is unfinished. The Ride state stays. No mail.
  * The office can change only the Vehicle, clear the Ride, or reassign it.
  * Each of those mails a work order after the Ride is saved.
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
@@ -23,6 +25,7 @@ export { markRideDone, MarkRideDoneInputError, RideNotFinishableError } from './
 export { listUpcomingRides } from './infrastructure/driver-ride-access'
 export { askFlightLandings, LandingTimeClosedError, LandingTimeInFutureError, recordLandingTime, refreshFlightLandings } from './infrastructure/flight-landing'
 export { startFlightLandingWorker } from './infrastructure/flight-landing-worker'
+export { RecordLandingInputError, recordRideLanding, RideLandingClosedError, RideLandingInFutureError } from './infrastructure/landing'
 export { readOfficeHome } from './infrastructure/office-home-access'
 export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './infrastructure/ride-change'
 export { RideOverlapError } from './infrastructure/ride-schedule'

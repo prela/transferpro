@@ -1,5 +1,12 @@
 import { expect, it } from 'vitest'
-import { instantFromWallClock, localDayBounds, operationalDateInTimeZone } from './date'
+import { instantFromWallClock, localDayBounds, operationalDateInTimeZone, wallClockInTimeZone } from './date'
+
+it('writes a Zagreb wall clock from a stored instant, in winter time', () => {
+  // 15 January 2026, 09:30Z is 10:30 in Zagreb.
+  const instant = new Date('2026-01-15T09:30:00.000Z')
+  expect(wallClockInTimeZone('Europe/Zagreb', instant)).toBe('2026-01-15T10:30')
+  expect(instantFromWallClock('2026-01-15T10:30', 'Europe/Zagreb').toISOString()).toBe(instant.toISOString())
+})
 
 it('reads a Zagreb wall clock as UTC, in summer time and in winter time', () => {
   // 6 October 2026 is still CEST, two hours ahead of UTC.

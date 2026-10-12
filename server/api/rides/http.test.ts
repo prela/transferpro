@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RideNotAcceptableError, RideNotCancellableError, RideNotOpenError, RideNotUnassignedError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
+import { RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotOpenError, RideNotUnassignedError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
 import { rideHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -50,6 +50,17 @@ describe('rideHttpError', () => {
     expect(error).toMatchObject({
       statusCode: 409,
       data: { code: 'ride_vehicle_unchanged' },
+    })
+  })
+
+  it('returns a distinct code when the landing time is closed or still in the future', () => {
+    expect(thrown(() => rideHttpError(new RideLandingClosedError()))).toMatchObject({
+      statusCode: 409,
+      data: { code: 'landing_time_closed' },
+    })
+    expect(thrown(() => rideHttpError(new RideLandingInFutureError()))).toMatchObject({
+      statusCode: 409,
+      data: { code: 'landing_time_in_future' },
     })
   })
 
