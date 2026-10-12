@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
-import { AcceptRideInputError, RideNotAcceptableError, RideNotFoundError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
+import { AcceptRideInputError, MarkRideDoneInputError, RideNotAcceptableError, RideNotFinishableError, RideNotFoundError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
 
 /**
  * Turn an assignment or accept failure into an HTTP error. The message stays
@@ -12,13 +12,16 @@ import { AcceptRideInputError, RideNotAcceptableError, RideNotFoundError, RideNo
  * `ride_not_open` is a vehicle change, a clear, or a reassignment on a Ride
  * that is not `assigned` or `accepted`. `ride_vehicle_unchanged` is the same
  * Vehicle. `ride_same_driver` is a reassignment to the Driver already on the Ride.
- * `ride_overlap` is a true overlap of the Driver or the Vehicle. Nothing was written.
+ * `ride_overlap` is a true overlap of the Driver or the Vehicle.
+ * `ride_not_finishable` is done refused: the copied flag and the state do
+ * not allow it, or a concurrent command already won. Nothing was written.
  */
 export function rideHttpError(error: unknown): never {
   if (
     error instanceof AssignRideInputError
     || error instanceof RideCommandInputError
     || error instanceof AcceptRideInputError
+    || error instanceof MarkRideDoneInputError
     || error instanceof RideNotFoundError
     || error instanceof TenantAccessError
   ) {
@@ -28,6 +31,7 @@ export function rideHttpError(error: unknown): never {
     error instanceof RideVehicleArchivedError
     || error instanceof RideNotUnassignedError
     || error instanceof RideNotAcceptableError
+    || error instanceof RideNotFinishableError
     || error instanceof RideNotOpenError
     || error instanceof RideVehicleUnchangedError
     || error instanceof RideSameDriverError

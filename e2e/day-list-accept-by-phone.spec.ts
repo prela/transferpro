@@ -224,3 +224,76 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   expect(acceptPosts).toBe(1)
   expect(mail).toEqual([])
 })
+
+test('the office marks a ride done, and the audit log names that person', async ({ page }) => {
+  const tenant = await seedTenant('day-mark-done')
+  const mail: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('resend.com'))
+      mail.push(request.url())
+  })
+
+  await useTheme(page, 'light')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const mustDriverId = await addDriver(page, 'Marko Must', '+385911110200')
+  expect((await page.request.patch(`/api/drivers/${mustDriverId}`, { data: { mustAccept: true } })).ok()).toBeTruthy()
+  const freeDriverId = await addDriver(page, 'Ana Free', '+385911110201')
+  const mustVehicleId = await addVehicle(page, 'DU200AA')
+  const freeVehicleId = await addVehicle(page, 'DU200BB')
+  const clientId = await createdId(await page.request.post('/api/clients', {
+    data: { name: 'Klijent Kraj', kind: 'agency' },
+  }))
+  const startLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Polazak Kraj', kind: 'airport' },
+  }))
+  const endLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Dolazak Kraj', kind: 'hotel' },
+  }))
+  const places = { clientId, startLocationId, endLocationId }
+  const waiting = await recordTodayRide(page, 'Nika Ceka', '10:00', places)
+  const plain = await recordTodayRide(page, 'Lara Gotova', '11:00', places)
+  const open = await recordTodayRide(page, 'Ema Open', '12:00', places)
+  await assignRide(page, waiting.rideId, mustDriverId, mustVehicleId)
+  await assignRide(page, plain.rideId, freeDriverId, freeVehicleId)
+
+  await page.getByRole('link', { name: 'Transferi' }).click()
+  const waitingRow = page.getByRole('row', { name: 'Nika Ceka' })
+  const plainRow = page.getByRole('row', { name: 'Lara Gotova' })
+  const openRow = page.getByRole('row', { name: 'Ema Open' })
+  const doneName = 'Označi obavljenom: Lara Gotova'
+
+  await expect(waitingRow.getByRole('button', { name: doneName })).toHaveCount(0)
+  await expect(openRow.getByRole('button', { name: /Označi obavljenom/ })).toHaveCount(0)
+  await expect(plainRow.getByRole('button', { name: doneName })).toBeVisible()
+  await plainRow.getByRole('button', { name: doneName }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('Ovo zatvara vožnju. Daljnja promjena nije moguća.')
+  await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(await dayRide(page, plain.day, 'Lara Gotova')).toMatchObject({ state: 'assigned', mustAccept: false })
+  expect(mail).toEqual([])
+
+  await switchTheme(page, 'dark')
+  await switchLocale(page, 'en')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  const englishName = 'Mark done: Lara Gotova'
+  await plainRow.getByRole('button', { name: englishName }).click()
+  await expect(dialog).toContainText('This closes the ride. No further change is possible.')
+  const doneResponse = page.waitForResponse(response =>
+    response.url().includes(`/api/rides/${plain.rideId}/done`) && response.request().method() === 'POST',
+  )
+  await dialog.getByRole('button', { name: 'Mark done', exact: true }).click()
+  expect((await doneResponse).status()).toBe(200)
+  await expect(plainRow.getByRole('cell', { name: 'Done', exact: true })).toBeVisible()
+  await expect(plainRow.getByRole('button', { name: englishName })).toHaveCount(0)
+  expect(await dayRide(page, plain.day, 'Lara Gotova')).toMatchObject({ state: 'done', mustAccept: false })
+  expect(await dayRide(page, waiting.day, 'Nika Ceka')).toMatchObject({ state: 'assigned', mustAccept: true })
+  expect(await dayRide(page, open.day, 'Ema Open')).toMatchObject({ state: 'unassigned', mustAccept: null })
+  expect(mail).toEqual([])
+
+  await page.getByRole('link', { name: 'Audit log' }).click()
+  await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible()
+  const doneRow = page.getByRole('row', { name: 'Ride marked done' })
+  await expect(doneRow).toContainText(tenant.adminName)
+  await expect(doneRow).toContainText('Ana Free')
+})

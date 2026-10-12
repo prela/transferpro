@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayLocale, DriverUpcomingRide } from '../../shared'
-import { driverUpcomingListSchema, formatInstant, rideSchema } from '../../shared'
+import { canMarkRideDone, driverUpcomingListSchema, formatInstant, rideSchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -17,6 +17,10 @@ const loadError = ref(false)
 // One accept at a time. The id stays set until the list has caught up,
 // so the control cannot flash back onto a Ride that just left `assigned`.
 const acceptingId = ref<string | null>(null)
+// The Ride the Driver is about to mark done. Null closes the dialog.
+const markingDone = ref<DriverUpcomingRide | null>(null)
+const markDonePending = ref(false)
+const markDoneErrorKey = ref<'driverRides.doneConflict' | 'driverRides.doneFailed' | null>(null)
 // A 409 means the list the Driver tapped was already stale.
 const conflict = ref(false)
 // A slower reload must not replace the rows from a newer one.
@@ -56,6 +60,14 @@ async function loadRides(refresh = false) {
  */
 function canAccept(ride: DriverUpcomingRide): boolean {
   return ride.state === 'assigned' && ride.mustAccept
+}
+
+/**
+ * Flag off: done from `assigned`. Flag on: done only from `accepted`.
+ * Waiting on acceptance has the accept control and not this one.
+ */
+function canFinish(ride: DriverUpcomingRide): boolean {
+  return canMarkRideDone(ride.state, ride.mustAccept)
 }
 
 function httpStatus(error: unknown): number | undefined {
@@ -99,6 +111,63 @@ async function accept(rideId: string) {
   }
   finally {
     acceptingId.value = null
+  }
+}
+
+function openMarkDone(ride: DriverUpcomingRide) {
+  if (!canFinish(ride) || markDonePending.value || acceptingId.value !== null)
+    return
+  markDoneErrorKey.value = null
+  markingDone.value = ride
+}
+
+function closeMarkDone() {
+  if (markDonePending.value)
+    return
+  markDoneErrorKey.value = null
+  markingDone.value = null
+}
+
+const markDoneOpen = computed({
+  get: () => markingDone.value !== null,
+  set(open: boolean) {
+    if (!open)
+      closeMarkDone()
+  },
+})
+
+/**
+ * POST /api/rides/:id/done with an empty body. Success reloads the list,
+ * and the Ride leaves it because done is terminal. A 409 or a 404 reloads
+ * and says the Ride can no longer be marked done. No mail is sent.
+ */
+async function confirmMarkDone() {
+  const target = markingDone.value
+  if (!target || markDonePending.value)
+    return
+  markDonePending.value = true
+  markDoneErrorKey.value = null
+  try {
+    rideSchema.parse(await $fetch(`/api/rides/${target.rideId}/done`, {
+      method: 'POST',
+      body: {},
+    }))
+    conflict.value = false
+    markingDone.value = null
+    await loadRides(true)
+  }
+  catch (error) {
+    const status = httpStatus(error)
+    if (status === 409 || status === 404) {
+      markDoneErrorKey.value = 'driverRides.doneConflict'
+      await loadRides(true)
+    }
+    else {
+      markDoneErrorKey.value = 'driverRides.doneFailed'
+    }
+  }
+  finally {
+    markDonePending.value = false
   }
 }
 
@@ -315,13 +384,67 @@ onMounted(loadRides)
             size="xl"
             class="mt-4 w-full justify-center"
             :loading="acceptingId === ride.rideId"
-            :disabled="acceptingId !== null"
+            :disabled="acceptingId !== null || markDonePending"
             @click="accept(ride.rideId)"
           >
             {{ acceptingId === ride.rideId ? t('driverRides.accepting') : t('driverRides.accept') }}
           </UButton>
+          <UButton
+            v-if="canFinish(ride)"
+            type="button"
+            size="xl"
+            class="mt-4 w-full justify-center"
+            :disabled="acceptingId !== null || markDonePending"
+            @click="openMarkDone(ride)"
+          >
+            {{ t('driverRides.done') }}
+          </UButton>
         </article>
       </li>
     </ul>
+    <UModal
+      v-model:open="markDoneOpen"
+      :title="t('driverRides.doneTitle')"
+      :description="t('driverRides.doneBody')"
+      :dismissible="!markDonePending"
+      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
+    >
+      <template #body>
+        <p v-if="markingDone">
+          {{ markingDone.guestName }}
+        </p>
+        <UAlert
+          v-if="markDoneErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mt-4"
+          :description="t(markDoneErrorKey)"
+        />
+      </template>
+      <template #footer>
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :disabled="markDonePending"
+          @click="closeMarkDone"
+        >
+          {{ t('ride.cancel') }}
+        </UButton>
+        <UButton
+          type="button"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :loading="markDonePending"
+          :disabled="markDonePending"
+          @click="confirmMarkDone"
+        >
+          {{ markDonePending ? t('driverRides.doneConfirming') : t('driverRides.doneConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
   </section>
 </template>

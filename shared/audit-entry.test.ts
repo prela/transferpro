@@ -331,6 +331,30 @@ it('records an acceptance by the Ride id, the Driver id, and the field name stat
   expect(auditFactSchema.safeParse({ ...accepted, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records a Ride marked done by the Ride id, the Driver id, and the field name state', () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const done = {
+    action: 'ride.done' as const,
+    subjectUserId: null,
+    data: {
+      rideId,
+      driverId,
+      fields: ['state'] as const,
+    },
+  }
+  expect(auditFactSchema.parse(done)).toEqual(done)
+  expect(auditFactSchema.safeParse({
+    ...done,
+    data: { ...done.data, name: 'Marko Vozač', phone: '+38591111', guestName: 'Ana Anić' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...done,
+    data: { ...done.data, fields: ['state', 'mustAccept'] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...done, subjectUserId: memberId }).success).toBe(false)
+})
+
 it('records an office acceptance by phone as the Ride id, the Driver id, and the field name state', () => {
   const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'

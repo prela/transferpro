@@ -37,6 +37,8 @@ const listLimit = 100
  * name and does not join the plate. A `ride.accepted_by_phone` row joins
  * neither: the screen names the office member from `tenant_member`, and a
  * member who has left has a null name. The plate stays off that row.
+ * A `ride.done` row joins the Driver name and does not join the plate.
+ * The actor is the person who marked it done.
  * A vehicle change, a clear, and a reassignment join the Driver name and
  * the plate from the ids on the row. A clear's ids are the ones removed.
  * Drizzle hands timestamptz back as Postgres text, so the instant is
@@ -58,7 +60,7 @@ export async function listAuditEntries(transaction: TenantTransaction): Promise<
     left join app.tenant_member as actor on actor.user_id = e.actor_user_id
     left join app.tenant_member as subject on subject.user_id = e.subject_user_id
     left join app.drivers as assigned_driver
-      on e.action in ('ride.assigned', 'ride.accepted', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned')
+      on e.action in ('ride.assigned', 'ride.accepted', 'ride.done', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned')
       and assigned_driver.tenant_id = e.tenant_id
       and assigned_driver.id = (e.data->>'driverId')::uuid
     left join app.vehicles as assigned_vehicle
