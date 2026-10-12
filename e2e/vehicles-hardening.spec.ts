@@ -7,13 +7,16 @@ const archivedPlate = 'ARC81AA'
 const livePlate = 'LIV81BB'
 
 async function addVehicle(page: Page, plate: string, kind: 'Stalno' | 'Povremeno') {
-  await page.getByLabel('Registarska oznaka', { exact: true }).fill(plate)
-  await chooseOption(page, page.getByRole('combobox', { name: 'Vrsta' }), kind)
-  await page.getByLabel('Registracija vrijedi do').fill('2027-06-01')
-  await page.getByLabel('Tehnički pregled vrijedi do').fill('2028-01-31')
-  await page.getByLabel('Osiguranje vrijedi do').fill('2029-03-03')
   await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
-  await expect(page.getByRole('button', { name: `Ispravi vozilo: ${plate}` })).toBeVisible()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Registarska oznaka', { exact: true }).fill(plate)
+  await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), kind)
+  await dialog.getByLabel('Registracija vrijedi do').fill('2027-06-01')
+  await dialog.getByLabel('Tehnički pregled vrijedi do').fill('2028-01-31')
+  await dialog.getByLabel('Osiguranje vrijedi do').fill('2029-03-03')
+  await dialog.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('button', { name: `Radnje: ${plate}` })).toBeVisible()
 }
 
 test('correcting a plate to an archived plate shows the archived-conflict message, not the live-duplicate message', async ({ page }) => {
@@ -23,12 +26,17 @@ test('correcting a plate to an archived plate shows the archived-conflict messag
   await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
 
   await addVehicle(page, archivedPlate, 'Stalno')
-  await page.getByRole('button', { name: `Arhiviraj: ${archivedPlate}` }).click()
+  await page.getByRole('button', { name: `Radnje: ${archivedPlate}` }).click()
+  await page.getByRole('menuitem', { name: 'Arhiviraj', exact: true }).click()
+  let dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: 'Arhiviraj', exact: true }).click()
+  await expect(dialog).toBeHidden()
   await expect(page.getByText('Još nema vozila.')).toBeVisible()
 
   await addVehicle(page, livePlate, 'Povremeno')
-  await page.getByRole('button', { name: `Ispravi vozilo: ${livePlate}` }).click()
-  const dialog = page.getByRole('dialog')
+  await page.getByRole('button', { name: `Radnje: ${livePlate}` }).click()
+  await page.getByRole('menuitem', { name: 'Ispravi vozilo', exact: true }).click()
+  dialog = page.getByRole('dialog')
   await dialog.getByLabel('Registarska oznaka', { exact: true }).fill(archivedPlate)
   await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
   await expect(dialog.getByRole('alert')).toHaveCount(1)
@@ -41,7 +49,9 @@ test('correcting a plate to an archived plate shows the archived-conflict messag
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
   await expect(dialog).toBeHidden()
   await switchLocale(page, 'en')
-  await page.getByRole('button', { name: `Correct vehicle: ${livePlate}` }).click()
+  await page.getByRole('button', { name: `Actions: ${livePlate}` }).click()
+  await page.getByRole('menuitem', { name: 'Correct vehicle', exact: true }).click()
+  dialog = page.getByRole('dialog')
   await dialog.getByLabel('Registration plate', { exact: true }).fill(archivedPlate)
   await dialog.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText(

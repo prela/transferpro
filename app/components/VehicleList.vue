@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
 import type { Vehicle, VehicleKind } from '../../shared'
-import { vehicleDateError, vehicleDescriptionError, vehicleKindError, vehicleListSchema, vehiclePlateError, vehicleSchema } from '../../shared'
+import { z } from 'zod'
+import { VEHICLE_KINDS, vehicleDateError, vehicleDescriptionError, vehicleDescriptionSchema, vehicleListSchema, vehiclePlateError, vehicleSchema } from '../../shared'
 
 const { t, locale } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
-const titleId = useId()
 const listTitleId = useId()
 
 const vehicles = ref<Vehicle[]>([])
@@ -12,40 +13,41 @@ const includeArchived = ref(false)
 const loading = ref(false)
 const loadErrorKey = ref<VehicleFailure | null>(null)
 const formErrorKey = ref<VehicleFailure | null>(null)
-const pending = ref(false)
+const archiveErrorKey = ref<VehicleFailure | null>(null)
+const saving = ref(false)
 const archivingId = ref<string | null>(null)
 
-const registrationPlate = ref('')
-const kind = ref<VehicleKind>()
-const registrationExpiresOn = ref('')
-const technicalInspectionExpiresOn = ref('')
-const insuranceExpiresOn = ref('')
-const description = ref('')
-const plateErrorKey = ref<PlateErrorKey | null>(null)
-const kindErrorKey = ref<'vehicles.kindInvalid' | null>(null)
-const registrationErrorKey = ref<'vehicles.dateInvalid' | null>(null)
-const technicalErrorKey = ref<'vehicles.dateInvalid' | null>(null)
-const insuranceErrorKey = ref<'vehicles.dateInvalid' | null>(null)
-const descriptionErrorKey = ref<'vehicles.descriptionTooLong' | null>(null)
+/**
+ * Add and correct share one slideover. Archive stays a separate confirm:
+ * POST /api/vehicles/:id/archive already exists.
+ */
+const formMode = ref<'add' | 'edit' | null>(null)
+const editingId = ref<string | null>(null)
+const archiveTarget = ref<Vehicle | null>(null)
+const state = reactive<{
+  registrationPlate: string
+  kind?: VehicleKind
+  registrationExpiresOn: string
+  technicalInspectionExpiresOn: string
+  insuranceExpiresOn: string
+  description: string
+}>({
+  registrationPlate: '',
+  registrationExpiresOn: '',
+  technicalInspectionExpiresOn: '',
+  insuranceExpiresOn: '',
+  description: '',
+})
 
-const editing = ref<Vehicle | null>(null)
-const editPlate = ref('')
-const editKind = ref<VehicleKind>()
-const editRegistration = ref('')
-const editTechnical = ref('')
-const editInsurance = ref('')
-const editDescription = ref('')
-const editPlateErrorKey = ref<PlateErrorKey | null>(null)
-const editKindErrorKey = ref<'vehicles.kindInvalid' | null>(null)
-const editRegistrationErrorKey = ref<'vehicles.dateInvalid' | null>(null)
-const editTechnicalErrorKey = ref<'vehicles.dateInvalid' | null>(null)
-const editInsuranceErrorKey = ref<'vehicles.dateInvalid' | null>(null)
-const editDescriptionErrorKey = ref<'vehicles.descriptionTooLong' | null>(null)
-const editErrorKey = ref<VehicleFailure | null>(null)
-const saving = ref(false)
-
-type PlateErrorKey = 'vehicles.plateEmpty' | 'vehicles.plateTooLong'
 type VehicleFailure = 'vehicles.loadFailed' | 'vehicles.rejected' | 'vehicles.notFound' | 'vehicles.forbidden' | 'vehicles.signedOut' | 'vehicles.saveFailed' | 'vehicles.plateTaken' | 'vehicles.plateArchived' | 'vehicles.archivedLocked'
+interface VehicleForm {
+  registrationPlate: string
+  kind: VehicleKind
+  registrationExpiresOn: string
+  technicalInspectionExpiresOn: string
+  insuranceExpiresOn: string
+  description: string
+}
 
 const kindItems = computed(() => [
   { label: t('vehicles.kinds.fixed'), value: 'fixed' as const },
@@ -63,12 +65,55 @@ const columns = computed(() => [
   { id: 'actions', header: '' },
 ])
 
-const editOpen = computed({
-  get: () => editing.value !== null,
+/** Messages follow the active Locale. Bounds stay in the shared plate, date, and description checks. */
+const schema = computed(() => z.object({
+  registrationPlate: z.string().superRefine((value, ctx) => {
+    const problem = vehiclePlateError(value)
+    if (problem === 'empty')
+      ctx.addIssue({ code: 'custom', message: t('vehicles.plateEmpty') })
+    else if (problem === 'too-long')
+      ctx.addIssue({ code: 'custom', message: t('vehicles.plateTooLong') })
+  }),
+  kind: z.enum(VEHICLE_KINDS, { error: t('vehicles.kindInvalid') }),
+  registrationExpiresOn: z.string().superRefine((value, ctx) => {
+    if (vehicleDateError(value))
+      ctx.addIssue({ code: 'custom', message: t('vehicles.dateInvalid') })
+  }),
+  technicalInspectionExpiresOn: z.string().superRefine((value, ctx) => {
+    if (vehicleDateError(value))
+      ctx.addIssue({ code: 'custom', message: t('vehicles.dateInvalid') })
+  }),
+  insuranceExpiresOn: z.string().superRefine((value, ctx) => {
+    if (vehicleDateError(value))
+      ctx.addIssue({ code: 'custom', message: t('vehicles.dateInvalid') })
+  }),
+  description: z.string().superRefine((value, ctx) => {
+    if (vehicleDescriptionError(value))
+      ctx.addIssue({ code: 'custom', message: t('vehicles.descriptionTooLong') })
+  }),
+}))
+
+const formOpen = computed({
+  get: () => formMode.value !== null,
   set(open: boolean) {
     if (!open && !saving.value)
-      editing.value = null
+      formMode.value = null
   },
+})
+
+const archiveOpen = computed({
+  get: () => archiveTarget.value !== null,
+  set(open: boolean) {
+    if (!open && archivingId.value === null)
+      archiveTarget.value = null
+  },
+})
+
+const formTitle = computed(() => formMode.value === 'edit' ? t('vehicles.edit') : t('vehicles.add'))
+const submitLabel = computed(() => {
+  if (saving.value)
+    return formMode.value === 'edit' ? t('vehicles.saving') : t('vehicles.submitting')
+  return formMode.value === 'edit' ? t('vehicles.save') : t('vehicles.submit')
 })
 
 function failureKey(error: unknown): VehicleFailure {
@@ -96,15 +141,6 @@ function vehicleErrorCode(error: unknown): string | undefined {
   return typeof data.code === 'string' ? data.code : undefined
 }
 
-function plateKey(value: string): PlateErrorKey | null {
-  const problem = vehiclePlateError(value)
-  if (problem === 'empty')
-    return 'vehicles.plateEmpty'
-  if (problem === 'too-long')
-    return 'vehicles.plateTooLong'
-  return null
-}
-
 /** The column is a calendar date. Format the parts so a zone cannot shift the day. */
 function formatDay(iso: string): string {
   const [year, month, day] = iso.split('-')
@@ -113,6 +149,21 @@ function formatDay(iso: string): string {
   if (locale.value === 'hr')
     return `${Number(day)}.${Number(month)}.${year}.`
   return `${day}/${month}/${year}`
+}
+
+function vehicleActions(vehicle: Vehicle): DropdownMenuItem[][] {
+  return [[
+    {
+      label: t('vehicles.edit'),
+      icon: 'i-lucide-pencil',
+      onSelect: () => openEdit(vehicle),
+    },
+    {
+      label: t('vehicles.archive'),
+      icon: 'i-lucide-archive',
+      onSelect: () => askArchive(vehicle),
+    },
+  ]]
 }
 
 async function loadVehicles() {
@@ -131,36 +182,67 @@ async function loadVehicles() {
   }
 }
 
-async function addVehicle() {
-  const chosen = kind.value
-  plateErrorKey.value = plateKey(registrationPlate.value)
-  kindErrorKey.value = vehicleKindError(chosen ?? '') ? 'vehicles.kindInvalid' : null
-  registrationErrorKey.value = vehicleDateError(registrationExpiresOn.value) ? 'vehicles.dateInvalid' : null
-  technicalErrorKey.value = vehicleDateError(technicalInspectionExpiresOn.value) ? 'vehicles.dateInvalid' : null
-  insuranceErrorKey.value = vehicleDateError(insuranceExpiresOn.value) ? 'vehicles.dateInvalid' : null
-  descriptionErrorKey.value = vehicleDescriptionError(description.value) ? 'vehicles.descriptionTooLong' : null
+function resetForm() {
+  state.registrationPlate = ''
+  state.kind = undefined
+  state.registrationExpiresOn = ''
+  state.technicalInspectionExpiresOn = ''
+  state.insuranceExpiresOn = ''
+  state.description = ''
   formErrorKey.value = null
-  if (plateErrorKey.value || kindErrorKey.value || registrationErrorKey.value || technicalErrorKey.value || insuranceErrorKey.value || descriptionErrorKey.value || chosen === undefined)
-    return
-  pending.value = true
+}
+
+function openAdd() {
+  editingId.value = null
+  resetForm()
+  formMode.value = 'add'
+}
+
+function openEdit(vehicle: Vehicle) {
+  editingId.value = vehicle.id
+  state.registrationPlate = vehicle.registrationPlate
+  state.kind = vehicle.kind
+  state.registrationExpiresOn = vehicle.registrationExpiresOn
+  state.technicalInspectionExpiresOn = vehicle.technicalInspectionExpiresOn
+  state.insuranceExpiresOn = vehicle.insuranceExpiresOn
+  state.description = vehicle.description ?? ''
+  formErrorKey.value = null
+  formMode.value = 'edit'
+}
+
+function vehicleBody(data: VehicleForm) {
+  return {
+    registrationPlate: data.registrationPlate,
+    kind: data.kind,
+    registrationExpiresOn: data.registrationExpiresOn,
+    technicalInspectionExpiresOn: data.technicalInspectionExpiresOn,
+    insuranceExpiresOn: data.insuranceExpiresOn,
+    // Blank becomes null. The stored description is never an empty string.
+    description: vehicleDescriptionSchema.parse(data.description),
+  }
+}
+
+async function onSubmit(event: FormSubmitEvent<VehicleForm>) {
+  formErrorKey.value = null
+  saving.value = true
   try {
-    vehicleSchema.parse(await $fetch('/api/vehicles', {
-      method: 'POST',
-      body: {
-        registrationPlate: registrationPlate.value,
-        kind: chosen,
-        registrationExpiresOn: registrationExpiresOn.value,
-        technicalInspectionExpiresOn: technicalInspectionExpiresOn.value,
-        insuranceExpiresOn: insuranceExpiresOn.value,
-        description: description.value,
-      },
-    }))
-    registrationPlate.value = ''
-    kind.value = undefined
-    description.value = ''
-    registrationExpiresOn.value = ''
-    technicalInspectionExpiresOn.value = ''
-    insuranceExpiresOn.value = ''
+    const body = vehicleBody(event.data)
+    if (formMode.value === 'edit') {
+      const id = editingId.value
+      if (!id)
+        return
+      vehicleSchema.parse(await $fetch(`/api/vehicles/${id}`, {
+        method: 'PATCH',
+        body,
+      }))
+    }
+    else {
+      vehicleSchema.parse(await $fetch('/api/vehicles', {
+        method: 'POST',
+        body,
+      }))
+    }
+    formMode.value = null
     notifyAuditChanged()
     await loadVehicles()
   }
@@ -168,76 +250,29 @@ async function addVehicle() {
     formErrorKey.value = failureKey(error)
   }
   finally {
-    pending.value = false
-  }
-}
-
-function openEdit(vehicle: Vehicle) {
-  editing.value = vehicle
-  editPlate.value = vehicle.registrationPlate
-  editKind.value = vehicle.kind
-  editRegistration.value = vehicle.registrationExpiresOn
-  editTechnical.value = vehicle.technicalInspectionExpiresOn
-  editInsurance.value = vehicle.insuranceExpiresOn
-  editDescription.value = vehicle.description ?? ''
-  editPlateErrorKey.value = null
-  editKindErrorKey.value = null
-  editRegistrationErrorKey.value = null
-  editTechnicalErrorKey.value = null
-  editInsuranceErrorKey.value = null
-  editDescriptionErrorKey.value = null
-  editErrorKey.value = null
-}
-
-async function saveEdit() {
-  const current = editing.value
-  const chosen = editKind.value
-  if (!current)
-    return
-  editPlateErrorKey.value = plateKey(editPlate.value)
-  editKindErrorKey.value = vehicleKindError(chosen ?? '') ? 'vehicles.kindInvalid' : null
-  editRegistrationErrorKey.value = vehicleDateError(editRegistration.value) ? 'vehicles.dateInvalid' : null
-  editTechnicalErrorKey.value = vehicleDateError(editTechnical.value) ? 'vehicles.dateInvalid' : null
-  editInsuranceErrorKey.value = vehicleDateError(editInsurance.value) ? 'vehicles.dateInvalid' : null
-  editDescriptionErrorKey.value = vehicleDescriptionError(editDescription.value) ? 'vehicles.descriptionTooLong' : null
-  editErrorKey.value = null
-  if (editPlateErrorKey.value || editKindErrorKey.value || editRegistrationErrorKey.value || editTechnicalErrorKey.value || editInsuranceErrorKey.value || editDescriptionErrorKey.value || chosen === undefined)
-    return
-  saving.value = true
-  try {
-    vehicleSchema.parse(await $fetch(`/api/vehicles/${current.id}`, {
-      method: 'PATCH',
-      body: {
-        registrationPlate: editPlate.value,
-        kind: chosen,
-        registrationExpiresOn: editRegistration.value,
-        technicalInspectionExpiresOn: editTechnical.value,
-        insuranceExpiresOn: editInsurance.value,
-        description: editDescription.value,
-      },
-    }))
-    editing.value = null
-    notifyAuditChanged()
-    await loadVehicles()
-  }
-  catch (error) {
-    editErrorKey.value = failureKey(error)
-  }
-  finally {
     saving.value = false
   }
 }
 
-async function archiveVehicle(vehicle: Vehicle) {
+function askArchive(vehicle: Vehicle) {
+  archiveErrorKey.value = null
+  archiveTarget.value = vehicle
+}
+
+async function confirmArchive() {
+  const vehicle = archiveTarget.value
+  if (!vehicle || archivingId.value)
+    return
   archivingId.value = vehicle.id
-  loadErrorKey.value = null
+  archiveErrorKey.value = null
   try {
     vehicleSchema.parse(await $fetch(`/api/vehicles/${vehicle.id}/archive`, { method: 'POST' }))
+    archiveTarget.value = null
     notifyAuditChanged()
     await loadVehicles()
   }
   catch (error) {
-    loadErrorKey.value = failureKey(error)
+    archiveErrorKey.value = failureKey(error)
   }
   finally {
     archivingId.value = null
@@ -261,154 +296,19 @@ onMounted(() => {
 
 <template>
   <section>
-    <h2
-      :id="titleId"
-      class="mb-4 text-xl font-semibold"
+    <UButton
+      type="button"
+      size="xl"
+      icon="i-lucide-plus"
+      class="mb-4"
+      @click="openAdd"
     >
       {{ t('vehicles.add') }}
-    </h2>
-    <UAlert
-      v-if="formErrorKey"
-      color="error"
-      variant="subtle"
-      role="alert"
-      class="mb-4"
-      :description="t(formErrorKey)"
-    />
-    <form @submit.prevent="addVehicle">
-      <UFormField
-        :label="t('vehicles.registrationPlate')"
-        name="registrationPlate"
-        class="mb-4"
-        size="xl"
-        :error="plateErrorKey ? t(plateErrorKey) : false"
-      >
-        <UInput
-          id="vehicle-plate"
-          v-model="registrationPlate"
-          name="registrationPlate"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="plateErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('vehicles.kind')"
-        name="kind"
-        class="mb-4"
-        size="xl"
-        :error="kindErrorKey ? t(kindErrorKey) : false"
-      >
-        <USelect
-          id="vehicle-kind"
-          v-model="kind"
-          name="kind"
-          :items="kindItems"
-          :placeholder="t('vehicles.chooseKind')"
-          class="w-full"
-          @update:model-value="kindErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('vehicles.registrationExpiresOn')"
-        name="registration"
-        class="mb-4"
-        size="xl"
-        :error="registrationErrorKey ? t(registrationErrorKey) : false"
-      >
-        <UInput
-          id="vehicle-registration"
-          v-model="registrationExpiresOn"
-          name="registration"
-          type="date"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="registrationErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('vehicles.technicalInspectionExpiresOn')"
-        name="technical"
-        class="mb-4"
-        size="xl"
-        :error="technicalErrorKey ? t(technicalErrorKey) : false"
-      >
-        <UInput
-          id="vehicle-technical"
-          v-model="technicalInspectionExpiresOn"
-          name="technical"
-          type="date"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="technicalErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('vehicles.insuranceExpiresOn')"
-        name="insurance"
-        class="mb-4"
-        size="xl"
-        :error="insuranceErrorKey ? t(insuranceErrorKey) : false"
-      >
-        <UInput
-          id="vehicle-insurance"
-          v-model="insuranceExpiresOn"
-          name="insurance"
-          type="date"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="insuranceErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('vehicles.description')"
-        name="description"
-        class="mb-4"
-        size="xl"
-        :error="descriptionErrorKey ? t(descriptionErrorKey) : false"
-      >
-        <UInput
-          id="vehicle-description"
-          v-model="description"
-          name="description"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="descriptionErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UButton
-        type="submit"
-        size="xl"
-        class="w-full justify-center sm:w-auto"
-        :disabled="pending"
-      >
-        {{ pending ? t('vehicles.submitting') : t('vehicles.submit') }}
-      </UButton>
-    </form>
+    </UButton>
 
     <h2
       :id="listTitleId"
-      class="mt-8 mb-4 text-xl font-semibold"
+      class="mb-4 text-xl font-semibold"
     >
       {{ t('vehicles.title') }}
     </h2>
@@ -428,15 +328,6 @@ onMounted(() => {
       role="alert"
       :description="t(loadErrorKey)"
     />
-    <p
-      v-else-if="loading"
-      role="status"
-    >
-      {{ t('vehicles.loading') }}
-    </p>
-    <p v-else-if="vehicles.length === 0">
-      {{ t('vehicles.empty') }}
-    </p>
     <div
       v-else
       class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -447,6 +338,7 @@ onMounted(() => {
       <UTable
         :data="vehicles"
         :columns="columns"
+        :loading="loading"
         class="whitespace-nowrap"
       >
         <template #kind-cell="{ row }">
@@ -464,175 +356,184 @@ onMounted(() => {
         <template #status-cell="{ row }">
           {{ row.original.archivedAt ? t('vehicles.archived') : '' }}
         </template>
+        <template #actions-header>
+          <span class="sr-only">{{ t('vehicles.actions') }}</span>
+        </template>
         <template #actions-cell="{ row }">
-          <div class="flex flex-wrap gap-2">
+          <UDropdownMenu
+            v-if="row.original.archivedAt === null"
+            :items="vehicleActions(row.original)"
+            size="xl"
+          >
             <UButton
-              v-if="row.original.archivedAt === null"
               type="button"
               color="neutral"
               variant="outline"
               size="xl"
-              :aria-label="`${t('vehicles.edit')}: ${row.original.registrationPlate}`"
-              @click="openEdit(row.original)"
-            >
-              {{ t('vehicles.edit') }}
-            </UButton>
-            <UButton
-              v-if="row.original.archivedAt === null"
-              type="button"
-              color="neutral"
-              variant="outline"
-              size="xl"
-              :disabled="archivingId === row.original.id"
-              :aria-label="`${t('vehicles.archive')}: ${row.original.registrationPlate}`"
-              @click="archiveVehicle(row.original)"
-            >
-              {{ t('vehicles.archive') }}
-            </UButton>
+              icon="i-lucide-ellipsis-vertical"
+              :aria-label="t('vehicles.actionsFor', { name: row.original.registrationPlate })"
+            />
+          </UDropdownMenu>
+        </template>
+        <template #loading>
+          <div
+            role="status"
+            class="space-y-2 py-2"
+          >
+            <p>{{ t('vehicles.loading') }}</p>
+            <USkeleton class="h-8 w-full" />
+            <USkeleton class="h-8 w-full" />
           </div>
+        </template>
+        <template #empty>
+          <UEmpty
+            :title="t('vehicles.empty')"
+            icon="i-lucide-car"
+            variant="naked"
+          />
         </template>
       </UTable>
     </div>
 
-    <UModal
-      v-model:open="editOpen"
-      :title="t('vehicles.edit')"
+    <USlideover
+      v-model:open="formOpen"
+      :title="formTitle"
       :dismissible="!saving"
       :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
     >
       <template #body>
         <UAlert
-          v-if="editErrorKey"
+          v-if="formErrorKey"
           color="error"
           variant="subtle"
           role="alert"
           class="mb-4"
-          :description="t(editErrorKey)"
+          :description="t(formErrorKey)"
         />
-        <form
-          id="vehicle-edit"
-          @submit.prevent="saveEdit"
+        <UForm
+          id="vehicle-form"
+          :schema="schema"
+          :state="state"
+          :validate-on="[]"
+          class="space-y-4"
+          @submit="onSubmit"
+          @error="formErrorKey = null"
         >
           <UFormField
             :label="t('vehicles.registrationPlate')"
-            name="edit-plate"
-            class="mb-4"
+            name="registrationPlate"
             size="xl"
-            :error="editPlateErrorKey ? t(editPlateErrorKey) : false"
           >
             <UInput
-              id="vehicle-edit-plate"
-              v-model="editPlate"
-              name="edit-plate"
+              v-model="state.registrationPlate"
+              name="registrationPlate"
               type="text"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editPlateErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('vehicles.kind')"
-            name="edit-kind"
-            class="mb-4"
+            name="kind"
             size="xl"
-            :error="editKindErrorKey ? t(editKindErrorKey) : false"
           >
             <USelect
-              id="vehicle-edit-kind"
-              v-model="editKind"
-              name="edit-kind"
+              v-model="state.kind"
+              name="kind"
               :items="kindItems"
+              :placeholder="t('vehicles.chooseKind')"
               class="w-full"
-              @update:model-value="editKindErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('vehicles.registrationExpiresOn')"
-            name="edit-registration"
-            class="mb-4"
+            name="registrationExpiresOn"
             size="xl"
-            :error="editRegistrationErrorKey ? t(editRegistrationErrorKey) : false"
           >
             <UInput
-              id="vehicle-edit-registration"
-              v-model="editRegistration"
-              name="edit-registration"
+              v-model="state.registrationExpiresOn"
+              name="registrationExpiresOn"
               type="date"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editRegistrationErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('vehicles.technicalInspectionExpiresOn')"
-            name="edit-technical"
-            class="mb-4"
+            name="technicalInspectionExpiresOn"
             size="xl"
-            :error="editTechnicalErrorKey ? t(editTechnicalErrorKey) : false"
           >
             <UInput
-              id="vehicle-edit-technical"
-              v-model="editTechnical"
-              name="edit-technical"
+              v-model="state.technicalInspectionExpiresOn"
+              name="technicalInspectionExpiresOn"
               type="date"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editTechnicalErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('vehicles.insuranceExpiresOn')"
-            name="edit-insurance"
-            class="mb-4"
+            name="insuranceExpiresOn"
             size="xl"
-            :error="editInsuranceErrorKey ? t(editInsuranceErrorKey) : false"
           >
             <UInput
-              id="vehicle-edit-insurance"
-              v-model="editInsurance"
-              name="edit-insurance"
+              v-model="state.insuranceExpiresOn"
+              name="insuranceExpiresOn"
               type="date"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editInsuranceErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('vehicles.description')"
-            name="edit-description"
-            class="mb-4"
+            name="description"
             size="xl"
-            :error="editDescriptionErrorKey ? t(editDescriptionErrorKey) : false"
           >
             <UInput
-              id="vehicle-edit-description"
-              v-model="editDescription"
-              name="edit-description"
+              v-model="state.description"
+              name="description"
               type="text"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editDescriptionErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
-        </form>
+        </UForm>
       </template>
       <template #footer>
         <UButton
@@ -642,7 +543,54 @@ onMounted(() => {
           size="xl"
           class="w-full justify-center sm:w-auto"
           :disabled="saving"
-          @click="editing = null"
+          @click="formOpen = false"
+        >
+          {{ t('vehicles.cancel') }}
+        </UButton>
+        <UButton
+          type="submit"
+          form="vehicle-form"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :loading="saving"
+        >
+          {{ submitLabel }}
+        </UButton>
+      </template>
+    </USlideover>
+
+    <UModal
+      v-model:open="archiveOpen"
+      :title="t('vehicles.archive')"
+      :dismissible="archivingId === null"
+      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
+    >
+      <template #body>
+        <p
+          v-if="archiveTarget"
+          class="mb-2 font-medium"
+        >
+          {{ archiveTarget.registrationPlate }}
+        </p>
+        <p>{{ t('vehicles.confirmArchive') }}</p>
+        <UAlert
+          v-if="archiveErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mt-4"
+          :description="t(archiveErrorKey)"
+        />
+      </template>
+      <template #footer>
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :disabled="archivingId !== null"
+          @click="archiveOpen = false"
         >
           {{ t('vehicles.cancel') }}
         </UButton>
@@ -650,10 +598,10 @@ onMounted(() => {
           type="button"
           size="xl"
           class="w-full justify-center sm:w-auto"
-          :loading="saving"
-          @click="saveEdit"
+          :loading="archivingId !== null"
+          @click="confirmArchive"
         >
-          {{ saving ? t('vehicles.saving') : t('vehicles.save') }}
+          {{ t('vehicles.archive') }}
         </UButton>
       </template>
     </UModal>

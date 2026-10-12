@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
 import type { Driver, DriverKind } from '../../shared'
-import { driverDateError, driverEmailError, driverKindError, driverListSchema, driverNameError, driverPhoneError, driverSchema, memberListSchema } from '../../shared'
+import { z } from 'zod'
+import { DRIVER_KINDS, driverDateError, driverEmailError, driverListSchema, driverNameError, driverPhoneError, driverSchema, memberListSchema } from '../../shared'
 
 const props = defineProps<{
   isAdmin: boolean
@@ -8,7 +10,6 @@ const props = defineProps<{
 
 const { t, locale } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
-const titleId = useId()
 const listTitleId = useId()
 
 /**
@@ -23,43 +24,46 @@ const members = ref<Array<{ userId: string, name: string }>>([])
 const loading = ref(false)
 const loadErrorKey = ref<DriverFailure | null>(null)
 const formErrorKey = ref<DriverFailure | null>(null)
-const pending = ref(false)
-
-const name = ref('')
-const kind = ref<DriverKind>()
-const phone = ref('')
-const email = ref('')
-const driving = ref('')
-const transport = ref('')
-const memberUserId = ref(noAccount)
-const nameErrorKey = ref<NameErrorKey | null>(null)
-const kindErrorKey = ref<'drivers.kindInvalid' | null>(null)
-const phoneErrorKey = ref<PhoneErrorKey | null>(null)
-const emailErrorKey = ref<'drivers.emailInvalid' | null>(null)
-const drivingErrorKey = ref<'drivers.dateInvalid' | null>(null)
-const transportErrorKey = ref<'drivers.dateInvalid' | null>(null)
-
-const editing = ref<Driver | null>(null)
-const editName = ref('')
-const editKind = ref<DriverKind>()
-const editPhone = ref('')
-const editEmail = ref('')
-const editDriving = ref('')
-const editTransport = ref('')
-const editMemberUserId = ref(noAccount)
-const editMustAccept = ref(false)
-const editNameErrorKey = ref<NameErrorKey | null>(null)
-const editKindErrorKey = ref<'drivers.kindInvalid' | null>(null)
-const editPhoneErrorKey = ref<PhoneErrorKey | null>(null)
-const editEmailErrorKey = ref<'drivers.emailInvalid' | null>(null)
-const editDrivingErrorKey = ref<'drivers.dateInvalid' | null>(null)
-const editTransportErrorKey = ref<'drivers.dateInvalid' | null>(null)
-const editErrorKey = ref<DriverFailure | null>(null)
 const saving = ref(false)
 
-type NameErrorKey = 'drivers.nameEmpty' | 'drivers.nameTooLong'
-type PhoneErrorKey = 'drivers.phoneEmpty' | 'drivers.phoneTooLong'
+/**
+ * Add and correct share one slideover. A Driver has no archive:
+ * there is no archive route, so the row menu is correct only.
+ */
+const formMode = ref<'add' | 'edit' | null>(null)
+const editingId = ref<string | null>(null)
+const linkedOnOpen = ref(noAccount)
+const emailOnOpen = ref('')
+const state = reactive<{
+  name: string
+  kind?: DriverKind
+  phone: string
+  email: string
+  drivingLicenceExpiresOn: string
+  transportLicenceExpiresOn: string
+  memberUserId: string
+  mustAccept: boolean
+}>({
+  name: '',
+  phone: '',
+  email: '',
+  drivingLicenceExpiresOn: '',
+  transportLicenceExpiresOn: '',
+  memberUserId: noAccount,
+  mustAccept: false,
+})
+
 type DriverFailure = 'drivers.loadFailed' | 'drivers.rejected' | 'drivers.notFound' | 'drivers.forbidden' | 'drivers.signedOut' | 'drivers.saveFailed'
+interface DriverForm {
+  name: string
+  kind: DriverKind
+  phone: string
+  email: string
+  drivingLicenceExpiresOn: string
+  transportLicenceExpiresOn: string
+  memberUserId: string
+  mustAccept: boolean
+}
 
 const kindItems = computed(() => [
   { label: t('drivers.kinds.own'), value: 'own' as const },
@@ -83,13 +87,61 @@ const columns = computed(() => [
   { id: 'actions', header: '' },
 ])
 
-const editOpen = computed({
-  get: () => editing.value !== null,
+/** Messages follow the active Locale. A linked Driver does not type an address. */
+const schema = computed(() => z.object({
+  name: z.string().superRefine((value, ctx) => {
+    const problem = driverNameError(value)
+    if (problem === 'empty')
+      ctx.addIssue({ code: 'custom', message: t('drivers.nameEmpty') })
+    else if (problem === 'too-long')
+      ctx.addIssue({ code: 'custom', message: t('drivers.nameTooLong') })
+  }),
+  kind: z.enum(DRIVER_KINDS, { error: t('drivers.kindInvalid') }),
+  phone: z.string().superRefine((value, ctx) => {
+    const problem = driverPhoneError(value)
+    if (problem === 'empty')
+      ctx.addIssue({ code: 'custom', message: t('drivers.phoneEmpty') })
+    else if (problem === 'too-long')
+      ctx.addIssue({ code: 'custom', message: t('drivers.phoneTooLong') })
+  }),
+  email: z.string(),
+  drivingLicenceExpiresOn: z.string().superRefine((value, ctx) => {
+    if (driverDateError(value))
+      ctx.addIssue({ code: 'custom', message: t('drivers.dateInvalid') })
+  }),
+  transportLicenceExpiresOn: z.string().superRefine((value, ctx) => {
+    if (driverDateError(value))
+      ctx.addIssue({ code: 'custom', message: t('drivers.dateInvalid') })
+  }),
+  memberUserId: z.string(),
+  mustAccept: z.boolean(),
+}).superRefine((value, ctx) => {
+  if (value.memberUserId !== noAccount)
+    return
+  if (driverEmailError(value.email)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: t('drivers.emailInvalid'),
+      path: ['email'],
+    })
+  }
+}))
+
+const formOpen = computed({
+  get: () => formMode.value !== null,
   set(open: boolean) {
     if (!open && !saving.value)
-      editing.value = null
+      formMode.value = null
   },
 })
+
+const formTitle = computed(() => formMode.value === 'edit' ? t('drivers.edit') : t('drivers.add'))
+const submitLabel = computed(() => {
+  if (saving.value)
+    return formMode.value === 'edit' ? t('drivers.saving') : t('drivers.submitting')
+  return formMode.value === 'edit' ? t('drivers.save') : t('drivers.submit')
+})
+const emailLocked = computed(() => state.memberUserId !== noAccount)
 
 function failureKey(error: unknown): DriverFailure {
   switch (httpStatus(error)) {
@@ -99,28 +151,6 @@ function failureKey(error: unknown): DriverFailure {
     case 404: return 'drivers.notFound'
     default: return 'drivers.saveFailed'
   }
-}
-
-function nameKey(value: string): NameErrorKey | null {
-  const problem = driverNameError(value)
-  if (problem === 'empty')
-    return 'drivers.nameEmpty'
-  if (problem === 'too-long')
-    return 'drivers.nameTooLong'
-  return null
-}
-
-function phoneKey(value: string): PhoneErrorKey | null {
-  const problem = driverPhoneError(value)
-  if (problem === 'empty')
-    return 'drivers.phoneEmpty'
-  if (problem === 'too-long')
-    return 'drivers.phoneTooLong'
-  return null
-}
-
-function emailKey(value: string): 'drivers.emailInvalid' | null {
-  return driverEmailError(value) === null ? null : 'drivers.emailInvalid'
 }
 
 /** The column is a calendar date. Format the parts so a zone cannot shift the day. */
@@ -137,6 +167,16 @@ function memberLabel(userId: string | null): string {
   if (userId === null)
     return t('drivers.noAccount')
   return members.value.find(member => member.userId === userId)?.name ?? t('drivers.memberGone')
+}
+
+function driverActions(driver: Driver): DropdownMenuItem[][] {
+  return [[
+    {
+      label: t('drivers.edit'),
+      icon: 'i-lucide-pencil',
+      onSelect: () => openEdit(driver),
+    },
+  ]]
 }
 
 async function loadMembers() {
@@ -176,113 +216,93 @@ function emailBody(value: string, linked: boolean): { email: string } | Record<s
   return trimmed === '' ? {} : { email: trimmed }
 }
 
-async function addDriver() {
-  const chosen = kind.value
-  const linked = memberUserId.value !== noAccount
-  nameErrorKey.value = nameKey(name.value)
-  phoneErrorKey.value = phoneKey(phone.value)
-  emailErrorKey.value = linked ? null : emailKey(email.value)
-  kindErrorKey.value = driverKindError(chosen ?? '') ? 'drivers.kindInvalid' : null
-  drivingErrorKey.value = driverDateError(driving.value) ? 'drivers.dateInvalid' : null
-  transportErrorKey.value = driverDateError(transport.value) ? 'drivers.dateInvalid' : null
+function resetForm() {
+  state.name = ''
+  state.kind = undefined
+  state.phone = ''
+  state.email = ''
+  state.drivingLicenceExpiresOn = ''
+  state.transportLicenceExpiresOn = ''
+  state.memberUserId = noAccount
+  state.mustAccept = false
+  linkedOnOpen.value = noAccount
+  emailOnOpen.value = ''
   formErrorKey.value = null
-  if (nameErrorKey.value || phoneErrorKey.value || emailErrorKey.value || kindErrorKey.value || drivingErrorKey.value || transportErrorKey.value || chosen === undefined)
-    return
-  pending.value = true
+}
+
+function openAdd() {
+  editingId.value = null
+  resetForm()
+  formMode.value = 'add'
+}
+
+function openEdit(driver: Driver) {
+  editingId.value = driver.id
+  state.name = driver.name
+  state.kind = driver.kind
+  state.phone = driver.phone
+  state.email = driver.email ?? ''
+  state.drivingLicenceExpiresOn = driver.drivingLicenceExpiresOn
+  state.transportLicenceExpiresOn = driver.transportLicenceExpiresOn
+  state.memberUserId = driver.memberUserId ?? noAccount
+  state.mustAccept = driver.mustAccept
+  linkedOnOpen.value = driver.memberUserId ?? noAccount
+  emailOnOpen.value = driver.email ?? ''
+  formErrorKey.value = null
+  formMode.value = 'edit'
+}
+
+async function onSubmit(event: FormSubmitEvent<DriverForm>) {
+  formErrorKey.value = null
+  saving.value = true
   try {
-    driverSchema.parse(await $fetch('/api/drivers', {
-      method: 'POST',
-      body: {
-        name: name.value,
-        kind: chosen,
-        phone: phone.value,
-        drivingLicenceExpiresOn: driving.value,
-        transportLicenceExpiresOn: transport.value,
-        ...emailBody(email.value, linked),
-        ...memberBody(memberUserId.value),
-      },
-    }))
-    name.value = ''
-    kind.value = undefined
-    phone.value = ''
-    email.value = ''
-    driving.value = ''
-    transport.value = ''
-    memberUserId.value = noAccount
+    const linked = event.data.memberUserId !== noAccount
+    if (formMode.value === 'edit') {
+      const id = editingId.value
+      if (!id)
+        return
+      const memberChanged = linkedOnOpen.value !== event.data.memberUserId
+      const trimmedEmail = event.data.email.trim()
+      const emailChanged = trimmedEmail !== emailOnOpen.value
+      driverSchema.parse(await $fetch(`/api/drivers/${id}`, {
+        method: 'PATCH',
+        body: {
+          name: event.data.name,
+          kind: event.data.kind,
+          phone: event.data.phone,
+          drivingLicenceExpiresOn: event.data.drivingLicenceExpiresOn,
+          transportLicenceExpiresOn: event.data.transportLicenceExpiresOn,
+          // An unchanged link is omitted, so a member who has since left does not block a name correction.
+          ...(memberChanged
+            ? { memberUserId: event.data.memberUserId === noAccount ? null : event.data.memberUserId }
+            : {}),
+          // A linked Driver keeps the sign-in email. The office edits the address only after the link is gone.
+          ...(!linked && emailChanged ? { email: trimmedEmail === '' ? null : trimmedEmail } : {}),
+          // Starts off. Only an admin may turn it on or off, so a dispatcher omits it.
+          ...(props.isAdmin ? { mustAccept: event.data.mustAccept } : {}),
+        },
+      }))
+    }
+    else {
+      driverSchema.parse(await $fetch('/api/drivers', {
+        method: 'POST',
+        body: {
+          name: event.data.name,
+          kind: event.data.kind,
+          phone: event.data.phone,
+          drivingLicenceExpiresOn: event.data.drivingLicenceExpiresOn,
+          transportLicenceExpiresOn: event.data.transportLicenceExpiresOn,
+          ...emailBody(event.data.email, linked),
+          ...memberBody(event.data.memberUserId),
+        },
+      }))
+    }
+    formMode.value = null
     notifyAuditChanged()
     await loadDrivers()
   }
   catch (error) {
     formErrorKey.value = failureKey(error)
-  }
-  finally {
-    pending.value = false
-  }
-}
-
-function openEdit(driver: Driver) {
-  editing.value = driver
-  editName.value = driver.name
-  editKind.value = driver.kind
-  editPhone.value = driver.phone
-  editEmail.value = driver.email ?? ''
-  editDriving.value = driver.drivingLicenceExpiresOn
-  editTransport.value = driver.transportLicenceExpiresOn
-  editMemberUserId.value = driver.memberUserId ?? noAccount
-  editMustAccept.value = driver.mustAccept
-  editNameErrorKey.value = null
-  editKindErrorKey.value = null
-  editPhoneErrorKey.value = null
-  editEmailErrorKey.value = null
-  editDrivingErrorKey.value = null
-  editTransportErrorKey.value = null
-  editErrorKey.value = null
-}
-
-async function saveEdit() {
-  const current = editing.value
-  const chosen = editKind.value
-  const linked = editMemberUserId.value !== noAccount
-  if (!current)
-    return
-  editNameErrorKey.value = nameKey(editName.value)
-  editPhoneErrorKey.value = phoneKey(editPhone.value)
-  editEmailErrorKey.value = linked ? null : emailKey(editEmail.value)
-  editKindErrorKey.value = driverKindError(chosen ?? '') ? 'drivers.kindInvalid' : null
-  editDrivingErrorKey.value = driverDateError(editDriving.value) ? 'drivers.dateInvalid' : null
-  editTransportErrorKey.value = driverDateError(editTransport.value) ? 'drivers.dateInvalid' : null
-  editErrorKey.value = null
-  if (editNameErrorKey.value || editPhoneErrorKey.value || editEmailErrorKey.value || editKindErrorKey.value || editDrivingErrorKey.value || editTransportErrorKey.value || chosen === undefined)
-    return
-  saving.value = true
-  try {
-    const memberChanged = (current.memberUserId ?? noAccount) !== editMemberUserId.value
-    const trimmedEmail = editEmail.value.trim()
-    const emailChanged = trimmedEmail !== (current.email ?? '')
-    driverSchema.parse(await $fetch(`/api/drivers/${current.id}`, {
-      method: 'PATCH',
-      body: {
-        name: editName.value,
-        kind: chosen,
-        phone: editPhone.value,
-        drivingLicenceExpiresOn: editDriving.value,
-        transportLicenceExpiresOn: editTransport.value,
-        // An unchanged link is omitted, so a member who has since left does not block a name correction.
-        ...(memberChanged
-          ? { memberUserId: editMemberUserId.value === noAccount ? null : editMemberUserId.value }
-          : {}),
-        // A linked Driver keeps the sign-in email. The office edits the address only after the link is gone.
-        ...(!linked && emailChanged ? { email: trimmedEmail === '' ? null : trimmedEmail } : {}),
-        // Starts off. Only an admin may turn it on or off, so a dispatcher omits it.
-        ...(props.isAdmin ? { mustAccept: editMustAccept.value } : {}),
-      },
-    }))
-    editing.value = null
-    notifyAuditChanged()
-    await loadDrivers()
-  }
-  catch (error) {
-    editErrorKey.value = failureKey(error)
   }
   finally {
     saving.value = false
@@ -307,172 +327,19 @@ onMounted(() => {
 
 <template>
   <section>
-    <h2
-      :id="titleId"
-      class="mb-4 text-xl font-semibold"
+    <UButton
+      type="button"
+      size="xl"
+      icon="i-lucide-plus"
+      class="mb-4"
+      @click="openAdd"
     >
       {{ t('drivers.add') }}
-    </h2>
-    <UAlert
-      v-if="formErrorKey"
-      color="error"
-      variant="subtle"
-      role="alert"
-      class="mb-4"
-      :description="t(formErrorKey)"
-    />
-    <form
-      novalidate
-      @submit.prevent="addDriver"
-    >
-      <UFormField
-        :label="t('drivers.name')"
-        name="name"
-        class="mb-4"
-        size="xl"
-        :error="nameErrorKey ? t(nameErrorKey) : false"
-      >
-        <UInput
-          id="driver-name"
-          v-model="name"
-          name="name"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="nameErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('drivers.kind')"
-        name="kind"
-        class="mb-4"
-        size="xl"
-        :error="kindErrorKey ? t(kindErrorKey) : false"
-      >
-        <USelect
-          id="driver-kind"
-          v-model="kind"
-          name="kind"
-          :items="kindItems"
-          :placeholder="t('drivers.chooseKind')"
-          class="w-full"
-          @update:model-value="kindErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('drivers.phone')"
-        name="phone"
-        class="mb-4"
-        size="xl"
-        :error="phoneErrorKey ? t(phoneErrorKey) : false"
-      >
-        <UInput
-          id="driver-phone"
-          v-model="phone"
-          name="phone"
-          type="tel"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="phoneErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        v-if="memberUserId === noAccount"
-        :label="t('drivers.email')"
-        name="email"
-        class="mb-4"
-        size="xl"
-        :error="emailErrorKey ? t(emailErrorKey) : false"
-      >
-        <UInput
-          id="driver-email"
-          v-model="email"
-          name="email"
-          type="email"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="emailErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('drivers.drivingLicenceExpiresOn')"
-        name="driving"
-        class="mb-4"
-        size="xl"
-        :error="drivingErrorKey ? t(drivingErrorKey) : false"
-      >
-        <UInput
-          id="driver-driving"
-          v-model="driving"
-          name="driving"
-          type="date"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="drivingErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('drivers.transportLicenceExpiresOn')"
-        name="transport"
-        class="mb-4"
-        size="xl"
-        :error="transportErrorKey ? t(transportErrorKey) : false"
-      >
-        <UInput
-          id="driver-transport"
-          v-model="transport"
-          name="transport"
-          type="date"
-          autocomplete="off"
-          class="w-full"
-          @update:model-value="transportErrorKey = null"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('drivers.member')"
-        name="member"
-        class="mb-4"
-        size="xl"
-      >
-        <USelect
-          id="driver-member"
-          v-model="memberUserId"
-          name="member"
-          :items="memberItems"
-          class="w-full"
-        />
-      </UFormField>
-      <UButton
-        type="submit"
-        size="xl"
-        class="w-full justify-center sm:w-auto"
-        :disabled="pending"
-      >
-        {{ pending ? t('drivers.submitting') : t('drivers.submit') }}
-      </UButton>
-    </form>
+    </UButton>
 
     <h2
       :id="listTitleId"
-      class="mt-8 mb-4 text-xl font-semibold"
+      class="mb-4 text-xl font-semibold"
     >
       {{ t('drivers.title') }}
     </h2>
@@ -483,15 +350,6 @@ onMounted(() => {
       role="alert"
       :description="t(loadErrorKey)"
     />
-    <p
-      v-else-if="loading"
-      role="status"
-    >
-      {{ t('drivers.loading') }}
-    </p>
-    <p v-else-if="drivers.length === 0">
-      {{ t('drivers.empty') }}
-    </p>
     <div
       v-else
       class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -502,6 +360,7 @@ onMounted(() => {
       <UTable
         :data="drivers"
         :columns="columns"
+        :loading="loading"
         class="whitespace-nowrap"
       >
         <template #kind-cell="{ row }">
@@ -519,190 +378,211 @@ onMounted(() => {
         <template #mustAccept-cell="{ row }">
           {{ row.original.mustAccept ? t('drivers.yes') : t('drivers.no') }}
         </template>
+        <template #actions-header>
+          <span class="sr-only">{{ t('drivers.actions') }}</span>
+        </template>
         <template #actions-cell="{ row }">
-          <UButton
-            type="button"
-            color="neutral"
-            variant="outline"
+          <UDropdownMenu
+            :items="driverActions(row.original)"
             size="xl"
-            :aria-label="`${t('drivers.edit')}: ${row.original.name}`"
-            @click="openEdit(row.original)"
           >
-            {{ t('drivers.edit') }}
-          </UButton>
+            <UButton
+              type="button"
+              color="neutral"
+              variant="outline"
+              size="xl"
+              icon="i-lucide-ellipsis-vertical"
+              :aria-label="t('drivers.actionsFor', { name: row.original.name })"
+            />
+          </UDropdownMenu>
+        </template>
+        <template #loading>
+          <div
+            role="status"
+            class="space-y-2 py-2"
+          >
+            <p>{{ t('drivers.loading') }}</p>
+            <USkeleton class="h-8 w-full" />
+            <USkeleton class="h-8 w-full" />
+          </div>
+        </template>
+        <template #empty>
+          <UEmpty
+            :title="t('drivers.empty')"
+            icon="i-lucide-user"
+            variant="naked"
+          />
         </template>
       </UTable>
     </div>
 
-    <UModal
-      v-model:open="editOpen"
-      :title="t('drivers.edit')"
+    <USlideover
+      v-model:open="formOpen"
+      :title="formTitle"
       :dismissible="!saving"
       :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
     >
       <template #body>
         <UAlert
-          v-if="editErrorKey"
+          v-if="formErrorKey"
           color="error"
           variant="subtle"
           role="alert"
           class="mb-4"
-          :description="t(editErrorKey)"
+          :description="t(formErrorKey)"
         />
-        <form
-          id="driver-edit"
+        <UForm
+          id="driver-form"
           novalidate
-          @submit.prevent="saveEdit"
+          :schema="schema"
+          :state="state"
+          :validate-on="[]"
+          class="space-y-4"
+          @submit="onSubmit"
+          @error="formErrorKey = null"
         >
           <UFormField
             :label="t('drivers.name')"
-            name="edit-name"
-            class="mb-4"
+            name="name"
             size="xl"
-            :error="editNameErrorKey ? t(editNameErrorKey) : false"
           >
             <UInput
-              id="driver-edit-name"
-              v-model="editName"
-              name="edit-name"
+              v-model="state.name"
+              name="name"
               type="text"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editNameErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('drivers.kind')"
-            name="edit-kind"
-            class="mb-4"
+            name="kind"
             size="xl"
-            :error="editKindErrorKey ? t(editKindErrorKey) : false"
           >
             <USelect
-              id="driver-edit-kind"
-              v-model="editKind"
-              name="edit-kind"
+              v-model="state.kind"
+              name="kind"
               :items="kindItems"
+              :placeholder="t('drivers.chooseKind')"
               class="w-full"
-              @update:model-value="editKindErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('drivers.phone')"
-            name="edit-phone"
-            class="mb-4"
+            name="phone"
             size="xl"
-            :error="editPhoneErrorKey ? t(editPhoneErrorKey) : false"
           >
             <UInput
-              id="driver-edit-phone"
-              v-model="editPhone"
-              name="edit-phone"
+              v-model="state.phone"
+              name="phone"
               type="tel"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editPhoneErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
+            v-if="formMode === 'edit' || !emailLocked"
             :label="t('drivers.email')"
-            name="edit-email"
-            class="mb-4"
+            name="email"
             size="xl"
-            :error="editEmailErrorKey ? t(editEmailErrorKey) : false"
           >
             <UInput
-              id="driver-edit-email"
-              v-model="editEmail"
-              name="edit-email"
+              v-model="state.email"
+              name="email"
               type="email"
               autocomplete="off"
               class="w-full"
-              :disabled="editMemberUserId !== noAccount"
-              @update:model-value="editEmailErrorKey = null"
+              :disabled="emailLocked"
             />
             <p
-              v-if="editMemberUserId !== noAccount"
+              v-if="emailLocked"
               class="mt-1 text-sm text-muted"
             >
               {{ t('drivers.emailFromAccount') }}
             </p>
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('drivers.drivingLicenceExpiresOn')"
-            name="edit-driving"
-            class="mb-4"
+            name="drivingLicenceExpiresOn"
             size="xl"
-            :error="editDrivingErrorKey ? t(editDrivingErrorKey) : false"
           >
             <UInput
-              id="driver-edit-driving"
-              v-model="editDriving"
-              name="edit-driving"
+              v-model="state.drivingLicenceExpiresOn"
+              name="drivingLicenceExpiresOn"
               type="date"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editDrivingErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('drivers.transportLicenceExpiresOn')"
-            name="edit-transport"
-            class="mb-4"
+            name="transportLicenceExpiresOn"
             size="xl"
-            :error="editTransportErrorKey ? t(editTransportErrorKey) : false"
           >
             <UInput
-              id="driver-edit-transport"
-              v-model="editTransport"
-              name="edit-transport"
+              v-model="state.transportLicenceExpiresOn"
+              name="transportLicenceExpiresOn"
               type="date"
               autocomplete="off"
               class="w-full"
-              @update:model-value="editTransportErrorKey = null"
             />
             <template #error="{ error }">
-              <span role="alert">{{ error }}</span>
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
             </template>
           </UFormField>
           <UFormField
             :label="t('drivers.member')"
-            name="edit-member"
-            class="mb-4"
+            name="memberUserId"
             size="xl"
           >
             <USelect
-              id="driver-edit-member"
-              v-model="editMemberUserId"
-              name="edit-member"
+              v-model="state.memberUserId"
+              name="memberUserId"
               :items="memberItems"
               class="w-full"
             />
           </UFormField>
           <UCheckbox
-            v-if="isAdmin"
-            id="driver-edit-must-accept"
-            v-model="editMustAccept"
-            name="edit-must-accept"
+            v-if="formMode === 'edit' && isAdmin"
+            v-model="state.mustAccept"
+            name="must-accept"
             size="xl"
             :label="t('drivers.mustAccept')"
           />
-        </form>
+        </UForm>
       </template>
       <template #footer>
         <UButton
@@ -712,20 +592,20 @@ onMounted(() => {
           size="xl"
           class="w-full justify-center sm:w-auto"
           :disabled="saving"
-          @click="editing = null"
+          @click="formOpen = false"
         >
           {{ t('drivers.cancel') }}
         </UButton>
         <UButton
-          type="button"
+          type="submit"
+          form="driver-form"
           size="xl"
           class="w-full justify-center sm:w-auto"
           :loading="saving"
-          @click="saveEdit"
         >
-          {{ saving ? t('drivers.saving') : t('drivers.save') }}
+          {{ submitLabel }}
         </UButton>
       </template>
-    </UModal>
+    </USlideover>
   </section>
 </template>
