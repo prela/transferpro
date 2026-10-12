@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { isCalendarDate } from './date'
+import { sameFlightDesignator } from './flight-landing'
 import { QueryParamError } from './query'
 
 /**
@@ -152,14 +153,29 @@ export function changedTransferFields(before: CreateTransfer, after: CreateTrans
 }
 
 /**
- * An accepted Ride returns to assigned only when one of the four trip facts
- * changed. Unassigned stays unassigned. Assigned stays assigned.
+ * An accepted Ride returns to assigned only when the pickup, a place, or the
+ * flight number changed (ADR-0010). Spacing or case of the same designator
+ * is still a stored flight-number change, and it leaves the Ride accepted
+ * (ADR-0028). A note that becomes another note is a flight-number change.
+ * Unassigned stays unassigned. Assigned stays assigned.
  */
 export function correctionReturnsAcceptedRide(
   state: RideState,
   changed: readonly TransferCorrectionField[],
+  flight: { readonly before: string | null, readonly after: string | null },
 ): boolean {
-  return state === 'accepted' && changed.some(field => (MATERIAL_TRANSFER_FIELDS as readonly string[]).includes(field))
+  if (state !== 'accepted')
+    return false
+  return changed.some((field) => {
+    if (field === 'flightNumber')
+      return !sameDesignatorSpelling(flight.before, flight.after)
+    return (MATERIAL_TRANSFER_FIELDS as readonly string[]).includes(field)
+  })
+}
+
+/** `OU 384` and `ou384` are one designator. A note is not. */
+function sameDesignatorSpelling(before: string | null, after: string | null): boolean {
+  return before !== null && after !== null && sameFlightDesignator(before, after)
 }
 
 function sameTransferField(field: TransferCorrectionField, before: CreateTransfer, after: CreateTransfer): boolean {

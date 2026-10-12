@@ -186,14 +186,15 @@ it('returns an accepted Ride only when the pickup, a place, or the flight number
   expect(canCorrectTransfer('no-show')).toBe(false)
   expect(canCorrectTransfer('cancelled')).toBe(false)
 
+  const sameFlight = { before: flight, after: flight }
   expect(changedTransferFields(stored, stored)).toEqual([])
-  expect(correctionReturnsAcceptedRide('accepted', [])).toBe(false)
+  expect(correctionReturnsAcceptedRide('accepted', [], sameFlight)).toBe(false)
 
   const guestOnly = changedTransferFields(stored, { ...stored, guestName: 'Iva Ivić' })
   expect(guestOnly).toEqual(['guestName'])
-  expect(correctionReturnsAcceptedRide('accepted', guestOnly)).toBe(false)
-  expect(correctionReturnsAcceptedRide('assigned', ['flightNumber'])).toBe(false)
-  expect(correctionReturnsAcceptedRide('unassigned', ['pickupAt'])).toBe(false)
+  expect(correctionReturnsAcceptedRide('accepted', guestOnly, sameFlight)).toBe(false)
+  expect(correctionReturnsAcceptedRide('assigned', ['flightNumber'], { before: flight, after: 'OU 392' })).toBe(false)
+  expect(correctionReturnsAcceptedRide('unassigned', ['pickupAt'], sameFlight)).toBe(false)
 
   const sameInstant = changedTransferFields(stored, { ...stored, pickupAt: '2026-10-06T22:30:00Z' })
   expect(sameInstant).toEqual([])
@@ -201,19 +202,28 @@ it('returns an accepted Ride only when the pickup, a place, or the flight number
   expect(correctionReturnsAcceptedRide('accepted', changedTransferFields(stored, {
     ...stored,
     pickupAt: '2026-10-06T23:00:00.000Z',
-  }))).toBe(true)
+  }), sameFlight)).toBe(true)
   expect(correctionReturnsAcceptedRide('accepted', changedTransferFields(stored, {
     ...stored,
     endLocationId: otherEnd,
-  }))).toBe(true)
+  }), sameFlight)).toBe(true)
   expect(correctionReturnsAcceptedRide('accepted', changedTransferFields(stored, {
     ...stored,
     flightNumber: 'OU 392',
-  }))).toBe(true)
+  }), { before: flight, after: 'OU 392' })).toBe(true)
+  // ADR-0028. Spacing or case is the same designator. The stored text can
+  // change, and an accepted Ride stays accepted.
+  const spaced = changedTransferFields(stored, { ...stored, flightNumber: 'ou384' })
+  expect(spaced).toEqual(['flightNumber'])
+  expect(correctionReturnsAcceptedRide('accepted', spaced, { before: flight, after: 'ou384' })).toBe(false)
+  const vip = { ...stored, flightNumber: 'VIP' }
+  const anotherNote = changedTransferFields(vip, { ...vip, flightNumber: 'meet at desk' })
+  expect(anotherNote).toEqual(['flightNumber'])
+  expect(correctionReturnsAcceptedRide('accepted', anotherNote, { before: 'VIP', after: 'meet at desk' })).toBe(true)
   expect(correctionReturnsAcceptedRide('accepted', changedTransferFields(stored, {
     ...stored,
     payment: 'card',
     airportMark: true,
     price: '10.00',
-  }))).toBe(false)
+  }), sameFlight)).toBe(false)
 })

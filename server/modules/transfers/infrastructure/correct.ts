@@ -94,7 +94,10 @@ function officeOnly(role: string): void {
  * booking is unchanged. A finished Ride is refused. A save that matches the
  * stored booking writes nothing. A change of pickup, start, end, or flight
  * number on an accepted Ride returns it to assigned and keeps the Driver,
- * the Vehicle, and the copied flag. No mail is sent (#168).
+ * the Vehicle, and the copied flag. Spacing or case of the same designator
+ * does not. A different designator also clears the landing time,
+ * the expected arrival, and the memory of what the Driver was told. No mail
+ * is sent (#168).
  */
 export async function correctTransfer(headers: Headers, rawId: unknown, rawBody: unknown): Promise<RecordedTransfer> {
   const parsed = parseCorrect(rawId, rawBody)
@@ -130,7 +133,10 @@ export async function correctTransferForOffice(
   // and the will-not-arrive memory (ADR-0028).
   const clearLanding = flightNumberChangeClearsLanding(stored.flightNumber, input.flightNumber)
   await writeTransfer(transaction, transferId, input, clearLanding)
-  const returned = correctionReturnsAcceptedRide(current.state, changed)
+  const returned = correctionReturnsAcceptedRide(current.state, changed, {
+    before: stored.flightNumber,
+    after: input.flightNumber,
+  })
   const ride = returned
     ? await returnAcceptedRide(transaction, current.rideId)
     : {
