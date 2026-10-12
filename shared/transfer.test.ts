@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canCancelRide, canMarkRideDone, CHILD_SEAT_COUNT_MAX, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCreateTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
+import { canCancelRide, canDeclineRide, canMarkRideDone, CHILD_SEAT_COUNT_MAX, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCreateTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -155,4 +155,13 @@ it('allows done from assigned when the copied flag is off, and only from accepte
   expect(canMarkRideDone('done', true)).toBe(false)
   expect(canMarkRideDone('no-show', true)).toBe(false)
   expect(canMarkRideDone('cancelled', false)).toBe(false)
+})
+
+it('allows a decline only from assigned, with the copied flag on or off', () => {
+  expect(canDeclineRide('assigned')).toBe(true)
+  expect(canDeclineRide('accepted')).toBe(false)
+  expect(canDeclineRide('unassigned')).toBe(false)
+  expect(canDeclineRide('done')).toBe(false)
+  expect(canDeclineRide('no-show')).toBe(false)
+  expect(canDeclineRide('cancelled')).toBe(false)
 })

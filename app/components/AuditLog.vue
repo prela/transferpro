@@ -131,6 +131,7 @@ function detailText(entry: AuditEntry): string {
     case 'ride.vehicle_changed':
     case 'ride.cleared':
     case 'ride.reassigned':
+    case 'ride.declined':
       // The name and the plate are joined from the ids. A clear's ids are the ones removed.
       return t('audit.rideAssignedDetail', {
         driver: entry.driverName ?? '',

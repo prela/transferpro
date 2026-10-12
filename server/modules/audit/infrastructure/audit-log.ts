@@ -42,6 +42,8 @@ const listLimit = 100
  * A `ride.cancelled` row joins the Driver name when a Driver id is stored.
  * An unassigned cancel stores null, so the name is null. The actor is the
  * person who cancelled. The plate is not joined.
+ * A `ride.declined` row joins the Driver name and the plate. The actor is
+ * the Driver who declined. The ids are the ones that were cleared.
  * A vehicle change, a clear, and a reassignment join the Driver name and
  * the plate from the ids on the row. A clear's ids are the ones removed.
  * Drizzle hands timestamptz back as Postgres text, so the instant is
@@ -63,11 +65,11 @@ export async function listAuditEntries(transaction: TenantTransaction): Promise<
     left join app.tenant_member as actor on actor.user_id = e.actor_user_id
     left join app.tenant_member as subject on subject.user_id = e.subject_user_id
     left join app.drivers as assigned_driver
-      on e.action in ('ride.assigned', 'ride.accepted', 'ride.done', 'ride.cancelled', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned')
+      on e.action in ('ride.assigned', 'ride.accepted', 'ride.done', 'ride.cancelled', 'ride.declined', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned')
       and assigned_driver.tenant_id = e.tenant_id
       and assigned_driver.id = (e.data->>'driverId')::uuid
     left join app.vehicles as assigned_vehicle
-      on e.action in ('ride.assigned', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned')
+      on e.action in ('ride.assigned', 'ride.declined', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned')
       and assigned_vehicle.tenant_id = e.tenant_id
       and assigned_vehicle.id = (e.data->>'vehicleId')::uuid
     order by e.occurred_at desc, e.id desc

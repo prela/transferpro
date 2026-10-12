@@ -107,6 +107,8 @@ export const rides = tenantTable('rides', {
   mustAccept: boolean('must_accept'),
 }, table => [
   uniqueIndex('rides_transfer_id').on(table.transferId),
+  // A decline alert references this Ride by (tenant_id, id). The id is already the key; this pair is what that foreign key needs.
+  uniqueIndex('rides_tenant_id_id').on(table.tenantId, table.id),
   foreignKey({
     name: 'rides_transfer_fk',
     columns: [table.tenantId, table.transferId],

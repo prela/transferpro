@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Client, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, DeclineAlert, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
 import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, canMarkRideDone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema } from '../../shared'
 import { workOrderNotice } from '../work-order-notice'
 
@@ -18,6 +18,7 @@ const { notifyAuditChanged } = useAuditRefresh()
 const day = ref(operationalDateInTimeZone(props.timeZone, new Date(), props.operationalDayStartHour))
 const pickupDay = calendarDateInTimeZone(props.timeZone, new Date())
 const rides = ref<TransferDayRide[]>([])
+const declineAlerts = ref<DeclineAlert[]>([])
 const clients = ref<Client[]>([])
 const locations = ref<Location[]>([])
 const drivers = ref<Driver[]>([])
@@ -150,6 +151,14 @@ function driverLabel(id: string | null): string {
   if (id === null)
     return ''
   return drivers.value.find(driver => driver.id === id)?.name ?? t('ride.unknownDriver')
+}
+
+/** The alert names the Driver and the guest, both joined when the day is read. */
+function declineAlertText(alert: DeclineAlert): string {
+  return t('transfers.declined', {
+    driver: alert.driverName,
+    guest: alert.guestName,
+  })
 }
 
 function vehicleLabel(id: string | null): string {
@@ -639,6 +648,7 @@ async function loadDay(ticket = ++loadTicket) {
     if (ticket !== loadTicket)
       return
     rides.value = listed.rides
+    declineAlerts.value = listed.declineAlerts
   }
   catch {
     if (ticket !== loadTicket)
@@ -660,11 +670,15 @@ async function loadAll() {
       ? fetchTransferDay(day.value)
       : Promise.resolve(null)
     const [catalogs, listed] = await Promise.all([fetchCatalogs(), dayPromise])
+    // A day change during this load must not drop the catalogs. The newer
+    // day read already replaced the rows.
+    applyCatalogs(catalogs)
     if (ticket !== loadTicket)
       return
-    applyCatalogs(catalogs)
-    if (listed)
+    if (listed) {
       rides.value = listed.rides
+      declineAlerts.value = listed.declineAlerts
+    }
   }
   catch {
     if (ticket !== loadTicket)
@@ -857,17 +871,35 @@ onMounted(loadAll)
       class="mb-4"
       :description="t('transfers.loadFailed')"
     />
+    <!-- The alert is not a branch of the list. A declined Ride is unassigned and still on the board. -->
+    <ul
+      v-if="!loadError && !loading && declineAlerts.length > 0"
+      class="mb-4 flex flex-col gap-2"
+    >
+      <li
+        v-for="alert in declineAlerts"
+        :key="alert.id"
+      >
+        <UAlert
+          color="warning"
+          variant="subtle"
+          role="alert"
+          icon="i-lucide-user-x"
+          :description="declineAlertText(alert)"
+        />
+      </li>
+    </ul>
     <p
-      v-else-if="loading"
+      v-if="loading"
       role="status"
     >
       {{ t('transfers.loading') }}
     </p>
-    <p v-else-if="rides.length === 0">
+    <p v-else-if="!loadError && rides.length === 0">
       {{ t('transfers.empty') }}
     </p>
     <div
-      v-else
+      v-else-if="!loadError"
       ref="dayListRegion"
       class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
       role="region"

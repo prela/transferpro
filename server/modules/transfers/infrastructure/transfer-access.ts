@@ -1,7 +1,7 @@
 import type { RecordedTransfer, TransferDay } from '../../../../shared'
 import { operationalDateInTimeZone, parseCreateTransfer, parseTransferDay } from '../../../../shared'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
-import { loadRidesForDay, recordTransfer } from './transfers'
+import { loadDeclineAlertsForDay, loadRidesForDay, recordTransfer } from './transfers'
 
 function officeOnly(role: string): void {
   // Recording a Transfer and reading the day list are office work.
@@ -49,6 +49,12 @@ export async function listTransferDay(headers: Headers, rawDate: unknown, now: D
         startHour,
         now,
         settings.transferDurationMinutes,
+      ),
+      declineAlerts: await loadDeclineAlertsForDay(
+        transaction,
+        date,
+        settings.timeZone,
+        startHour,
       ),
     }
   })

@@ -11,13 +11,14 @@ import { createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
 import { setRosterDay } from '../modules/roster'
 import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale } from '../modules/tenancy'
-import { assignRide, changeVehicle, clearRide, createTransfer, listUpcomingRides, reassignRide } from '../modules/transfers'
+import { assignRide, changeVehicle, clearRide, createTransfer, listTransferDay, listUpcomingRides, reassignRide } from '../modules/transfers'
 import { archiveVehicle, createVehicle } from '../modules/vehicles'
 import postAcceptByPhone from './rides/[id]/accept-by-phone.post'
 import postAccept from './rides/[id]/accept.post'
 import postAssign from './rides/[id]/assign.post'
 import postCancel from './rides/[id]/cancel.post'
 import postClear from './rides/[id]/clear.post'
+import postDecline from './rides/[id]/decline.post'
 import postDone from './rides/[id]/done.post'
 import postReassign from './rides/[id]/reassign.post'
 import getRosterVehicle from './rides/[id]/roster-vehicle.get'
@@ -26,7 +27,7 @@ import postVehicle from './rides/[id]/vehicle.post'
 /**
  * POST /api/rides/:id/assign, GET /api/rides/:id/roster-vehicle,
  * POST /api/rides/:id/accept, POST /api/rides/:id/accept-by-phone,
- * POST /api/rides/:id/done, and POST /api/rides/:id/cancel.
+ * POST /api/rides/:id/done, POST /api/rides/:id/cancel, and POST /api/rides/:id/decline.
  * An invalid body is answered before a session exists. The role cases use a
  * real sign-in. The composite foreign key is also tried as the app role.
  */
@@ -77,6 +78,8 @@ app.use('/api/rides', (event) => {
     return postDone(event)
   if (action === 'cancel' && event.method === 'POST')
     return postCancel(event)
+  if (action === 'decline' && event.method === 'POST')
+    return postDecline(event)
   if (action === 'roster-vehicle' && event.method === 'GET')
     return getRosterVehicle(event)
   return new Response('Not Found', { status: 404 })
@@ -88,6 +91,9 @@ beforeAll(async () => {
   const auth = await authPool.connect()
   try {
     await owner.query('begin')
+    await owner.query(`delete from app.ride_alert where tenant_id::text in (
+      select id from auth.organization where slug like 'hasg-%'
+    )`)
     await owner.query(`delete from app.rides where tenant_id::text in (
       select id from auth.organization where slug like 'hasg-%'
     )`)
@@ -2471,4 +2477,183 @@ it('hides another Tenant from cancel and writes no audit row', async () => {
   expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'unassigned' })
   expect(await cancelAudits(world.tenantId)).toEqual([])
   expect(await cancelAudits(foreign.tenantId)).toEqual([])
+})
+
+async function declineAudits(tenantId: string) {
+  const result = await ownerPool.query<{
+    actor_user_id: string
+    subject_user_id: string | null
+    data: { rideId?: string, driverId?: string, vehicleId?: string, fields?: string[] }
+  }>(
+    `select actor_user_id, subject_user_id, data from app.audit_entry
+     where tenant_id = $1 and action::text = 'ride.declined'
+     order by occurred_at, id`,
+    [tenantId],
+  )
+  return result.rows
+}
+
+async function declineAlertRows(tenantId: string) {
+  const result = await ownerPool.query<{ ride_id: string, driver_id: string, kind: string }>(
+    `select ride_id, driver_id, kind from app.ride_alert where tenant_id = $1 order by created_at, id`,
+    [tenantId],
+  )
+  return result.rows
+}
+
+it('refuses a decline body that has a key before a session opens', async () => {
+  const world = await office('hasg-dec-body')
+  const linked = await linkedDriver(world, 'hasg-dec-body-driver@example.test', 'Drago Driver', '+385911110851')
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8501AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 30 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+
+  const keyed = await call('POST', `/api/rides/${recorded.ride.id}/decline`, undefined, { note: phone })
+  expect(keyed.status).toBe(400)
+  expect(await keyed.text()).not.toContain(phone)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/decline`, linked.session, { guestName: guest })).status).toBe(400)
+  expect((await call('POST', '/api/rides/not-a-ride/decline', linked.session, {})).status).toBe(400)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/decline`, undefined, {})).status).toBe(401)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/decline`, world.dispatcher, {})).status).toBe(403)
+
+  expect(await rideRow(recorded.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: linked.driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: false,
+  })
+  expect(await declineAudits(world.tenantId)).toEqual([])
+  expect(await declineAlertRows(world.tenantId)).toEqual([])
+})
+
+it('declines an assigned Ride, with the copied flag off or on, and the board names that Driver', async () => {
+  const world = await office('hasg-dec-off')
+  const linked = await linkedDriver(world, 'hasg-dec-off-driver@example.test', 'Drago Driver', '+385911110852')
+  const must = await linkedDriver(world, 'hasg-dec-on-driver@example.test', 'Nika Vozač', '+385911110853')
+  await updateDriver(world.admin, must.driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8502AA'))
+  const otherVehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8502BB'))
+  const day = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 4)
+  const pickupAt = instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString()
+  const plain = await createTransfer(world.dispatcher, transferBody(world, pickupAt))
+  const waiting = await createTransfer(world.dispatcher, { ...transferBody(world, pickupAt), guestName: 'Ivo Ivić' })
+  expect((await call('POST', `/api/rides/${plain.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${waiting.ride.id}/assign`, world.dispatcher, {
+    driverId: must.driver.id,
+    vehicleId: otherVehicle.id,
+  })).status).toBe(200)
+
+  const declined = await call('POST', `/api/rides/${plain.ride.id}/decline`, linked.session, {})
+  expect(declined.status).toBe(200)
+  expect(await declined.json()).toEqual({
+    id: plain.ride.id,
+    transferId: plain.transfer.id,
+    state: 'unassigned',
+    driverId: null,
+    vehicleId: null,
+    mustAccept: null,
+  })
+  const waitingDeclined = await call('POST', `/api/rides/${waiting.ride.id}/decline`, must.session, {})
+  expect(waitingDeclined.status).toBe(200)
+  expect(await waitingDeclined.json()).toMatchObject({ state: 'unassigned', driverId: null, vehicleId: null, mustAccept: null })
+
+  expect((await listUpcomingRides(linked.session)).rides.map(ride => ride.rideId)).not.toContain(plain.ride.id)
+  expect((await listUpcomingRides(must.session)).rides.map(ride => ride.rideId)).not.toContain(waiting.ride.id)
+
+  const dayList = await listTransferDay(world.dispatcher, day)
+  expect(dayList.declineAlerts.map(alert => ({
+    rideId: alert.rideId,
+    driverId: alert.driverId,
+    driverName: alert.driverName,
+    guestName: alert.guestName,
+  }))).toEqual([
+    {
+      rideId: plain.ride.id,
+      driverId: linked.driver.id,
+      driverName: 'Drago Driver',
+      guestName: guest,
+    },
+    {
+      rideId: waiting.ride.id,
+      driverId: must.driver.id,
+      driverName: 'Nika Vozač',
+      guestName: 'Ivo Ivić',
+    },
+  ])
+
+  const audits = await declineAudits(world.tenantId)
+  expect(audits).toEqual([
+    {
+      actor_user_id: linked.userId,
+      subject_user_id: null,
+      data: {
+        rideId: plain.ride.id,
+        driverId: linked.driver.id,
+        vehicleId: vehicle.id,
+        fields: ['state', 'driverId', 'vehicleId', 'mustAccept'],
+      },
+    },
+    {
+      actor_user_id: must.userId,
+      subject_user_id: null,
+      data: {
+        rideId: waiting.ride.id,
+        driverId: must.driver.id,
+        vehicleId: otherVehicle.id,
+        fields: ['state', 'driverId', 'vehicleId', 'mustAccept'],
+      },
+    },
+  ])
+  const stored = JSON.stringify(audits)
+  expect(stored).not.toContain('+385911110852')
+  expect(stored).not.toContain('ZG8502AA')
+  expect(stored).not.toContain('ZG8502BB')
+  expect(stored).not.toContain(guest)
+  expect(stored).not.toContain('Ivo Ivić')
+  expect(await declineAlertRows(world.tenantId)).toEqual([
+    { ride_id: plain.ride.id, driver_id: linked.driver.id, kind: 'declined' },
+    { ride_id: waiting.ride.id, driver_id: must.driver.id, kind: 'declined' },
+  ])
+})
+
+it('refuses a decline from accepted and writes no transition', async () => {
+  const world = await office('hasg-dec-acc')
+  const linked = await linkedDriver(world, 'hasg-dec-acc-driver@example.test', 'Drago Driver', '+385911110854')
+  await updateDriver(world.admin, linked.driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8503AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 31 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/accept`, linked.session, {})).status).toBe(200)
+
+  const refused = await call('POST', `/api/rides/${recorded.ride.id}/decline`, linked.session, {})
+  expect(refused.status).toBe(409)
+  expect(await refused.text()).toContain('ride_not_declinable')
+  expect(await rideRow(recorded.ride.id)).toMatchObject({
+    state: 'accepted',
+    driver_id: linked.driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: true,
+  })
+  expect((await listUpcomingRides(linked.session)).rides.map(ride => ride.rideId)).toContain(recorded.ride.id)
+  expect(await declineAudits(world.tenantId)).toEqual([])
+  expect(await declineAlertRows(world.tenantId)).toEqual([])
+
+  const other = await linkedDriver(world, 'hasg-dec-other@example.test', 'Drugi Vozač', '+385911110855')
+  const stolen = await call('POST', `/api/rides/${recorded.ride.id}/decline`, other.session, {})
+  expect(stolen.status).toBe(404)
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'accepted', driver_id: linked.driver.id })
+
+  const foreign = await office('hasg-dec-foreign')
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/decline`, foreign.dispatcher, {})).status).toBe(403)
+  expect(await declineAudits(world.tenantId)).toEqual([])
+  expect(await declineAlertRows(foreign.tenantId)).toEqual([])
 })
