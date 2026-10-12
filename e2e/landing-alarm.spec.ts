@@ -126,6 +126,7 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
   await switchTheme(page, 'light')
 
   await page.goto('/transfers')
+<<<<<<< HEAD
   // switchLocale / switchTheme remount the board on today's operational day.
   // Re-select the pickup day after every return (same gap as the first fill).
   const pickupDay = operationalDateInTimeZone(timeZone, pickup)
@@ -136,6 +137,14 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
     await expect(page.locator('#transfer-day')).toHaveValue(pickupDay)
   }
   await showPickupDay()
+=======
+  // Wait for hydrate: fill before Vue mounts drops the day change (same gap as locale/theme).
+  const today = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  await expect(page.locator('#transfer-day')).toHaveValue(today)
+  const day = operationalDateInTimeZone('Europe/Zagreb', pickup)
+  await page.locator('#transfer-day').fill(day)
+  await expect(page.locator('#transfer-day')).toHaveValue(day)
+>>>>>>> a2c7b38 (fix(e2e): named Decline buttons and hydrate day before landing-alarm board)
   const boardLanded = page.getByRole('row').filter({ hasText: 'Landed Lana' })
   const boardOpen = page.getByRole('row').filter({ hasText: 'Open Lara' })
   await expect(boardLanded).toContainText('Landing alarm')

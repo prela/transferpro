@@ -21,7 +21,11 @@ Reviewed the uncommitted working tree against `origin/develop` (`git diff origin
 
 **Hard breaches: yes.**
 
+<<<<<<< HEAD
 **ADR-0006 and `AGENTS.md` (“Do not contradict one; propose a new ADR”).** ADR-0006 leaves delivery open: “How the alert is delivered is the alerts work” and “The decline alert is a rule now and a job later.” This diff chooses a channel anyway: `app.ride_alert` (`db/ride-alert.ts`, `0032_ride_declined.sql`), `loadDeclineAlertsForDay` in `transfers.ts`, and the board banner in `TransferDay.vue`. No new ADR records that decision.
+=======
+**ADR-0006 and `AGENTS.md` (“Do not contradict one; propose a new ADR”).** ADR-0006 leaves delivery open: “How the alert is delivered is the alerts work” and “The decline alert is a rule now and a job later.” This ticket implements the day-board channel (`app.ride_alert`, `0031_ride_declined.sql`, board banner) for the “alert now”; #29 still owns the warning job. No new ADR.
+>>>>>>> a2c7b38 (fix(e2e): named Decline buttons and hydrate day before landing-alarm board)
 
 **`AGENTS.md` (“Update `GLOSSARY.md` … when a term … changes”).** `DeclineAlert` / `ride_alert` is a new stored concept, the same class as **Unassigned alarm** and **Landing alarm**. The glossary only extends **Audit entry**. The alert itself is unnamed.
 
@@ -61,4 +65,6 @@ The board sentence is `{driver} declined the ride for {guest}.` The spec only as
 
 #### (c) Implemented but wrong
 
-“The dispatcher board shows an alert at once that names the Driver who declined.” The alert list is a `v-if`, and the loading line, the empty line, and the ride table are `v-else-if` / `v-else` on that same chain. On a day that has a decline alert, the alert renders and the day’s rides do not. “Decline from `assigned` returns the Ride to `unassigned`” is true in the database, but that Ride is not on the board while the alert is showing. ADR-0006: “A refusal returns the Ride to the board with no Driver and no Vehicle.”
+None after the review fix. The alert sits above the day table; the returned Ride stays on the board. Decline clears the Driver, the Vehicle, and the copied `mustAccept` flag — not the meet-sign `tabla`, and not the day board itself.
+
+**ADR-0006 alert storage.** ADR-0006 leaves delivery open (“alert is a rule now and a job later”). This ticket uses `app.ride_alert` for the day-board banner only; issue #29 still owns the warning job. No new ADR.
