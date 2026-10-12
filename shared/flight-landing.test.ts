@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { chooseFlightArrival, flightAskDates, flightDesignator, flightNumberChangeClearsLanding, landingTimeInFuture, parseFlightArrivals, sameFlightDesignator, storeExpectedArrival } from './flight-landing'
+import { chooseFlightArrival, flightAskDates, flightDesignator, flightNumberChangeClearsLanding, landingTimeInFuture, parseFlightArrivals, rememberWillNotArrive, sameFlightDesignator, storeExpectedArrival } from './flight-landing'
 
 const pickup = new Date('2026-10-11T12:00:00.000Z')
 
@@ -88,11 +88,11 @@ it('stores nothing when two arrivals are equally close', () => {
   expect(chosen).toEqual({ kind: 'tie' })
 })
 
-it('does not treat another airport as a landing here', () => {
+it('treats an arrival at another airport as a flight that will not arrive here', () => {
   const chosen = chooseFlightArrival([
     arrival({ arrivalAirport: 'SPU', landedAt: '2026-10-11T11:30:00.000Z' }),
   ], pickup, 'DBV')
-  expect(chosen).toEqual({ kind: 'elsewhere' })
+  expect(chosen).toEqual({ kind: 'will-not-arrive' })
 })
 
 it('stores every reported estimate, and tells nobody about the first one', () => {
@@ -175,7 +175,37 @@ it('keeps an expected arrival at this airport, and does not treat a cancelled es
   const cancelled = chooseFlightArrival([
     arrival({ status: 'cancelled', expectedArrival: '2026-10-11T12:10:00.000Z', landedAt: null }),
   ], pickup, 'DBV')
-  expect(cancelled).toEqual({ kind: 'none' })
+  expect(cancelled).toEqual({ kind: 'will-not-arrive' })
+
+  const diverted = chooseFlightArrival([
+    arrival({
+      arrivalAirport: 'SPU',
+      status: 'diverted',
+      expectedArrival: '2026-10-11T12:10:00.000Z',
+      landedAt: null,
+    }),
+  ], pickup, 'DBV')
+  expect(diverted).toEqual({ kind: 'will-not-arrive' })
+})
+
+it('hands the will-not-arrive fact once, and stores it without a Driver', () => {
+  expect(rememberWillNotArrive({ observed: false, handed: false }, true)).toEqual({
+    observed: true,
+    handed: true,
+    hand: true,
+  })
+  expect(rememberWillNotArrive({ observed: true, handed: true }, true)).toEqual({
+    observed: true,
+    handed: true,
+    hand: false,
+  })
+  const stored = rememberWillNotArrive({ observed: false, handed: false }, false)
+  expect(stored).toEqual({ observed: true, handed: false, hand: false })
+  expect(rememberWillNotArrive(stored, true)).toEqual({
+    observed: true,
+    handed: true,
+    hand: true,
+  })
 })
 
 it('refuses a landing time that is still ahead of now, and accepts now', () => {

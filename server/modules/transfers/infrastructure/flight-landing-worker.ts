@@ -36,7 +36,7 @@ export async function registerFlightLanding(
   options: {
     readonly log: Logger
     readonly status: FlightStatusPort
-    readonly notices: Pick<Mailer, 'notifyArrivalMoved'>
+    readonly notices: Pick<Mailer, 'notifyArrivalMoved' | 'notifyFlightWillNotArrive'>
     readonly listTenantIds: (now: Date) => Promise<readonly string[]>
     readonly now?: () => Date
   },

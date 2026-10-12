@@ -44,6 +44,10 @@ export const transfers = tenantTable('transfers', {
   expectedArrivalAt: timestamp('expected_arrival_at', { withTimezone: true, mode: 'date' }),
   // The last estimate the Driver was told, or the first stored one when none was.
   expectedArrivalBasisAt: timestamp('expected_arrival_basis_at', { withTimezone: true, mode: 'date' }),
+  // This designator will not arrive at the pickup airport. Later asks do not call the status port.
+  flightWillNotArrive: boolean('flight_will_not_arrive').notNull().default(false),
+  // The will-not-arrive fact has been handed to the assigned Driver once.
+  flightWillNotArriveHanded: boolean('flight_will_not_arrive_handed').notNull().default(false),
   price: numeric('price', { precision: 10, scale: 2 }).notNull(),
   payment: text('payment').notNull(),
   airportMark: boolean('airport_mark').notNull(),

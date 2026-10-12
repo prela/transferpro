@@ -492,6 +492,7 @@ it('emails an assigned work order in the tenant locale, and a rejected send leav
         sent.push(mail)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(assigned.ride).toMatchObject({ state: 'assigned', driverId: driver.id, mustAccept: false })
@@ -542,6 +543,7 @@ it('emails an assigned work order in the tenant locale, and a rejected send leav
         throw new Error(`rejected ${address} ${guestName} ${tabla} ${plate}`)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(failed.workOrders).toEqual([{ driverId: driver.id, outcome: 'failed' }])
@@ -594,6 +596,7 @@ it('emails a changed work order with the cash price, and a rejected send leaves 
         sent.push(mail)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(changed.ride).toMatchObject({ state: 'assigned', driverId: driver.id, vehicleId: next.id })
@@ -625,6 +628,7 @@ it('emails a changed work order with the cash price, and a rejected send leaves 
         throw new Error(`rejected ${address} ${guestName}`)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(failed.workOrders).toEqual([{ driverId: driver.id, outcome: 'failed' }])
@@ -684,6 +688,7 @@ it('reports each Driver on a reassign, and a clear states no price even when the
           throw new Error(`rejected ${previousAddress} ${guestName}`)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(moved.ride).toMatchObject({ state: 'assigned', driverId: next.id, vehicleId: newVehicle.id })
@@ -728,6 +733,7 @@ it('reports each Driver on a reassign, and a clear states no price even when the
         cardSent.push(mail)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(cardMoved.workOrders).toEqual([
@@ -749,6 +755,7 @@ it('reports each Driver on a reassign, and a clear states no price even when the
         throw new Error(`rejected ${previousAddress} ${guestName}`)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(cleared.ride).toMatchObject({ state: 'unassigned', driverId: null, vehicleId: null })
@@ -772,6 +779,7 @@ it('reports each Driver on a reassign, and a clear states no price even when the
         throw new Error(`rejected ${previousAddress} ${guestName}`)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(lost.workOrders).toEqual([{ driverId: previous.id, outcome: 'failed' }])
@@ -2522,6 +2530,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
         sent.push(mail)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(cancelled.ride).toMatchObject({
@@ -2563,6 +2572,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
         untouched.push(mail.to)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(none.ride).toMatchObject({ state: 'cancelled', driverId: null, vehicleId: null })
@@ -2585,6 +2595,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
         blankSent.push(mail.to)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(noEmail.ride.state).toBe('cancelled')
@@ -2609,6 +2620,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
         throw new Error(`rejected ${address} ${guestName} ${tabla} ${pickup} ${dropOff}`)
       },
       async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
     },
   })
   expect(failed.workOrders).toEqual([{ driverId: driver.id, outcome: 'failed' }])

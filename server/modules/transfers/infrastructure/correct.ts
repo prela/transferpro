@@ -126,7 +126,8 @@ export async function correctTransferForOffice(
   if (changed.length === 0)
     return toRecorded(current, stored)
 
-  // A different designator throws away the landing and the expected arrival (ADR-0028).
+  // A different designator throws away the landing, the expected arrival,
+  // and the will-not-arrive memory (ADR-0028).
   const clearLanding = flightNumberChangeClearsLanding(stored.flightNumber, input.flightNumber)
   await writeTransfer(transaction, transferId, input, clearLanding)
   const returned = correctionReturnsAcceptedRide(current.state, changed)
@@ -257,7 +258,9 @@ async function writeTransfer(
         tabla = ${input.tabla},
         landing_at = case when ${clearLanding} then null else landing_at end,
         expected_arrival_at = case when ${clearLanding} then null else expected_arrival_at end,
-        expected_arrival_basis_at = case when ${clearLanding} then null else expected_arrival_basis_at end
+        expected_arrival_basis_at = case when ${clearLanding} then null else expected_arrival_basis_at end,
+        flight_will_not_arrive = case when ${clearLanding} then false else flight_will_not_arrive end,
+        flight_will_not_arrive_handed = case when ${clearLanding} then false else flight_will_not_arrive_handed end
     where id = ${transferId}
     returning id
   `))
