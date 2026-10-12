@@ -297,3 +297,76 @@ test('the office marks a ride done, and the audit log names that person', async 
   await expect(doneRow).toContainText(tenant.adminName)
   await expect(doneRow).toContainText('Ana Free')
 })
+
+test('the office cancels a ride, the row stays, and the audit log names that person', async ({ page }) => {
+  const tenant = await seedTenant('day-cancel-ride')
+  const mail: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('resend.com'))
+      mail.push(request.url())
+  })
+
+  await useTheme(page, 'light')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const driverId = await addDriver(page, 'Iva Vozi', '+385911110300')
+  const vehicleId = await addVehicle(page, 'DU300AA')
+  const clientId = await createdId(await page.request.post('/api/clients', {
+    data: { name: 'Klijent Otkaz', kind: 'agency' },
+  }))
+  const startLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Polazak Otkaz', kind: 'airport' },
+  }))
+  const endLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Dolazak Otkaz', kind: 'hotel' },
+  }))
+  const places = { clientId, startLocationId, endLocationId }
+  const open = await recordTodayRide(page, 'Ema Slobodna', '09:00', places)
+  const held = await recordTodayRide(page, 'Luka Drzi', '10:00', places)
+  const finished = await recordTodayRide(page, 'Mia Gotova', '11:00', places)
+  await assignRide(page, held.rideId, driverId, vehicleId)
+  await assignRide(page, finished.rideId, driverId, vehicleId)
+  expect((await page.request.post(`/api/rides/${finished.rideId}/done`, { data: {} })).ok()).toBeTruthy()
+
+  await page.getByRole('link', { name: 'Transferi' }).click()
+  const openRow = page.getByRole('row', { name: 'Ema Slobodna' })
+  const heldRow = page.getByRole('row', { name: 'Luka Drzi' })
+  const finishedRow = page.getByRole('row', { name: 'Mia Gotova' })
+  const cancelName = 'Otkaži vožnju: Luka Drzi'
+
+  await expect(openRow.getByRole('button', { name: 'Otkaži vožnju: Ema Slobodna' })).toBeVisible()
+  await expect(heldRow.getByRole('button', { name: cancelName })).toBeVisible()
+  await expect(finishedRow.getByRole('button', { name: /Otkaži vožnju/ })).toHaveCount(0)
+  await heldRow.getByRole('button', { name: cancelName }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('Ovo otkazuje vožnju. Ostaje u evidenciji, a daljnja promjena nije moguća.')
+  await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(await dayRide(page, held.day, 'Luka Drzi')).toMatchObject({ state: 'assigned', mustAccept: false })
+  expect(mail).toEqual([])
+
+  await switchTheme(page, 'dark')
+  await switchLocale(page, 'en')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  const englishName = 'Cancel ride: Luka Drzi'
+  await heldRow.getByRole('button', { name: englishName }).click()
+  await expect(dialog).toContainText('This calls the ride off. It stays on record, and no further change is possible.')
+  const cancelResponse = page.waitForResponse(response =>
+    response.url().includes(`/api/rides/${held.rideId}/cancel`) && response.request().method() === 'POST',
+  )
+  await dialog.getByRole('button', { name: 'Cancel ride', exact: true }).click()
+  expect((await cancelResponse).status()).toBe(200)
+  await expect(heldRow.getByRole('cell', { name: 'Cancelled', exact: true })).toBeVisible()
+  await expect(heldRow.getByRole('button', { name: englishName })).toHaveCount(0)
+  expect(await dayRide(page, held.day, 'Luka Drzi')).toMatchObject({
+    state: 'cancelled',
+    mustAccept: false,
+  })
+  expect(await dayRide(page, open.day, 'Ema Slobodna')).toMatchObject({ state: 'unassigned' })
+  expect(mail).toEqual([])
+
+  await page.getByRole('link', { name: 'Audit log' }).click()
+  await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible()
+  const cancelledRow = page.getByRole('row', { name: 'Ride cancelled' })
+  await expect(cancelledRow).toContainText(tenant.adminName)
+  await expect(cancelledRow).toContainText('Iva Vozi')
+})

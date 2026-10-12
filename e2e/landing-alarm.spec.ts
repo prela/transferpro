@@ -66,6 +66,11 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
     },
   }))
 
+  // Pickup 90 minutes ago keeps the unclosed mark (pickup + 60). Landing 150
+  // minutes ago keeps the landing alarm (landing + duration 60 + grace 60).
+  // Near the operational-day start that pickup can fall on the previous day;
+  // the board selects that day explicitly after every remount.
+  const timeZone = 'Europe/Zagreb'
   const now = new Date()
   const pickup = new Date(now.getTime() - 90 * 60 * 1000)
   const landing = new Date(now.getTime() - 150 * 60 * 1000)
@@ -121,8 +126,16 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
   await switchTheme(page, 'light')
 
   await page.goto('/transfers')
-  const day = operationalDateInTimeZone('Europe/Zagreb', pickup)
-  await page.locator('#transfer-day').fill(day)
+  // switchLocale / switchTheme remount the board on today's operational day.
+  // Re-select the pickup day after every return (same gap as the first fill).
+  const pickupDay = operationalDateInTimeZone(timeZone, pickup)
+  async function showPickupDay(): Promise<void> {
+    const today = operationalDateInTimeZone(timeZone, new Date())
+    await expect(page.locator('#transfer-day')).toHaveValue(today)
+    await page.locator('#transfer-day').fill(pickupDay)
+    await expect(page.locator('#transfer-day')).toHaveValue(pickupDay)
+  }
+  await showPickupDay()
   const boardLanded = page.getByRole('row').filter({ hasText: 'Landed Lana' })
   const boardOpen = page.getByRole('row').filter({ hasText: 'Open Lara' })
   await expect(boardLanded).toContainText('Landing alarm')
@@ -130,7 +143,9 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
   await expect(boardOpen).not.toContainText('Landing alarm')
   await expect(boardOpen.getByRole('button', { name: 'Change vehicle: Open Lara' })).toBeVisible()
   await switchLocale(page, 'hr')
+  await showPickupDay()
   await expect(page.getByRole('row').filter({ hasText: 'Landed Lana' })).toContainText('Alarm slijetanja')
   await switchTheme(page, 'dark')
+  await showPickupDay()
   await expect(page.getByRole('row').filter({ hasText: 'Landed Lana' })).toContainText('Alarm slijetanja')
 })
