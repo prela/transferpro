@@ -1,11 +1,13 @@
 import type { AppEnv, JobQueue, Logger } from '../../../core/index'
-import type { ArrivalNoticePort, FlightStatusPort } from './flight-landing'
+import type { Mailer } from '../../tenancy'
+import type { FlightStatusPort } from './flight-landing'
 import pg from 'pg'
 import { z } from 'zod'
 import { FLIGHT_ASK_EVERY_MINUTES } from '../../../../shared'
 import { getLogger, loadAppEnv } from '../../../core/index'
 import { createPgBossJobQueue } from '../../../core/infrastructure'
-import { noArrivalNotice, noFlightStatusVendor, refreshFlightLandings } from './flight-landing'
+import { mailerForApp } from '../../tenancy'
+import { noFlightStatusVendor, refreshFlightLandings } from './flight-landing'
 
 /**
  * Recurring tick. Its payload is empty: no flight number, guest name, or code.
@@ -34,7 +36,7 @@ export async function registerFlightLanding(
   options: {
     readonly log: Logger
     readonly status: FlightStatusPort
-    readonly notices?: ArrivalNoticePort
+    readonly notices: Pick<Mailer, 'notifyArrivalMoved'>
     readonly listTenantIds: (now: Date) => Promise<readonly string[]>
     readonly now?: () => Date
   },
@@ -54,7 +56,7 @@ export async function registerFlightLanding(
       now: new Date(asked.askedAt),
       transaction: scope.transaction,
       status: options.status,
-      notices: options.notices ?? noArrivalNotice,
+      notices: options.notices,
       log: options.log,
     })
   })
@@ -73,7 +75,7 @@ export async function startFlightLandingWorker(env: AppEnv = loadAppEnv(), log: 
   await registerFlightLanding(queue, {
     log,
     status: noFlightStatusVendor,
-    notices: noArrivalNotice,
+    notices: mailerForApp(env),
     async listTenantIds(now) {
       const listed = await pool.query(
         'select tenant_id from app.tenants_due_flight_landing($1)',

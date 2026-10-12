@@ -26,9 +26,21 @@ export interface WorkOrderMail {
   readonly html: string
 }
 
+/**
+ * The expected arrival moved. The wording of the mail is a later ticket.
+ * This is the same port, not a new channel. The instants are ISO-8601 UTC.
+ */
+export interface ArrivalMovedNotice {
+  readonly rideId: string
+  readonly driverId: string
+  readonly previous: string
+  readonly next: string
+}
+
 export interface Mailer {
   sendInvitation: (mail: InvitationMail) => Promise<void>
   sendWorkOrder: (mail: WorkOrderMail) => Promise<void>
+  notifyArrivalMoved: (notice: ArrivalMovedNotice) => Promise<void>
 }
 
 /**
@@ -45,14 +57,21 @@ export class ResendTransportError extends Error {
 const resendMailers = new WeakSet<Mailer>()
 const consoleMailers = new WeakSet<Mailer>()
 
-/** Records the invite and the work order, and does not call the network. */
-export function createFakeMailer(outbox: InvitationMail[] = [], workOrders: WorkOrderMail[] = []): Mailer {
+/** Records the invite, the work order, and an arrival movement. It does not call the network. */
+export function createFakeMailer(
+  outbox: InvitationMail[] = [],
+  workOrders: WorkOrderMail[] = [],
+  arrivalMoves: ArrivalMovedNotice[] = [],
+): Mailer {
   return {
     async sendInvitation(mail) {
       outbox.push({ ...mail })
     },
     async sendWorkOrder(mail) {
       workOrders.push({ ...mail })
+    },
+    async notifyArrivalMoved(notice) {
+      arrivalMoves.push({ ...notice })
     },
   }
 }
@@ -87,6 +106,16 @@ export function createConsoleMailer(log?: Logger): Mailer {
       logger.info({
         event: 'mail.console',
         kind: 'work-order',
+      })
+    },
+    async notifyArrivalMoved(notice) {
+      // The address is not on this fact. The instants stay off the log.
+      const logger = log ?? getLogger()
+      logger.info({
+        event: 'mail.console',
+        kind: 'arrival-moved',
+        rideId: notice.rideId,
+        driverId: notice.driverId,
       })
     },
   }
@@ -201,6 +230,8 @@ export function createResendMailer(apiKey: string, fetchImpl: typeof fetch = fet
     async sendWorkOrder(mail) {
       await post(mail, 'Work order email was not sent.')
     },
+    // The message text is a later ticket. The fact is accepted and no mail is sent.
+    async notifyArrivalMoved() {},
   }
   resendMailers.add(mailer)
   return mailer

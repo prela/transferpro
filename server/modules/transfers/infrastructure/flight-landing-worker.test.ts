@@ -76,6 +76,9 @@ describe('flight landing schedule', () => {
           return []
         },
       },
+      notices: {
+        async notifyArrivalMoved() {},
+      },
       now: () => askedAt,
       async listTenantIds() {
         return [tenantId]

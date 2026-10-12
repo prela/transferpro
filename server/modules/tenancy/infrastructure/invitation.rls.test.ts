@@ -52,6 +52,7 @@ const mailer = {
     sent.push(mail)
   },
   async sendWorkOrder() {},
+  async notifyArrivalMoved() {},
 }
 
 const appPool = new pg.Pool({ connectionString: databaseUrl })

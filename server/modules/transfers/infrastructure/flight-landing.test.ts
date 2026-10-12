@@ -1,7 +1,8 @@
 import type { SQL } from 'drizzle-orm'
 import type { RideState } from '../../../../shared'
 import type { Logger, TenantTransaction } from '../../../core/index'
-import type { ArrivalMovedFact, ArrivalNoticePort, FlightStatusPort } from './flight-landing'
+import type { ArrivalMovedNotice, Mailer } from '../../tenancy'
+import type { FlightStatusPort } from './flight-landing'
 import { Writable } from 'node:stream'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
@@ -154,12 +155,12 @@ function logCapture(): { log: Logger, text: () => string } {
   }
 }
 
-function noticesPort(): ArrivalNoticePort & { facts: ArrivalMovedFact[] } {
-  const facts: ArrivalMovedFact[] = []
+function noticesPort(): Pick<Mailer, 'notifyArrivalMoved'> & { facts: ArrivalMovedNotice[] } {
+  const facts: ArrivalMovedNotice[] = []
   return {
     facts,
-    async arrivalMoved(fact) {
-      facts.push(fact)
+    async notifyArrivalMoved(notice) {
+      facts.push(notice)
     },
   }
 }
@@ -347,8 +348,8 @@ it('hands a movement of exactly 15 minutes, earlier or later, with both instants
   expect(earlier.notices.facts).toEqual([{
     rideId,
     driverId,
-    previous: new Date(firstArrival),
-    next: new Date('2026-10-11T13:45:00.000Z'),
+    previous: firstArrival,
+    next: '2026-10-11T13:45:00.000Z',
   }])
   expect(earlier.rows[0]?.state).toBe('accepted')
 
@@ -360,8 +361,8 @@ it('hands a movement of exactly 15 minutes, earlier or later, with both instants
   expect(later.notices.facts).toEqual([{
     rideId,
     driverId,
-    previous: new Date(firstArrival),
-    next: new Date('2026-10-11T14:15:00.000Z'),
+    previous: firstArrival,
+    next: '2026-10-11T14:15:00.000Z',
   }])
   expect(later.rows[0]?.expectedArrivalBasis?.toISOString()).toBe('2026-10-11T14:15:00.000Z')
 })
@@ -381,8 +382,8 @@ it('stores a movement with no Driver, then hands it once on the next ask after a
   expect(told.notices.facts).toEqual([{
     rideId,
     driverId,
-    previous: new Date(firstArrival),
-    next: new Date(moved),
+    previous: firstArrival,
+    next: moved,
   }])
   const again = await ask(stored, [expected(moved)])
   expect(again.notices.facts).toEqual([])

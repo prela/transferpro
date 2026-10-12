@@ -1,5 +1,6 @@
 import type { RideState } from '../../../../shared'
 import type { Logger, TenantTransaction } from '../../../core/index'
+import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { chooseFlightArrival, FLIGHT_ASK_LEAD_MS, flightAskDates, flightDesignator, landingTimeInFuture, parseFlightArrivals, storeExpectedArrival } from '../../../../shared'
@@ -17,27 +18,6 @@ export interface FlightStatusPort {
 }
 
 const finished: readonly RideState[] = ['done', 'no-show', 'cancelled']
-
-/**
- * The fact the work-order port receives when an expected arrival moves.
- * The mail wording is a later ticket. This does not add a channel.
- */
-export interface ArrivalMovedFact {
-  readonly rideId: string
-  readonly driverId: string
-  readonly previous: Date
-  readonly next: Date
-}
-
-/** ADR-0026's port, for this fact only. The v1 mail adapter is not this ticket. */
-export interface ArrivalNoticePort {
-  arrivalMoved: (fact: ArrivalMovedFact) => Promise<void>
-}
-
-/** This ticket does not write the mail. The ask still hands the fact here. */
-export const noArrivalNotice: ArrivalNoticePort = {
-  async arrivalMoved() {},
-}
 
 interface TrackedRide {
   readonly rideId: string
@@ -224,7 +204,7 @@ export interface FlightLandingAsk {
   readonly now: Date
   readonly transaction: TenantTransaction
   readonly status: FlightStatusPort
-  readonly notices: ArrivalNoticePort
+  readonly notices: Pick<Mailer, 'notifyArrivalMoved'>
   readonly log: Logger
 }
 
@@ -268,11 +248,11 @@ export async function refreshFlightLandings(ask: FlightLandingAsk): Promise<void
       )
       await writeExpectedArrival(ask.transaction, ride.transferId, update.expectedArrival, update.basis)
       if (update.moved !== null && ride.driverId !== null) {
-        await ask.notices.arrivalMoved({
+        await ask.notices.notifyArrivalMoved({
           rideId: ride.rideId,
           driverId: ride.driverId,
-          previous: update.moved.previous,
-          next: update.moved.next,
+          previous: update.moved.previous.toISOString(),
+          next: update.moved.next.toISOString(),
         })
         ask.log.info({ rideId: ride.rideId, outcome: 'arrival-moved' }, 'flight landing ask')
       }
@@ -307,7 +287,7 @@ export async function askFlightLandings(input: {
   readonly tenantIds: readonly string[]
   readonly withTenant: (tenantId: string, run: (transaction: TenantTransaction) => Promise<void>) => Promise<void>
   readonly status: FlightStatusPort
-  readonly notices: ArrivalNoticePort
+  readonly notices: Pick<Mailer, 'notifyArrivalMoved'>
   readonly log: Logger
 }): Promise<void> {
   for (const tenantId of input.tenantIds) {
