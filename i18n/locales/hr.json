@@ -132,12 +132,14 @@
         "archived": "Lokacija arhivirana"
       },
       "transfer": {
-        "created": "Transfer zabilježen"
+        "created": "Transfer zabilježen",
+        "corrected": "Transfer ispravljen"
       },
       "ride": {
         "assigned": "Vožnja dodijeljena",
         "accepted": "Vožnja prihvaćena",
         "accepted_by_phone": "Prihvaćanje potvrđeno telefonom",
+        "returned_to_assigned": "Vožnja vraćena na dodijeljeno",
         "done": "Vožnja obavljena",
         "cancelled": "Vožnja otkazana",
         "declined": "Vožnja odbijena",
@@ -302,7 +304,15 @@
     "samePlace": "Polazište i odredište ne mogu biti isto mjesto.",
     "rejected": "Transfer nije prihvaćen.",
     "notFound": "Taj klijent ili mjesto nije na popisu.",
-    "forbidden": "Vozač ne može zabilježiti transfer ni vidjeti dnevni popis.",
+    "forbidden": "Vozač ne može zabilježiti ni ispraviti transfer, ni vidjeti dnevni popis.",
+    "correct": "Ispravi",
+    "correctFor": "Ispravi: {guest}",
+    "correctTitle": "Ispravi ovaj transfer",
+    "saveCorrection": "Spremi ispravak",
+    "savingCorrection": "Spremanje",
+    "corrected": "Ispravljeno.",
+    "cancelCorrect": "Odustani",
+    "closed": "Ta vožnja je završena. Rezervacija nije promijenjena.",
     "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
     "saveFailed": "Transfer nije zabilježen. Pokušajte ponovno.",
     "locationArchived": "To je mjesto arhivirano. Odaberite jedno s popisa.",
@@ -333,7 +343,10 @@
       "airportMark": "Aerodromsko preuzimanje",
       "luggageCount": "Prtljaga",
       "childSeatCount": "Dječje sjedalice",
-      "note": "Napomena"
+      "note": "Napomena",
+      "clientId": "Klijent",
+      "startLocationId": "Polazište",
+      "endLocationId": "Odredište"
     }
   },
   "driverRides": {

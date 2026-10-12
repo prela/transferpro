@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canCancelRide, canDeclineRide, canMarkRideDone, canRecordLandingTime, CHILD_SEAT_COUNT_MAX, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCreateTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
+import { canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCreateTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -173,4 +173,47 @@ it('allows a decline only from assigned, with the copied flag on or off', () => 
   expect(canDeclineRide('done')).toBe(false)
   expect(canDeclineRide('no-show')).toBe(false)
   expect(canDeclineRide('cancelled')).toBe(false)
+})
+
+const otherEnd = 'c1b2c3d4-7777-4777-8777-777777777777'
+
+it('returns an accepted Ride only when the pickup, a place, or the flight number changes', () => {
+  const stored = parseCreateTransfer({ ...body, flightNumber: flight, note }, now)
+  expect(canCorrectTransfer('unassigned')).toBe(true)
+  expect(canCorrectTransfer('assigned')).toBe(true)
+  expect(canCorrectTransfer('accepted')).toBe(true)
+  expect(canCorrectTransfer('done')).toBe(false)
+  expect(canCorrectTransfer('no-show')).toBe(false)
+  expect(canCorrectTransfer('cancelled')).toBe(false)
+
+  expect(changedTransferFields(stored, stored)).toEqual([])
+  expect(correctionReturnsAcceptedRide('accepted', [])).toBe(false)
+
+  const guestOnly = changedTransferFields(stored, { ...stored, guestName: 'Iva Ivić' })
+  expect(guestOnly).toEqual(['guestName'])
+  expect(correctionReturnsAcceptedRide('accepted', guestOnly)).toBe(false)
+  expect(correctionReturnsAcceptedRide('assigned', ['flightNumber'])).toBe(false)
+  expect(correctionReturnsAcceptedRide('unassigned', ['pickupAt'])).toBe(false)
+
+  const sameInstant = changedTransferFields(stored, { ...stored, pickupAt: '2026-10-06T22:30:00Z' })
+  expect(sameInstant).toEqual([])
+
+  expect(correctionReturnsAcceptedRide('accepted', changedTransferFields(stored, {
+    ...stored,
+    pickupAt: '2026-10-06T23:00:00.000Z',
+  }))).toBe(true)
+  expect(correctionReturnsAcceptedRide('accepted', changedTransferFields(stored, {
+    ...stored,
+    endLocationId: otherEnd,
+  }))).toBe(true)
+  expect(correctionReturnsAcceptedRide('accepted', changedTransferFields(stored, {
+    ...stored,
+    flightNumber: 'OU 392',
+  }))).toBe(true)
+  expect(correctionReturnsAcceptedRide('accepted', changedTransferFields(stored, {
+    ...stored,
+    payment: 'card',
+    airportMark: true,
+    price: '10.00',
+  }))).toBe(false)
 })

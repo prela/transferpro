@@ -146,10 +146,12 @@ it('lists a ride.accepted entry with the Driver name and does not join the plate
   const text = queries[0]?.sql ?? ''
   const vehicleJoin = text.slice(text.indexOf('left join app.vehicles'))
   expect(text).toContain('ride.accepted')
+  expect(text).toContain('ride.returned_to_assigned')
   expect(text).toContain('ride.done')
   expect(text).toContain('ride.declined')
   expect(text).toContain('as "driverName"')
   expect(vehicleJoin).not.toContain('ride.accepted')
+  expect(vehicleJoin).not.toContain('ride.returned_to_assigned')
   expect(vehicleJoin).not.toContain('ride.done')
   expect(text).toContain('ride.cancelled')
   expect(text).toContain('ride.landing_recorded')

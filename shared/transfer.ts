@@ -111,6 +111,64 @@ export function canRecordLandingTime(state: RideState): boolean {
 }
 
 /**
+ * ADR-0010. A dispatcher or an admin may correct the booking while the Ride
+ * is unfinished. `done`, `no-show`, and `cancelled` keep the details they have.
+ */
+export function canCorrectTransfer(state: RideState): boolean {
+  return state === 'unassigned' || state === 'assigned' || state === 'accepted'
+}
+
+/**
+ * Field names a correction may store. The Client and the two Locations are
+ * ids on the row as well, and a change of either is still a field name.
+ * A guest name, a flight number, a note, a tabla, or a price is not a name
+ * in this list: those values stay on the Transfer.
+ */
+export const TRANSFER_CORRECTION_FIELDS = [
+  'clientId',
+  'pickupAt',
+  'startLocationId',
+  'endLocationId',
+  ...TRANSFER_FIELDS.filter(field => field !== 'pickupAt'),
+] as const
+
+export const transferCorrectionFieldSchema = z.enum(TRANSFER_CORRECTION_FIELDS)
+
+export type TransferCorrectionField = z.infer<typeof transferCorrectionFieldSchema>
+
+/**
+ * The four facts the Driver accepted. Any other booking field leaves an
+ * accepted Ride accepted (ADR-0010).
+ */
+const MATERIAL_TRANSFER_FIELDS = ['pickupAt', 'startLocationId', 'endLocationId', 'flightNumber'] as const
+
+/**
+ * Names that differ between the stored booking and the correction.
+ * Pickup times match as instants, so a different ISO spelling of the same
+ * moment is not a change. The order is {@link TRANSFER_CORRECTION_FIELDS}.
+ */
+export function changedTransferFields(before: CreateTransfer, after: CreateTransfer): TransferCorrectionField[] {
+  return TRANSFER_CORRECTION_FIELDS.filter(field => !sameTransferField(field, before, after))
+}
+
+/**
+ * An accepted Ride returns to assigned only when one of the four trip facts
+ * changed. Unassigned stays unassigned. Assigned stays assigned.
+ */
+export function correctionReturnsAcceptedRide(
+  state: RideState,
+  changed: readonly TransferCorrectionField[],
+): boolean {
+  return state === 'accepted' && changed.some(field => (MATERIAL_TRANSFER_FIELDS as readonly string[]).includes(field))
+}
+
+function sameTransferField(field: TransferCorrectionField, before: CreateTransfer, after: CreateTransfer): boolean {
+  if (field === 'pickupAt')
+    return new Date(before.pickupAt).getTime() === new Date(after.pickupAt).getTime()
+  return before[field] === after[field]
+}
+
+/**
  * Decline is allowed from `assigned` only (ADR-0006). The copied flag does
  * not matter: a Ride that must be accepted, and one that need not, can both
  * be declined while they are still `assigned`. `accepted` is refused.

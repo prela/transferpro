@@ -132,12 +132,14 @@
         "archived": "Location archived"
       },
       "transfer": {
-        "created": "Transfer recorded"
+        "created": "Transfer recorded",
+        "corrected": "Transfer corrected"
       },
       "ride": {
         "assigned": "Ride assigned",
         "accepted": "Ride accepted",
         "accepted_by_phone": "Acceptance confirmed by phone",
+        "returned_to_assigned": "Ride returned to assigned",
         "done": "Ride marked done",
         "cancelled": "Ride cancelled",
         "declined": "Ride declined",
@@ -302,9 +304,17 @@
     "samePlace": "The start and the end cannot be the same place.",
     "rejected": "The transfer was not accepted.",
     "notFound": "That client or place is not on the list.",
-    "forbidden": "A driver cannot record a transfer or open the day list.",
+    "forbidden": "A driver cannot record or correct a transfer, or open the day list.",
     "signedOut": "You are signed out. Sign in and try again.",
     "saveFailed": "The transfer was not recorded. Try again.",
+    "correct": "Correct",
+    "correctFor": "Correct: {guest}",
+    "correctTitle": "Correct this transfer",
+    "saveCorrection": "Save correction",
+    "savingCorrection": "Saving",
+    "corrected": "Corrected.",
+    "cancelCorrect": "Cancel",
+    "closed": "That ride is finished. The booking was not changed.",
     "locationArchived": "That place is archived. Choose one from the list.",
     "unknownPlace": "Unknown place",
     "status": "Status",
@@ -333,7 +343,10 @@
       "airportMark": "Airport pickup",
       "luggageCount": "Luggage",
       "childSeatCount": "Child seats",
-      "note": "Note"
+      "note": "Note",
+      "clientId": "Client",
+      "startLocationId": "Where it starts",
+      "endLocationId": "Where it ends"
     }
   },
   "driverRides": {

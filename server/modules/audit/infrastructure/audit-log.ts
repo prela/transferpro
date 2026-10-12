@@ -34,7 +34,10 @@ const listLimit = 100
  * has a null name rather than one read from `auth.user`.
  * A `ride.assigned` row stores ids only. The Driver name and Vehicle plate
  * are joined here for the screen. A `ride.accepted` row joins the Driver
- * name and does not join the plate. A `ride.accepted_by_phone` row joins
+ * name and does not join the plate. A `ride.returned_to_assigned` row joins
+ * the Driver name and does not join the plate. The actor is the office
+ * member who corrected the Transfer.
+ * A `ride.accepted_by_phone` row joins
  * neither: the screen names the office member from `tenant_member`, and a
  * member who has left has a null name. The plate stays off that row.
  * A `ride.done` row joins the Driver name and does not join the plate.
@@ -68,7 +71,7 @@ export async function listAuditEntries(transaction: TenantTransaction): Promise<
     left join app.tenant_member as actor on actor.user_id = e.actor_user_id
     left join app.tenant_member as subject on subject.user_id = e.subject_user_id
     left join app.drivers as assigned_driver
-      on e.action in ('ride.assigned', 'ride.accepted', 'ride.done', 'ride.cancelled', 'ride.declined', 'ride.landing_recorded', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned')
+      on e.action in ('ride.assigned', 'ride.accepted', 'ride.returned_to_assigned', 'ride.done', 'ride.cancelled', 'ride.declined', 'ride.landing_recorded', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned')
       and assigned_driver.tenant_id = e.tenant_id
       and assigned_driver.id = (e.data->>'driverId')::uuid
     left join app.vehicles as assigned_vehicle

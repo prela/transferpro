@@ -40,6 +40,20 @@ export function sameFlightDesignator(left: string, right: string): boolean {
 }
 
 /**
+ * ADR-0028. A different flight designator throws away the landing stored for
+ * the previous one, including a designator replaced by a note or cleared.
+ * Spacing that still names the same designator (`OU384` and `OU 384`) clears
+ * nothing. The same stored text clears nothing. A note that stays a note
+ * (`VIP` to `meet at desk`) is not a designator change and clears nothing.
+ * `VIP 2` is a designator (`VIP` plus `2`), so a note becoming that clears.
+ */
+export function flightNumberChangeClearsLanding(previous: string | null, next: string | null): boolean {
+  if (previous === next)
+    return false
+  return flightDesignator(previous) !== flightDesignator(next)
+}
+
+/**
  * The pickup's calendar date in the Tenant zone, and the day on either side.
  * A landing just before midnight still sits next to a pickup just after.
  */
