@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Client, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
-import { assignedRideSchema, calendarDateInTimeZone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema } from '../../shared'
+import { assignedRideSchema, calendarDateInTimeZone, canMarkRideDone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema } from '../../shared'
 import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
@@ -32,6 +32,9 @@ const clearErrorKey = ref<'ride.notOpen' | 'ride.notFound' | 'ride.signedOut' | 
 const acceptingByPhone = ref<{ rideId: string, guestName: string } | null>(null)
 const acceptByPhonePending = ref(false)
 const acceptByPhoneErrorKey = ref<AcceptByPhoneFailure | null>(null)
+const markingDone = ref<{ rideId: string, guestName: string } | null>(null)
+const markDonePending = ref(false)
+const markDoneErrorKey = ref<MarkDoneFailure | null>(null)
 const dayListRegion = ref<HTMLElement | null>(null)
 
 const clientId = ref<string | undefined>()
@@ -85,6 +88,11 @@ type TransferFailure
 type AcceptByPhoneFailure
   = 'ride.acceptByPhoneFailed'
     | 'ride.acceptByPhoneConflict'
+    | 'ride.signedOut'
+
+type MarkDoneFailure
+  = 'ride.markDoneFailed'
+    | 'ride.markDoneConflict'
     | 'ride.signedOut'
 
 let loadTicket = 0
@@ -180,6 +188,11 @@ function closeAssign() {
  */
 function canRecordAcceptanceByPhone(ride: TransferDayRide): boolean {
   return ride.state === 'assigned' && ride.mustAccept === true
+}
+
+/** Flag off from `assigned`. Flag on only from `accepted`. Unassigned has no control. */
+function canFinish(ride: TransferDayRide): boolean {
+  return canMarkRideDone(ride.state, ride.mustAccept)
 }
 
 /** Assigned or accepted, with both a Driver and a Vehicle. Those are the three office commands. */
@@ -372,6 +385,76 @@ async function confirmAcceptByPhone() {
   }
   finally {
     acceptByPhonePending.value = false
+  }
+}
+
+function markDoneButtonId(rideId: string): string {
+  return `mark-done-${rideId}`
+}
+
+function openMarkDone(ride: TransferDayRide) {
+  if (!canFinish(ride) || markDonePending.value)
+    return
+  markDoneErrorKey.value = null
+  markingDone.value = { rideId: ride.rideId, guestName: ride.guestName }
+}
+
+function closeMarkDone() {
+  if (markDonePending.value)
+    return
+  const rideId = markingDone.value?.rideId
+  markDoneErrorKey.value = null
+  markingDone.value = null
+  if (!rideId)
+    return
+  void nextTick(() => {
+    document.getElementById(markDoneButtonId(rideId))?.focus()
+  })
+}
+
+const markDoneOpen = computed({
+  get: () => markingDone.value !== null,
+  set(open: boolean) {
+    if (!open)
+      closeMarkDone()
+  },
+})
+
+function markDoneFailureKey(error: unknown): MarkDoneFailure {
+  if (httpStatus(error) === 409)
+    return 'ride.markDoneConflict'
+  if (httpStatus(error) === 401)
+    return 'ride.signedOut'
+  return 'ride.markDoneFailed'
+}
+
+/**
+ * POST /api/rides/:id/done with an empty body. Success reloads the day.
+ * The Ride stays on the day list and shows Done. Cancel writes nothing.
+ * This action does not send mail.
+ */
+async function confirmMarkDone() {
+  const target = markingDone.value
+  if (!target || markDonePending.value)
+    return
+  markDonePending.value = true
+  markDoneErrorKey.value = null
+  try {
+    rideSchema.parse(await $fetch(`/api/rides/${target.rideId}/done`, {
+      method: 'POST',
+      body: {},
+    }))
+    notifyAuditChanged()
+    markingDone.value = null
+    await loadDay()
+  }
+  catch (error) {
+    markDoneErrorKey.value = markDoneFailureKey(error)
+    if (httpStatus(error) === 409)
+      await loadDay()
+  }
+  finally {
+    markDonePending.value = false
   }
 }
 
@@ -796,6 +879,18 @@ onMounted(loadAll)
             >
               {{ t('ride.acceptByPhone') }}
             </UButton>
+            <UButton
+              v-if="canFinish(row.original)"
+              :id="markDoneButtonId(row.original.rideId)"
+              type="button"
+              color="neutral"
+              variant="outline"
+              size="xl"
+              :aria-label="t('ride.markDoneFor', { guest: row.original.guestName })"
+              @click="openMarkDone(row.original)"
+            >
+              {{ t('ride.markDone') }}
+            </UButton>
             <template v-if="canChangeAssignment(row.original)">
               <UButton
                 :id="`change-vehicle-${row.original.rideId}`"
@@ -957,6 +1052,51 @@ onMounted(loadAll)
           @click="confirmAcceptByPhone"
         >
           {{ acceptByPhonePending ? t('ride.acceptByPhoneConfirming') : t('ride.acceptByPhoneConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="markDoneOpen"
+      :title="t('ride.markDoneTitle')"
+      :description="t('ride.markDoneBody')"
+      :dismissible="!markDonePending"
+      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
+    >
+      <template #body>
+        <p v-if="markingDone">
+          {{ markingDone.guestName }}
+        </p>
+        <UAlert
+          v-if="markDoneErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mt-4"
+          :description="t(markDoneErrorKey)"
+        />
+      </template>
+      <template #footer>
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :disabled="markDonePending"
+          @click="closeMarkDone"
+        >
+          {{ t('ride.cancel') }}
+        </UButton>
+        <UButton
+          type="button"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :loading="markDonePending"
+          :disabled="markDonePending"
+          @click="confirmMarkDone"
+        >
+          {{ markDonePending ? t('ride.markDoneConfirming') : t('ride.markDoneConfirm') }}
         </UButton>
       </template>
     </UModal>

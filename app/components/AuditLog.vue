@@ -116,7 +116,9 @@ function detailText(entry: AuditEntry): string {
         vehicle: entry.vehiclePlate ?? '',
       })
     case 'ride.accepted':
+    case 'ride.done':
       // The name is joined from the Driver id. The plate is not on this action.
+      // For done, the who column is the person who marked it done.
       return entry.driverName ?? ''
     case 'ride.accepted_by_phone': {
       // The detail is the office member's name and the sentence that it was confirmed by phone.

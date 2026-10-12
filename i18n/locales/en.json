@@ -138,6 +138,7 @@
         "assigned": "Ride assigned",
         "accepted": "Ride accepted",
         "accepted_by_phone": "Acceptance confirmed by phone",
+        "done": "Ride marked done",
         "vehicle_changed": "Vehicle changed",
         "cleared": "Ride cleared",
         "reassigned": "Ride reassigned"
@@ -347,7 +348,14 @@
     "waiting": "Waiting on acceptance",
     "accept": "Accept ride",
     "accepting": "Accepting",
-    "conflict": "This ride can no longer be accepted."
+    "conflict": "This ride can no longer be accepted.",
+    "done": "Mark done",
+    "doneTitle": "Mark the ride done",
+    "doneBody": "This closes the ride. No further change is possible.",
+    "doneConfirm": "Mark done",
+    "doneConfirming": "Marking",
+    "doneConflict": "This ride can no longer be marked done.",
+    "doneFailed": "The ride was not marked done. Try again."
   },
   "drivers": {
     "nav": "Drivers",
@@ -506,6 +514,14 @@
     "acceptByPhoneConfirming": "Recording",
     "acceptByPhoneFailed": "The acceptance was not recorded. Try again.",
     "acceptByPhoneConflict": "This ride can no longer be accepted.",
+    "markDone": "Mark done",
+    "markDoneFor": "Mark done: {guest}",
+    "markDoneTitle": "Mark the ride done",
+    "markDoneBody": "This closes the ride. No further change is possible.",
+    "markDoneConfirm": "Mark done",
+    "markDoneConfirming": "Marking",
+    "markDoneFailed": "The ride was not marked done. Try again.",
+    "markDoneConflict": "This ride can no longer be marked done.",
     "changeVehicle": "Change vehicle",
     "changeVehicleFor": "Change vehicle: {guest}",
     "changeVehicleTitle": "Change the vehicle",

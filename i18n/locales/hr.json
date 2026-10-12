@@ -138,6 +138,7 @@
         "assigned": "Vožnja dodijeljena",
         "accepted": "Vožnja prihvaćena",
         "accepted_by_phone": "Prihvaćanje potvrđeno telefonom",
+        "done": "Vožnja obavljena",
         "vehicle_changed": "Vozilo promijenjeno",
         "cleared": "Dodjela uklonjena",
         "reassigned": "Vožnja prebačena"
@@ -347,7 +348,14 @@
     "waiting": "Čeka na prihvat",
     "accept": "Prihvati vožnju",
     "accepting": "Prihvaćanje",
-    "conflict": "Ovu vožnju više nije moguće prihvatiti."
+    "conflict": "Ovu vožnju više nije moguće prihvatiti.",
+    "done": "Označi obavljenom",
+    "doneTitle": "Označi vožnju obavljenom",
+    "doneBody": "Ovo zatvara vožnju. Daljnja promjena nije moguća.",
+    "doneConfirm": "Označi obavljenom",
+    "doneConfirming": "Označavanje",
+    "doneConflict": "Ovu vožnju više nije moguće označiti obavljenom.",
+    "doneFailed": "Vožnja nije označena obavljenom. Pokušajte ponovno."
   },
   "drivers": {
     "nav": "Vozači",
@@ -506,6 +514,14 @@
     "acceptByPhoneConfirming": "Bilježenje",
     "acceptByPhoneFailed": "Prihvaćanje nije zabilježeno. Pokušajte ponovno.",
     "acceptByPhoneConflict": "Ovu vožnju više nije moguće prihvatiti.",
+    "markDone": "Označi obavljenom",
+    "markDoneFor": "Označi obavljenom: {guest}",
+    "markDoneTitle": "Označi vožnju obavljenom",
+    "markDoneBody": "Ovo zatvara vožnju. Daljnja promjena nije moguća.",
+    "markDoneConfirm": "Označi obavljenom",
+    "markDoneConfirming": "Označavanje",
+    "markDoneFailed": "Vožnja nije označena obavljenom. Pokušajte ponovno.",
+    "markDoneConflict": "Ovu vožnju više nije moguće označiti obavljenom.",
     "changeVehicle": "Promijeni vozilo",
     "changeVehicleFor": "Promijeni vozilo: {guest}",
     "changeVehicleTitle": "Promjena vozila",

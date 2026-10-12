@@ -47,7 +47,8 @@ export const PICKUP_FUTURE_MONTHS = 18
 
 /**
  * ADR-0005. Creating a Transfer writes `unassigned`. Assignment writes
- * `assigned`. The other labels stay reserved for later commands.
+ * `assigned`. Acceptance writes `accepted`. Done writes `done`.
+ * `no-show` and `cancelled` stay reserved for later commands.
  */
 export const RIDE_STATES = ['unassigned', 'assigned', 'accepted', 'done', 'no-show', 'cancelled'] as const
 
@@ -80,6 +81,15 @@ export const TRANSFER_FIELDS = [
 export const rideStateSchema = z.enum(RIDE_STATES)
 
 export type RideState = z.infer<typeof rideStateSchema>
+
+/**
+ * ADR-0006. The copied flag is the one stored on the Ride.
+ * Off: done is reachable from `assigned`. On: done is reachable only from
+ * `accepted`. Every other pair, including a second done, is refused.
+ */
+export function canMarkRideDone(state: RideState, mustAccept: boolean | null): boolean {
+  return (state === 'assigned' && mustAccept === false) || (state === 'accepted' && mustAccept === true)
+}
 
 export const paymentMethodSchema = z.enum(PAYMENT_METHODS)
 
