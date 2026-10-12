@@ -1,5 +1,5 @@
 import { ESLint } from 'eslint'
-import { expect, it } from 'vitest'
+import { beforeAll, expect, it } from 'vitest'
 
 /**
  * Lint seam (ADR-0011): pg, pg-boss, the node-postgres driver, and the
@@ -8,6 +8,15 @@ import { expect, it } from 'vitest'
  * so the forbidden source is linted in memory against the real config.
  */
 const eslint = new ESLint({ cwd: process.cwd() })
+
+// Antfu's flat config is loaded on the first lintText, not at construction.
+// Pre-commit runs this file immediately after typecheck, and that load
+// exceeds Vitest's default 5s test budget. Pay for it here so whichever
+// assertion runs first is not the one that times out. The hook budget is
+// the cold-load allowance; the tests keep the default.
+beforeAll(async () => {
+  await eslint.lintText('export {}\n', { filePath: 'server/core/index.ts' })
+}, 30_000)
 
 async function restrictedImports(filePath: string, source: string) {
   const [result] = await eslint.lintText(source, { filePath })
@@ -19,8 +28,6 @@ async function restrictedImports(filePath: string, source: string) {
   )
 }
 
-// The first ESLint load in this file is the slow one. After typecheck the
-// default 5s limit is not enough, and the assertions are unchanged.
 it('rejects driver and kernel-adapter imports outside infrastructure and tests', async () => {
   const domainFile = 'server/modules/tenancy/domain/leak.ts'
   const forbidden = [
@@ -51,7 +58,7 @@ it('rejects driver and kernel-adapter imports outside infrastructure and tests',
     `await import('pg')\n`,
   )
   expect(dynamicPgFromKernel).not.toEqual([])
-}, 20_000)
+})
 
 it('allows those imports from infrastructure files and tests', async () => {
   const allowed: Array<[filePath: string, source: string]> = [
