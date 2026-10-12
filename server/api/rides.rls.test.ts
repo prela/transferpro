@@ -20,6 +20,7 @@ import postCancel from './rides/[id]/cancel.post'
 import postClear from './rides/[id]/clear.post'
 import postDecline from './rides/[id]/decline.post'
 import postDone from './rides/[id]/done.post'
+import postLanding from './rides/[id]/landing.post'
 import postReassign from './rides/[id]/reassign.post'
 import getRosterVehicle from './rides/[id]/roster-vehicle.get'
 import postVehicle from './rides/[id]/vehicle.post'
@@ -27,7 +28,8 @@ import postVehicle from './rides/[id]/vehicle.post'
 /**
  * POST /api/rides/:id/assign, GET /api/rides/:id/roster-vehicle,
  * POST /api/rides/:id/accept, POST /api/rides/:id/accept-by-phone,
- * POST /api/rides/:id/done, POST /api/rides/:id/cancel, and POST /api/rides/:id/decline.
+ * POST /api/rides/:id/done, POST /api/rides/:id/cancel, POST /api/rides/:id/decline,
+ * and POST /api/rides/:id/landing.
  * An invalid body is answered before a session exists. The role cases use a
  * real sign-in. The composite foreign key is also tried as the app role.
  */
@@ -80,6 +82,8 @@ app.use('/api/rides', (event) => {
     return postCancel(event)
   if (action === 'decline' && event.method === 'POST')
     return postDecline(event)
+  if (action === 'landing' && event.method === 'POST')
+    return postLanding(event)
   if (action === 'roster-vehicle' && event.method === 'GET')
     return getRosterVehicle(event)
   return new Response('Not Found', { status: 404 })
@@ -2656,4 +2660,204 @@ it('refuses a decline from accepted and writes no transition', async () => {
   expect((await call('POST', `/api/rides/${recorded.ride.id}/decline`, foreign.dispatcher, {})).status).toBe(403)
   expect(await declineAudits(world.tenantId)).toEqual([])
   expect(await declineAlertRows(foreign.tenantId)).toEqual([])
+})
+
+async function landingAt(rideId: string) {
+  const result = await ownerPool.query<{ landing_at: Date | null }>(
+    `select t.landing_at
+     from app.transfers as t
+     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
+     where r.id = $1`,
+    [rideId],
+  )
+  return result.rows[0]?.landing_at ?? null
+}
+
+async function landingAudits(tenantId: string) {
+  const result = await ownerPool.query<{
+    actor_user_id: string
+    subject_user_id: string | null
+    data: { rideId?: string, driverId?: string | null, fields?: string[] }
+  }>(
+    `select actor_user_id, subject_user_id, data from app.audit_entry
+     where tenant_id = $1 and action::text = 'ride.landing_recorded'
+     order by occurred_at, id`,
+    [tenantId],
+  )
+  return result.rows
+}
+
+const pastLanding = '2026-01-15T09:30:00.000Z'
+const laterLanding = '2026-01-15T10:00:00.000Z'
+
+it('refuses a landing body that is not an instant before a session opens', async () => {
+  const world = await office('hasg-land-body')
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 33 * 60 * 60 * 1000).toISOString()))
+  const before = await landingAudits(world.tenantId)
+
+  const keyed = await call('POST', `/api/rides/${recorded.ride.id}/landing`, undefined, { landingAt: pastLanding, note: phone })
+  expect(keyed.status).toBe(400)
+  expect(await keyed.text()).not.toContain(phone)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/landing`, world.dispatcher, {})).status).toBe(400)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/landing`, world.dispatcher, { landingAt: 'yesterday' })).status).toBe(400)
+  expect((await call('POST', '/api/rides/not-a-ride/landing', world.dispatcher, { landingAt: pastLanding })).status).toBe(400)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/landing`, undefined, { landingAt: pastLanding })).status).toBe(401)
+
+  const future = await call('POST', `/api/rides/${recorded.ride.id}/landing`, world.dispatcher, {
+    landingAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  })
+  expect(future.status).toBe(409)
+  expect(await future.text()).toContain('landing_time_in_future')
+
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null })
+  expect(await landingAt(recorded.ride.id)).toBeNull()
+  expect(await landingAudits(world.tenantId)).toEqual(before)
+})
+
+it('lets a dispatcher or an admin record and clear a landing time on an unfinished Ride without moving it', async () => {
+  const world = await office('hasg-land-office')
+  const linked = await linkedDriver(world, 'hasg-land-office-driver@example.test', 'Drago Driver', '+385911110860')
+  await updateDriver(world.admin, linked.driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8601AA'))
+  const open = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 34 * 60 * 60 * 1000).toISOString()))
+  const accepted = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${accepted.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${accepted.ride.id}/accept`, linked.session, {})).status).toBe(200)
+
+  const recorded = await call('POST', `/api/rides/${open.ride.id}/landing`, world.dispatcher, { landingAt: pastLanding })
+  expect(recorded.status).toBe(200)
+  expect(await recorded.json()).toMatchObject({
+    id: open.ride.id,
+    state: 'unassigned',
+    driverId: null,
+    vehicleId: null,
+    mustAccept: null,
+    landingAt: pastLanding,
+  })
+  expect(await rideRow(open.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null })
+
+  const kept = await call('POST', `/api/rides/${accepted.ride.id}/landing`, world.admin, { landingAt: pastLanding })
+  expect(kept.status).toBe(200)
+  expect(await kept.json()).toMatchObject({
+    state: 'accepted',
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+    mustAccept: true,
+    landingAt: pastLanding,
+  })
+  expect(await rideRow(accepted.ride.id)).toMatchObject({
+    state: 'accepted',
+    driver_id: linked.driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: true,
+  })
+
+  const cleared = await call('POST', `/api/rides/${open.ride.id}/landing`, world.dispatcher, { landingAt: null })
+  expect(cleared.status).toBe(200)
+  expect(await cleared.json()).toMatchObject({ state: 'unassigned', landingAt: null })
+  expect(await landingAt(open.ride.id)).toBeNull()
+
+  const audits = await landingAudits(world.tenantId)
+  expect(audits).toEqual([
+    {
+      actor_user_id: world.dispatcherId,
+      subject_user_id: null,
+      data: { rideId: open.ride.id, driverId: null, fields: ['landingAt'] },
+    },
+    {
+      actor_user_id: world.adminUserId,
+      subject_user_id: null,
+      data: { rideId: accepted.ride.id, driverId: linked.driver.id, fields: ['landingAt'] },
+    },
+    {
+      actor_user_id: world.dispatcherId,
+      subject_user_id: null,
+      data: { rideId: open.ride.id, driverId: null, fields: ['landingAt'] },
+    },
+  ])
+  const stored = JSON.stringify(audits)
+  expect(stored).not.toContain(pastLanding)
+  expect(stored).not.toContain(phone)
+  expect(stored).not.toContain(guest)
+  expect(stored).not.toContain('ZG8601AA')
+})
+
+it('lets the assigned Driver record a landing time, and refuses another Driver, a finished Ride, and another Tenant', async () => {
+  const world = await office('hasg-land-driver')
+  const otherFirm = await office('hasg-land-driver-b')
+  const owner = await linkedDriver(world, 'hasg-land-driver-own@example.test', 'Drago Driver', '+385911110861')
+  const other = await linkedDriver(world, 'hasg-land-driver-other@example.test', 'Neda Neno', '+385911110862')
+  await updateDriver(world.admin, owner.driver.id, { mustAccept: false })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8602AA'))
+  const assigned = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 40 * 60 * 60 * 1000).toISOString()))
+  const finished = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 42 * 60 * 60 * 1000).toISOString()))
+  for (const recorded of [assigned, finished]) {
+    expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+      driverId: owner.driver.id,
+      vehicleId: vehicle.id,
+    })).status).toBe(200)
+  }
+
+  const byDriver = await call('POST', `/api/rides/${assigned.ride.id}/landing`, owner.session, { landingAt: laterLanding })
+  expect(byDriver.status).toBe(200)
+  expect(await byDriver.json()).toMatchObject({
+    state: 'assigned',
+    driverId: owner.driver.id,
+    landingAt: laterLanding,
+  })
+  expect(await rideRow(assigned.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: owner.driver.id,
+    must_accept: false,
+  })
+
+  const stolen = await call('POST', `/api/rides/${assigned.ride.id}/landing`, other.session, { landingAt: pastLanding })
+  expect(stolen.status).toBe(404)
+  expect(await landingAt(assigned.ride.id)).toEqual(new Date(laterLanding))
+
+  const unassigned = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 44 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${unassigned.ride.id}/landing`, owner.session, { landingAt: pastLanding })).status).toBe(404)
+  expect(await landingAt(unassigned.ride.id)).toBeNull()
+
+  expect((await call('POST', `/api/rides/${finished.ride.id}/landing`, world.dispatcher, { landingAt: pastLanding })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${finished.ride.id}/done`, owner.session, {})).status).toBe(200)
+  const closed = await call('POST', `/api/rides/${finished.ride.id}/landing`, world.dispatcher, { landingAt: null })
+  expect(closed.status).toBe(409)
+  expect(await closed.text()).toContain('landing_time_closed')
+  expect(await rideRow(finished.ride.id)).toMatchObject({ state: 'done' })
+  expect(await landingAt(finished.ride.id)).toEqual(new Date(pastLanding))
+
+  await ownerPool.query(`update app.rides set state = 'no-show' where id = $1`, [assigned.ride.id])
+  const noShow = await call('POST', `/api/rides/${assigned.ride.id}/landing`, world.admin, { landingAt: null })
+  expect(noShow.status).toBe(409)
+  expect(await landingAt(assigned.ride.id)).toEqual(new Date(laterLanding))
+
+  const cancelled = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 46 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${cancelled.ride.id}/landing`, world.dispatcher, { landingAt: pastLanding })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${cancelled.ride.id}/cancel`, world.dispatcher, {})).status).toBe(200)
+  expect((await call('POST', `/api/rides/${cancelled.ride.id}/landing`, world.admin, { landingAt: null })).status).toBe(409)
+  expect(await rideRow(cancelled.ride.id)).toMatchObject({ state: 'cancelled' })
+  expect(await landingAt(cancelled.ride.id)).toEqual(new Date(pastLanding))
+
+  const foreign = await call('POST', `/api/rides/${finished.ride.id}/landing`, otherFirm.dispatcher, { landingAt: null })
+  expect(foreign.status).toBe(404)
+  expect(await landingAt(finished.ride.id)).toEqual(new Date(pastLanding))
+  expect(await landingAudits(otherFirm.tenantId)).toEqual([])
+
+  const audits = await landingAudits(world.tenantId)
+  expect(audits.map(row => row.actor_user_id)).toEqual([
+    owner.userId,
+    world.dispatcherId,
+    world.dispatcherId,
+  ])
+  expect(audits[0]).toMatchObject({
+    subject_user_id: null,
+    data: { rideId: assigned.ride.id, driverId: owner.driver.id, fields: ['landingAt'] },
+  })
+  const refused = JSON.stringify(audits)
+  expect(refused).not.toContain(laterLanding)
+  expect(refused).not.toContain('+385911110862')
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Client, DeclineAlert, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
-import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, canMarkRideDone, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema } from '../../shared'
+import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, canMarkRideDone, canRecordLandingTime, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema } from '../../shared'
 import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
@@ -24,6 +24,7 @@ const locations = ref<Location[]>([])
 const drivers = ref<Driver[]>([])
 const vehicles = ref<Vehicle[]>([])
 const assigning = ref<{ rideId: string, guestName: string } | null>(null)
+const recordingLanding = ref<{ rideId: string, guestName: string, landingAt: string | null } | null>(null)
 const changingVehicle = ref<{ rideId: string, guestName: string, vehicleId: string } | null>(null)
 const reassigning = ref<{ rideId: string, guestName: string, driverId: string } | null>(null)
 const clearing = ref<{ rideId: string, guestName: string } | null>(null)
@@ -186,6 +187,22 @@ function openAssign(ride: TransferDayRide) {
   changingVehicle.value = null
   reassigning.value = null
   assigning.value = { rideId: ride.rideId, guestName: ride.guestName }
+}
+
+function openLanding(ride: TransferDayRide) {
+  // Finished Rides keep the time they have. The button is hidden; this is the same rule.
+  if (!canRecordLandingTime(ride.state))
+    return
+  recordingLanding.value = {
+    rideId: ride.rideId,
+    guestName: ride.guestName,
+    landingAt: ride.landingAt,
+  }
+}
+
+async function onLandingSaved() {
+  recordingLanding.value = null
+  await loadDay()
 }
 
 function closeAssign() {
@@ -967,6 +984,17 @@ onMounted(loadAll)
         <template #actions-cell="{ row }">
           <div class="flex flex-wrap gap-2">
             <UButton
+              v-if="canRecordLandingTime(row.original.state)"
+              type="button"
+              color="neutral"
+              variant="outline"
+              size="xl"
+              :aria-label="t('ride.recordLandingFor', { guest: row.original.guestName })"
+              @click="openLanding(row.original)"
+            >
+              {{ t('ride.recordLanding') }}
+            </UButton>
+            <UButton
               v-if="row.original.state === 'unassigned'"
               :id="assignButtonId(row.original.rideId)"
               type="button"
@@ -1057,6 +1085,17 @@ onMounted(loadAll)
         </template>
       </UTable>
     </div>
+
+    <RideLanding
+      v-if="recordingLanding"
+      :key="recordingLanding.rideId"
+      :ride-id="recordingLanding.rideId"
+      :guest-name="recordingLanding.guestName"
+      :landing-at="recordingLanding.landingAt"
+      :time-zone="timeZone"
+      @saved="onLandingSaved"
+      @cancel="recordingLanding = null"
+    />
 
     <RideAssign
       v-if="assigning"

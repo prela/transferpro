@@ -101,6 +101,16 @@ export function canCancelRide(state: RideState): boolean {
 }
 
 /**
+ * ADR-0007 and ADR-0028. A landing time can be recorded or cleared while the
+ * Ride is unfinished, including before anyone is assigned. `done`, `no-show`,
+ * and `cancelled` keep the time they already have. The Ride state is not a
+ * landing-time change.
+ */
+export function canRecordLandingTime(state: RideState): boolean {
+  return state === 'unassigned' || state === 'assigned' || state === 'accepted'
+}
+
+/**
  * Decline is allowed from `assigned` only (ADR-0006). The copied flag does
  * not matter: a Ride that must be accepted, and one that need not, can both
  * be declined while they are still `assigned`. `accepted` is refused.
@@ -182,6 +192,16 @@ export const rideSchema = z.object({
 })
 
 export type Ride = z.infer<typeof rideSchema>
+
+/**
+ * The Ride after a landing time is recorded or cleared. The Ride columns are
+ * unchanged. `landingAt` is the Transfer instant, or null when it was cleared.
+ */
+export const recordedLandingSchema = rideSchema.extend({
+  landingAt: z.iso.datetime().nullable(),
+})
+
+export type RecordedLanding = z.infer<typeof recordedLandingSchema>
 
 export const recordedTransferSchema = z.object({
   transfer: transferSchema,

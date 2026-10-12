@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canCancelRide, canDeclineRide, canMarkRideDone, CHILD_SEAT_COUNT_MAX, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCreateTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
+import { canCancelRide, canDeclineRide, canMarkRideDone, canRecordLandingTime, CHILD_SEAT_COUNT_MAX, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCreateTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -143,6 +143,15 @@ it('allows a cancel from unassigned, assigned, and accepted, and from no termina
   expect(canCancelRide('done')).toBe(false)
   expect(canCancelRide('no-show')).toBe(false)
   expect(canCancelRide('cancelled')).toBe(false)
+})
+
+it('allows a landing time on an unfinished Ride, including one with no Driver', () => {
+  expect(canRecordLandingTime('unassigned')).toBe(true)
+  expect(canRecordLandingTime('assigned')).toBe(true)
+  expect(canRecordLandingTime('accepted')).toBe(true)
+  expect(canRecordLandingTime('done')).toBe(false)
+  expect(canRecordLandingTime('no-show')).toBe(false)
+  expect(canRecordLandingTime('cancelled')).toBe(false)
 })
 
 it('allows done from assigned when the copied flag is off, and only from accepted when the flag is on', () => {

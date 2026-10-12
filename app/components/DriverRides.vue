@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayLocale, DriverUpcomingRide } from '../../shared'
-import { canDeclineRide, canMarkRideDone, driverUpcomingListSchema, formatInstant, rideSchema } from '../../shared'
+import { canDeclineRide, canMarkRideDone, canRecordLandingTime, driverUpcomingListSchema, formatInstant, rideSchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -23,12 +23,18 @@ const markDonePending = ref(false)
 const markDoneErrorKey = ref<'driverRides.doneConflict' | 'driverRides.doneFailed' | null>(null)
 // The Ride the Driver is about to decline. Null closes the dialog.
 const declining = ref<DriverUpcomingRide | null>(null)
+const recordingLanding = ref<DriverUpcomingRide | null>(null)
 const declinePending = ref(false)
 const declineErrorKey = ref<'driverRides.declineConflict' | 'driverRides.declineFailed' | null>(null)
 // A 409 means the list the Driver tapped was already stale.
 const conflict = ref(false)
 // A slower reload must not replace the rows from a newer one.
 let loadTicket = 0
+
+async function onLandingSaved() {
+  recordingLanding.value = null
+  await loadRides(true)
+}
 
 async function loadRides(refresh = false) {
   const ticket = ++loadTicket
@@ -445,6 +451,18 @@ onMounted(loadRides)
             {{ t('driverRides.airport') }}
           </p>
           <UButton
+            v-if="canRecordLandingTime(ride.state)"
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="xl"
+            class="mt-4 w-full justify-center"
+            :disabled="acceptingId !== null || markDonePending || declinePending || recordingLanding !== null"
+            @click="recordingLanding = ride"
+          >
+            {{ t('ride.recordLanding') }}
+          </UButton>
+          <UButton
             v-if="canAccept(ride)"
             type="button"
             size="xl"
@@ -569,5 +587,15 @@ onMounted(loadRides)
         </UButton>
       </template>
     </UModal>
+    <RideLanding
+      v-if="recordingLanding"
+      :key="recordingLanding.rideId"
+      :ride-id="recordingLanding.rideId"
+      :guest-name="recordingLanding.guestName"
+      :landing-at="recordingLanding.landingAt"
+      :time-zone="timeZone"
+      @saved="onLandingSaved"
+      @cancel="recordingLanding = null"
+    />
   </section>
 </template>

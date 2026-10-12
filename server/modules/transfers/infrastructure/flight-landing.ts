@@ -244,8 +244,9 @@ export async function askFlightLandings(input: {
 
 /**
  * A person records or clears the landing time. A future instant is refused
- * and the stored value stays. The screen that types it is a later ticket.
- * Finished Rides are refused so a closed Ride cannot gain a time here.
+ * and the stored value stays. The screen, the roles, and the audit are
+ * `recordRideLanding`. Finished Rides are refused so a closed Ride cannot
+ * gain a time here.
  * A missing Ride uses the same fixed read failure. The Ride state is not updated.
  */
 export async function recordLandingTime(
