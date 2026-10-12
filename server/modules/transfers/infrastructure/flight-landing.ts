@@ -2,7 +2,7 @@ import type { RideState } from '../../../../shared'
 import type { Logger, TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { chooseFlightArrival, FLIGHT_ASK_LEAD_MS, flightAskDates, flightDesignator, landingTimeInFuture, parseFlightArrivals } from '../../../../shared'
+import { chooseFlightArrival, FLIGHT_ASK_LEAD_MS, flightAskDates, flightDesignator, landingTimeInFuture, parseFlightArrivals, storeExpectedArrival } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 
 /**
@@ -18,15 +18,39 @@ export interface FlightStatusPort {
 
 const finished: readonly RideState[] = ['done', 'no-show', 'cancelled']
 
+/**
+ * The fact the work-order port receives when an expected arrival moves.
+ * The mail wording is a later ticket. This does not add a channel.
+ */
+export interface ArrivalMovedFact {
+  readonly rideId: string
+  readonly driverId: string
+  readonly previous: Date
+  readonly next: Date
+}
+
+/** ADR-0026's port, for this fact only. The v1 mail adapter is not this ticket. */
+export interface ArrivalNoticePort {
+  arrivalMoved: (fact: ArrivalMovedFact) => Promise<void>
+}
+
+/** This ticket does not write the mail. The ask still hands the fact here. */
+export const noArrivalNotice: ArrivalNoticePort = {
+  async arrivalMoved() {},
+}
+
 interface TrackedRide {
   readonly rideId: string
   readonly transferId: string
   readonly state: RideState
+  readonly driverId: string | null
   readonly pickupAt: Date
   readonly flightNumber: string | null
   readonly airportMark: boolean
   readonly iata: string | null
   readonly landingAt: Date | null
+  readonly expectedArrival: Date | null
+  readonly expectedArrivalBasis: Date | null
   readonly timeZone: string
 }
 
@@ -34,11 +58,14 @@ const trackedRowSchema = z.object({
   rideId: z.uuid(),
   transferId: z.uuid(),
   state: z.enum(['unassigned', 'assigned', 'accepted', 'done', 'no-show', 'cancelled']),
+  driverId: z.uuid().nullable(),
   pickupAt: z.unknown(),
   flightNumber: z.string().nullable(),
   airportMark: z.boolean(),
   iata: z.string().nullable(),
   landingAt: z.unknown().nullable(),
+  expectedArrival: z.unknown().nullable(),
+  expectedArrivalBasis: z.unknown().nullable(),
   timeZone: z.string().min(1),
 })
 
@@ -84,11 +111,14 @@ function toTracked(row: z.infer<typeof trackedRowSchema>): TrackedRide | null {
     rideId: row.rideId,
     transferId: row.transferId,
     state: row.state,
+    driverId: row.driverId,
     pickupAt,
     flightNumber: row.flightNumber,
     airportMark: row.airportMark,
     iata: row.iata,
     landingAt: asInstant(row.landingAt),
+    expectedArrival: asInstant(row.expectedArrival),
+    expectedArrivalBasis: asInstant(row.expectedArrivalBasis),
     timeZone: row.timeZone,
   }
 }
@@ -119,11 +149,14 @@ async function loadTracked(transaction: TenantTransaction): Promise<TrackedRide[
         r.id as "rideId",
         t.id as "transferId",
         r.state,
+        r.driver_id as "driverId",
         t.pickup_at as "pickupAt",
         t.flight_number as "flightNumber",
         t.airport_mark as "airportMark",
         l.iata,
         t.landing_at as "landingAt",
+        t.expected_arrival_at as "expectedArrival",
+        t.expected_arrival_basis_at as "expectedArrivalBasis",
         s.time_zone as "timeZone"
       from app.rides as r
       join app.transfers as t
@@ -166,10 +199,32 @@ async function writeLanding(
   return written.rows.length === 1
 }
 
+/**
+ * The current estimate and the basis it is measured against. The Ride
+ * state is not in this statement, so an accepted Ride stays accepted.
+ */
+async function writeExpectedArrival(
+  transaction: TenantTransaction,
+  transferId: string,
+  expectedArrival: Date,
+  basis: Date,
+): Promise<void> {
+  await hideDatabaseError(
+    () => transaction.execute(sql`
+      update app.transfers
+      set expected_arrival_at = ${expectedArrival.toISOString()},
+          expected_arrival_basis_at = ${basis.toISOString()}
+      where id = ${transferId}
+    `),
+    'Expected arrival write failed',
+  )
+}
+
 export interface FlightLandingAsk {
   readonly now: Date
   readonly transaction: TenantTransaction
   readonly status: FlightStatusPort
+  readonly notices: ArrivalNoticePort
   readonly log: Logger
 }
 
@@ -202,8 +257,32 @@ export async function refreshFlightLandings(ask: FlightLandingAsk): Promise<void
       continue
     }
     const choice = chooseFlightArrival(arrivals, ride.pickupAt, iata)
+    const reported = choice.kind === 'expected' || choice.kind === 'landed'
+      ? choice.expectedArrival
+      : null
+    if (reported !== null) {
+      const update = storeExpectedArrival(
+        { expectedArrival: ride.expectedArrival, basis: ride.expectedArrivalBasis },
+        reported,
+        ride.driverId !== null,
+      )
+      await writeExpectedArrival(ask.transaction, ride.transferId, update.expectedArrival, update.basis)
+      if (update.moved !== null && ride.driverId !== null) {
+        await ask.notices.arrivalMoved({
+          rideId: ride.rideId,
+          driverId: ride.driverId,
+          previous: update.moved.previous,
+          next: update.moved.next,
+        })
+        ask.log.info({ rideId: ride.rideId, outcome: 'arrival-moved' }, 'flight landing ask')
+      }
+      else {
+        ask.log.info({ rideId: ride.rideId, outcome: 'arrival-stored' }, 'flight landing ask')
+      }
+    }
     if (choice.kind !== 'landed') {
-      ask.log.info({ rideId: ride.rideId, outcome: 'landing-unchanged' }, 'flight landing ask')
+      if (reported === null)
+        ask.log.info({ rideId: ride.rideId, outcome: 'landing-unchanged' }, 'flight landing ask')
       continue
     }
     if (landingTimeInFuture(choice.landedAt, ask.now)) {
@@ -228,6 +307,7 @@ export async function askFlightLandings(input: {
   readonly tenantIds: readonly string[]
   readonly withTenant: (tenantId: string, run: (transaction: TenantTransaction) => Promise<void>) => Promise<void>
   readonly status: FlightStatusPort
+  readonly notices: ArrivalNoticePort
   readonly log: Logger
 }): Promise<void> {
   for (const tenantId of input.tenantIds) {
@@ -236,6 +316,7 @@ export async function askFlightLandings(input: {
         now: input.now,
         transaction,
         status: input.status,
+        notices: input.notices,
         log: input.log,
       })
     })

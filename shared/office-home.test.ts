@@ -22,6 +22,7 @@ function ride(overrides: Partial<OfficeHomeRide> & Pick<OfficeHomeRide, 'rideId'
     payment: 'cash',
     flightNumber: null,
     landingAt: null,
+    expectedArrival: null,
     tabla: '',
     mustAccept: null,
     ...overrides,

@@ -40,6 +40,10 @@ export const transfers = tenantTable('transfers', {
   flightNumber: text('flight_number'),
   // Empty until the aircraft has landed. The feed writes it only while it is empty.
   landingAt: timestamp('landing_at', { withTimezone: true, mode: 'date' }),
+  // The live estimate. A change under 15 minutes is still stored (ADR-0028).
+  expectedArrivalAt: timestamp('expected_arrival_at', { withTimezone: true, mode: 'date' }),
+  // The last estimate the Driver was told, or the first stored one when none was.
+  expectedArrivalBasisAt: timestamp('expected_arrival_basis_at', { withTimezone: true, mode: 'date' }),
   price: numeric('price', { precision: 10, scale: 2 }).notNull(),
   payment: text('payment').notNull(),
   airportMark: boolean('airport_mark').notNull(),

@@ -68,7 +68,7 @@ export type FlightStatusName = (typeof flightStatusNames)[number]
 
 /**
  * One arrival the status port returned. The landing time stays empty until
- * the status is `landed`. The expected arrival is stored by a later ticket.
+ * the status is `landed`. An `expected` status keeps the estimate.
  */
 export interface FlightArrival {
   readonly arrivalAirport: string
@@ -105,11 +105,36 @@ export type FlightArrivalChoice
   = | { readonly kind: 'none' }
     | { readonly kind: 'tie' }
     | { readonly kind: 'elsewhere' }
-    | { readonly kind: 'landed', readonly landedAt: Date }
+    | { readonly kind: 'expected', readonly expectedArrival: Date }
+    | { readonly kind: 'landed', readonly landedAt: Date, readonly expectedArrival: Date | null }
+
+/**
+ * How far an estimate has to move before the Driver is told. A shorter
+ * change is still stored. Exactly this far counts, earlier or later.
+ * ADR-0028.
+ */
+export const ARRIVAL_MOVED_MS = 15 * 60 * 1000
+
+/**
+ * What is already stored. `basis` is the last estimate the Driver was told,
+ * or the first stored estimate when the Driver has been told nothing.
+ * Both stay null until the first estimate is stored.
+ */
+export interface ExpectedArrivalMemory {
+  readonly expectedArrival: Date | null
+  readonly basis: Date | null
+}
+
+/** The write, and the movement to hand the work-order port, if there is one. */
+export interface ExpectedArrivalUpdate {
+  readonly expectedArrival: Date
+  readonly basis: Date
+  readonly moved: { readonly previous: Date, readonly next: Date } | null
+}
 
 /**
  * The instant this arrival is measured by. A landed flight uses the actual
- * time. Anything else uses the estimate, which this ticket does not store.
+ * time. Anything else uses the estimate.
  */
 function arrivalInstant(arrival: FlightArrival): Date | null {
   if (arrival.status === 'landed' && arrival.landedAt !== null)
@@ -156,9 +181,37 @@ export function chooseFlightArrival(
     return { kind: 'tie' }
   if (best.arrival.arrivalAirport !== pickupIata)
     return { kind: 'elsewhere' }
-  if (best.arrival.status !== 'landed' || best.arrival.landedAt === null)
-    return { kind: 'none' }
-  return { kind: 'landed', landedAt: best.arrival.landedAt }
+  if (best.arrival.status === 'landed' && best.arrival.landedAt !== null)
+    return { kind: 'landed', landedAt: best.arrival.landedAt, expectedArrival: best.arrival.expectedArrival }
+  // Cancelled and diverted are a later notice. An estimate on those is not stored here.
+  if (best.arrival.status === 'expected' && best.arrival.expectedArrival !== null)
+    return { kind: 'expected', expectedArrival: best.arrival.expectedArrival }
+  return { kind: 'none' }
+}
+
+/**
+ * Store every reported estimate. The first one tells nobody, even when a
+ * Driver is already assigned. A later one is a movement when it is at least
+ * 15 minutes from the basis. With no Driver the movement is stored and the
+ * basis stays, so the next ask after assignment can hand it once.
+ */
+export function storeExpectedArrival(
+  memory: ExpectedArrivalMemory,
+  reported: Date,
+  hasDriver: boolean,
+): ExpectedArrivalUpdate {
+  if (memory.basis === null) {
+    return { expectedArrival: reported, basis: reported, moved: null }
+  }
+  const moved = Math.abs(reported.getTime() - memory.basis.getTime()) >= ARRIVAL_MOVED_MS
+  if (!hasDriver || !moved) {
+    return { expectedArrival: reported, basis: memory.basis, moved: null }
+  }
+  return {
+    expectedArrival: reported,
+    basis: reported,
+    moved: { previous: memory.basis, next: reported },
+  }
 }
 
 /** A landing time is an instant that has already happened. `now` is included. */

@@ -18,6 +18,7 @@ export interface UpcomingRideRow {
   readonly passengerCount: number
   readonly flightNumber: string | null
   readonly landingAt: string | null
+  readonly expectedArrival: string | null
   readonly airportMark: boolean
   readonly clientId: string
   readonly luggageCount: number
@@ -41,6 +42,7 @@ const upcomingRowSchema = z.object({
   passengerCount: z.number().int(),
   flightNumber: z.string().nullable(),
   landingAt: z.unknown().nullish(),
+  expectedArrival: z.unknown().nullish(),
   airportMark: z.boolean(),
   clientId: z.uuid(),
   luggageCount: z.number().int(),
@@ -79,6 +81,7 @@ export async function loadUpcomingRidesForDriver(
         t.passenger_count as "passengerCount",
         t.flight_number as "flightNumber",
         t.landing_at as "landingAt",
+        t.expected_arrival_at as "expectedArrival",
         t.airport_mark as "airportMark",
         t.client_id as "clientId",
         t.luggage_count as "luggageCount",
@@ -111,6 +114,7 @@ function toUpcomingRide(row: z.infer<typeof upcomingRowSchema>): UpcomingRideRow
     passengerCount: row.passengerCount,
     flightNumber: row.flightNumber,
     landingAt: row.landingAt == null ? null : toInstant(row.landingAt),
+    expectedArrival: row.expectedArrival == null ? null : toInstant(row.expectedArrival),
     airportMark: row.airportMark,
     clientId: row.clientId,
     luggageCount: row.luggageCount,

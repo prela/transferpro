@@ -126,6 +126,7 @@ export async function correctTransferForOffice(
   if (changed.length === 0)
     return toRecorded(current, stored)
 
+  // A different designator throws away the landing and the expected arrival (ADR-0028).
   const clearLanding = flightNumberChangeClearsLanding(stored.flightNumber, input.flightNumber)
   await writeTransfer(transaction, transferId, input, clearLanding)
   const returned = correctionReturnsAcceptedRide(current.state, changed)
@@ -254,7 +255,9 @@ async function writeTransfer(
         child_seat_count = ${input.childSeatCount},
         note = ${input.note},
         tabla = ${input.tabla},
-        landing_at = case when ${clearLanding} then null else landing_at end
+        landing_at = case when ${clearLanding} then null else landing_at end,
+        expected_arrival_at = case when ${clearLanding} then null else expected_arrival_at end,
+        expected_arrival_basis_at = case when ${clearLanding} then null else expected_arrival_basis_at end
     where id = ${transferId}
     returning id
   `))

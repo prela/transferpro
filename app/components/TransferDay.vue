@@ -137,6 +137,7 @@ const kindItems = computed(() => [
 const columns = computed(() => [
   { id: 'pickup', header: t('transfers.pickupAt') },
   { id: 'landing', header: t('transfers.fields.landingAt') },
+  { id: 'expectedArrival', header: t('transfers.fields.expectedArrival') },
   { accessorKey: 'guestName' as const, header: t('transfers.guest') },
   { id: 'tabla', header: t('transfers.tabla') },
   { id: 'start', header: t('transfers.start') },
@@ -1021,6 +1022,14 @@ onMounted(loadAll)
             :datetime="row.original.landingAt"
           >
             {{ formatInstant(new Date(row.original.landingAt), timeZone, locale) }}
+          </time>
+        </template>
+        <template #expectedArrival-cell="{ row }">
+          <time
+            v-if="row.original.expectedArrival"
+            :datetime="row.original.expectedArrival"
+          >
+            {{ formatInstant(new Date(row.original.expectedArrival), timeZone, locale) }}
           </time>
         </template>
         <template #tabla-cell="{ row }">
