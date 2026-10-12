@@ -488,6 +488,7 @@ test('a driver accepts a waiting ride, and a conflict reloads the list', async (
   const acceptAt = instantFromWallClock(`${day}T10:00`, 'Europe/Zagreb')
   const lostAt = instantFromWallClock(`${day}T11:30`, 'Europe/Zagreb')
   const conflictAt = instantFromWallClock(`${day}T13:00`, 'Europe/Zagreb')
+  const nextAt = instantFromWallClock(`${day}T16:00`, 'Europe/Zagreb')
   const mail: string[] = []
   page.on('request', (request) => {
     if (request.url().includes('resend.com'))
@@ -570,6 +571,8 @@ test('a driver accepts a waiting ride, and a conflict reloads the list', async (
   await assign(lostRide)
   const conflictRide = await record('Nika Sukob', conflictAt)
   await assign(conflictRide)
+  const nextRide = await record('Nika Dalje', nextAt)
+  await assign(nextRide)
 
   await signOut(page)
   await signIn(page, driver.email, driver.password, tenant.name)
@@ -577,6 +580,7 @@ test('a driver accepts a waiting ride, and a conflict reloads the list', async (
   const accepted = page.locator('article').filter({ hasText: 'Nika Prihvat' })
   const lost = page.locator('article').filter({ hasText: 'Nika Izgubljena' })
   const conflicted = page.locator('article').filter({ hasText: 'Nika Sukob' })
+  const onward = page.locator('article').filter({ hasText: 'Nika Dalje' })
   await expect(accepted.getByRole('button')).toHaveCount(1)
   await expect(accepted.getByRole('button', { name: 'Prihvati vožnju', exact: true })).toBeVisible()
   await expect(conflicted.getByRole('button')).toHaveCount(1)
@@ -621,6 +625,40 @@ test('a driver accepts a waiting ride, and a conflict reloads the list', async (
   await expect(conflicted.getByText('Prihvaćeno')).toHaveCount(0)
   await expect(conflicted.getByRole('button')).toHaveCount(0)
   expect(await rideRow(conflictRide)).toMatchObject({ state: 'assigned', must_accept: false })
+  expect(mail).toEqual([])
+
+  // The alert stays through the next tap. It leaves only after that accept succeeds,
+  // and the list has caught up with the Ride that was still waiting.
+  await expect(onward.getByRole('button', { name: 'Prihvati vožnju', exact: true })).toBeVisible()
+  let releaseNext = () => {}
+  const holdNext = new Promise<void>((resolve) => {
+    releaseNext = resolve
+  })
+  await page.route(`**/api/rides/${nextRide}/accept`, async (route) => {
+    await holdNext
+    await route.continue()
+  })
+  const nextResponse = page.waitForResponse(response =>
+    response.url().includes(`/api/rides/${nextRide}/accept`) && response.request().method() === 'POST',
+  )
+  const upcomingResponse = page.waitForResponse(response =>
+    response.url().includes('/api/rides/upcoming') && response.request().method() === 'GET' && response.ok(),
+  )
+  try {
+    await onward.getByRole('button', { name: 'Prihvati vožnju', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('Ovu vožnju više nije moguće prihvatiti.')
+  }
+  finally {
+    releaseNext()
+  }
+  expect((await nextResponse).status()).toBe(200)
+  await upcomingResponse
+  await page.unroute(`**/api/rides/${nextRide}/accept`)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(onward.getByText('Prihvaćeno')).toBeVisible()
+  await expect(onward.getByRole('button')).toHaveCount(0)
+  await expect(conflicted.getByRole('button')).toHaveCount(0)
+  expect(await rideRow(nextRide)).toMatchObject({ state: 'accepted', must_accept: true })
   expect(mail).toEqual([])
 
   await switchTheme(page, 'dark')

@@ -71,19 +71,21 @@ function httpStatus(error: unknown): number | undefined {
 /**
  * POST /api/rides/:id/accept with an empty body. Success, a 409, and a 404
  * all reload the list. A 409 is a Ride this Driver still holds. A 404 drops
- * the card, because the Ride is no longer theirs. Any other failure leaves
- * the control so the Driver can try again. This action does not send mail.
+ * the card, because the Ride is no longer theirs. The conflict alert stays
+ * until a later accept succeeds. Any other failure leaves the control so
+ * the Driver can try again. This action does not send mail.
  */
 async function accept(rideId: string) {
   if (acceptingId.value !== null)
     return
   acceptingId.value = rideId
-  conflict.value = false
   try {
     rideSchema.parse(await $fetch(`/api/rides/${rideId}/accept`, {
       method: 'POST',
       body: {},
     }))
+    // A tap is not success. The message stays until this accept succeeds.
+    conflict.value = false
     await loadRides(true)
   }
   catch (error) {
