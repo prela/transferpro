@@ -24,6 +24,7 @@ const sourceRowSchema = z.object({
   payment: paymentMethodSchema,
   flightNumber: z.string().nullable(),
   landingAt: z.unknown().nullish(),
+  expectedArrival: z.unknown().nullish(),
   tabla: z.string(),
 })
 
@@ -56,6 +57,7 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
         t.payment,
         t.flight_number as "flightNumber",
         t.landing_at as "landingAt",
+        t.expected_arrival_at as "expectedArrival",
         t.tabla
       from app.rides as r
       join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
@@ -96,6 +98,7 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
       payment: row.payment,
       flightNumber: row.flightNumber,
       landingAt: row.landingAt == null ? null : toInstant(row.landingAt),
+      expectedArrival: row.expectedArrival == null ? null : toInstant(row.expectedArrival),
       tabla: row.tabla,
       mustAccept: row.mustAccept,
     }

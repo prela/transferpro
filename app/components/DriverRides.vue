@@ -410,6 +410,16 @@ onMounted(loadRides)
                 </time>
               </dd>
             </div>
+            <div v-if="ride.expectedArrival">
+              <dt class="text-sm text-muted">
+                {{ t('driverRides.expectedArrival') }}
+              </dt>
+              <dd>
+                <time :datetime="ride.expectedArrival">
+                  {{ pickupLabel(ride.expectedArrival) }}
+                </time>
+              </dd>
+            </div>
             <div v-if="ride.note">
               <dt class="text-sm text-muted">
                 {{ t('transfers.note') }}

@@ -559,3 +559,50 @@ it('tenant B cannot read or write Tenant A landing time, and the ask lists only 
     clientAgain.release()
   }
 })
+
+it('tenant B cannot read or write Tenant A expected arrival', async () => {
+  const arrival = '2026-01-15T11:00:00.000Z'
+  const seeded = await withTenant(tenantA, async (client) => {
+    const clientRow = await client.query<{ id: string }>(
+      `insert into app.clients (name, kind) values ('Agencija Dolazak', 'agency') returning id`,
+    )
+    const start = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind, iata) values ('Zracna luka Dolazak', 'airport', 'DBV') returning id`,
+    )
+    const end = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Hotel Dolazak', 'hotel') returning id`,
+    )
+    const transfer = await client.query<{ id: string }>(
+      `insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, flight_number, price, payment,
+        airport_mark, luggage_count, child_seat_count, expected_arrival_at, expected_arrival_basis_at
+      ) values ($1, now(), $2, $3, 1, 'Ana Dolazak', 'OU 384', 10, 'cash', true, 0, 0, $4, $4)
+      returning id`,
+      [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id, arrival],
+    )
+    return transfer.rows[0]?.id
+  })
+
+  const hidden = await withTenant(tenantB, async (client) => {
+    const selected = await client.query(
+      'select expected_arrival_at from app.transfers where id = $1',
+      [seeded],
+    )
+    const updated = await client.query(
+      `update app.transfers set expected_arrival_at = '2026-02-01T00:00:00.000Z' where id = $1`,
+      [seeded],
+    )
+    return { selected: selected.rows, updated: updated.rowCount }
+  })
+  expect(hidden.selected).toEqual([])
+  expect(hidden.updated).toBe(0)
+
+  const kept = await withTenant(tenantA, async (client) => {
+    return client.query<{ expected_arrival_at: Date }>(
+      'select expected_arrival_at from app.transfers where id = $1',
+      [seeded],
+    )
+  })
+  expect(kept.rows[0]?.expected_arrival_at.toISOString()).toBe(arrival)
+})

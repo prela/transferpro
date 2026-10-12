@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { chooseFlightArrival, flightAskDates, flightDesignator, flightNumberChangeClearsLanding, landingTimeInFuture, parseFlightArrivals, sameFlightDesignator } from './flight-landing'
+import { chooseFlightArrival, flightAskDates, flightDesignator, flightNumberChangeClearsLanding, landingTimeInFuture, parseFlightArrivals, sameFlightDesignator, storeExpectedArrival } from './flight-landing'
 
 const pickup = new Date('2026-10-11T12:00:00.000Z')
 
@@ -59,7 +59,11 @@ it('keeps the closest arrival inside 6 hours and drops one further away', () => 
     arrival({ landedAt: '2026-10-11T07:00:00.000Z' }),
     arrival({ landedAt: '2026-10-11T11:00:00.000Z' }),
   ], pickup, 'DBV')
-  expect(chosen).toEqual({ kind: 'landed', landedAt: new Date('2026-10-11T11:00:00.000Z') })
+  expect(chosen).toEqual({
+    kind: 'landed',
+    landedAt: new Date('2026-10-11T11:00:00.000Z'),
+    expectedArrival: null,
+  })
 
   const far = chooseFlightArrival([
     arrival({ landedAt: '2026-10-11T05:59:59.999Z' }),
@@ -69,7 +73,11 @@ it('keeps the closest arrival inside 6 hours and drops one further away', () => 
   const edge = chooseFlightArrival([
     arrival({ landedAt: '2026-10-11T06:00:00.000Z' }),
   ], pickup, 'DBV')
-  expect(edge).toEqual({ kind: 'landed', landedAt: new Date('2026-10-11T06:00:00.000Z') })
+  expect(edge).toEqual({
+    kind: 'landed',
+    landedAt: new Date('2026-10-11T06:00:00.000Z'),
+    expectedArrival: null,
+  })
 })
 
 it('stores nothing when two arrivals are equally close', () => {
@@ -85,6 +93,89 @@ it('does not treat another airport as a landing here', () => {
     arrival({ arrivalAirport: 'SPU', landedAt: '2026-10-11T11:30:00.000Z' }),
   ], pickup, 'DBV')
   expect(chosen).toEqual({ kind: 'elsewhere' })
+})
+
+it('stores every reported estimate, and tells nobody about the first one', () => {
+  const first = new Date('2026-10-11T12:00:00.000Z')
+  const stored = storeExpectedArrival(
+    { expectedArrival: null, basis: null },
+    first,
+    true,
+  )
+  expect(stored).toEqual({ expectedArrival: first, basis: first, moved: null })
+})
+
+it('does not call out a change of 14 minutes, and does call out exactly 15 minutes earlier or later', () => {
+  const first = new Date('2026-10-11T12:00:00.000Z')
+  const memory = { expectedArrival: first, basis: first }
+  const earlierBy14 = new Date('2026-10-11T11:46:00.000Z')
+  const laterBy14 = new Date('2026-10-11T12:14:00.000Z')
+  const earlierBy15 = new Date('2026-10-11T11:45:00.000Z')
+  const laterBy15 = new Date('2026-10-11T12:15:00.000Z')
+
+  expect(storeExpectedArrival(memory, earlierBy14, true)).toEqual({
+    expectedArrival: earlierBy14,
+    basis: first,
+    moved: null,
+  })
+  expect(storeExpectedArrival(memory, laterBy14, true)).toEqual({
+    expectedArrival: laterBy14,
+    basis: first,
+    moved: null,
+  })
+  expect(storeExpectedArrival(memory, earlierBy15, true)).toEqual({
+    expectedArrival: earlierBy15,
+    basis: earlierBy15,
+    moved: { previous: first, next: earlierBy15 },
+  })
+  expect(storeExpectedArrival(memory, laterBy15, true)).toEqual({
+    expectedArrival: laterBy15,
+    basis: laterBy15,
+    moved: { previous: first, next: laterBy15 },
+  })
+})
+
+it('keeps the first estimate as the basis until a Driver is told, including a movement stored with no Driver', () => {
+  const first = new Date('2026-10-11T12:00:00.000Z')
+  const moved = new Date('2026-10-11T12:20:00.000Z')
+  const quiet = storeExpectedArrival({ expectedArrival: first, basis: first }, moved, false)
+  expect(quiet).toEqual({ expectedArrival: moved, basis: first, moved: null })
+
+  const told = storeExpectedArrival(quiet, moved, true)
+  expect(told).toEqual({
+    expectedArrival: moved,
+    basis: moved,
+    moved: { previous: first, next: moved },
+  })
+  expect(storeExpectedArrival(told, moved, true).moved).toBeNull()
+})
+
+it('measures the next movement from the estimate the Driver was told, not from a smaller change in between', () => {
+  const told = new Date('2026-10-11T12:00:00.000Z')
+  const nudged = new Date('2026-10-11T12:10:00.000Z')
+  const next = new Date('2026-10-11T12:15:00.000Z')
+  const afterNudge = storeExpectedArrival({ expectedArrival: told, basis: told }, nudged, true)
+  expect(afterNudge.moved).toBeNull()
+  expect(storeExpectedArrival(afterNudge, next, true)).toEqual({
+    expectedArrival: next,
+    basis: next,
+    moved: { previous: told, next },
+  })
+})
+
+it('keeps an expected arrival at this airport, and does not treat a cancelled estimate as one', () => {
+  const expected = chooseFlightArrival([
+    arrival({ status: 'expected', expectedArrival: '2026-10-11T12:10:00.000Z', landedAt: null }),
+  ], pickup, 'DBV')
+  expect(expected).toEqual({
+    kind: 'expected',
+    expectedArrival: new Date('2026-10-11T12:10:00.000Z'),
+  })
+
+  const cancelled = chooseFlightArrival([
+    arrival({ status: 'cancelled', expectedArrival: '2026-10-11T12:10:00.000Z', landedAt: null }),
+  ], pickup, 'DBV')
+  expect(cancelled).toEqual({ kind: 'none' })
 })
 
 it('refuses a landing time that is still ahead of now, and accepts now', () => {

@@ -1,6 +1,7 @@
 import type { SQL } from 'drizzle-orm'
 import type { RideState } from '../../../../shared'
 import type { Logger, TenantTransaction } from '../../../core/index'
+import type { ArrivalMovedNotice, Mailer } from '../../tenancy'
 import type { FlightStatusPort } from './flight-landing'
 import { Writable } from 'node:stream'
 import { PgDialect } from 'drizzle-orm/pg-core'
@@ -29,6 +30,9 @@ interface StoredRide {
   airportMark: boolean
   iata: string | null
   landingAt: Date | null
+  expectedArrival: Date | null
+  expectedArrivalBasis: Date | null
+  driverId: string | null
   timeZone: string
 }
 
@@ -42,6 +46,9 @@ function ride(overrides: Partial<StoredRide> = {}): StoredRide {
     airportMark: true,
     iata,
     landingAt: null,
+    expectedArrival: null,
+    expectedArrivalBasis: null,
+    driverId: null,
     timeZone: 'Europe/Zagreb',
     ...overrides,
   }
@@ -74,11 +81,23 @@ function fake(stored: StoredRide[]) {
             airportMark: row.airportMark,
             iata: row.iata,
             landingAt: row.landingAt,
+            expectedArrival: row.expectedArrival,
+            expectedArrivalBasis: row.expectedArrivalBasis,
+            driverId: row.driverId,
             timeZone: row.timeZone,
           })),
         }
       }
-      // The feed writes only while the column is empty. The parameter is the instant.
+      if (text.includes('set expected_arrival_at')) {
+        const row = stored.find(item => item.transferId === compiled.params[2])
+        if (row) {
+          const next = compiled.params[0]
+          const basis = compiled.params[1]
+          row.expectedArrival = next instanceof Date ? next : new Date(String(next))
+          row.expectedArrivalBasis = basis instanceof Date ? basis : new Date(String(basis))
+        }
+        return { rows: [] }
+      }
       if (text.includes('landing_at is null')) {
         const row = stored.find(item => item.transferId === compiled.params[1])
         if (!row || row.landingAt !== null)
@@ -136,26 +155,39 @@ function logCapture(): { log: Logger, text: () => string } {
   }
 }
 
+function noticesPort(): Pick<Mailer, 'notifyArrivalMoved'> & { facts: ArrivalMovedNotice[] } {
+  const facts: ArrivalMovedNotice[] = []
+  return {
+    facts,
+    async notifyArrivalMoved(notice) {
+      facts.push(notice)
+    },
+  }
+}
+
 async function ask(
   stored: StoredRide[],
   arrivals: unknown,
 ) {
   const { transaction, queries, stored: rows } = fake(stored)
   const status = statusPort(arrivals)
+  const notices = noticesPort()
   const captured = logCapture()
   await refreshFlightLandings({
     now,
     transaction,
     status,
+    notices,
     log: captured.log,
   })
-  return { queries, rows, status, log: captured.text() }
+  return { queries, rows, status, notices, log: captured.text() }
 }
 
 it('stores the landing time when the aircraft has landed, leaves the Ride accepted, and does not notify', async () => {
   const result = await ask([ride()], [landed()])
   expect(result.rows[0]?.landingAt?.toISOString()).toBe(landedAt)
   expect(result.rows[0]?.state).toBe('accepted')
+  expect(result.notices.facts).toEqual([])
   expect(result.status.calls).toEqual([{
     designator: 'OU384',
     dates: ['2026-10-10', '2026-10-11', '2026-10-12'],
@@ -263,8 +295,97 @@ it('opens the ask on the Tenant from the schedule, every 15 minutes, without wai
       await run(transaction)
     },
     status,
+    notices: noticesPort(),
     log: logCapture().log,
   })
   expect(seen).toEqual([tenantId])
   expect(status.calls).toEqual([])
+})
+
+const driverId = 'c1c1c1c1-3333-4333-8333-333333333333'
+const firstArrival = '2026-10-11T14:00:00.000Z'
+
+function expected(at: string, airport = iata) {
+  return {
+    arrivalAirport: airport,
+    status: 'expected' as const,
+    expectedArrival: at,
+    landedAt: null,
+  }
+}
+
+it('stores the first expected arrival and tells nobody, and leaves the Ride accepted', async () => {
+  const result = await ask([ride({ driverId })], [expected(firstArrival)])
+  expect(result.rows[0]?.expectedArrival?.toISOString()).toBe(firstArrival)
+  expect(result.rows[0]?.expectedArrivalBasis?.toISOString()).toBe(firstArrival)
+  expect(result.rows[0]?.state).toBe('accepted')
+  expect(result.notices.facts).toEqual([])
+  expect(result.queries.some(query => query.includes('update app.rides'))).toBe(false)
+  expect(result.log).not.toContain(flight)
+  expect(result.log).not.toContain(guest)
+})
+
+it('stores a change of 14 minutes and does not hand it to the port', async () => {
+  const stored = [ride({
+    driverId,
+    expectedArrival: new Date(firstArrival),
+    expectedArrivalBasis: new Date(firstArrival),
+  })]
+  const later = '2026-10-11T14:14:00.000Z'
+  const result = await ask(stored, [expected(later)])
+  expect(result.rows[0]?.expectedArrival?.toISOString()).toBe(later)
+  expect(result.rows[0]?.expectedArrivalBasis?.toISOString()).toBe(firstArrival)
+  expect(result.notices.facts).toEqual([])
+  expect(result.rows[0]?.state).toBe('accepted')
+})
+
+it('hands a movement of exactly 15 minutes, earlier or later, with both instants', async () => {
+  const earlier = await ask([ride({
+    driverId,
+    expectedArrival: new Date(firstArrival),
+    expectedArrivalBasis: new Date(firstArrival),
+  })], [expected('2026-10-11T13:45:00.000Z')])
+  expect(earlier.notices.facts).toEqual([{
+    rideId,
+    driverId,
+    previous: firstArrival,
+    next: '2026-10-11T13:45:00.000Z',
+  }])
+  expect(earlier.rows[0]?.state).toBe('accepted')
+
+  const later = await ask([ride({
+    driverId,
+    expectedArrival: new Date(firstArrival),
+    expectedArrivalBasis: new Date(firstArrival),
+  })], [expected('2026-10-11T14:15:00.000Z')])
+  expect(later.notices.facts).toEqual([{
+    rideId,
+    driverId,
+    previous: firstArrival,
+    next: '2026-10-11T14:15:00.000Z',
+  }])
+  expect(later.rows[0]?.expectedArrivalBasis?.toISOString()).toBe('2026-10-11T14:15:00.000Z')
+})
+
+it('stores a movement with no Driver, then hands it once on the next ask after assignment', async () => {
+  const stored = [ride()]
+  const moved = '2026-10-11T14:20:00.000Z'
+  const quiet = await ask(stored, [expected(firstArrival)])
+  expect(quiet.notices.facts).toEqual([])
+  const held = await ask(stored, [expected(moved)])
+  expect(held.notices.facts).toEqual([])
+  expect(held.rows[0]?.expectedArrival?.toISOString()).toBe(moved)
+  expect(held.rows[0]?.expectedArrivalBasis?.toISOString()).toBe(firstArrival)
+
+  stored[0]!.driverId = driverId
+  const told = await ask(stored, [expected(moved)])
+  expect(told.notices.facts).toEqual([{
+    rideId,
+    driverId,
+    previous: firstArrival,
+    next: moved,
+  }])
+  const again = await ask(stored, [expected(moved)])
+  expect(again.notices.facts).toEqual([])
+  expect(again.rows[0]?.state).toBe('accepted')
 })

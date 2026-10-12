@@ -278,6 +278,8 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   mustAccept: z.boolean().nullable(),
   // Empty until the aircraft has landed. Shown in the Tenant time zone.
   landingAt: z.iso.datetime().nullable(),
+  // The live estimate. Shown in the Tenant time zone. Empty until the status reports one.
+  expectedArrival: z.iso.datetime().nullable(),
   // Derived at read. Display only. A Ride with no landing stays false (ADR-0030).
   landingAlarm: z.boolean(),
 })

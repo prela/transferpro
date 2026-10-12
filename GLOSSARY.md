@@ -144,6 +144,10 @@ _Avoid_: place, stop
 The actual time the aircraft landed, on an airport pickup. It stays empty until then. A live status writes it only while it is empty and the time is not still in the future. A time a person recorded stays until they clear it. The expected arrival is a different fact and does not start the airport wait.
 _Avoid_: expected arrival, ETA
 
+**Expected arrival**:
+The live status's current estimate of when that aircraft will arrive, on an airport pickup. It is stored whenever the status reports one, including a change of less than 15 minutes. A change of at least 15 minutes from the last estimate the Driver was told, or from the first stored estimate when the Driver has been told nothing, is handed to the work-order port. A Ride with no Driver stores the movement and tells nobody until the next ask after a Driver is assigned. It does not start the airport wait, and it does not return an accepted Ride to assigned.
+_Avoid_: landing time, ETA
+
 **BookingSource**:
 A port through which bookings are imported. *(draft)*
 

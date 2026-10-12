@@ -25,6 +25,7 @@ const transferRowSchema = z.object({
   note: z.string().nullable(),
   tabla: z.string(),
   landingAt: z.unknown().nullish(),
+  expectedArrival: z.unknown().nullish(),
 })
 
 const rideRowSchema = z.object({
@@ -176,7 +177,8 @@ export async function loadRidesForDay(
       t.child_seat_count as "childSeatCount",
       t.note,
       t.tabla,
-      t.landing_at as "landingAt"
+      t.landing_at as "landingAt",
+      t.expected_arrival_at as "expectedArrival"
     from app.rides as r
     join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
     where t.pickup_at >= ${bounds.start.toISOString()} and t.pickup_at < ${bounds.end.toISOString()}
@@ -269,6 +271,7 @@ function toDayRide(
 ): TransferDayRide {
   const pickupAt = toInstant(row.pickupAt)
   const landingAt = row.landingAt == null ? null : toInstant(row.landingAt)
+  const expectedArrival = row.expectedArrival == null ? null : toInstant(row.expectedArrival)
   const pickupMs = new Date(pickupAt).getTime()
   return {
     rideId: row.rideId,
@@ -292,6 +295,7 @@ function toDayRide(
     note: row.note,
     tabla: row.tabla,
     landingAt,
+    expectedArrival,
     landingAlarm: landingAlarmOn(
       landingAt,
       nowMs,
