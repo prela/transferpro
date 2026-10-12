@@ -69,10 +69,10 @@ function httpStatus(error: unknown): number | undefined {
 }
 
 /**
- * POST /api/rides/:id/accept with an empty body. Success and a 409 both
- * reload the list: the Ride stays, and the control follows the new row.
- * Any other failure leaves the control so the Driver can try again.
- * This action does not send mail.
+ * POST /api/rides/:id/accept with an empty body. Success, a 409, and a 404
+ * all reload the list. A 409 is a Ride this Driver still holds. A 404 drops
+ * the card, because the Ride is no longer theirs. Any other failure leaves
+ * the control so the Driver can try again. This action does not send mail.
  */
 async function accept(rideId: string) {
   if (acceptingId.value !== null)
@@ -87,8 +87,10 @@ async function accept(rideId: string) {
     await loadRides(true)
   }
   catch (error) {
-    // 409 is ride_not_acceptable: the flag is off, or the Ride is no longer assigned.
-    if (httpStatus(error) === 409) {
+    // 409 is ride_not_acceptable on a Ride this Driver still holds.
+    // 404 is a clear or a reassignment. Either way the list they tapped is stale.
+    const status = httpStatus(error)
+    if (status === 409 || status === 404) {
       conflict.value = true
       await loadRides(true)
     }

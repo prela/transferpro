@@ -1385,7 +1385,7 @@ it('lets the linked Driver accept, and refuses a dispatcher, an admin, and a sec
   expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'accepted', driver_id: linked.driver.id })
 })
 
-it('refuses acceptance when the copied flag is off and from every state other than assigned', async () => {
+it('refuses acceptance when the copied flag is off, when the Ride is not theirs, and from every other state', async () => {
   const world = await office('hasg-acc-state')
   const linked = await linkedDriver(world, 'hasg-acc-state-driver@example.test', 'Drago Driver', phone)
   const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8103AA'))
@@ -1413,8 +1413,10 @@ it('refuses acceptance when the copied flag is off and from every state other th
 
   const open = await createTransfer(world.dispatcher, transferBody(world, pickup(14)))
   const unassigned = await call('POST', `/api/rides/${open.ride.id}/accept`, linked.session, {})
-  expect(unassigned.status).toBe(409)
-  expect(await unassigned.text()).toContain('ride_not_acceptable')
+  expect(unassigned.status).toBe(404)
+  const unassignedBody = await unassigned.text()
+  expect(unassignedBody).not.toContain('ride_not_acceptable')
+  expect(unassignedBody).not.toContain(guest)
   expect(await rideRow(open.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null, must_accept: null })
 
   for (const [index, state] of (['done', 'no-show', 'cancelled', 'accepted'] as const).entries()) {
@@ -1478,6 +1480,58 @@ it('refuses another Driver, a Driver with no link, and another Tenant', async ()
   })
   expect(await acceptanceAudits(world.tenantId)).toEqual([])
   expect(await acceptanceAudits(otherFirm.tenantId)).toEqual([])
+})
+
+it('answers 404 when the Driver accepts a Ride that was cleared or reassigned, and writes nothing', async () => {
+  const world = await office('hasg-acc-lost')
+  const linked = await linkedDriver(world, 'hasg-acc-lost-driver@example.test', 'Drago Driver', phone)
+  const other = await linkedDriver(world, 'hasg-acc-lost-other@example.test', 'Neda Neno', '+385911110077')
+  await updateDriver(world.admin, linked.driver.id, { mustAccept: true })
+  await updateDriver(world.admin, other.driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8106AA'))
+  const pickup = (hours: number) => new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
+
+  const cleared = await createTransfer(world.dispatcher, transferBody(world, pickup(34)))
+  expect((await call('POST', `/api/rides/${cleared.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${cleared.ride.id}/clear`, world.dispatcher, {})).status).toBe(200)
+  const afterClear = await call('POST', `/api/rides/${cleared.ride.id}/accept`, linked.session, {})
+  expect(afterClear.status).toBe(404)
+  const clearedBody = await afterClear.text()
+  expect(clearedBody).not.toContain('ride_not_acceptable')
+  expect(clearedBody).not.toContain(phone)
+  expect(clearedBody).not.toContain(guest)
+  expect(await rideRow(cleared.ride.id)).toMatchObject({
+    state: 'unassigned',
+    driver_id: null,
+    vehicle_id: null,
+    must_accept: null,
+  })
+
+  const moved = await createTransfer(world.dispatcher, transferBody(world, pickup(35)))
+  expect((await call('POST', `/api/rides/${moved.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${moved.ride.id}/reassign`, world.dispatcher, {
+    driverId: other.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  const afterReassign = await call('POST', `/api/rides/${moved.ride.id}/accept`, linked.session, {})
+  expect(afterReassign.status).toBe(404)
+  const reassignedBody = await afterReassign.text()
+  expect(reassignedBody).not.toContain(phone)
+  expect(reassignedBody).not.toContain(guest)
+  expect(await rideRow(moved.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: other.driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: true,
+  })
+
+  expect(await acceptanceAudits(world.tenantId)).toEqual([])
 })
 
 it('lets exactly one of two concurrent accepts win', async () => {
