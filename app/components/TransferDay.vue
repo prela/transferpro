@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Client, DeclineAlert, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
-import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, canCorrectTransfer, canMarkRideDone, canRecordLandingTime, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema, wallClockInTimeZone } from '../../shared'
+import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, cancelledRideResultSchema, canCorrectTransfer, canMarkRideDone, canRecordLandingTime, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema, wallClockInTimeZone } from '../../shared'
 import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
@@ -545,7 +545,8 @@ function cancelRideFailureKey(error: unknown): CancelRideFailure {
 /**
  * POST /api/rides/:id/cancel with an empty body. Success reloads the day.
  * The Ride stays on the day list and shows Cancelled. Dismiss writes nothing.
- * This action does not send mail.
+ * The notice names the current Driver. A Ride with no Driver has no notice.
+ * The address is not on the response.
  */
 async function confirmCancelRide() {
   const target = cancelling.value
@@ -554,11 +555,18 @@ async function confirmCancelRide() {
   cancelPending.value = true
   cancelErrorKey.value = null
   try {
-    rideSchema.parse(await $fetch(`/api/rides/${target.rideId}/cancel`, {
+    const cancelled = cancelledRideResultSchema.parse(await $fetch(`/api/rides/${target.rideId}/cancel`, {
       method: 'POST',
       body: {},
     }))
     notifyAuditChanged()
+    const notice = cancelled.workOrders[0]
+    const shown = notice === undefined ? undefined : workOrderNotice(notice.outcome)
+    toast.add({
+      title: t('ride.cancelled'),
+      description: shown === undefined || notice === undefined ? undefined : t(shown.key, { name: driverLabel(notice.driverId) }),
+      color: shown?.color ?? 'success',
+    })
     cancelling.value = null
     await loadDay()
   }

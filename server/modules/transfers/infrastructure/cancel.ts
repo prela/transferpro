@@ -1,13 +1,15 @@
 import type { SQL } from 'drizzle-orm'
-import type { Ride } from '../../../../shared'
-import type { TenantTransaction } from '../../../core/index'
+import type { CancelledRideResult, Ride } from '../../../../shared'
+import type { Logger, TenantTransaction } from '../../../core/index'
+import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { canCancelRide, RIDE_ACCEPTED_FIELDS, rideStateSchema } from '../../../../shared'
-import { hideDatabaseError } from '../../../core/index'
+import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { RideNotFoundError } from './assign'
+import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
 
 /** The body was not an empty object, or the path was not a Ride id. Nothing is written. */
 export class CancelRideInputError extends Error {
@@ -76,7 +78,7 @@ function parseCancel(rideId: unknown, body: unknown): string {
  * A dispatcher or an admin cancels the Ride from `unassigned`, `assigned`,
  * or `accepted`. The Driver, the Vehicle, and the copied flag stay, including
  * when there is no Driver. `ride.cancelled` names the office member.
- * A driver is refused before this runs. No mail is sent (#169).
+ * A driver is refused before this runs. The mail is sent after this commits.
  */
 export async function cancelRideForOffice(
   transaction: TenantTransaction,
@@ -101,15 +103,33 @@ export async function cancelRideForOffice(
 /**
  * The office cancels a Ride. The body is parsed first, so a key never opens
  * a session. A dispatcher or an admin cancels any Ride in the Tenant. A
- * driver is refused and the Ride is unchanged. No mail is sent.
+ * driver is refused and the Ride is unchanged. The current Driver is mailed
+ * cancelled after the Ride commits, with no price. A Ride with no Driver
+ * sends nothing. A rejected send leaves the Ride cancelled and is not retried.
+ * Tests pass a mailer. The address is not on the result.
  */
-export async function cancelRide(headers: Headers, rawRideId: unknown, rawBody: unknown): Promise<Ride> {
+export async function cancelRide(
+  headers: Headers,
+  rawRideId: unknown,
+  rawBody: unknown,
+  delivery?: { mailer: Mailer, logger?: Logger },
+): Promise<CancelledRideResult> {
   const rideId = parseCancel(rawRideId, rawBody)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
-    if (actor.role === 'admin' || actor.role === 'dispatcher')
-      return cancelRideForOffice(transaction, actor.userId, rideId)
-    throw new TenantAccessError(403)
+  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
+    if (actor.role !== 'admin' && actor.role !== 'dispatcher')
+      throw new TenantAccessError(403)
+    const ride = await cancelRideForOffice(transaction, actor.userId, rideId)
+    // An unassigned cancel has nobody to mail. The snapshot needs a Driver.
+    if (ride.driverId === null)
+      return { ride, order: null }
+    const order = await readAssignedWorkOrder(transaction, ride.id)
+    return { ride, order }
   })
+  if (saved.order === null)
+    return { ride: saved.ride, workOrders: [] }
+  const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
+  const notice = await deliverAssignedWorkOrder(saved.order, mailer, delivery?.logger, 'cancelled')
+  return { ride: saved.ride, workOrders: [notice] }
 }
 
 /** The Ride row this command will decide on. Missing means another Tenant, or no such Ride. */

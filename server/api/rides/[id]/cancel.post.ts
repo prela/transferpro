@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam, readBody, toWebRequest } from 'h3'
-import { rideSchema } from '../../../../shared'
+import { cancelledRideResultSchema } from '../../../../shared'
 import { cancelRide } from '../../../modules/transfers'
 import { rideHttpError } from '../http'
 
@@ -12,13 +12,16 @@ import { rideHttpError } from '../http'
  * `done`, `no-show`, and a second cancel are 409 `ride_not_cancellable`.
  * Nothing is written on a refusal. The audit entry names the member who
  * cancelled and the field name state. An unassigned Ride stores a null
- * Driver id. A name, a plate, a phone, or a guest is not stored. No mail.
+ * Driver id. A name, a plate, a phone, or a guest is not stored.
+ * The current Driver is mailed cancelled after the Ride is saved. A Ride
+ * with no Driver sends nothing. The body is `{ ride, workOrders }`.
+ * The address is not on it. A rejected send leaves the Ride cancelled.
  */
 export default defineEventHandler(async (event) => {
   const rideId = getRouterParam(event, 'id')
   const body = await readBody(event)
   try {
-    return rideSchema.parse(await cancelRide(toWebRequest(event).headers, rideId, body))
+    return cancelledRideResultSchema.parse(await cancelRide(toWebRequest(event).headers, rideId, body))
   }
   catch (error) {
     rideHttpError(error)

@@ -556,6 +556,7 @@
     "cancelRideConfirming": "Otkazivanje",
     "cancelRideFailed": "Vožnja nije otkazana. Pokušajte ponovno.",
     "cancelRideConflict": "Ovu vožnju više nije moguće otkazati.",
+    "cancelled": "Vožnja otkazana",
     "recordLanding": "Zabilježi slijetanje",
     "recordLandingFor": "Zabilježi slijetanje: {guest}",
     "recordLandingTitle": "Vrijeme slijetanja",

@@ -556,6 +556,7 @@
     "cancelRideConfirming": "Cancelling",
     "cancelRideFailed": "The ride was not cancelled. Try again.",
     "cancelRideConflict": "This ride can no longer be cancelled.",
+    "cancelled": "Ride cancelled",
     "recordLanding": "Record landing",
     "recordLandingFor": "Record landing: {guest}",
     "recordLandingTitle": "Landing time",

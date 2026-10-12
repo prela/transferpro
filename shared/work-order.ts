@@ -37,7 +37,7 @@ export interface WorkOrderMessage {
   readonly html: string
 }
 
-export const WORK_ORDER_STATUSES = ['assigned', 'changed', 'no_longer_yours'] as const
+export const WORK_ORDER_STATUSES = ['assigned', 'changed', 'cancelled', 'no_longer_yours'] as const
 
 export type WorkOrderStatus = typeof WORK_ORDER_STATUSES[number]
 
@@ -45,11 +45,13 @@ const STATUS_COPY = {
   hr: {
     assigned: 'Dodijeljeno',
     changed: 'Promijenjeno',
+    cancelled: 'Otkazano',
     no_longer_yours: 'Više nije vaše',
   },
   en: {
     assigned: 'Assigned',
     changed: 'Changed',
+    cancelled: 'Cancelled',
     no_longer_yours: 'No longer yours',
   },
 } as const
@@ -96,8 +98,8 @@ const COPY = {
 /**
  * Subject is the status, the departure, and the pickup place.
  * The flight line is omitted when the number is blank. Card and
- * invoice-to-agency have no price and no payment line. No longer yours
- * never states a price, even for cash.
+ * invoice-to-agency have no price and no payment line. Cancelled and no
+ * longer yours never state a price, even for cash.
  * ADR-0026.
  */
 export function composeWorkOrder(
@@ -127,9 +129,10 @@ export function composeWorkOrder(
     lines.push(line(copy.vehicle, vehicleName))
   lines.push(line(copy.plate, facts.vehiclePlate))
   lines.push(line(copy.note, facts.note ?? ''))
-  // Assigned and changed cash state the price. No longer yours never does.
-  // Card and invoice-to-agency stay silent, including when a fare is stored.
-  if (status !== 'no_longer_yours' && facts.payment === 'cash') {
+  // Assigned and changed cash state the price. Cancelled and no longer
+  // yours never do. Card and invoice-to-agency stay silent, including
+  // when a fare is stored.
+  if ((status === 'assigned' || status === 'changed') && facts.payment === 'cash') {
     const shown = facts.locale === 'hr' ? facts.price.replace('.', ',') : facts.price
     lines.push(line(copy.price, shown))
     lines.push(line(copy.payment, copy.cash))
@@ -163,6 +166,17 @@ export const relocationWarningSchema = z.object({
 })
 
 export type RelocationWarning = z.infer<typeof relocationWarningSchema>
+
+/**
+ * A cancel. `workOrders` is empty when the Ride had no Driver, and one
+ * entry when it had one. The address is not on this object.
+ */
+export const cancelledRideResultSchema = z.object({
+  ride: rideSchema,
+  workOrders: z.array(workOrderNoticeSchema),
+})
+
+export type CancelledRideResult = z.infer<typeof cancelledRideResultSchema>
 
 /**
  * The assign, vehicle-change, clear, or reassign action.
