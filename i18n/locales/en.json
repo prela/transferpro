@@ -309,6 +309,7 @@
     "forbidden": "A driver cannot record or correct a transfer, or open the day list.",
     "signedOut": "You are signed out. Sign in and try again.",
     "saveFailed": "The transfer was not recorded. Try again.",
+    "actionsFor": "Actions: {guest}",
     "correct": "Correct",
     "correctFor": "Correct: {guest}",
     "correctTitle": "Correct this transfer",

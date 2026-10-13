@@ -55,11 +55,13 @@ for (const theme of ['light', 'dark'] as const) {
     await page.getByRole('link', { name: 'Transferi' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Transferi' })).toBeVisible()
     await expect(page.getByLabel('Dan')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Zabilježi transfer', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+    await expect(page.getByRole('dialog').getByLabel('Ime gosta')).toBeVisible()
 
     await switchLocale(page, 'en')
-    await expect(page.getByRole('heading', { level: 1, name: 'Transfers' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Record transfer', exact: true })).toBeVisible()
+    const dialog = page.getByRole('dialog', { name: 'Record a transfer' })
+    await expect(dialog.getByLabel('Guest name')).toBeVisible()
+    await expect(dialog.getByRole('button', { name: 'Record transfer', exact: true })).toBeVisible()
   })
 
   test(`roster page is usable in ${theme} mode`, async ({ page }) => {

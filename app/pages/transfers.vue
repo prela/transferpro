@@ -57,6 +57,7 @@ const office = computed(() => isOfficeMember(session.value?.role))
         :time-zone="session.timeZone"
         :operational-day-start-hour="session.operationalDayStartHour"
         :locale="session.locale"
+        :tenant-id="session.tenantId"
       />
       <UAlert
         v-if="shellError"

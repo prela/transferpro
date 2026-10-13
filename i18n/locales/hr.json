@@ -307,6 +307,7 @@
     "rejected": "Transfer nije prihvaćen.",
     "notFound": "Taj klijent ili mjesto nije na popisu.",
     "forbidden": "Vozač ne može zabilježiti ni ispraviti transfer, ni vidjeti dnevni popis.",
+    "actionsFor": "Radnje: {guest}",
     "correct": "Ispravi",
     "correctFor": "Ispravi: {guest}",
     "correctTitle": "Ispravi ovaj transfer",
