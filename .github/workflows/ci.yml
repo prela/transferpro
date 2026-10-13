@@ -1,17 +1,51 @@
-# Push and pull_request both run this workflow. A pull request from this
-# repo therefore starts two runs. That is intentional: a branch push is
-# checked even when it has no pull request yet.
+# Push runs on develop and main. Every pull request runs too.
+# A new push to the same ref cancels the run already in progress.
+# Docs, markdown, and .cursor changes skip this workflow.
 name: ci
 
 on:
   push:
+    branches: [develop, main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.cursor/**'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.cursor/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  ci:
+  fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.10.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level=high
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  slow:
+    needs: fast
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -48,10 +82,6 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm audit --audit-level=high
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
 
       # Roles are created here, not from a committed password. The SQL lives
       # in docker/postgres/init-roles.sh. PGHOST makes that script talk to the
@@ -116,6 +146,28 @@ jobs:
           pnpm db:migrate:local
           pnpm test:rls
 
+      # Browsers live in the runner cache. OS packages do not, so a cache hit
+      # still installs system dependencies. The key is the installed Playwright
+      # version, which tracks the lockfile without busting on unrelated bumps.
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
       # The built app. Playwright sets NODE_ENV=test and clears RESEND_API_KEY.
       # scripts/e2e-server.mjs refuses to start if that is not true, so this
       # job cannot send mail through Resend. The migrate URL stays in
@@ -128,7 +180,6 @@ jobs:
           # shellcheck disable=SC1091
           . ./.env
           set +a
-          pnpm exec playwright install --with-deps chromium
           pnpm exec nuxi build
           pnpm test:e2e
 
