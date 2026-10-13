@@ -119,10 +119,13 @@ function detailText(entry: AuditEntry): string {
     case 'ride.accepted':
     case 'ride.returned_to_assigned':
     case 'ride.done':
+    case 'ride.no_show':
+    case 'ride.no_show_early':
     case 'ride.cancelled':
     case 'ride.landing_recorded':
       // The name is joined from the Driver id. The plate is not on this action.
       // For done, the who column is the person who marked it done.
+      // For a No-show, the who column is the person who marked it. Early is a different action.
       // For a cancel, the who column is the person who cancelled. Unassigned has no Driver name.
       return entry.driverName ?? ''
     case 'ride.accepted_by_phone': {

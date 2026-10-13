@@ -396,6 +396,31 @@ it('records a Ride marked done by the Ride id, the Driver id, and the field name
   expect(auditFactSchema.safeParse({ ...done, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records a No-show after the wait and an early office No-show as distinct actions, with no fee', () => {
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const afterWait = {
+    action: 'ride.no_show' as const,
+    subjectUserId: null,
+    data: {
+      rideId,
+      driverId,
+      fields: ['state'] as const,
+    },
+  }
+  const early = { ...afterWait, action: 'ride.no_show_early' as const }
+  expect(auditFactSchema.parse(afterWait)).toEqual(afterWait)
+  expect(auditFactSchema.parse(early)).toEqual(early)
+  expect(auditFactSchema.safeParse({
+    ...afterWait,
+    data: { ...afterWait.data, fee: '10.00', charge: '10.00', guestName: 'Ana Anić' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...early,
+    data: { ...early.data, price: '10.00' },
+  }).success).toBe(false)
+})
+
 it('records a cancelled Ride by the Ride id, a Driver id or null, and the field name state', () => {
   const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
   const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'

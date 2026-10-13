@@ -40,6 +40,8 @@ export const auditActions = [
   'ride.accepted_by_phone',
   'ride.returned_to_assigned',
   'ride.done',
+  'ride.no_show',
+  'ride.no_show_early',
   'ride.cancelled',
   'ride.declined',
   'ride.landing_recorded',
@@ -387,6 +389,31 @@ const rideDone = z.object({
 })
 
 /*
+ * A No-show after the wait is the state change. The Driver and the Vehicle
+ * stay. `fields` is only `state`. A name, a plate, a guest, a fee, a charge,
+ * or the flag value is not a key. The actor is the person who marked it,
+ * Driver or office. `subjectUserId` stays null. An early office No-show is
+ * a different action so the log can tell them apart.
+ */
+const rideNoShowData = z.strictObject({
+  rideId,
+  driverId,
+  fields: z.array(rideAcceptedFieldSchema).length(RIDE_ACCEPTED_FIELDS.length),
+})
+
+const rideNoShow = z.object({
+  action: z.literal('ride.no_show'),
+  subjectUserId: z.null(),
+  data: rideNoShowData,
+})
+
+const rideNoShowEarly = z.object({
+  action: z.literal('ride.no_show_early'),
+  subjectUserId: z.null(),
+  data: rideNoShowData,
+})
+
+/*
  * Cancelling a Ride is the state change. The Driver and the Vehicle stay
  * on the Ride. `fields` is only `state`. `driverId` is null when the Ride
  * was unassigned. A name, a plate, a guest, or the flag value is not a key.
@@ -564,6 +591,8 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   rideAcceptedByPhone,
   rideReturnedToAssigned,
   rideDone,
+  rideNoShow,
+  rideNoShowEarly,
   rideCancelled,
   rideDeclined,
   rideLandingRecorded,
@@ -591,6 +620,10 @@ export type AuditFact = z.infer<typeof auditFactSchema>
  * A member who has left has a null actor name. The plate is not joined.
  * `ride.done` carries the Driver name. The actor name is the person who
  * marked it done. The plate is not joined.
+ * `ride.no_show` carries the Driver name. The actor is the person who
+ * marked the No-show after the wait. The plate is not joined.
+ * `ride.no_show_early` carries the Driver name. The actor is the office
+ * member who marked it before the wait. The plate is not joined.
  * `ride.cancelled` carries the Driver name when the Ride had a Driver.
  * An unassigned cancel has a null Driver name. The actor name is the
  * person who cancelled. The plate is not joined.
@@ -652,6 +685,16 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   rideDone.extend({
     ...listed,
     // The Driver name is joined from `driverId`. The person is `actorName`.
+    driverName: z.string().nullable(),
+  }),
+  rideNoShow.extend({
+    ...listed,
+    // The Driver name is joined from `driverId`. The person is `actorName`.
+    driverName: z.string().nullable(),
+  }),
+  rideNoShowEarly.extend({
+    ...listed,
+    // The Driver name is joined from `driverId`. The person is the office member.
     driverName: z.string().nullable(),
   }),
   rideCancelled.extend({

@@ -2,6 +2,7 @@ import type { PaymentMethod } from './transfer'
 import { z } from 'zod'
 import { clientKindSchema, clientNameSchema } from './client'
 import { LOCATION_ADDRESS_MAX_LENGTH } from './location'
+import { waitMinutesSchema } from './tenant-settings'
 import { CHILD_SEAT_COUNT_MAX, CHILD_SEAT_COUNT_MIN, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, LUGGAGE_COUNT_MIN, NOTE_MAX_LENGTH, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, TABLA_MAX_LENGTH, transferPriceSchema } from './transfer'
 import { VEHICLE_PLATE_MAX_LENGTH } from './vehicle'
 
@@ -60,6 +61,9 @@ export type DriverUpcomingRide = z.infer<typeof driverUpcomingRideSchema>
 
 export const driverUpcomingListSchema = z.object({
   rides: z.array(driverUpcomingRideSchema),
+  // The Tenant's current No-show waits. The phone hides the control until the wait has elapsed.
+  airportWaitMinutes: waitMinutesSchema,
+  elsewhereWaitMinutes: waitMinutesSchema,
 })
 
 export type DriverUpcomingList = z.infer<typeof driverUpcomingListSchema>

@@ -4,7 +4,7 @@ import { presentDriverRide } from '../../../../shared'
 import { loadClient } from '../../clients'
 import { loadDriverLinkedToMember } from '../../drivers'
 import { loadLocation } from '../../locations'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { loadUpcomingRidesForDriver } from './driver-rides'
 
@@ -78,11 +78,16 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     driverOnly(actor.role)
     try {
+      const settings = await loadTenantSettings(transaction)
+      const waits = {
+        airportWaitMinutes: settings.airportWaitMinutes,
+        elsewhereWaitMinutes: settings.elsewhereWaitMinutes,
+      }
       const linked = await loadDriverLinkedToMember(transaction, actor.userId)
       // One member, one Driver. The partial unique index is that rule.
       const driverId = linked[0]?.id
       if (!driverId)
-        return { rides: [] }
+        return { rides: [], ...waits }
       const rows = await loadUpcomingRidesForDriver(transaction, driverId)
       const locations = new Map<string, LocationLine>()
       const clients = new Map<string, ClientLine>()
@@ -118,7 +123,7 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
           mustAccept: row.mustAccept,
         }))
       }
-      return { rides }
+      return { rides, ...waits }
     }
     catch (error) {
       // A Zod failure repeats the guest name, the phone, or the place.
