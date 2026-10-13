@@ -29,7 +29,7 @@ An unfinished unassigned Ride during the four hours before its pickup. It is not
 _Avoid_: acceptance deadline
 
 **Assigned**:
-A Ride with both a Driver and a Vehicle. When it requires acceptance, it is waiting on acceptance, including after an earlier acceptance was cleared. Whether it requires acceptance is copied from the Driver at assignment and stays on the Ride. The Vehicle on a new assignment starts as that Driver's roster Vehicle for the calendar day, and the office can still choose a different Vehicle for that one Ride. A roster change does not change a Ride already assigned. An assigned Ride occupies its Driver and its Vehicle for the transfer duration, including when it is in progress. A true overlap blocks assign, a vehicle change, and a reassignment until the office confirms. Clear does not.
+A Ride with both a Driver and a Vehicle. When it requires acceptance, it is waiting on acceptance, including after an earlier acceptance was cleared. Whether it requires acceptance is copied from the Driver at assignment and stays on the Ride. The Vehicle on a new assignment starts as that Driver's roster Vehicle for the calendar day, and the office can still choose a different Vehicle for that one Ride. A roster change does not change a Ride already assigned. An assigned Ride occupies its Driver and its Vehicle for the transfer duration, including when it is in progress. A true overlap blocks assign, a vehicle change, a reassignment, and a Transfer correction that moves when the Ride starts or ends, until the office confirms. Clear does not.
 _Avoid_: pending
 
 **Waiting on acceptance**:
