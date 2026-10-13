@@ -30,7 +30,7 @@ function correctActions(ride: TransferDayRide): DropdownMenuItem[][] {
 }
 ```
 
-The template comment says “Correct is the only menu item.” A button that calls `openCorrect` is the whole behavior. `transfers.actions` is added in both locales and never used (`actionsFor` is).
+The template comment says “Correct is the only menu item.” A button that calls `openCorrect` is the whole behavior. The unused `transfers.actions` key was removed. `actionsFor` is the trigger. The dropdown stays: the spec requires one item.
 
 **Repeated switches — `formMode`.** `'edit'` vs add is branched in `applyDraft`, `formTitle`, `@submit.prevent`, and the footer label. `formMode` and `editingTransferId` can disagree; `applyDraft` already derives mode from `transferId === null`.
 
@@ -40,16 +40,14 @@ The template comment says “Correct is the only menu item.” A button that cal
 
 ### (a) Missing or partial
 
-**Saving is not a status.** "Loading uses a status." Record, correct, and add-place set `:loading` and swap the button label (`Recording` / `Saving` / `Zapisivanje` / `Spremanje`). That label has no `role="status"`. The recorded and corrected alerts do.
+None. Saving and add-place expose `role="status"` with the same label the button shows. The recorded and corrected alerts stay `role="status"` on the board.
 
 ### (b) Not asked for
 
-**The board day closes the form.** "Cancel and dismiss close the slideover and do not save." Changing the day field also calls `closeForm()`, which drops the draft and does not save.
-
-**The draft outlives a locale switch.** "A locale switch while the slideover is open keeps it open and keeps the typed values." The same `sessionStorage` draft is written whenever the slideover is open and restored on every mount, so a refresh or a later visit in the tab reopens it. The draft includes the guest name, flight number, note, tabla, and price, and it is not tied to the tenant.
+None. Changing the day reloads the list and closes the phone dialog. It does not close the slideover. The session draft is how a locale switch keeps the open slideover and the typed values, and it is restored only for the same Tenant.
 
 ### (c) Implemented but wrong
 
-**A later visit can reopen another tenant's booking.** Same locale-switch line. Restore keys only on `transferpro-transfer-form`. After sign-out and sign-in to another tenant, the slideover opens with the previous booking still filled in.
+None. A draft whose `tenantId` does not match the session is deleted, and the slideover stays closed.
 
 Add, one shared body, the Correct-only menu (`Radnje` / `Actions` plus the guest), finished rows with no menu, cancel, dismiss, locale values, the recorded status, and the pickup's operational day match the spec. Ride-command selectors were not edited.
