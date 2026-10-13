@@ -103,6 +103,44 @@ export async function vehicleIdForDriverOnDate(
   return selected.rows[0]?.vehicleId ?? null
 }
 
+export interface RosteredDriver {
+  readonly rosterDate: string
+  readonly vehicleId: string
+  readonly driverId: string
+}
+
+/**
+ * The Driver each Vehicle is rostered to on these calendar dates.
+ * A Vehicle with no row is absent. A row for an archived Vehicle still
+ * counts: this read does not join Vehicles. An empty date list reads nothing.
+ * The caller has already required an office role on this transaction.
+ * This read does not open a session. This module does not import Transfers.
+ */
+export async function rosteredDriversOnDates(
+  transaction: TenantTransaction,
+  dates: readonly string[],
+): Promise<RosteredDriver[]> {
+  const unique = [...new Set(dates)]
+  if (unique.length === 0)
+    return []
+  if (unique.some(date => !isCalendarDate(date)))
+    throw new RosterInputError()
+  const selected = z.object({
+    rows: z.array(z.object({
+      rosterDate: z.string().refine(isCalendarDate),
+      vehicleId: z.uuid(),
+      driverId: z.uuid(),
+    })),
+  }).parse(await transaction.execute(sql`
+    select roster_date::text as "rosterDate",
+           vehicle_id as "vehicleId",
+           driver_id as "driverId"
+    from app.roster
+    where roster_date in (${sql.join(unique.map(date => sql`cast(${date} as date)`), sql`, `)})
+  `))
+  return selected.rows
+}
+
 /** This Tenant's assignments for one calendar date. The office list joins names elsewhere. */
 export async function loadRosterDay(transaction: TenantTransaction, rosterDate: string): Promise<RosterAssignment[]> {
   if (!isCalendarDate(rosterDate))

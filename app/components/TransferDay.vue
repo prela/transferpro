@@ -167,6 +167,21 @@ function placeLabel(id: string): string {
   return locations.value.find(location => location.id === id)?.name ?? t('transfers.unknownPlace')
 }
 
+function warningLines(ride: TransferDayRide): string[] {
+  const lines: string[] = []
+  if (ride.warnings.expiredDocuments.length > 0) {
+    const documents = ride.warnings.expiredDocuments
+      .map(kind => t(`expiringDocuments.kinds.${kind}`))
+      .join(', ')
+    lines.push(t('transfers.warnings.expiredDocuments', { documents }))
+  }
+  if (ride.warnings.rosterMismatch)
+    lines.push(t('transfers.warnings.rosterMismatch'))
+  if (ride.warnings.overlappingRideIds.length > 0)
+    lines.push(t('transfers.warnings.overlap'))
+  return lines
+}
+
 /** The day list stores ids. The screen shows the name or the plate, never the id. */
 function driverLabel(id: string | null): string {
   if (id === null)
@@ -1250,6 +1265,18 @@ onMounted(() => {
 
     <UButton
       type="button"
+      color="neutral"
+      variant="outline"
+      size="xl"
+      class="mb-4 mr-2"
+      :disabled="loading"
+      @click="loadDay()"
+    >
+      {{ t('transfers.refresh') }}
+    </UButton>
+
+    <UButton
+      type="button"
       size="xl"
       icon="i-lucide-plus"
       class="mb-4"
@@ -1369,6 +1396,17 @@ onMounted(() => {
             class="mt-1 whitespace-normal"
           >
             {{ t('officeHome.landingAlarm') }}
+          </p>
+          <!--
+            Text, not color, and not the other Ride's guest. The warning
+            does not hide the row actions.
+          -->
+          <p
+            v-for="line in warningLines(row.original)"
+            :key="line"
+            class="mt-1 whitespace-normal"
+          >
+            {{ line }}
           </p>
         </template>
         <template #driver-cell="{ row }">

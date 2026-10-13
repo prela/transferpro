@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { boardWarningsSchema } from './board-warnings'
 import { isCalendarDate } from './date'
 import { sameFlightDesignator } from './flight-landing'
 import { QueryParamError } from './query'
@@ -298,6 +299,8 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   expectedArrival: z.iso.datetime().nullable(),
   // Derived at read. Display only. A Ride with no landing stays false (ADR-0030).
   landingAlarm: z.boolean(),
+  // Derived at read. Display only. Empty unless the Ride is assigned or accepted.
+  warnings: boardWarningsSchema,
 })
 
 export type TransferDayRide = z.infer<typeof transferDayRideSchema>

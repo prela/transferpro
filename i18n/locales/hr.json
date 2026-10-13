@@ -265,6 +265,7 @@
     "title": "Transferi",
     "day": "Dan",
     "loading": "Učitavanje vožnji",
+    "refresh": "Osvježi popis",
     "loadFailed": "Dnevni popis nije se mogao učitati. Pokušajte ponovno.",
     "empty": "Nema vožnji ovaj dan.",
     "declined": "{driver} je odbio vožnju za {guest}.",
@@ -333,6 +334,11 @@
       "done": "Obavljeno",
       "no-show": "Nedolazak",
       "cancelled": "Otkazano"
+    },
+    "warnings": {
+      "expiredDocuments": "Istekli dokumenti: {documents}",
+      "rosterMismatch": "Nesklad rasporeda",
+      "overlap": "Preklapanje s drugom vožnjom"
     },
     "fields": {
       "pickupAt": "Vrijeme preuzimanja",
