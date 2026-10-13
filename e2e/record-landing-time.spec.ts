@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { openAudit, signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'
+import { openAudit, openUserMenu, signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'
 
 const landingWall = '2026-01-15T10:30'
 const landingHr = '15. 01. 2026. 10:30'
@@ -78,7 +78,10 @@ test('the office and the Driver record a landing time in both languages and both
   })
   expect(assigned.ok()).toBeTruthy()
 
-  await signOut(page)
+  // The row's Radnje menu is also aria-haspopup, so sign-out uses the Tenant button.
+  await openUserMenu(page, tenant.name)
+  await page.getByRole('menuitem', { name: 'Odjava', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
   await signIn(page, driver.email, driver.password, tenant.name)
   await page.getByRole('button', { name: 'Zabilježi slijetanje', exact: true }).click()
   await page.locator('#landing-time').fill(driverWall)

@@ -63,10 +63,35 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   expect((await page.request.post(`/api/rides/${rideId}/assign`, { data: { driverId, vehicleId } })).ok()).toBeTruthy()
   expect((await page.request.post(`/api/rides/${rideId}/accept-by-phone`, { data: {} })).ok()).toBeTruthy()
 
+  const finishedGuest = 'Leo Kraj'
+  const finished = await page.request.post('/api/transfers', {
+    data: {
+      clientId,
+      pickupAt: instantFromWallClock(`${day}T13:00`, 'Europe/Zagreb').toISOString(),
+      startLocationId,
+      endLocationId,
+      passengerCount: 1,
+      guestName: finishedGuest,
+      price: 10,
+      payment: 'cash',
+      airportMark: false,
+      luggageCount: 0,
+      childSeatCount: 0,
+    },
+  })
+  expect(finished.ok()).toBeTruthy()
+  const finishedRideId = (await finished.json() as { ride: { id: string } }).ride.id
+  expect((await page.request.post(`/api/rides/${finishedRideId}/cancel`, { data: {} })).ok()).toBeTruthy()
+
   await page.goto('/transfers')
-  await page.getByRole('button', { name: `Ispravi: ${guest}` }).click()
-  await page.getByLabel('Broj leta').fill('OU392')
-  await page.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
+  await expect(page.getByRole('button', { name: `Radnje: ${finishedGuest}` })).toHaveCount(0)
+  await expect(page.getByRole('cell', { name: 'Otkazano' })).toBeVisible()
+  await page.getByRole('button', { name: `Radnje: ${guest}` }).click()
+  await page.getByRole('menuitem', { name: 'Ispravi', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Broj leta').fill('OU392')
+  await dialog.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
+  await expect(dialog).toBeHidden()
   await expect(page.getByText('Ispravljeno.')).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Dodijeljeno' })).toBeVisible()
   await expect(page.getByRole('button', { name: `Zabilježi prihvaćanje telefonom: ${guest}` })).toBeVisible()
@@ -74,14 +99,19 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   await switchTheme(page, 'dark')
   await expect(page.getByRole('cell', { name: 'Dodijeljeno' })).toBeVisible()
   await switchLocale(page, 'en')
-  await expect(page.getByRole('button', { name: `Correct: ${guest}` })).toBeVisible()
-  await page.getByRole('button', { name: `Correct: ${guest}` }).click()
-  await page.getByLabel('Guest name').fill(renamed)
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(page.getByRole('button', { name: `Actions: ${guest}` })).toBeVisible()
+  await page.getByRole('button', { name: `Actions: ${guest}` }).click()
+  await page.getByRole('menuitem', { name: 'Correct', exact: true }).click()
+  let correctDialog = page.getByRole('dialog')
+  await correctDialog.getByLabel('Guest name').fill(renamed)
+  await correctDialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(correctDialog).toBeHidden()
   await expect(page.getByRole('cell', { name: guest, exact: true })).toBeVisible()
-  await page.getByRole('button', { name: `Correct: ${guest}` }).click()
-  await page.getByLabel('Guest name').fill(renamed)
-  await page.getByRole('button', { name: 'Save correction', exact: true }).click()
+  await page.getByRole('button', { name: `Actions: ${guest}` }).click()
+  await page.getByRole('menuitem', { name: 'Correct', exact: true }).click()
+  correctDialog = page.getByRole('dialog')
+  await correctDialog.getByLabel('Guest name').fill(renamed)
+  await correctDialog.getByRole('button', { name: 'Save correction', exact: true }).click()
   await expect(page.getByText('Corrected.')).toBeVisible()
   await expect(page.getByRole('cell', { name: renamed, exact: true })).toBeVisible()
   await switchTheme(page, 'light')
@@ -99,13 +129,13 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   await signIn(page, driver.email, driver.password, tenant.name)
   await expect(page.getByText('Čeka na prihvat')).toBeVisible()
   await page.getByRole('button', { name: 'Odbi vožnju', exact: true }).click()
-  const dialog = page.getByRole('dialog')
+  const declineDialog = page.getByRole('dialog')
   const declineResponse = page.waitForResponse(response =>
     response.url().includes('/decline') && response.request().method() === 'POST',
   )
-  await dialog.getByRole('button', { name: 'Odbi', exact: true }).click()
+  await declineDialog.getByRole('button', { name: 'Odbi', exact: true }).click()
   expect((await declineResponse).status()).toBe(200)
-  await expect(dialog).toBeHidden()
+  await expect(declineDialog).toBeHidden()
   await expect(page.getByText('Nemate nadolazećih vožnji.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Odjava', exact: true })).toBeVisible()
 

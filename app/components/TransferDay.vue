@@ -1,12 +1,15 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, DeclineAlert, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
-import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, cancelledRideResultSchema, canCorrectTransfer, canMarkNoShow, canMarkRideDone, canRecordLandingTime, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema, wallClockInTimeZone } from '../../shared'
+import { z } from 'zod'
+import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, cancelledRideResultSchema, canCorrectTransfer, canMarkNoShow, canMarkRideDone, canRecordLandingTime, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationKindSchema, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, paymentMethodSchema, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema, wallClockInTimeZone } from '../../shared'
 import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
   timeZone: string
   locale: DisplayLocale
   operationalDayStartHour: number
+  tenantId: string
 }>()
 
 const { t } = useI18n()
@@ -71,8 +74,12 @@ const pending = ref(false)
 const placePending = ref(false)
 const saved = ref(false)
 const corrected = ref(false)
-// The row being corrected. Null means the form records a new Transfer.
-const correcting = ref<TransferDayRide | null>(null)
+/**
+ * Add and correct share one slideover. Null is closed.
+ * `edit` patches the Transfer in `editingTransferId`.
+ */
+const formMode = ref<'add' | 'edit' | null>(null)
+const editingTransferId = ref<string | null>(null)
 const formErrorKey = ref<TransferFailure | null>(null)
 const guestErrorKey = ref<'transfers.guestEmpty' | 'transfers.guestTooLong' | null>(null)
 const tablaErrorKey = ref<'transfers.tablaTooLong' | null>(null)
@@ -908,12 +915,171 @@ function priceForForm(price: string): string {
   return props.locale === 'hr' ? price.replace('.', ',') : price
 }
 
-function resetBookingForm() {
+/**
+ * Locale switch leaves this page and comes back. The open slideover and the
+ * typed booking stay in sessionStorage for this Tenant so that return can
+ * open them again. Another Tenant's draft is dropped. This is the form on
+ * this browser, not an audit entry and not a log. Restore runs in onMounted,
+ * after hydration. Values stay strings until the record or correct route parses them.
+ */
+const DRAFT_KEY = 'transferpro-transfer-form'
+let ignoreDraft = false
+
+const transferFormDraftSchema = z.object({
+  tenantId: z.uuid(),
+  transferId: z.uuid().nullable(),
+  clientId: z.uuid().nullable(),
+  pickupWall: z.string(),
+  startLocationId: z.uuid().nullable(),
+  endLocationId: z.uuid().nullable(),
+  passengers: z.string(),
+  guest: z.string(),
+  tabla: z.string(),
+  flight: z.string(),
+  price: z.string(),
+  payment: paymentMethodSchema.nullable(),
+  airportMark: z.boolean(),
+  luggage: z.string(),
+  childSeats: z.string(),
+  note: z.string(),
+  placeTarget: z.enum(['start', 'end']).nullable(),
+  placeName: z.string(),
+  placeKind: locationKindSchema.nullable(),
+  placeAddress: z.string(),
+})
+
+type TransferFormDraft = z.infer<typeof transferFormDraftSchema>
+
+function currentDraft(): TransferFormDraft {
+  return {
+    tenantId: props.tenantId,
+    transferId: editingTransferId.value,
+    clientId: clientId.value ?? null,
+    pickupWall: pickupWall.value,
+    startLocationId: startLocationId.value ?? null,
+    endLocationId: endLocationId.value ?? null,
+    passengers: passengers.value,
+    guest: guest.value,
+    tabla: tabla.value,
+    flight: flight.value,
+    price: price.value,
+    payment: payment.value ?? null,
+    airportMark: airportMark.value,
+    luggage: luggage.value,
+    childSeats: childSeats.value,
+    note: note.value,
+    placeTarget: placeTarget.value,
+    placeName: placeName.value,
+    placeKind: placeKind.value ?? null,
+    placeAddress: placeAddress.value,
+  }
+}
+
+function applyDraft(draft: TransferFormDraft) {
+  editingTransferId.value = draft.transferId
+  clientId.value = draft.clientId ?? undefined
+  pickupWall.value = draft.pickupWall
+  startLocationId.value = draft.startLocationId ?? undefined
+  endLocationId.value = draft.endLocationId ?? undefined
+  passengers.value = draft.passengers
+  guest.value = draft.guest
+  tabla.value = draft.tabla
+  flight.value = draft.flight
+  price.value = draft.price
+  payment.value = draft.payment ?? undefined
+  airportMark.value = draft.airportMark
+  luggage.value = draft.luggage
+  childSeats.value = draft.childSeats
+  note.value = draft.note
+  placeTarget.value = draft.placeTarget
+  placeName.value = draft.placeName
+  placeKind.value = draft.placeKind ?? undefined
+  placeAddress.value = draft.placeAddress
+  formMode.value = draft.transferId === null ? 'add' : 'edit'
+}
+
+function restoreDraft() {
+  const raw = sessionStorage.getItem(DRAFT_KEY)
+  if (raw === null)
+    return
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  }
+  catch {
+    sessionStorage.removeItem(DRAFT_KEY)
+    return
+  }
+  const draft = transferFormDraftSchema.safeParse(parsed)
+  if (!draft.success || draft.data.tenantId !== props.tenantId) {
+    sessionStorage.removeItem(DRAFT_KEY)
+    return
+  }
+  ignoreDraft = true
+  applyDraft(draft.data)
+  ignoreDraft = false
+}
+
+const formOpen = computed({
+  get: () => formMode.value !== null,
+  set(open: boolean) {
+    if (!open && !pending.value)
+      closeForm()
+  },
+})
+
+const formTitle = computed(() => formMode.value === 'edit' ? t('transfers.correctTitle') : t('transfers.add'))
+
+function clearFieldErrors() {
+  guestErrorKey.value = null
+  tablaErrorKey.value = null
+  flightErrorKey.value = null
+  noteErrorKey.value = null
+  priceErrorKey.value = null
+  passengerErrorKey.value = null
+  luggageErrorKey.value = null
+  seatErrorKey.value = null
+  pickupErrorKey.value = null
+  endErrorKey.value = null
+  placeNameErrorKey.value = null
+  placeKindErrorKey.value = null
+}
+
+/** Cancel and dismiss close the slideover and do not save. */
+function closeForm() {
+  ignoreDraft = true
+  formMode.value = null
+  editingTransferId.value = null
+  placeTarget.value = null
+  formErrorKey.value = null
+  clearFieldErrors()
+  sessionStorage.removeItem(DRAFT_KEY)
+  ignoreDraft = false
+}
+
+function openAdd() {
+  clearFieldErrors()
+  formErrorKey.value = null
+  editingTransferId.value = null
+  clientId.value = undefined
+  pickupWall.value = `${pickupDay}T12:00`
+  startLocationId.value = undefined
+  endLocationId.value = undefined
+  passengers.value = '1'
   guest.value = ''
   tabla.value = ''
   flight.value = ''
+  price.value = ''
+  payment.value = undefined
+  airportMark.value = false
+  luggage.value = '0'
+  childSeats.value = '0'
   note.value = ''
-  correcting.value = null
+  placeTarget.value = null
+  placeName.value = ''
+  placeAddress.value = ''
+  placeKind.value = undefined
+  formMode.value = 'add'
 }
 
 /**
@@ -921,10 +1087,9 @@ function resetBookingForm() {
  * Cancel drops the values and does not save.
  */
 function openCorrect(ride: TransferDayRide) {
-  correcting.value = ride
-  saved.value = false
-  corrected.value = false
+  clearFieldErrors()
   formErrorKey.value = null
+  editingTransferId.value = ride.transferId
   clientId.value = ride.clientId
   pickupWall.value = wallClockInTimeZone(props.timeZone, new Date(ride.pickupAt))
   startLocationId.value = ride.startLocationId
@@ -939,15 +1104,18 @@ function openCorrect(ride: TransferDayRide) {
   luggage.value = String(ride.luggageCount)
   childSeats.value = String(ride.childSeatCount)
   note.value = ride.note ?? ''
-  void nextTick(() => {
-    document.getElementById('transfer-form')?.scrollIntoView({ block: 'start' })
-  })
+  placeTarget.value = null
+  formMode.value = 'edit'
 }
 
-function cancelCorrect() {
-  resetBookingForm()
-  formErrorKey.value = null
-  corrected.value = false
+function correctActions(ride: TransferDayRide): DropdownMenuItem[][] {
+  return [[
+    {
+      label: t('transfers.correct'),
+      icon: 'i-lucide-pencil',
+      onSelect: () => openCorrect(ride),
+    },
+  ]]
 }
 
 function bookingBody() {
@@ -970,23 +1138,23 @@ function bookingBody() {
 }
 
 async function saveCorrection() {
-  const ride = correcting.value
+  const transferId = editingTransferId.value
   saved.value = false
   corrected.value = false
   formErrorKey.value = null
-  if (!ride || !formReady() || !clientId.value || !startLocationId.value || !endLocationId.value || !payment.value) {
+  if (!transferId || !formReady() || !clientId.value || !startLocationId.value || !endLocationId.value || !payment.value) {
     if (!clientId.value || !startLocationId.value || !endLocationId.value || !payment.value)
       formErrorKey.value = 'transfers.rejected'
     return
   }
   pending.value = true
   try {
-    recordedTransferSchema.parse(await $fetch(`/api/transfers/${ride.transferId}`, {
+    recordedTransferSchema.parse(await $fetch(`/api/transfers/${transferId}`, {
       method: 'PATCH',
       body: bookingBody(),
     }))
-    resetBookingForm()
     corrected.value = true
+    closeForm()
     await loadDay()
   }
   catch (error) {
@@ -1012,8 +1180,8 @@ async function record() {
       method: 'POST',
       body: bookingBody(),
     }))
-    resetBookingForm()
     saved.value = true
+    closeForm()
     day.value = operationalDateInTimeZone(props.timeZone, new Date(recorded.transfer.pickupAt), props.operationalDayStartHour)
     await loadDay()
   }
@@ -1027,14 +1195,29 @@ async function record() {
 
 watch(day, () => {
   assigning.value = null
-  correcting.value = null
-  // A different day is a different list. Drop the dialog. That does not post.
+  // A different day is a different list. Close the phone dialog. That does not post.
+  // The booking slideover stays open.
   acceptingByPhone.value = null
   acceptByPhoneErrorKey.value = null
   void loadDay()
 })
 
-onMounted(loadAll)
+watch(
+  () => formMode.value === null ? null : currentDraft(),
+  (draft) => {
+    if (!import.meta.client || ignoreDraft)
+      return
+    if (draft === null)
+      sessionStorage.removeItem(DRAFT_KEY)
+    else
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+  },
+)
+
+onMounted(() => {
+  restoreDraft()
+  void loadAll()
+})
 </script>
 
 <template>
@@ -1053,6 +1236,39 @@ onMounted(loadAll)
         class="w-full"
       />
     </UFormField>
+
+    <UButton
+      type="button"
+      size="xl"
+      icon="i-lucide-plus"
+      class="mb-4"
+      @click="openAdd"
+    >
+      {{ t('transfers.add') }}
+    </UButton>
+    <UAlert
+      v-if="clients.length === 0 && !loading"
+      color="neutral"
+      variant="subtle"
+      class="mb-4"
+      :description="t('transfers.noClients')"
+    />
+    <UAlert
+      v-if="saved"
+      color="success"
+      variant="subtle"
+      role="status"
+      class="mb-4"
+      :description="t('transfers.recorded')"
+    />
+    <UAlert
+      v-if="corrected"
+      color="success"
+      variant="subtle"
+      role="status"
+      class="mb-4"
+      :description="t('transfers.corrected')"
+    />
 
     <UAlert
       v-if="loadError"
@@ -1165,17 +1381,24 @@ onMounted(loadAll)
         </template>
         <template #actions-cell="{ row }">
           <div class="flex flex-wrap gap-2">
-            <UButton
+            <!--
+              Correct is the only menu item. A finished Ride has no trigger.
+              Assign and the other ride commands stay buttons beside it.
+            -->
+            <UDropdownMenu
               v-if="canCorrectTransfer(row.original.state)"
-              type="button"
-              color="neutral"
-              variant="outline"
+              :items="correctActions(row.original)"
               size="xl"
-              :aria-label="t('transfers.correctFor', { guest: row.original.guestName })"
-              @click="openCorrect(row.original)"
             >
-              {{ t('transfers.correct') }}
-            </UButton>
+              <UButton
+                type="button"
+                color="neutral"
+                variant="outline"
+                size="xl"
+                icon="i-lucide-ellipsis-vertical"
+                :aria-label="t('transfers.actionsFor', { guest: row.original.guestName })"
+              />
+            </UDropdownMenu>
             <UButton
               v-if="canRecordLandingTime(row.original.state)"
               type="button"
@@ -1562,404 +1785,402 @@ onMounted(loadAll)
       </template>
     </UModal>
 
-    <h2 class="mt-6 mb-4 text-xl font-semibold">
-      {{ correcting ? t('transfers.correctTitle') : t('transfers.add') }}
-    </h2>
-    <UAlert
-      v-if="clients.length === 0 && !loading"
-      color="neutral"
-      variant="subtle"
-      class="mb-4"
-      :description="t('transfers.noClients')"
-    />
-    <UAlert
-      v-if="saved"
-      color="success"
-      variant="subtle"
-      role="status"
-      class="mb-4"
-      :description="t('transfers.recorded')"
-    />
-    <UAlert
-      v-if="corrected"
-      color="success"
-      variant="subtle"
-      role="status"
-      class="mb-4"
-      :description="t('transfers.corrected')"
-    />
-    <UAlert
-      v-if="formErrorKey"
-      color="error"
-      variant="subtle"
-      role="alert"
-      class="mb-4"
-      :description="t(formErrorKey)"
-    />
-
-    <form
-      v-if="placeTarget"
-      class="mb-6"
-      @submit.prevent="addPlace"
+    <USlideover
+      v-model:open="formOpen"
+      :title="formTitle"
+      :dismissible="!pending && !placePending"
+      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
     >
-      <h3 class="mb-4 text-lg font-semibold">
-        {{ placeTarget === 'start' ? t('transfers.placeForStart') : t('transfers.placeForEnd') }}
-      </h3>
-      <UFormField
-        :label="t('locations.name')"
-        name="place-name"
-        class="mb-4"
-        size="xl"
-        :error="placeNameErrorKey ? t(placeNameErrorKey) : false"
-      >
-        <UInput
-          id="place-name"
-          v-model="placeName"
-          name="place-name"
-          type="text"
-          autocomplete="off"
-          class="w-full"
+      <template #body>
+        <p
+          v-if="pending || placePending"
+          role="status"
+          class="sr-only"
+        >
+          {{
+            placePending
+              ? t('transfers.addPlace')
+              : formMode === 'edit'
+                ? t('transfers.savingCorrection')
+                : t('transfers.submitting')
+          }}
+        </p>
+        <UAlert
+          v-if="formErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mb-4"
+          :description="t(formErrorKey)"
         />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('locations.kind')"
-        name="place-kind"
-        class="mb-4"
-        size="xl"
-        :error="placeKindErrorKey ? t(placeKindErrorKey) : false"
-      >
-        <USelect
-          id="place-kind"
-          v-model="placeKind"
-          name="place-kind"
-          :items="kindItems"
-          :placeholder="t('locations.chooseKind')"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('locations.address')"
-        name="place-address"
-        class="mb-4"
-        size="xl"
-      >
-        <UInput
-          id="place-address"
-          v-model="placeAddress"
-          name="place-address"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-        />
-      </UFormField>
-      <UButton
-        type="submit"
-        size="xl"
-        :loading="placePending"
-      >
-        {{ t('transfers.addPlace') }}
-      </UButton>
-    </form>
 
-    <form
-      id="transfer-form"
-      @submit.prevent="correcting ? saveCorrection() : record()"
-    >
-      <UFormField
-        :label="t('transfers.client')"
-        name="client"
-        class="mb-4"
-        size="xl"
-      >
-        <USelect
-          id="transfer-client"
-          v-model="clientId"
-          name="client"
-          :items="clientItems"
-          :placeholder="t('transfers.chooseClient')"
-          class="w-full"
-        />
-      </UFormField>
-      <UFormField
-        :label="t('transfers.pickupAt')"
-        name="pickup"
-        class="mb-4"
-        size="xl"
-        :error="pickupErrorKey ? t(pickupErrorKey) : false"
-      >
-        <UInput
-          id="transfer-pickup"
-          v-model="pickupWall"
-          name="pickup"
-          type="datetime-local"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('transfers.start')"
-        name="start"
-        class="mb-4"
-        size="xl"
-      >
-        <USelect
-          id="transfer-start"
-          v-model="startLocationId"
-          name="start"
-          :items="locationItems"
-          :placeholder="t('transfers.chooseLocation')"
-          class="w-full"
-        />
-      </UFormField>
-      <UButton
-        type="button"
-        color="neutral"
-        variant="outline"
-        size="xl"
-        class="mb-4"
-        @click="openPlace('start')"
-      >
-        {{ t('transfers.placeForStart') }}
-      </UButton>
-      <UFormField
-        :label="t('transfers.end')"
-        name="end"
-        class="mb-4"
-        size="xl"
-        :error="endErrorKey ? t(endErrorKey) : false"
-      >
-        <USelect
-          id="transfer-end"
-          v-model="endLocationId"
-          name="end"
-          :items="locationItems"
-          :placeholder="t('transfers.chooseLocation')"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UButton
-        type="button"
-        color="neutral"
-        variant="outline"
-        size="xl"
-        class="mb-4"
-        @click="openPlace('end')"
-      >
-        {{ t('transfers.placeForEnd') }}
-      </UButton>
-      <UFormField
-        :label="t('transfers.passengers')"
-        name="passengers"
-        class="mb-4"
-        size="xl"
-        :error="passengerErrorKey ? t(passengerErrorKey) : false"
-      >
-        <UInput
-          id="transfer-passengers"
-          v-model="passengers"
-          name="passengers"
-          type="text"
-          inputmode="numeric"
-          autocomplete="off"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('transfers.guest')"
-        name="guest"
-        class="mb-4"
-        size="xl"
-        :error="guestErrorKey ? t(guestErrorKey) : false"
-      >
-        <UInput
-          id="transfer-guest"
-          v-model="guest"
-          name="guest"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('transfers.tabla')"
-        name="tabla"
-        class="mb-4"
-        size="xl"
-        :error="tablaErrorKey ? t(tablaErrorKey) : false"
-      >
-        <UInput
-          id="transfer-tabla"
-          v-model="tabla"
-          name="tabla"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('transfers.flight')"
-        name="flight"
-        class="mb-4"
-        size="xl"
-        :error="flightErrorKey ? t(flightErrorKey) : false"
-      >
-        <UInput
-          id="transfer-flight"
-          v-model="flight"
-          name="flight"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('transfers.price')"
-        name="price"
-        class="mb-4"
-        size="xl"
-        :error="priceErrorKey ? t(priceErrorKey) : false"
-      >
-        <UInput
-          id="transfer-price"
-          v-model="price"
-          name="price"
-          type="text"
-          inputmode="decimal"
-          autocomplete="off"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('transfers.payment')"
-        name="payment"
-        class="mb-4"
-        size="xl"
-      >
-        <USelect
-          id="transfer-payment"
-          v-model="payment"
-          name="payment"
-          :items="paymentItems"
-          :placeholder="t('transfers.choosePayment')"
-          class="w-full"
-        />
-      </UFormField>
-      <UCheckbox
-        id="transfer-airport"
-        v-model="airportMark"
-        name="airport"
-        size="xl"
-        class="mb-4"
-        :label="t('transfers.airport')"
-      />
-      <UFormField
-        :label="t('transfers.luggage')"
-        name="luggage"
-        class="mb-4"
-        size="xl"
-        :error="luggageErrorKey ? t(luggageErrorKey) : false"
-      >
-        <UInput
-          id="transfer-luggage"
-          v-model="luggage"
-          name="luggage"
-          type="text"
-          inputmode="numeric"
-          autocomplete="off"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('transfers.childSeats')"
-        name="child-seats"
-        class="mb-4"
-        size="xl"
-        :error="seatErrorKey ? t(seatErrorKey) : false"
-      >
-        <UInput
-          id="transfer-seats"
-          v-model="childSeats"
-          name="child-seats"
-          type="text"
-          inputmode="numeric"
-          autocomplete="off"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('transfers.note')"
-        name="note"
-        class="mb-4"
-        size="xl"
-        :error="noteErrorKey ? t(noteErrorKey) : false"
-      >
-        <UTextarea
-          id="transfer-note"
-          v-model="note"
-          name="note"
-          :rows="3"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <div class="flex flex-col gap-2 sm:flex-row">
+        <form
+          v-if="placeTarget"
+          class="mb-6"
+          @submit.prevent="addPlace"
+        >
+          <h3 class="mb-4 text-lg font-semibold">
+            {{ placeTarget === 'start' ? t('transfers.placeForStart') : t('transfers.placeForEnd') }}
+          </h3>
+          <UFormField
+            :label="t('locations.name')"
+            name="place-name"
+            class="mb-4"
+            size="xl"
+            :error="placeNameErrorKey ? t(placeNameErrorKey) : false"
+          >
+            <UInput
+              id="place-name"
+              v-model="placeName"
+              name="place-name"
+              type="text"
+              autocomplete="off"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('locations.kind')"
+            name="place-kind"
+            class="mb-4"
+            size="xl"
+            :error="placeKindErrorKey ? t(placeKindErrorKey) : false"
+          >
+            <USelect
+              id="place-kind"
+              v-model="placeKind"
+              name="place-kind"
+              :items="kindItems"
+              :placeholder="t('locations.chooseKind')"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('locations.address')"
+            name="place-address"
+            class="mb-4"
+            size="xl"
+          >
+            <UInput
+              id="place-address"
+              v-model="placeAddress"
+              name="place-address"
+              type="text"
+              autocomplete="off"
+              class="w-full"
+            />
+          </UFormField>
+          <UButton
+            type="submit"
+            size="xl"
+            :loading="placePending"
+          >
+            {{ t('transfers.addPlace') }}
+          </UButton>
+        </form>
+
+        <form
+          id="transfer-form"
+          @submit.prevent="formMode === 'edit' ? saveCorrection() : record()"
+        >
+          <UFormField
+            :label="t('transfers.client')"
+            name="client"
+            class="mb-4"
+            size="xl"
+          >
+            <USelect
+              id="transfer-client"
+              v-model="clientId"
+              name="client"
+              :items="clientItems"
+              :placeholder="t('transfers.chooseClient')"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
+            :label="t('transfers.pickupAt')"
+            name="pickup"
+            class="mb-4"
+            size="xl"
+            :error="pickupErrorKey ? t(pickupErrorKey) : false"
+          >
+            <UInput
+              id="transfer-pickup"
+              v-model="pickupWall"
+              name="pickup"
+              type="datetime-local"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('transfers.start')"
+            name="start"
+            class="mb-4"
+            size="xl"
+          >
+            <USelect
+              id="transfer-start"
+              v-model="startLocationId"
+              name="start"
+              :items="locationItems"
+              :placeholder="t('transfers.chooseLocation')"
+              class="w-full"
+            />
+          </UFormField>
+          <UButton
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="xl"
+            class="mb-4"
+            @click="openPlace('start')"
+          >
+            {{ t('transfers.placeForStart') }}
+          </UButton>
+          <UFormField
+            :label="t('transfers.end')"
+            name="end"
+            class="mb-4"
+            size="xl"
+            :error="endErrorKey ? t(endErrorKey) : false"
+          >
+            <USelect
+              id="transfer-end"
+              v-model="endLocationId"
+              name="end"
+              :items="locationItems"
+              :placeholder="t('transfers.chooseLocation')"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UButton
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="xl"
+            class="mb-4"
+            @click="openPlace('end')"
+          >
+            {{ t('transfers.placeForEnd') }}
+          </UButton>
+          <UFormField
+            :label="t('transfers.passengers')"
+            name="passengers"
+            class="mb-4"
+            size="xl"
+            :error="passengerErrorKey ? t(passengerErrorKey) : false"
+          >
+            <UInput
+              id="transfer-passengers"
+              v-model="passengers"
+              name="passengers"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('transfers.guest')"
+            name="guest"
+            class="mb-4"
+            size="xl"
+            :error="guestErrorKey ? t(guestErrorKey) : false"
+          >
+            <UInput
+              id="transfer-guest"
+              v-model="guest"
+              name="guest"
+              type="text"
+              autocomplete="off"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('transfers.tabla')"
+            name="tabla"
+            class="mb-4"
+            size="xl"
+            :error="tablaErrorKey ? t(tablaErrorKey) : false"
+          >
+            <UInput
+              id="transfer-tabla"
+              v-model="tabla"
+              name="tabla"
+              type="text"
+              autocomplete="off"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('transfers.flight')"
+            name="flight"
+            class="mb-4"
+            size="xl"
+            :error="flightErrorKey ? t(flightErrorKey) : false"
+          >
+            <UInput
+              id="transfer-flight"
+              v-model="flight"
+              name="flight"
+              type="text"
+              autocomplete="off"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('transfers.price')"
+            name="price"
+            class="mb-4"
+            size="xl"
+            :error="priceErrorKey ? t(priceErrorKey) : false"
+          >
+            <UInput
+              id="transfer-price"
+              v-model="price"
+              name="price"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('transfers.payment')"
+            name="payment"
+            class="mb-4"
+            size="xl"
+          >
+            <USelect
+              id="transfer-payment"
+              v-model="payment"
+              name="payment"
+              :items="paymentItems"
+              :placeholder="t('transfers.choosePayment')"
+              class="w-full"
+            />
+          </UFormField>
+          <UCheckbox
+            id="transfer-airport"
+            v-model="airportMark"
+            name="airport"
+            size="xl"
+            class="mb-4"
+            :label="t('transfers.airport')"
+          />
+          <UFormField
+            :label="t('transfers.luggage')"
+            name="luggage"
+            class="mb-4"
+            size="xl"
+            :error="luggageErrorKey ? t(luggageErrorKey) : false"
+          >
+            <UInput
+              id="transfer-luggage"
+              v-model="luggage"
+              name="luggage"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('transfers.childSeats')"
+            name="child-seats"
+            class="mb-4"
+            size="xl"
+            :error="seatErrorKey ? t(seatErrorKey) : false"
+          >
+            <UInput
+              id="transfer-seats"
+              v-model="childSeats"
+              name="child-seats"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('transfers.note')"
+            name="note"
+            class="mb-4"
+            size="xl"
+            :error="noteErrorKey ? t(noteErrorKey) : false"
+          >
+            <UTextarea
+              id="transfer-note"
+              v-model="note"
+              name="note"
+              :rows="3"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span role="alert">{{ error }}</span>
+            </template>
+          </UFormField>
+        </form>
+      </template>
+      <template #footer>
         <UButton
-          v-if="correcting"
           type="button"
           color="neutral"
           variant="outline"
           size="xl"
+          class="w-full justify-center sm:w-auto"
           :disabled="pending"
-          @click="cancelCorrect"
+          @click="formOpen = false"
         >
           {{ t('transfers.cancelCorrect') }}
         </UButton>
         <UButton
           type="submit"
+          form="transfer-form"
           size="xl"
+          class="w-full justify-center sm:w-auto"
           :loading="pending"
         >
           {{
-            correcting
+            formMode === 'edit'
               ? (pending ? t('transfers.savingCorrection') : t('transfers.saveCorrection'))
               : (pending ? t('transfers.submitting') : t('transfers.submit'))
           }}
         </UButton>
-      </div>
-    </form>
+      </template>
+    </USlideover>
   </section>
 </template>
