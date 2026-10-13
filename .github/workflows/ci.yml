@@ -83,6 +83,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Generates .nuxt/ so the RLS vitest config can load .nuxt/tsconfig.app.json.
+      - run: pnpm exec nuxi prepare
+
       # Roles are created here, not from a committed password. The SQL lives
       # in docker/postgres/init-roles.sh. PGHOST makes that script talk to the
       # service container over TCP; inside Docker it still uses the socket.
