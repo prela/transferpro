@@ -18,5 +18,8 @@ test('the board opens on the operational day and the pickup form stays on the ca
   // instead of waiting for the board. The day control is the textbox.
   const day = page.getByRole('textbox', { name: 'Dan', exact: true })
   await expect(day).toHaveValue(operational)
-  await expect(page.getByLabel('Vrijeme preuzimanja')).toHaveValue(`${calendar}T12:00`)
+  // The pickup field lives in the record slideover. The board day stays the
+  // operational day; the form still defaults to noon on the calendar date.
+  await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await expect(page.getByRole('dialog').getByLabel('Vrijeme preuzimanja')).toHaveValue(`${calendar}T12:00`)
 })

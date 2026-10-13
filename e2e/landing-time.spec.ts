@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import pg from 'pg'
 import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'
+import { openUserMenu, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
 function required(name: string): string {
   const value = process.env[name]
@@ -120,7 +120,10 @@ test('the office Ride and the Driver Ride show a stored landing time in both lan
   if (!assigned.ok())
     throw new Error(`${assigned.status()} ${await assigned.text()}`)
 
-  await signOut(page)
+  // The row's Radnje menu is also aria-haspopup, so sign-out uses the Tenant button.
+  await openUserMenu(page, tenant.name)
+  await page.getByRole('menuitem', { name: 'Odjava', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
   await signIn(page, driver.email, driver.password, tenant.name)
   await expect(page.getByText('Vrijeme slijetanja')).toBeVisible()
   await expect(page.getByText(landingHr)).toBeVisible()
