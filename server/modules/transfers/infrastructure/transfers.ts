@@ -3,7 +3,7 @@ import type { CreateTransfer, DeclineAlert, Ride, Transfer, TransferDayRide, Tra
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { landingAlarmOn, localDayBounds, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, transferPriceSchema } from '../../../../shared'
+import { emptyBoardWarnings, landingAlarmOn, localDayBounds, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, transferPriceSchema } from '../../../../shared'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
@@ -302,6 +302,7 @@ function toDayRide(
       transferDurationMinutes,
       rideIsInProgress(row.state, row.mustAccept, row.driverId, pickupMs, nowMs),
     ),
+    warnings: emptyBoardWarnings(),
   }
 }
 

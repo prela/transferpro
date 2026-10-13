@@ -1,6 +1,7 @@
 import type { RecordedTransfer, TransferDay } from '../../../../shared'
 import { operationalDateInTimeZone, parseCreateTransfer, parseTransferDay } from '../../../../shared'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { applyBoardWarnings } from './board-warnings'
 import { loadDeclineAlertsForDay, loadRidesForDay, recordTransfer } from './transfers'
 
 function officeOnly(role: string): void {
@@ -40,15 +41,24 @@ export async function listTransferDay(headers: Headers, rawDate: unknown, now: D
     const settings = await loadTenantSettings(transaction)
     const startHour = settings.operationalDayStartHour
     const date = requested ?? operationalDateInTimeZone(settings.timeZone, now, startHour)
+    const rides = await loadRidesForDay(
+      transaction,
+      date,
+      settings.timeZone,
+      startHour,
+      now,
+      settings.transferDurationMinutes,
+    )
     return {
       date,
-      rides: await loadRidesForDay(
+      rides: await applyBoardWarnings(
         transaction,
-        date,
+        rides,
         settings.timeZone,
+        date,
         startHour,
-        now,
         settings.transferDurationMinutes,
+        settings.relocationGapMinutes,
       ),
       declineAlerts: await loadDeclineAlertsForDay(
         transaction,

@@ -96,6 +96,41 @@ export async function loadDrivers(transaction: TenantTransaction): Promise<Drive
   return selected.rows.map(toDriver)
 }
 
+export interface DriverDocumentExpiry {
+  readonly id: string
+  readonly drivingLicenceExpiresOn: string
+  readonly transportLicenceExpiresOn: string
+}
+
+/**
+ * Expiry days for these Drivers. The phone, the email, and the name stay
+ * unread. An empty id list reads nothing. Another Tenant's id is absent.
+ */
+export async function loadDriverDocumentExpiry(
+  transaction: TenantTransaction,
+  driverIds: readonly string[],
+): Promise<DriverDocumentExpiry[]> {
+  const unique = [...new Set(driverIds)]
+  if (unique.length === 0)
+    return []
+  if (unique.some(id => !z.uuid().safeParse(id).success))
+    throw new DriverInputError()
+  const selected = z.object({
+    rows: z.array(z.object({
+      id: z.uuid(),
+      drivingLicenceExpiresOn: driverDateSchema,
+      transportLicenceExpiresOn: driverDateSchema,
+    })),
+  }).parse(await transaction.execute(sql`
+    select id,
+      driving_licence_expires_on::text as "drivingLicenceExpiresOn",
+      transport_licence_expires_on::text as "transportLicenceExpiresOn"
+    from app.drivers
+    where id in (${sql.join(unique.map(id => sql`${id}`), sql`, `)})
+  `))
+  return selected.rows
+}
+
 /**
  * The Driver linked to this member, or none.
  * The expiry list uses this so a driver member's query does not select

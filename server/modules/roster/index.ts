@@ -1,4 +1,5 @@
-export { RosterDriverTakenError, RosterNotFoundError, RosterVehicleArchivedError, RosterVehicleTakenError, vehicleIdForDriverOnDate } from './infrastructure/roster'
+export { RosterDriverTakenError, rosteredDriversOnDates, RosterNotFoundError, RosterVehicleArchivedError, RosterVehicleTakenError, vehicleIdForDriverOnDate } from './infrastructure/roster'
+export type { RosteredDriver } from './infrastructure/roster'
 /**
  * Roster module. One row is one Driver's Vehicle for one calendar date.
  * Callers import this file, not the infrastructure files.

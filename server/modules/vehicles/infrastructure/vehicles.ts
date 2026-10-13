@@ -3,7 +3,7 @@ import type { CreateVehicle, Vehicle, VehicleField, VehiclePatch } from '../../.
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { VEHICLE_FIELDS, vehicleDateSchema, vehicleKindSchema, vehicleSchema } from '../../../../shared'
+import { VEHICLE_FIELDS, vehicleDateSchema, VehicleInputError, vehicleKindSchema, vehicleSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 
@@ -135,6 +135,45 @@ function readVehicleForAssign(transaction: TenantTransaction, query: SQL): Promi
 }
 
 /** This Tenant's Vehicles, by plate, so the office can find one. */
+export interface VehicleDocumentExpiry {
+  readonly id: string
+  readonly registrationExpiresOn: string
+  readonly technicalInspectionExpiresOn: string
+  readonly insuranceExpiresOn: string
+}
+
+/**
+ * Expiry days for these Vehicles, archived or not. A Ride that still uses
+ * an archived Vehicle has to see a lapsed document. The plate stays unread.
+ * An empty id list reads nothing. Another Tenant's id is absent.
+ */
+export async function loadVehicleDocumentExpiry(
+  transaction: TenantTransaction,
+  vehicleIds: readonly string[],
+): Promise<VehicleDocumentExpiry[]> {
+  const unique = [...new Set(vehicleIds)]
+  if (unique.length === 0)
+    return []
+  if (unique.some(id => !z.uuid().safeParse(id).success))
+    throw new VehicleInputError()
+  const selected = z.object({
+    rows: z.array(z.object({
+      id: z.uuid(),
+      registrationExpiresOn: vehicleDateSchema,
+      technicalInspectionExpiresOn: vehicleDateSchema,
+      insuranceExpiresOn: vehicleDateSchema,
+    })),
+  }).parse(await transaction.execute(sql`
+    select id,
+      registration_expires_on::text as "registrationExpiresOn",
+      technical_inspection_expires_on::text as "technicalInspectionExpiresOn",
+      insurance_expires_on::text as "insuranceExpiresOn"
+    from app.vehicles
+    where id in (${sql.join(unique.map(id => sql`${id}`), sql`, `)})
+  `))
+  return selected.rows
+}
+
 export async function loadVehicles(
   transaction: TenantTransaction,
   includeArchived: boolean,

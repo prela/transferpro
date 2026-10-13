@@ -265,6 +265,7 @@
     "title": "Transfers",
     "day": "Day",
     "loading": "Loading rides",
+    "refresh": "Refresh",
     "loadFailed": "The day list could not be loaded. Try again.",
     "empty": "No rides on this day.",
     "declined": "{driver} declined the ride for {guest}.",
@@ -333,6 +334,11 @@
       "done": "Done",
       "no-show": "No-show",
       "cancelled": "Cancelled"
+    },
+    "warnings": {
+      "expiredDocuments": "Expired documents: {documents}",
+      "rosterMismatch": "Roster mismatch",
+      "overlap": "Overlaps another ride"
     },
     "fields": {
       "pickupAt": "Pickup time",

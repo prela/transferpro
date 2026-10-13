@@ -47,3 +47,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0029 | Ride occupation | accepted |
 | ADR-0030 | Landing alarm | accepted |
 | ADR-0031 | Maps for Locations behind a port | accepted |
+| ADR-0032 | Board warnings are derived on read | accepted |

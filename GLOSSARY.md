@@ -119,6 +119,18 @@ _Avoid_: schedule, shift
 A driving licence, transport licence, vehicle registration, technical inspection, or insurance whose expiry day is already past or falls within the next 30 days on the Tenant's calendar. An archived Vehicle is not one. For a driver, it is only a licence of the Driver linked to that account.
 _Avoid_: reminder
 
+**Expired-document warning**:
+An assigned or accepted Ride whose Driver's driving licence or transport licence, or whose Vehicle's registration, technical inspection, or insurance, has an expiry day earlier than the calendar date of its pickup in the Tenant's time zone. It names each such document. It does not block assignment and sends nothing.
+_Avoid_: expiring document, reminder
+
+**Roster mismatch**:
+An assigned or accepted Ride whose Vehicle is rostered to a different Driver on the calendar date of its pickup. A Vehicle with no roster row that day is not a mismatch. It does not block and sends nothing.
+_Avoid_: conflict, roster change
+
+**Overlap warning**:
+An assigned or accepted Ride that shares its Driver or its Vehicle with another assigned or accepted Ride, where the gap between them is shorter than the relocation gap, a true overlap included. Both Rides show it. It does not block and sends nothing.
+_Avoid_: ride_overlap, conflict
+
 **Dispatcher**:
 Office staff of a Tenant who manage Transfers and Rides.
 _Avoid_: admin
