@@ -1,15 +1,17 @@
 import type { SQL } from 'drizzle-orm'
-import type { CreateTransfer, RecordedTransfer, TransferCorrectionField } from '../../../../shared'
-import type { TenantTransaction } from '../../../core/index'
+import type { CorrectedTransferResult, CreateTransfer, RecordedTransfer, TransferCorrectionField } from '../../../../shared'
+import type { Logger, TenantTransaction } from '../../../core/index'
+import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { canCorrectTransfer, changedTransferFields, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, parseCreateTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
-import { hideDatabaseError } from '../../../core/index'
+import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { toInstant, toPrice } from './transfers'
+import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
 
 /** The Transfer is not in this Tenant. Another Tenant's row looks the same. */
 export class TransferNotFoundError extends Error {
@@ -96,27 +98,47 @@ function officeOnly(role: string): void {
  * number on an accepted Ride returns it to assigned and keeps the Driver,
  * the Vehicle, and the copied flag. Spacing or case of the same designator
  * does not. A different designator also clears the landing time,
- * the expected arrival, and the memory of what the Driver was told. No mail
- * is sent (#168).
+ * the expected arrival, and the memory of what the Driver was told.
+ * After the booking commits, the current Driver is mailed one work order
+ * with status changed when a mailed fact changed. A price change mails
+ * only while payment is cash. A Ride with no Driver sends nothing. A
+ * rejected send leaves the correction. Tests pass a mailer. The address
+ * is not on the result.
  */
-export async function correctTransfer(headers: Headers, rawId: unknown, rawBody: unknown): Promise<RecordedTransfer> {
+export async function correctTransfer(
+  headers: Headers,
+  rawId: unknown,
+  rawBody: unknown,
+  delivery?: { mailer: Mailer, logger?: Logger },
+): Promise<CorrectedTransferResult> {
   const parsed = parseCorrect(rawId, rawBody)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input)
+    const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input)
+    // The snapshot needs a Driver. An unassigned correction has nobody to mail.
+    if (!corrected.notify || corrected.recorded.ride.driverId === null)
+      return { recorded: corrected.recorded, order: null }
+    const order = await readAssignedWorkOrder(transaction, corrected.recorded.ride.id)
+    return { recorded: corrected.recorded, order }
   })
+  if (saved.order === null)
+    return { ...saved.recorded, workOrders: [] }
+  const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
+  const notice = await deliverAssignedWorkOrder(saved.order, mailer, delivery?.logger, 'changed')
+  return { ...saved.recorded, workOrders: [notice] }
 }
 
 /**
  * The office correction, on the caller's transaction. The role allow-list
- * has already run. The audit rows commit with the writes.
+ * has already run. The audit rows commit with the writes. `notify` is true
+ * when the current Driver should receive one changed work order after commit.
  */
 export async function correctTransferForOffice(
   transaction: TenantTransaction,
   actorUserId: string,
   transferId: string,
   input: CreateTransfer,
-): Promise<RecordedTransfer> {
+): Promise<{ recorded: RecordedTransfer, notify: boolean }> {
   const current = await lockTransfer(transaction, transferId)
   if (!current)
     throw new TransferNotFoundError()
@@ -127,7 +149,7 @@ export async function correctTransferForOffice(
   const stored = toBooking(current)
   const changed = changedTransferFields(stored, input)
   if (changed.length === 0)
-    return toRecorded(current, stored)
+    return { recorded: toRecorded(current, stored), notify: false }
 
   // A different designator throws away the landing, the expected arrival,
   // and the will-not-arrive memory (ADR-0028).
@@ -160,8 +182,14 @@ export async function correctTransferForOffice(
     await appendReturned(transaction, actorUserId, ride.id, ride.driverId)
 
   return {
-    transfer: { id: current.id, ...input },
-    ride,
+    recorded: {
+      transfer: { id: current.id, ...input },
+      ride,
+    },
+    // Every stored field is a mailed fact except the price, and the price
+    // only while the Driver collects cash. Card and invoice-to-agency keep
+    // a fare change off the mail. ADR-0026.
+    notify: changed.some(field => field !== 'price' || input.payment === 'cash'),
   }
 }
 

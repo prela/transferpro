@@ -4,6 +4,10 @@ import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'
 
+function notice(page: Page, title: string, sentence: string) {
+  return page.getByRole('listitem').filter({ hasText: title }).filter({ hasText: sentence })
+}
+
 const guest = 'Ana Ispravak'
 const renamed = 'Iva Ispravak'
 
@@ -92,7 +96,9 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   await dialog.getByLabel('Broj leta').fill('OU392')
   await dialog.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await expect(page.getByText('Ispravljeno.')).toBeVisible()
+  await expect(page.getByRole('status').getByText('Ispravljeno.')).toBeVisible()
+  await expect(notice(page, 'Ispravljeno.', 'Radni nalog je poslan vozaču Marko Ispravak.')).toHaveCount(1)
+  await expect(page.getByText(driver.email)).toHaveCount(0)
   await expect(page.getByRole('cell', { name: 'Dodijeljeno' })).toBeVisible()
   await expect(page.getByRole('button', { name: `Zabilježi prihvaćanje telefonom: ${guest}` })).toBeVisible()
 
@@ -112,7 +118,9 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   correctDialog = page.getByRole('dialog')
   await correctDialog.getByLabel('Guest name').fill(renamed)
   await correctDialog.getByRole('button', { name: 'Save correction', exact: true }).click()
-  await expect(page.getByText('Corrected.')).toBeVisible()
+  await expect(page.getByRole('status').getByText('Corrected.')).toBeVisible()
+  await expect(notice(page, 'Corrected.', 'Work order sent to Marko Ispravak.')).toHaveCount(1)
+  await expect(page.getByText(driver.email)).toHaveCount(0)
   await expect(page.getByRole('cell', { name: renamed, exact: true })).toBeVisible()
   await switchTheme(page, 'light')
   await expect(page.getByRole('cell', { name: renamed, exact: true })).toBeVisible()

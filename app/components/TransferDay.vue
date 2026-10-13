@@ -2,7 +2,7 @@
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, DeclineAlert, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
 import { z } from 'zod'
-import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, cancelledRideResultSchema, canCorrectTransfer, canMarkNoShow, canMarkRideDone, canRecordLandingTime, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationKindSchema, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, paymentMethodSchema, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema, wallClockInTimeZone } from '../../shared'
+import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, cancelledRideResultSchema, canCorrectTransfer, canMarkNoShow, canMarkRideDone, canRecordLandingTime, childSeatCountError, clientListSchema, correctedTransferResultSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationKindSchema, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, paymentMethodSchema, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema, wallClockInTimeZone } from '../../shared'
 import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
@@ -1149,11 +1149,22 @@ async function saveCorrection() {
   }
   pending.value = true
   try {
-    recordedTransferSchema.parse(await $fetch(`/api/transfers/${transferId}`, {
+    const correction = correctedTransferResultSchema.parse(await $fetch(`/api/transfers/${transferId}`, {
       method: 'PATCH',
       body: bookingBody(),
     }))
     corrected.value = true
+    notifyAuditChanged()
+    // The notice names the Driver by id. The name is already on the day list.
+    // A Ride with no Driver has no notice. The response has no address.
+    for (const notice of correction.workOrders) {
+      const shown = workOrderNotice(notice.outcome)
+      toast.add({
+        title: t('transfers.corrected'),
+        description: t(shown.key, { name: driverLabel(notice.driverId) }),
+        color: shown.color,
+      })
+    }
     closeForm()
     await loadDay()
   }
