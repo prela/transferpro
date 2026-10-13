@@ -105,6 +105,8 @@ export interface DriverDocumentExpiry {
 /**
  * Expiry days for these Drivers. The phone, the email, and the name stay
  * unread. An empty id list reads nothing. Another Tenant's id is absent.
+ * The caller has already required an office role on this transaction.
+ * This read does not open a session, same as `loadDrivers`.
  */
 export async function loadDriverDocumentExpiry(
   transaction: TenantTransaction,

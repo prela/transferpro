@@ -11,7 +11,9 @@ import { loadVehicleDocumentExpiry } from '../../vehicles'
  * How far a neighbour can sit from this operational day and still clash.
  * Transfer duration and relocation gap each stop at 1440 minutes. A stored
  * landing can push the occupied end past the pickup, so the upper bound
- * also follows the latest landing on the listed Rides.
+ * follows the latest landing on the listed Rides. A neighbour whose pickup
+ * is before that window and whose landing is after it still occupies the
+ * day, so that row is loaded too.
  */
 const NEIGHBOUR_REACH_MS = WAIT_MINUTES_MAX * 2 * 60_000
 
@@ -133,6 +135,11 @@ async function loadNeighbours(
           t.landing_at is not null
           and t.landing_at >= ${lower}
           and t.landing_at < ${upper}
+        )
+        or (
+          t.pickup_at < ${lower}
+          and t.landing_at is not null
+          and t.landing_at >= ${upper}
         )
       )
     order by t.pickup_at, r.id

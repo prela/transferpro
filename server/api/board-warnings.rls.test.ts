@@ -402,6 +402,25 @@ it('shows an overlap across the operational-day boundary, after a correction, an
   expect((await warnings(places.dispatcher, '2026-10-23', 'Gap Ana')).overlappingRideIds).toEqual([])
 })
 
+it('a landing that starts before the search window and ends after it still warns', async () => {
+  const places = await office('hbw-span')
+  const ana = await driver(places.dispatcher, 'Ana Ana', '+385910000261', validOn, validOn)
+  const earlyCar = await vehicle(places.dispatcher, 'DU261AA', validOn, validOn, validOn)
+  const dayCar = await vehicle(places.dispatcher, 'DU262AA', validOn, validOn, validOn)
+  const spanned = await ride(places.dispatcher, places, 'Spanned Ana', at('2026-10-17T12:00'), ana.id, earlyCar.id)
+  await ownerPool.query(
+    'update app.transfers set landing_at = $2 where id = $1',
+    [spanned.transferId, at('2026-10-24T12:00')],
+  )
+  const listed = await ride(places.dispatcher, places, 'Listed Ana', at('2026-10-20T12:00'), ana.id, dayCar.id, true)
+
+  const day = await listTransferDay(places.dispatcher, '2026-10-20')
+  expect(day.rides.map(row => row.guestName)).toEqual(['Listed Ana'])
+  expect(day.rides[0]?.warnings.overlappingRideIds).toEqual([spanned.rideId])
+  expect(JSON.stringify(day)).not.toContain('Spanned Ana')
+  expect(listed.rideId).not.toBe(spanned.rideId)
+})
+
 it('a finished ride neither shows nor causes an overlap', async () => {
   const places = await office('hbw-done')
   const ana = await driver(places.dispatcher, 'Ana Ana', '+385910000241', validOn, validOn)

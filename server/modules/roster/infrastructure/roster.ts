@@ -113,7 +113,8 @@ export interface RosteredDriver {
  * The Driver each Vehicle is rostered to on these calendar dates.
  * A Vehicle with no row is absent. A row for an archived Vehicle still
  * counts: this read does not join Vehicles. An empty date list reads nothing.
- * This module does not import Transfers.
+ * The caller has already required an office role on this transaction.
+ * This read does not open a session. This module does not import Transfers.
  */
 export async function rosteredDriversOnDates(
   transaction: TenantTransaction,

@@ -146,6 +146,8 @@ export interface VehicleDocumentExpiry {
  * Expiry days for these Vehicles, archived or not. A Ride that still uses
  * an archived Vehicle has to see a lapsed document. The plate stays unread.
  * An empty id list reads nothing. Another Tenant's id is absent.
+ * The caller has already required an office role on this transaction.
+ * This read does not open a session, same as `loadVehicles`.
  */
 export async function loadVehicleDocumentExpiry(
   transaction: TenantTransaction,
