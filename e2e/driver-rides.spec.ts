@@ -926,3 +926,108 @@ test('a driver with no linked Driver sees an empty list', async ({ page }) => {
   await switchLocale(page, 'en')
   await expect(page.getByText('You have no upcoming rides.')).toBeVisible()
 })
+
+test('a driver marks a no-show after the wait and it leaves the upcoming list', async ({ page }) => {
+  const tenant = await seedTenant('driver-mark-noshow')
+  const driver = await seedMember(tenant.tenantId, 'driver', 'Nedo')
+  const mail: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('resend.com'))
+      mail.push(request.url())
+  })
+
+  await useTheme(page, 'light')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const licence = '2030-01-01'
+  const ownDriverId = await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Nika Nedo',
+      kind: 'own',
+      phone: '+385911110025',
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+      memberUserId: driver.userId,
+    },
+  }))
+  const vehicleId = await createdId(await page.request.post('/api/vehicles', {
+    data: {
+      registrationPlate: 'DU025AA',
+      kind: 'fixed',
+      registrationExpiresOn: licence,
+      technicalInspectionExpiresOn: licence,
+      insuranceExpiresOn: licence,
+    },
+  }))
+  const clientId = await createdId(await page.request.post('/api/clients', {
+    data: { name: 'Klijent Nedo', kind: 'agency' },
+  }))
+  const startLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Polazak Nedo', kind: 'address' },
+  }))
+  const endLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Hotel Nedo', kind: 'hotel' },
+  }))
+  async function record(guest: string, pickupAt: string) {
+    const recorded = await page.request.post('/api/transfers', {
+      data: {
+        clientId,
+        pickupAt,
+        startLocationId,
+        endLocationId,
+        passengerCount: 1,
+        guestName: guest,
+        flightNumber: null,
+        price: 20,
+        payment: 'card',
+        airportMark: false,
+        luggageCount: 0,
+        childSeatCount: 0,
+      },
+    })
+    if (!recorded.ok())
+      throw new Error(`${recorded.status()} ${await recorded.text()}`)
+    const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
+    const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
+      data: { driverId: ownDriverId, vehicleId },
+    })
+    if (!assigned.ok())
+      throw new Error(`${assigned.status()} ${await assigned.text()}`)
+    return rideId
+  }
+  const readyId = await record('Gost Nedo', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+  const earlyId = await record('Gost Rano', new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString())
+
+  await signOut(page)
+  await signIn(page, driver.email, driver.password, tenant.name)
+  const ready = page.locator('article').filter({ hasText: 'Gost Nedo' })
+  const early = page.locator('article').filter({ hasText: 'Gost Rano' })
+  await expect(ready.getByRole('button', { name: 'Označi nedolazak', exact: true })).toBeVisible()
+  await expect(early.getByRole('button', { name: 'Označi nedolazak', exact: true })).toHaveCount(0)
+  await ready.getByRole('button', { name: 'Označi nedolazak', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('Ovo zatvara vožnju. Naknada se ne bilježi.')
+  await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(await rideRow(readyId)).toMatchObject({ state: 'assigned', must_accept: false })
+
+  await switchLocale(page, 'en')
+  await switchTheme(page, 'dark')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await ready.getByRole('button', { name: 'Mark no-show', exact: true }).click()
+  await expect(dialog).toContainText('This closes the ride. No fee is recorded.')
+  const marked = page.waitForResponse(response =>
+    response.url().includes(`/api/rides/${readyId}/no-show`) && response.request().method() === 'POST',
+  )
+  await dialog.getByRole('button', { name: 'Mark no-show', exact: true }).click()
+  expect((await marked).status()).toBe(200)
+  await expect(ready).toHaveCount(0)
+  await expect(early.getByRole('button', { name: 'Mark no-show', exact: true })).toHaveCount(0)
+  expect(await rideRow(readyId)).toMatchObject({ state: 'no-show', must_accept: false })
+  expect(await rideRow(earlyId)).toMatchObject({ state: 'assigned', must_accept: false })
+  expect(mail).toEqual([])
+
+  await switchTheme(page, 'light')
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await expect(early).toBeVisible()
+})

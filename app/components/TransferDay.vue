@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Client, DeclineAlert, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide, Vehicle } from '../../shared'
-import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, cancelledRideResultSchema, canCorrectTransfer, canMarkRideDone, canRecordLandingTime, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema, wallClockInTimeZone } from '../../shared'
+import { assignedRideSchema, calendarDateInTimeZone, canCancelRide, cancelledRideResultSchema, canCorrectTransfer, canMarkNoShow, canMarkRideDone, canRecordLandingTime, childSeatCountError, clientListSchema, driverListSchema, flightNumberError, formatInstant, guestNameError, instantFromWallClock, isCalendarDate, locationKindError, locationListSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recordedTransferSchema, rideSchema, sameLocationError, tablaError, transferDaySchema, vehicleListSchema, wallClockInTimeZone } from '../../shared'
 import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
@@ -37,6 +37,9 @@ const acceptByPhoneErrorKey = ref<AcceptByPhoneFailure | null>(null)
 const markingDone = ref<{ rideId: string, guestName: string } | null>(null)
 const markDonePending = ref(false)
 const markDoneErrorKey = ref<MarkDoneFailure | null>(null)
+const markingNoShow = ref<{ rideId: string, guestName: string } | null>(null)
+const markNoShowPending = ref(false)
+const markNoShowErrorKey = ref<MarkNoShowFailure | null>(null)
 const cancelling = ref<{ rideId: string, guestName: string } | null>(null)
 const cancelPending = ref(false)
 const cancelErrorKey = ref<CancelRideFailure | null>(null)
@@ -102,6 +105,11 @@ type AcceptByPhoneFailure
 type MarkDoneFailure
   = 'ride.markDoneFailed'
     | 'ride.markDoneConflict'
+    | 'ride.signedOut'
+
+type MarkNoShowFailure
+  = 'ride.markNoShowFailed'
+    | 'ride.markNoShowConflict'
     | 'ride.signedOut'
 
 type CancelRideFailure
@@ -232,6 +240,11 @@ function canRecordAcceptanceByPhone(ride: TransferDayRide): boolean {
 /** Flag off from `assigned`. Flag on only from `accepted`. Unassigned has no control. */
 function canFinish(ride: TransferDayRide): boolean {
   return canMarkRideDone(ride.state, ride.mustAccept)
+}
+
+/** The same source state as done. The office may mark a No-show before the wait. */
+function canNoShow(ride: TransferDayRide): boolean {
+  return canMarkNoShow(ride.state, ride.mustAccept)
 }
 
 /** Unassigned, assigned, or accepted. A terminal Ride has no control. The Driver cannot cancel. */
@@ -499,6 +512,76 @@ async function confirmMarkDone() {
   }
   finally {
     markDonePending.value = false
+  }
+}
+
+function markNoShowButtonId(rideId: string): string {
+  return `mark-no-show-${rideId}`
+}
+
+function openMarkNoShow(ride: TransferDayRide) {
+  if (!canNoShow(ride) || markNoShowPending.value)
+    return
+  markNoShowErrorKey.value = null
+  markingNoShow.value = { rideId: ride.rideId, guestName: ride.guestName }
+}
+
+function closeMarkNoShow() {
+  if (markNoShowPending.value)
+    return
+  const rideId = markingNoShow.value?.rideId
+  markNoShowErrorKey.value = null
+  markingNoShow.value = null
+  if (!rideId)
+    return
+  void nextTick(() => {
+    document.getElementById(markNoShowButtonId(rideId))?.focus()
+  })
+}
+
+const markNoShowOpen = computed({
+  get: () => markingNoShow.value !== null,
+  set(open: boolean) {
+    if (!open)
+      closeMarkNoShow()
+  },
+})
+
+function markNoShowFailureKey(error: unknown): MarkNoShowFailure {
+  if (httpStatus(error) === 409)
+    return 'ride.markNoShowConflict'
+  if (httpStatus(error) === 401)
+    return 'ride.signedOut'
+  return 'ride.markNoShowFailed'
+}
+
+/**
+ * POST /api/rides/:id/no-show with an empty body. Success reloads the day.
+ * The Ride stays on the day list and shows No-show. The office may do this
+ * before the wait. Cancel writes nothing. No fee is stored. No mail is sent.
+ */
+async function confirmMarkNoShow() {
+  const target = markingNoShow.value
+  if (!target || markNoShowPending.value)
+    return
+  markNoShowPending.value = true
+  markNoShowErrorKey.value = null
+  try {
+    rideSchema.parse(await $fetch(`/api/rides/${target.rideId}/no-show`, {
+      method: 'POST',
+      body: {},
+    }))
+    notifyAuditChanged()
+    markingNoShow.value = null
+    await loadDay()
+  }
+  catch (error) {
+    markNoShowErrorKey.value = markNoShowFailureKey(error)
+    if (httpStatus(error) === 409)
+      await loadDay()
+  }
+  finally {
+    markNoShowPending.value = false
   }
 }
 
@@ -1156,6 +1239,18 @@ onMounted(loadAll)
             >
               {{ t('ride.markDone') }}
             </UButton>
+            <UButton
+              v-if="canNoShow(row.original)"
+              :id="markNoShowButtonId(row.original.rideId)"
+              type="button"
+              color="neutral"
+              variant="outline"
+              size="xl"
+              :aria-label="t('ride.markNoShowFor', { guest: row.original.guestName })"
+              @click="openMarkNoShow(row.original)"
+            >
+              {{ t('ride.markNoShow') }}
+            </UButton>
             <template v-if="canChangeAssignment(row.original)">
               <UButton
                 :id="`change-vehicle-${row.original.rideId}`"
@@ -1373,6 +1468,51 @@ onMounted(loadAll)
           @click="confirmMarkDone"
         >
           {{ markDonePending ? t('ride.markDoneConfirming') : t('ride.markDoneConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="markNoShowOpen"
+      :title="t('ride.markNoShowTitle')"
+      :description="t('ride.markNoShowBody')"
+      :dismissible="!markNoShowPending"
+      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
+    >
+      <template #body>
+        <p v-if="markingNoShow">
+          {{ markingNoShow.guestName }}
+        </p>
+        <UAlert
+          v-if="markNoShowErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mt-4"
+          :description="t(markNoShowErrorKey)"
+        />
+      </template>
+      <template #footer>
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :disabled="markNoShowPending"
+          @click="closeMarkNoShow"
+        >
+          {{ t('ride.cancel') }}
+        </UButton>
+        <UButton
+          type="button"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :loading="markNoShowPending"
+          :disabled="markNoShowPending"
+          @click="confirmMarkNoShow"
+        >
+          {{ markNoShowPending ? t('ride.markNoShowConfirming') : t('ride.markNoShowConfirm') }}
         </UButton>
       </template>
     </UModal>

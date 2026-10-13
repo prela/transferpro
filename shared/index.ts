@@ -23,6 +23,8 @@ export { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_FIELDS, LOCATION_KINDS, LOCATION_
 export type { CreateLocation, Location, LocationAddressError, LocationField, LocationKind, LocationKindError, LocationList, LocationNameError, LocationPatch } from './location'
 export { changeMemberRoleBodySchema, memberErrorKey, memberErrorMessage, memberListSchema, memberSchema } from './member'
 export type { ChangeMemberRoleBody, Member, MemberErrorKey, MemberList } from './member'
+export { canMarkNoShow, noShowWaitElapsed } from './no-show'
+export type { NoShowClock } from './no-show'
 export { buildOfficeHome, officeHomeSchema } from './office-home'
 export type { OfficeHome, OfficeHomeRide } from './office-home'
 export { companyAccountListSchema, companyAccountSchema, parseRenameTenantAccount, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './platform-account'

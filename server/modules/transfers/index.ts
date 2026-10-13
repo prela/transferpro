@@ -6,6 +6,9 @@
  * The office records that same acceptance after confirming by phone.
  * The Driver or the office marks the Ride done: from `assigned` when the
  * copied flag is off, and only from `accepted` when the flag is on.
+ * A No-show uses that same pair. The Driver may mark it only after the
+ * Tenant's wait, read at the attempt. The office may mark it earlier.
+ * No fee is stored. No mail is sent.
  * The Driver declines from `assigned` only. The Ride returns to unassigned
  * and a decline alert names that Driver. No mail.
  * The office may cancel from `unassigned`, `assigned`, or `accepted`.
@@ -33,6 +36,7 @@ export { listUpcomingRides } from './infrastructure/driver-ride-access'
 export { askFlightLandings, LandingTimeClosedError, LandingTimeInFutureError, recordLandingTime, refreshFlightLandings } from './infrastructure/flight-landing'
 export { startFlightLandingWorker } from './infrastructure/flight-landing-worker'
 export { RecordLandingInputError, recordRideLanding, RideLandingClosedError, RideLandingInFutureError } from './infrastructure/landing'
+export { markNoShow, MarkNoShowInputError, NoShowTooEarlyError, RideNotNoShowError } from './infrastructure/no-show'
 export { readOfficeHome } from './infrastructure/office-home-access'
 export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './infrastructure/ride-change'
 export { RideOverlapError } from './infrastructure/ride-schedule'

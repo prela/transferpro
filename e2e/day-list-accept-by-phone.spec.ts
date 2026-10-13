@@ -370,3 +370,83 @@ test('the office cancels a ride, the row stays, and the audit log names that per
   await expect(cancelledRow).toContainText(tenant.adminName)
   await expect(cancelledRow).toContainText('Iva Vozi')
 })
+
+test('the office marks a no-show before the wait, and the audit log names that person', async ({ page }) => {
+  const tenant = await seedTenant('day-mark-noshow')
+  const mail: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('resend.com'))
+      mail.push(request.url())
+  })
+
+  await useTheme(page, 'light')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  expect((await page.request.patch('/api/tenant-settings', {
+    data: { airportWaitMinutes: 1440, elsewhereWaitMinutes: 1440 },
+  })).ok()).toBeTruthy()
+  const mustDriverId = await addDriver(page, 'Marko Ceka', '+385911110210')
+  expect((await page.request.patch(`/api/drivers/${mustDriverId}`, { data: { mustAccept: true } })).ok()).toBeTruthy()
+  const freeDriverId = await addDriver(page, 'Ana Nedo', '+385911110211')
+  const mustVehicleId = await addVehicle(page, 'DU210AA')
+  const freeVehicleId = await addVehicle(page, 'DU210BB')
+  const clientId = await createdId(await page.request.post('/api/clients', {
+    data: { name: 'Klijent Nedo', kind: 'agency' },
+  }))
+  const startLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Polazak Nedo', kind: 'airport' },
+  }))
+  const endLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Dolazak Nedo', kind: 'hotel' },
+  }))
+  const places = { clientId, startLocationId, endLocationId }
+  const waiting = await recordTodayRide(page, 'Nika Ceka', '10:00', places)
+  const plain = await recordTodayRide(page, 'Lara Nedo', '12:00', places)
+  const open = await recordTodayRide(page, 'Ema Open', '14:00', places)
+  await assignRide(page, waiting.rideId, mustDriverId, mustVehicleId)
+  await assignRide(page, plain.rideId, freeDriverId, freeVehicleId)
+
+  await page.getByRole('link', { name: 'Transferi' }).click()
+  const waitingRow = page.getByRole('row', { name: 'Nika Ceka' })
+  const plainRow = page.getByRole('row', { name: 'Lara Nedo' })
+  const openRow = page.getByRole('row', { name: 'Ema Open' })
+  const noShowName = 'Označi nedolazak: Lara Nedo'
+
+  await expect(waitingRow.getByRole('button', { name: /Označi nedolazak/ })).toHaveCount(0)
+  await expect(openRow.getByRole('button', { name: /Označi nedolazak/ })).toHaveCount(0)
+  await expect(plainRow.getByRole('button', { name: noShowName })).toBeVisible()
+  await plainRow.getByRole('button', { name: noShowName }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('Naknada se ne bilježi.')
+  await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  expect(await dayRide(page, plain.day, 'Lara Nedo')).toMatchObject({ state: 'assigned', mustAccept: false })
+  expect(mail).toEqual([])
+
+  await switchTheme(page, 'dark')
+  await switchLocale(page, 'en')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  const englishName = 'Mark no-show: Lara Nedo'
+  await plainRow.getByRole('button', { name: englishName }).click()
+  await expect(dialog).toContainText('No fee is recorded')
+  const marked = page.waitForResponse(response =>
+    response.url().includes(`/api/rides/${plain.rideId}/no-show`) && response.request().method() === 'POST',
+  )
+  await dialog.getByRole('button', { name: 'Mark no-show', exact: true }).click()
+  expect((await marked).status()).toBe(200)
+  await expect(plainRow.getByRole('cell', { name: 'No-show', exact: true })).toBeVisible()
+  await expect(plainRow.getByRole('button', { name: englishName })).toHaveCount(0)
+  expect(await dayRide(page, plain.day, 'Lara Nedo')).toMatchObject({ state: 'no-show', mustAccept: false })
+  expect(await dayRide(page, waiting.day, 'Nika Ceka')).toMatchObject({ state: 'assigned', mustAccept: true })
+  expect(await dayRide(page, open.day, 'Ema Open')).toMatchObject({ state: 'unassigned', mustAccept: null })
+  expect(mail).toEqual([])
+
+  await switchTheme(page, 'light')
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await expect(plainRow.getByRole('cell', { name: 'No-show', exact: true })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Audit log' }).click()
+  await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible()
+  const earlyRow = page.getByRole('row', { name: 'No-show before the wait' })
+  await expect(earlyRow).toContainText(tenant.adminName)
+  await expect(earlyRow).toContainText('Ana Nedo')
+})

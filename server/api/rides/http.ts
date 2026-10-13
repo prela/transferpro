@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
-import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, MarkRideDoneInputError, RecordLandingInputError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
+import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
 
 /**
  * Turn an assignment or accept failure into an HTTP error. The message stays
@@ -15,6 +15,9 @@ import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, Mark
  * `ride_overlap` is a true overlap of the Driver or the Vehicle.
  * `ride_not_finishable` is done refused: the copied flag and the state do
  * not allow it, or a concurrent command already won. Nothing was written.
+ * `ride_not_no_show` is a No-show refused: the copied flag and the state do
+ * not allow it, or a concurrent command already won. Nothing was written.
+ * `no_show_too_early` is a Driver No-show before the wait. The Ride stays.
  * `ride_not_cancellable` is a cancel from `done`, `no-show`, or `cancelled`,
  * or a concurrent command already won. Nothing was written.
  * `ride_not_declinable` is a decline refused: the Ride is not `assigned`,
@@ -29,6 +32,7 @@ export function rideHttpError(error: unknown): never {
     || error instanceof RideCommandInputError
     || error instanceof AcceptRideInputError
     || error instanceof MarkRideDoneInputError
+    || error instanceof MarkNoShowInputError
     || error instanceof CancelRideInputError
     || error instanceof DeclineRideInputError
     || error instanceof RecordLandingInputError
@@ -42,6 +46,8 @@ export function rideHttpError(error: unknown): never {
     || error instanceof RideNotUnassignedError
     || error instanceof RideNotAcceptableError
     || error instanceof RideNotFinishableError
+    || error instanceof RideNotNoShowError
+    || error instanceof NoShowTooEarlyError
     || error instanceof RideNotCancellableError
     || error instanceof RideNotDeclinableError
     || error instanceof RideLandingClosedError

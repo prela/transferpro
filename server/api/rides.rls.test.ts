@@ -21,6 +21,7 @@ import postClear from './rides/[id]/clear.post'
 import postDecline from './rides/[id]/decline.post'
 import postDone from './rides/[id]/done.post'
 import postLanding from './rides/[id]/landing.post'
+import postNoShow from './rides/[id]/no-show.post'
 import postReassign from './rides/[id]/reassign.post'
 import getRosterVehicle from './rides/[id]/roster-vehicle.get'
 import postVehicle from './rides/[id]/vehicle.post'
@@ -28,7 +29,7 @@ import postVehicle from './rides/[id]/vehicle.post'
 /**
  * POST /api/rides/:id/assign, GET /api/rides/:id/roster-vehicle,
  * POST /api/rides/:id/accept, POST /api/rides/:id/accept-by-phone,
- * POST /api/rides/:id/done, POST /api/rides/:id/cancel, POST /api/rides/:id/decline,
+ * POST /api/rides/:id/done, POST /api/rides/:id/no-show, POST /api/rides/:id/cancel, POST /api/rides/:id/decline,
  * and POST /api/rides/:id/landing.
  * An invalid body is answered before a session exists. The role cases use a
  * real sign-in. The composite foreign key is also tried as the app role.
@@ -78,6 +79,8 @@ app.use('/api/rides', (event) => {
     return postAcceptByPhone(event)
   if (action === 'done' && event.method === 'POST')
     return postDone(event)
+  if (action === 'no-show' && event.method === 'POST')
+    return postNoShow(event)
   if (action === 'cancel' && event.method === 'POST')
     return postCancel(event)
   if (action === 'decline' && event.method === 'POST')
@@ -2309,6 +2312,300 @@ it('hides another Driver and another Tenant, and lets the office mark a Driver w
   expect(await marked.json()).toMatchObject({ state: 'done', driverId: noAccount.id, mustAccept: false })
   expect(await doneAudits(world.tenantId)).toEqual([{
     actor_user_id: world.dispatcherId,
+    subject_user_id: null,
+    data: { rideId: quiet.ride.id, driverId: noAccount.id, fields: ['state'] },
+  }])
+})
+
+async function noShowAudits(tenantId: string, action: 'ride.no_show' | 'ride.no_show_early') {
+  const result = await ownerPool.query<{
+    actor_user_id: string
+    subject_user_id: string | null
+    data: { rideId?: string, driverId?: string, fields?: string[], fee?: unknown, price?: unknown }
+  }>(
+    `select actor_user_id, subject_user_id, data from app.audit_entry
+     where tenant_id = $1 and action::text = $2
+     order by occurred_at, id`,
+    [tenantId, action],
+  )
+  return result.rows
+}
+
+async function transferPrice(transferId: string) {
+  const result = await ownerPool.query<{ price: string }>(
+    `select price::text as price from app.transfers where id = $1`,
+    [transferId],
+  )
+  return result.rows[0]?.price
+}
+
+function minutesAgo(minutes: number): string {
+  return new Date(Date.now() - minutes * 60 * 1000).toISOString()
+}
+
+it('refuses a no-show body that has a key before a session opens', async () => {
+  const world = await office('hasg-noshow-body')
+  const linked = await linkedDriver(world, 'hasg-noshow-body-driver@example.test', 'Drago Driver', '+385911110901')
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8501AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(120)))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+
+  const keyed = await call('POST', `/api/rides/${recorded.ride.id}/no-show`, undefined, { note: phone })
+  expect(keyed.status).toBe(400)
+  expect(await keyed.text()).not.toContain(phone)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/no-show`, linked.session, { fee: '10.00' })).status).toBe(400)
+  expect((await call('POST', '/api/rides/not-a-ride/no-show', linked.session, {})).status).toBe(400)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/no-show`, undefined, {})).status).toBe(401)
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'assigned', must_accept: false })
+  expect(await noShowAudits(world.tenantId, 'ride.no_show')).toEqual([])
+  expect(await noShowAudits(world.tenantId, 'ride.no_show_early')).toEqual([])
+})
+
+it('lets the Driver and the office mark a No-show from assigned when the copied flag is off and the wait has elapsed', async () => {
+  const world = await office('hasg-noshow-off')
+  const linked = await linkedDriver(world, 'hasg-noshow-off-driver@example.test', 'Drago Driver', '+385911110902')
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8502AA'))
+  const byDriver = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(400)))
+  const byOffice = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(200)))
+  for (const recorded of [byDriver, byOffice]) {
+    expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+      driverId: linked.driver.id,
+      vehicleId: vehicle.id,
+    })).status).toBe(200)
+  }
+  const priceBefore = await transferPrice(byDriver.transfer.id)
+
+  const driverMarked = await call('POST', `/api/rides/${byDriver.ride.id}/no-show`, linked.session, {})
+  expect(driverMarked.status).toBe(200)
+  expect(await driverMarked.json()).toEqual({
+    id: byDriver.ride.id,
+    transferId: byDriver.transfer.id,
+    state: 'no-show',
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+    mustAccept: false,
+  })
+  const officeMarked = await call('POST', `/api/rides/${byOffice.ride.id}/no-show`, world.dispatcher, {})
+  expect(officeMarked.status).toBe(200)
+  expect(await officeMarked.json()).toMatchObject({ state: 'no-show', mustAccept: false, driverId: linked.driver.id })
+
+  const upcoming = await listUpcomingRides(linked.session)
+  expect(upcoming.rides.map(ride => ride.rideId)).not.toContain(byDriver.ride.id)
+  expect(upcoming.rides.map(ride => ride.rideId)).not.toContain(byOffice.ride.id)
+  expect(await transferPrice(byDriver.transfer.id)).toBe(priceBefore)
+
+  const audits = await noShowAudits(world.tenantId, 'ride.no_show')
+  expect(audits).toEqual([
+    {
+      actor_user_id: linked.userId,
+      subject_user_id: null,
+      data: { rideId: byDriver.ride.id, driverId: linked.driver.id, fields: ['state'] },
+    },
+    {
+      actor_user_id: world.dispatcherId,
+      subject_user_id: null,
+      data: { rideId: byOffice.ride.id, driverId: linked.driver.id, fields: ['state'] },
+    },
+  ])
+  const stored = JSON.stringify(audits)
+  expect(audits.every(row => Object.keys(row.data).sort().join() === 'driverId,fields,rideId')).toBe(true)
+  expect(stored).not.toContain(phone)
+  expect(stored).not.toContain(guest)
+  expect(await noShowAudits(world.tenantId, 'ride.no_show_early')).toEqual([])
+})
+
+it('refuses a No-show from assigned when the flag is on, and allows it from accepted after the wait', async () => {
+  const world = await office('hasg-noshow-on')
+  const linked = await linkedDriver(world, 'hasg-noshow-on-driver@example.test', 'Drago Driver', '+385911110903')
+  await updateDriver(world.admin, linked.driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8503AA'))
+  const driverRide = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(400)))
+  const officeRide = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(200)))
+  for (const recorded of [driverRide, officeRide]) {
+    expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+      driverId: linked.driver.id,
+      vehicleId: vehicle.id,
+    })).status).toBe(200)
+  }
+
+  const driverEarly = await call('POST', `/api/rides/${driverRide.ride.id}/no-show`, linked.session, {})
+  expect(driverEarly.status).toBe(409)
+  expect(await driverEarly.text()).toContain('ride_not_no_show')
+  const officeEarly = await call('POST', `/api/rides/${officeRide.ride.id}/no-show`, world.admin, {})
+  expect(officeEarly.status).toBe(409)
+  expect(await rideRow(driverRide.ride.id)).toMatchObject({ state: 'assigned', must_accept: true })
+  expect(await rideRow(officeRide.ride.id)).toMatchObject({ state: 'assigned', must_accept: true })
+  expect(await noShowAudits(world.tenantId, 'ride.no_show')).toEqual([])
+
+  expect((await call('POST', `/api/rides/${driverRide.ride.id}/accept`, linked.session, {})).status).toBe(200)
+  expect((await call('POST', `/api/rides/${officeRide.ride.id}/accept-by-phone`, world.dispatcher, {})).status).toBe(200)
+
+  const driverMarked = await call('POST', `/api/rides/${driverRide.ride.id}/no-show`, linked.session, {})
+  expect(driverMarked.status).toBe(200)
+  expect(await driverMarked.json()).toMatchObject({ state: 'no-show', mustAccept: true })
+  const officeMarked = await call('POST', `/api/rides/${officeRide.ride.id}/no-show`, world.admin, {})
+  expect(officeMarked.status).toBe(200)
+  expect((await noShowAudits(world.tenantId, 'ride.no_show')).map(row => row.actor_user_id)).toEqual([
+    linked.userId,
+    world.adminUserId,
+  ])
+})
+
+it('refuses a Driver No-show before the wait and lets the office mark it early', async () => {
+  const world = await office('hasg-noshow-early')
+  const linked = await linkedDriver(world, 'hasg-noshow-early-driver@example.test', 'Drago Driver', '+385911110904')
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8504AA'))
+  const driverRide = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(10)))
+  const officeRide = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString()))
+  for (const recorded of [driverRide, officeRide]) {
+    expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+      driverId: linked.driver.id,
+      vehicleId: vehicle.id,
+    })).status).toBe(200)
+  }
+
+  const tooEarly = await call('POST', `/api/rides/${driverRide.ride.id}/no-show`, linked.session, {})
+  expect(tooEarly.status).toBe(409)
+  expect(await tooEarly.text()).toContain('no_show_too_early')
+  expect(await rideRow(driverRide.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: linked.driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: false,
+  })
+  expect(await noShowAudits(world.tenantId, 'ride.no_show')).toEqual([])
+  expect(await noShowAudits(world.tenantId, 'ride.no_show_early')).toEqual([])
+
+  const early = await call('POST', `/api/rides/${officeRide.ride.id}/no-show`, world.dispatcher, {})
+  expect(early.status).toBe(200)
+  expect(await early.json()).toMatchObject({ state: 'no-show' })
+  expect(await noShowAudits(world.tenantId, 'ride.no_show_early')).toEqual([{
+    actor_user_id: world.dispatcherId,
+    subject_user_id: null,
+    data: { rideId: officeRide.ride.id, driverId: linked.driver.id, fields: ['state'] },
+  }])
+  expect(await noShowAudits(world.tenantId, 'ride.no_show')).toEqual([])
+})
+
+it('counts an airport No-show wait from the landing, or from the pickup when the landing is empty', async () => {
+  const world = await office('hasg-noshow-airport')
+  const linked = await linkedDriver(world, 'hasg-noshow-airport-driver@example.test', 'Drago Driver', '+385911110905')
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8505AA'))
+  const recorded = await createTransfer(world.dispatcher, { ...transferBody(world, minutesAgo(40)), airportMark: true })
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+
+  const beforeLanding = await call('POST', `/api/rides/${recorded.ride.id}/no-show`, linked.session, {})
+  expect(beforeLanding.status).toBe(409)
+  expect(await beforeLanding.text()).toContain('no_show_too_early')
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'assigned' })
+
+  const landing = minutesAgo(120)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/landing`, world.dispatcher, { landingAt: landing })).status).toBe(200)
+  const afterLanding = await call('POST', `/api/rides/${recorded.ride.id}/no-show`, linked.session, {})
+  expect(afterLanding.status).toBe(200)
+  expect(await afterLanding.json()).toMatchObject({ state: 'no-show' })
+  expect(await noShowAudits(world.tenantId, 'ride.no_show')).toHaveLength(1)
+})
+
+it('uses a landing or an airport mark changed before the No-show, and the waits read at the attempt', async () => {
+  const world = await office('hasg-noshow-clock')
+  const linked = await linkedDriver(world, 'hasg-noshow-clock-driver@example.test', 'Drago Driver', '+385911110906')
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8506AA'))
+  const marked = await createTransfer(world.dispatcher, { ...transferBody(world, minutesAgo(180)), airportMark: true })
+  const waited = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(10)))
+  for (const recorded of [marked, waited]) {
+    expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+      driverId: linked.driver.id,
+      vehicleId: vehicle.id,
+    })).status).toBe(200)
+  }
+  expect((await call('POST', `/api/rides/${marked.ride.id}/landing`, linked.session, { landingAt: minutesAgo(10) })).status).toBe(200)
+
+  const stillAirport = await call('POST', `/api/rides/${marked.ride.id}/no-show`, linked.session, {})
+  expect(stillAirport.status).toBe(409)
+  expect(await stillAirport.text()).toContain('no_show_too_early')
+  await ownerPool.query(`update app.transfers set airport_mark = false where id = $1`, [marked.transfer.id])
+  const elsewhere = await call('POST', `/api/rides/${marked.ride.id}/no-show`, linked.session, {})
+  expect(elsewhere.status).toBe(200)
+  expect(await elsewhere.json()).toMatchObject({ state: 'no-show' })
+
+  const beforeWaitChange = await call('POST', `/api/rides/${waited.ride.id}/no-show`, linked.session, {})
+  expect(beforeWaitChange.status).toBe(409)
+  expect(await rideRow(waited.ride.id)).toMatchObject({ state: 'assigned' })
+  await ownerPool.query(`update app.tenant_settings set elsewhere_wait_minutes = 5 where tenant_id = $1`, [world.tenantId])
+  const afterWaitChange = await call('POST', `/api/rides/${waited.ride.id}/no-show`, linked.session, {})
+  expect(afterWaitChange.status).toBe(200)
+  expect(await noShowAudits(world.tenantId, 'ride.no_show_early')).toEqual([])
+  expect(await noShowAudits(world.tenantId, 'ride.no_show')).toHaveLength(2)
+})
+
+it('refuses a further transition after a No-show, and a refused no-show writes nothing', async () => {
+  const world = await office('hasg-noshow-closed')
+  const linked = await linkedDriver(world, 'hasg-noshow-closed-driver@example.test', 'Drago Driver', '+385911110907')
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8507AA'))
+  const open = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(120)))
+  const finished = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(130)))
+  expect((await call('POST', `/api/rides/${finished.ride.id}/assign`, world.dispatcher, {
+    driverId: linked.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${finished.ride.id}/no-show`, linked.session, {})).status).toBe(200)
+
+  expect((await call('POST', `/api/rides/${open.ride.id}/no-show`, world.dispatcher, {})).status).toBe(409)
+  expect((await call('POST', `/api/rides/${open.ride.id}/no-show`, linked.session, {})).status).toBe(404)
+  expect(await rideRow(open.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null, must_accept: null })
+
+  expect((await call('POST', `/api/rides/${finished.ride.id}/no-show`, world.dispatcher, {})).status).toBe(409)
+  expect((await call('POST', `/api/rides/${finished.ride.id}/done`, world.admin, {})).status).toBe(409)
+  expect((await call('POST', `/api/rides/${finished.ride.id}/accept`, linked.session, {})).status).toBe(409)
+  expect((await call('POST', `/api/rides/${finished.ride.id}/cancel`, world.dispatcher, {})).status).toBe(409)
+  expect((await call('POST', `/api/rides/${finished.ride.id}/decline`, linked.session, {})).status).toBe(409)
+  expect((await call('POST', `/api/rides/${finished.ride.id}/landing`, world.dispatcher, { landingAt: minutesAgo(20) })).status).toBe(409)
+  expect(await rideRow(finished.ride.id)).toMatchObject({
+    state: 'no-show',
+    driver_id: linked.driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: false,
+  })
+  expect(await noShowAudits(world.tenantId, 'ride.no_show')).toHaveLength(1)
+  expect(await doneAudits(world.tenantId)).toEqual([])
+})
+
+it('hides another Driver and another Tenant from a No-show, and lets the office mark a Driver with no account', async () => {
+  const world = await office('hasg-noshow-hide')
+  const linked = await linkedDriver(world, 'hasg-noshow-hide-driver@example.test', 'Drago Driver', '+385911110908')
+  const other = await linkedDriver(world, 'hasg-noshow-hide-other@example.test', 'Iva Other', '+385911110909')
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG8508AA'))
+  const held = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(120)))
+  expect((await call('POST', `/api/rides/${held.ride.id}/assign`, world.dispatcher, {
+    driverId: other.driver.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${held.ride.id}/no-show`, linked.session, {})).status).toBe(404)
+  expect(await rideRow(held.ride.id)).toMatchObject({ state: 'assigned', driver_id: other.driver.id })
+
+  const foreignWorld = await office('hasg-noshow-foreign')
+  expect((await call('POST', `/api/rides/${held.ride.id}/no-show`, foreignWorld.dispatcher, {})).status).toBe(404)
+  expect(await noShowAudits(world.tenantId, 'ride.no_show')).toEqual([])
+  expect(await noShowAudits(foreignWorld.tenantId, 'ride.no_show')).toEqual([])
+
+  const noAccount = await createDriver(world.dispatcher, { ...driverBody, name: 'Bez računa', phone: '+385911110910' })
+  const quiet = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(400)))
+  expect((await call('POST', `/api/rides/${quiet.ride.id}/assign`, world.dispatcher, {
+    driverId: noAccount.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  const marked = await call('POST', `/api/rides/${quiet.ride.id}/no-show`, world.admin, {})
+  expect(marked.status).toBe(200)
+  expect(await marked.json()).toMatchObject({ state: 'no-show', driverId: noAccount.id, mustAccept: false })
+  expect(await noShowAudits(world.tenantId, 'ride.no_show')).toEqual([{
+    actor_user_id: world.adminUserId,
     subject_user_id: null,
     data: { rideId: quiet.ride.id, driverId: noAccount.id, fields: ['state'] },
   }])

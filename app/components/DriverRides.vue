@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayLocale, DriverUpcomingRide } from '../../shared'
-import { canDeclineRide, canMarkRideDone, canRecordLandingTime, driverUpcomingListSchema, formatInstant, rideSchema } from '../../shared'
+import { canDeclineRide, canMarkNoShow, canMarkRideDone, canRecordLandingTime, driverUpcomingListSchema, formatInstant, noShowWaitElapsed, rideSchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -11,6 +11,8 @@ const { t } = useI18n()
 const titleId = useId()
 
 const rides = ref<DriverUpcomingRide[]>([])
+const airportWaitMinutes = ref<number | null>(null)
+const elsewhereWaitMinutes = ref<number | null>(null)
 // Start true so the empty copy does not flash before the first read.
 const loading = ref(true)
 const loadError = ref(false)
@@ -21,6 +23,10 @@ const acceptingId = ref<string | null>(null)
 const markingDone = ref<DriverUpcomingRide | null>(null)
 const markDonePending = ref(false)
 const markDoneErrorKey = ref<'driverRides.doneConflict' | 'driverRides.doneFailed' | null>(null)
+// The Ride the Driver is about to mark a No-show. Null closes the dialog.
+const markingNoShow = ref<DriverUpcomingRide | null>(null)
+const markNoShowPending = ref(false)
+const markNoShowErrorKey = ref<'driverRides.noShowConflict' | 'driverRides.noShowTooEarly' | 'driverRides.noShowFailed' | null>(null)
 // The Ride the Driver is about to decline. Null closes the dialog.
 const declining = ref<DriverUpcomingRide | null>(null)
 const recordingLanding = ref<DriverUpcomingRide | null>(null)
@@ -44,10 +50,12 @@ async function loadRides(refresh = false) {
     loading.value = true
   loadError.value = false
   try {
-    const next = driverUpcomingListSchema.parse(await $fetch('/api/rides/upcoming')).rides
+    const list = driverUpcomingListSchema.parse(await $fetch('/api/rides/upcoming'))
     if (ticket !== loadTicket)
       return
-    rides.value = next
+    rides.value = list.rides
+    airportWaitMinutes.value = list.airportWaitMinutes
+    elsewhereWaitMinutes.value = list.elsewhereWaitMinutes
   }
   catch {
     if (ticket !== loadTicket)
@@ -80,6 +88,24 @@ function canFinish(ride: DriverUpcomingRide): boolean {
   return canMarkRideDone(ride.state, ride.mustAccept)
 }
 
+/**
+ * The same source state as done. The button stays hidden until the wait
+ * the list just read has elapsed. The server still refuses an early mark.
+ */
+function canNoShow(ride: DriverUpcomingRide): boolean {
+  const airport = airportWaitMinutes.value
+  const elsewhere = elsewhereWaitMinutes.value
+  if (!canMarkNoShow(ride.state, ride.mustAccept) || airport === null || elsewhere === null)
+    return false
+  return noShowWaitElapsed({
+    airport: ride.airportMark,
+    pickupAt: new Date(ride.pickupAt),
+    landingAt: ride.landingAt === null ? null : new Date(ride.landingAt),
+    airportWaitMinutes: airport,
+    elsewhereWaitMinutes: elsewhere,
+  }, new Date())
+}
+
 /** Assigned only. The copied flag does not matter (ADR-0006). */
 function canDecline(ride: DriverUpcomingRide): boolean {
   return canDeclineRide(ride.state)
@@ -103,7 +129,7 @@ function httpStatus(error: unknown): number | undefined {
  * the Driver can try again. This action does not send mail.
  */
 async function accept(rideId: string) {
-  if (acceptingId.value !== null || markDonePending.value || declinePending.value)
+  if (acceptingId.value !== null || markDonePending.value || markNoShowPending.value || declinePending.value)
     return
   acceptingId.value = rideId
   try {
@@ -130,7 +156,7 @@ async function accept(rideId: string) {
 }
 
 function openMarkDone(ride: DriverUpcomingRide) {
-  if (!canFinish(ride) || markDonePending.value || acceptingId.value !== null || declinePending.value)
+  if (!canFinish(ride) || markDonePending.value || markNoShowPending.value || acceptingId.value !== null || declinePending.value)
     return
   markDoneErrorKey.value = null
   markingDone.value = ride
@@ -186,8 +212,75 @@ async function confirmMarkDone() {
   }
 }
 
+function openMarkNoShow(ride: DriverUpcomingRide) {
+  if (!canNoShow(ride) || markNoShowPending.value || markDonePending.value || acceptingId.value !== null || declinePending.value)
+    return
+  markNoShowErrorKey.value = null
+  markingNoShow.value = ride
+}
+
+function closeMarkNoShow() {
+  if (markNoShowPending.value)
+    return
+  markNoShowErrorKey.value = null
+  markingNoShow.value = null
+}
+
+const markNoShowOpen = computed({
+  get: () => markingNoShow.value !== null,
+  set(open: boolean) {
+    if (!open)
+      closeMarkNoShow()
+  },
+})
+
+function noShowErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('data' in error))
+    return undefined
+  const data = error.data
+  if (typeof data !== 'object' || data === null || !('code' in data))
+    return undefined
+  return typeof data.code === 'string' ? data.code : undefined
+}
+
+/**
+ * POST /api/rides/:id/no-show with an empty body. Success reloads the list,
+ * and the Ride leaves it because a No-show is terminal. A too-early 409
+ * leaves the Ride as it was. No fee is stored. No mail is sent.
+ */
+async function confirmMarkNoShow() {
+  const target = markingNoShow.value
+  if (!target || markNoShowPending.value)
+    return
+  markNoShowPending.value = true
+  markNoShowErrorKey.value = null
+  try {
+    rideSchema.parse(await $fetch(`/api/rides/${target.rideId}/no-show`, {
+      method: 'POST',
+      body: {},
+    }))
+    conflict.value = false
+    markingNoShow.value = null
+    await loadRides(true)
+  }
+  catch (error) {
+    const status = httpStatus(error)
+    if (noShowErrorCode(error) === 'no_show_too_early')
+      markNoShowErrorKey.value = 'driverRides.noShowTooEarly'
+    else if (status === 409 || status === 404)
+      markNoShowErrorKey.value = 'driverRides.noShowConflict'
+    else
+      markNoShowErrorKey.value = 'driverRides.noShowFailed'
+    if (status === 409 || status === 404)
+      await loadRides(true)
+  }
+  finally {
+    markNoShowPending.value = false
+  }
+}
+
 function openDecline(ride: DriverUpcomingRide) {
-  if (!canDecline(ride) || declinePending.value || acceptingId.value !== null || markDonePending.value)
+  if (!canDecline(ride) || declinePending.value || acceptingId.value !== null || markDonePending.value || markNoShowPending.value)
     return
   declineErrorKey.value = null
   declining.value = ride
@@ -467,7 +560,7 @@ onMounted(loadRides)
             variant="outline"
             size="xl"
             class="mt-4 w-full justify-center"
-            :disabled="acceptingId !== null || markDonePending || declinePending || recordingLanding !== null"
+            :disabled="acceptingId !== null || markDonePending || markNoShowPending || declinePending || recordingLanding !== null"
             @click="recordingLanding = ride"
           >
             {{ t('ride.recordLanding') }}
@@ -478,7 +571,7 @@ onMounted(loadRides)
             size="xl"
             class="mt-4 w-full justify-center"
             :loading="acceptingId === ride.rideId"
-            :disabled="acceptingId !== null || markDonePending || declinePending"
+            :disabled="acceptingId !== null || markDonePending || markNoShowPending || declinePending"
             @click="accept(ride.rideId)"
           >
             {{ acceptingId === ride.rideId ? t('driverRides.accepting') : t('driverRides.accept') }}
@@ -490,7 +583,7 @@ onMounted(loadRides)
             variant="outline"
             size="xl"
             class="mt-4 w-full justify-center"
-            :disabled="acceptingId !== null || markDonePending || declinePending"
+            :disabled="acceptingId !== null || markDonePending || markNoShowPending || declinePending"
             @click="openDecline(ride)"
           >
             {{ t('driverRides.decline') }}
@@ -500,10 +593,22 @@ onMounted(loadRides)
             type="button"
             size="xl"
             class="mt-4 w-full justify-center"
-            :disabled="acceptingId !== null || markDonePending || declinePending"
+            :disabled="acceptingId !== null || markDonePending || markNoShowPending || declinePending"
             @click="openMarkDone(ride)"
           >
             {{ t('driverRides.done') }}
+          </UButton>
+          <UButton
+            v-if="canNoShow(ride)"
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="xl"
+            class="mt-4 w-full justify-center"
+            :disabled="acceptingId !== null || markDonePending || markNoShowPending || declinePending"
+            @click="openMarkNoShow(ride)"
+          >
+            {{ t('driverRides.noShow') }}
           </UButton>
         </article>
       </li>
@@ -549,6 +654,50 @@ onMounted(loadRides)
           @click="confirmMarkDone"
         >
           {{ markDonePending ? t('driverRides.doneConfirming') : t('driverRides.doneConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
+    <UModal
+      v-model:open="markNoShowOpen"
+      :title="t('driverRides.noShowTitle')"
+      :description="t('driverRides.noShowBody')"
+      :dismissible="!markNoShowPending"
+      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
+    >
+      <template #body>
+        <p v-if="markingNoShow">
+          {{ markingNoShow.guestName }}
+        </p>
+        <UAlert
+          v-if="markNoShowErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mt-4"
+          :description="t(markNoShowErrorKey)"
+        />
+      </template>
+      <template #footer>
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :disabled="markNoShowPending"
+          @click="closeMarkNoShow"
+        >
+          {{ t('ride.cancel') }}
+        </UButton>
+        <UButton
+          type="button"
+          size="xl"
+          class="w-full justify-center sm:w-auto"
+          :loading="markNoShowPending"
+          :disabled="markNoShowPending"
+          @click="confirmMarkNoShow"
+        >
+          {{ markNoShowPending ? t('driverRides.noShowConfirming') : t('driverRides.noShowConfirm') }}
         </UButton>
       </template>
     </UModal>
