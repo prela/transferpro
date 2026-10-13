@@ -2,7 +2,7 @@ import type { APIResponse } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedTenant } from './fixtures/seed'
-import { signIn, switchLocale, switchTheme } from './fixtures/ui'
+import { hydrated, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
 const timeZone = 'Europe/Zagreb'
 const day = '2026-10-20'
@@ -115,8 +115,17 @@ test('the day board shows an expired document, a roster mismatch, and an overlap
   await page.goto('/transfers')
   async function showDay(): Promise<void> {
     const today = operationalDateInTimeZone(timeZone, new Date())
+    // The server paints today's operational day before Vue hydrates. Filling
+    // earlier sticks in the DOM, then hydration writes that day back.
+    await hydrated(page)
     await expect(page.locator('#transfer-day')).toHaveValue(today)
+    const listed = page.waitForResponse(response =>
+      response.url().includes('/api/transfers')
+      && response.url().includes(`date=${day}`)
+      && response.ok(),
+    )
     await page.locator('#transfer-day').fill(day)
+    await listed
     await expect(page.locator('#transfer-day')).toHaveValue(day)
   }
   await showDay()

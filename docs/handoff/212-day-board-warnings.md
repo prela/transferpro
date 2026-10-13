@@ -9,7 +9,8 @@ Out of scope: office home, the Driver phone, refusing a command, and storing or 
 - Roster mismatch is only when the Ride's Vehicle has a roster row for a different Driver that calendar date. No row is not a mismatch. A stored row for an archived Vehicle still counts. The Ride's own Vehicle is used even when archived.
 - A neighbour is any other assigned or accepted Ride that shares the Driver or the Vehicle and whose occupied window can reach the viewed day, including a pickup before the search window whose landing is after it. The neighbour is not added to the day list. The overlap warning does not name the other guest.
 - `loadDriverDocumentExpiry`, `loadVehicleDocumentExpiry`, and `rosteredDriversOnDates` are transaction reads through each module index. They do not take a role. `listTransferDay` keeps the office allow-list before it calls them, the same way `loadDrivers` and `vehicleIdForDriverOnDate` work. Do not add a role argument.
-- The day board prints each warning as text in the status cell, next to the landing alarm. Copy is `transfers.warnings` in both locales. Refresh calls the same day read again.
+- The day board prints each warning as text in the status cell, next to the landing alarm. Copy is `transfers.warnings` in both locales. Refresh calls the same day read again. The cell's accessible name is the state plus those lines, so an exact match on the state alone fails once a warning is present.
+- A board spec that fills `#transfer-day` must call `hydrated()` first. The server paints the operational day before Vue starts, and a fill in that gap is overwritten.
 
 ## Code review
 
