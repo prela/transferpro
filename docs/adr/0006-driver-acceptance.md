@@ -8,7 +8,7 @@ Settles the edge ADR-0005 left open: whether `done` and `no-show` require `accep
 
 ## Context
 
-Nikša said assigning a Ride is enough, and that acceptance can be turned on for a Driver, especially an external collaborator. He also said a Driver may refuse, and that if someone who must accept does not, the office calls them. He gave no number of hours. ADR-0005 already lets only the Driver set `accepted`, and lets the office take a Ride back from `accepted`.
+The first Tenant said assigning a Ride is enough, and that acceptance can be turned on for a Driver, especially an external collaborator. He also said a Driver may refuse, and that if someone who must accept does not, the office calls them. He gave no number of hours. ADR-0005 already lets only the Driver set `accepted`, and lets the office take a Ride back from `accepted`.
 
 Partner stays a subcontractor company. The person who drives is a Driver.
 
@@ -22,7 +22,7 @@ When a Ride is assigned, that Driver's setting is copied onto the Ride. Changing
 - If the Ride requires acceptance, `done` and `no-show` are reachable only from `accepted`, including when the Dispatcher or the admin marks them.
 - Any Driver may decline from `assigned` only. The Ride returns to `unassigned`: the Driver and the Vehicle are cleared, and the Ride leaves that Driver's upcoming list immediately. The Dispatcher is to be alerted. How the alert is delivered is the alerts work.
 - From `accepted`, the Driver may not decline. The office takes the Ride back, as ADR-0005 already allows.
-- v1 has no acceptance deadline and no phone call in the product. The Dispatcher sees the assigned Rides that still require acceptance. The phone call Nikša makes today stays outside Transferpro.
+- v1 has no acceptance deadline and no phone call in the product. The Dispatcher sees the assigned Rides that still require acceptance. The phone call the first Tenant makes today stays outside Transferpro.
 
 ## Consequences
 

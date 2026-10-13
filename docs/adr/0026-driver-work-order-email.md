@@ -6,7 +6,7 @@ Damir accepted this on 11 October 2026. This does not supersede ADR-0009, ADR-00
 
 ## Context
 
-A Driver does not hear about a Ride except by opening the phone list. Nikša asked for a work order by email when a Ride is assigned, changed, reassigned, or cancelled, and for a phone message as well when pickup is inside 8 hours. The Driver row has a phone and an optional member link, and it has no email. The sign-in email lives on the account. The tenant-scoped role cannot read that account table. Invitation mail already goes through a mailer port (ADR-0013). ADR-0009 and ADR-0020 show the Driver a price only for cash, and hide card and invoice-to-agency. ADR-0023 sends no mail for the unassigned alarm. Issue #8 leaves email, SMS, and push out of dispatcher alerts.
+A Driver does not hear about a Ride except by opening the phone list. The first Tenant asked for a work order by email when a Ride is assigned, changed, reassigned, or cancelled, and for a phone message as well when pickup is inside 8 hours. The Driver row has a phone and an optional member link, and it has no email. The sign-in email lives on the account. The tenant-scoped role cannot read that account table. Invitation mail already goes through a mailer port (ADR-0013). ADR-0009 and ADR-0020 show the Driver a price only for cash, and hide card and invoice-to-agency. ADR-0023 sends no mail for the unassigned alarm. Issue #8 leaves email, SMS, and push out of dispatcher alerts.
 
 The alternatives were a second email the office types even for a linked Driver, an SMS or WhatsApp message inside 8 hours, a card or voucher mark so a non-cash Ride still has a payment line, and rolling the Ride back when the send fails.
 

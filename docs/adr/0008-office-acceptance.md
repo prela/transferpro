@@ -6,7 +6,7 @@ Supersedes, in ADR-0005, the rule that only the Driver may set `accepted`. Super
 
 ## Context
 
-Nikša confirms external Drivers by phone. ADR-0005 allowed only the Driver to set `accepted`, so a Driver who had already agreed stayed `assigned` until they opened the app. The office already makes that call. Building the call into the product was the alternative, and it was rejected. Leaving the "yes" unrecorded keeps the board warning that the Ride is not accepted, and blocks `done` and `no-show` while the Ride requires acceptance.
+The first Tenant confirms external Drivers by phone. ADR-0005 allowed only the Driver to set `accepted`, so a Driver who had already agreed stayed `assigned` until they opened the app. The office already makes that call. Building the call into the product was the alternative, and it was rejected. Leaving the "yes" unrecorded keeps the board warning that the Ride is not accepted, and blocks `done` and `no-show` while the Ride requires acceptance.
 
 ## Decision
 
