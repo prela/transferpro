@@ -4,7 +4,7 @@ Status: accepted
 
 ## Context
 
-Nikša waits 90 minutes at the airport and 25 minutes elsewhere. The Driver is who marks a No-show on the ground. Nobody is charged today. He did not say whether the airport wait starts at landing or at the scheduled pickup. A flight-tracking feed is a Charter non-goal. ADR-0005 already lets the Dispatcher and the admin mark a No-show, with an audit entry. Invoicing is a Charter non-goal.
+The first Tenant waits 90 minutes at the airport and 25 minutes elsewhere. The Driver is who marks a No-show on the ground. Nobody is charged today. He did not say whether the airport wait starts at landing or at the scheduled pickup. A flight-tracking feed is a Charter non-goal. ADR-0005 already lets the Dispatcher and the admin mark a No-show, with an audit entry. Invoicing is a Charter non-goal.
 
 ## Decision
 

@@ -20,7 +20,7 @@ Work is Domain-Driven (ubiquitous language, Tiers, ports) and Test-Driven (red�
 
 ### Reference, not source
 
-The tenant's prototype (`transferi.kompas.rent`) is a **reference** for features and vocabulary only. Transferpro is built from scratch. Do not port its code or data model.
+The tenant's prototype is a **reference** for features and vocabulary only. Transferpro is built from scratch. Do not port its code or data model.
 
 The owner's `enterprise-nuxt-starter` is **not** continued as a starter. Only proven, tested parts (likely auth and base structure) may be copied, after verification, in an explicit WP. Reusable Layers are extracted from Transferpro **later**, when a second product needs them.
 
@@ -218,8 +218,8 @@ Parallelism: **0.4** and **0.5** after **0.2**/**0.1**; **1.3**, **1.4**, **1.5*
 - Pricing model: free tier vs. time-limited trial; is the pilot tenant free?
 - Tenant's actual price list (zones, routes, per-pax/vehicle rules, night/season surcharges).
 - Partner handoff: how a Ride is handed to a Partner today, commission rules, does the Partner need a login?
-- **Open — owner to confirm with first tenant (Nikša):** No-show definition: exact wait time before a no-show may be marked, and who charges (is the Client charged, who pays)?
-- **Open — owner to confirm with first tenant (Nikša):** Driver acceptance: must the Driver explicitly accept a Ride, and how long before pickup must it happen?
+- **Open — owner to confirm with the first Tenant:** No-show definition: exact wait time before a no-show may be marked, and who charges (is the Client charged, who pays)?
+- **Open — owner to confirm with the first Tenant:** Driver acceptance: must the Driver explicitly accept a Ride, and how long before pickup must it happen?
 - Off-season: same Tenant plan, or pause?
 - Data migration from the prototype: needed, or start clean?
 - GitHub plan: repo `transferpro` is private on the free GitHub plan with **no branch protection for now** (protection on `main` is enforced by convention). Upgrade to GitHub Pro later when the project gets serious, then enable protection on `main`.

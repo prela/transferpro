@@ -94,3 +94,36 @@ test('pull request text check reads the event payload from the environment', () 
   assert.equal(footer.status, 1)
   assert.match(footer.stderr, /agent footer/)
 })
+
+test('pull request text rejects redacted names and keeps ordinary words', () => {
+  for (const banned of [
+    'confirm with Nikša',
+    'confirm with Niksa',
+    'the Number One fleet',
+    'NumberOne dispatch',
+    'send it through Solo',
+    'imported from Direct Booker',
+    'see transferi.kompas.rent',
+  ]) {
+    const rejected = spawnSync('node', ['.cursor/hooks/check-pr-text.mjs'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PR_TITLE: 'chore: clean title',
+        PR_BODY: banned,
+      },
+    })
+    assert.equal(rejected.status, 1, banned)
+    assert.match(rejected.stderr, /redacted term/, banned)
+  }
+
+  const clean = spawnSync('node', ['.cursor/hooks/check-pr-text.mjs'], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PR_TITLE: 'chore: redact names from the charter',
+      PR_BODY: 'The first Tenant, the reference operator, the fiscalization provider, and email import. Solomon booked a console.',
+    },
+  })
+  assert.equal(clean.status, 0, clean.stderr)
+})

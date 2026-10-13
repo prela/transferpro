@@ -6,7 +6,7 @@ ADR-0008 supersedes "Only the Driver may set `accepted`." ADR-0010 adds which ed
 
 ## Context
 
-v1 needs one shared list of Ride states so the Dispatcher board and the Driver's phone agree on what a Ride is. The Charter already uses unassigned, accepted, done, and no-show. A Ride that will not run still has to stay on record, because the audit log must show that it was called off. Deleting it would erase that. Whether a Driver must accept a Ride, how long a No-show waits, and who is charged are still with Nikša and are not decided here.
+v1 needs one shared list of Ride states so the Dispatcher board and the Driver's phone agree on what a Ride is. The Charter already uses unassigned, accepted, done, and no-show. A Ride that will not run still has to stay on record, because the audit log must show that it was called off. Deleting it would erase that. Whether a Driver must accept a Ride, how long a No-show waits, and who is charged are still with the first Tenant and are not decided here.
 
 ## Decision
 
@@ -23,7 +23,7 @@ The states are `unassigned`, `assigned`, `accepted`, `done`, `no-show`, and `can
 - The Driver may set `done` or `no-show` from `accepted`. The Dispatcher and the admin may do that too. The audit log records which person did it.
 - The Dispatcher and the admin may set `cancelled` from `unassigned`, `assigned`, or `accepted`.
 - A Ride that is `done`, `no-show`, or `cancelled` has no further transition.
-- Whether `done` or `no-show` may also be reached from `assigned`, without `accepted`, waits on Nikša. This decision does not invent that edge.
+- Whether `done` or `no-show` may also be reached from `assigned`, without `accepted`, waits on the first Tenant. This decision does not invent that edge.
 - A Driver's upcoming list is the non-terminal Rides currently assigned to them. A Ride leaves that list as soon as it is no longer theirs. How the Driver is told is the alerts work, not this decision.
 
 ## Consequences
