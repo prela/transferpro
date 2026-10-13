@@ -1,11 +1,25 @@
 # Separate from ci.yml so the app pipeline stays unchanged.
 # pull_request payload carries the title and body; this job uses no extra token.
+# Push runs on develop and main. A new push to the same ref cancels the
+# run already in progress. Docs and markdown skip this workflow. Changes
+# under .cursor still run it, because the guard scripts live there.
 name: agent-guard
 
 on:
   push:
+    branches: [develop, main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
     types: [opened, edited, synchronize]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
