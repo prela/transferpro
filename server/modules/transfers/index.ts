@@ -19,7 +19,9 @@
  * The office can correct the Transfer while the Ride is unfinished.
  * A change of pickup, start, end, or flight number returns an accepted
  * Ride to assigned and keeps the Driver, the Vehicle, and the copied flag.
- * That correction sends no mail.
+ * A real change mails the current Driver one work order with status
+ * changed, after the booking is saved. A price change mails only while
+ * payment is cash. A Ride with no Driver sends nothing.
  * The office can change only the Vehicle, clear the Ride, or reassign it.
  * Each of those mails a work order after the Ride is saved.
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through

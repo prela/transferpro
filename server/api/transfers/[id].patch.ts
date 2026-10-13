@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam, readBody, toWebRequest } from 'h3'
-import { recordedTransferSchema } from '../../../shared'
+import { correctedTransferResultSchema } from '../../../shared'
 import { correctTransfer } from '../../modules/transfers'
 import { transferHttpError } from '../transfers/http'
 
@@ -9,11 +9,13 @@ import { transferHttpError } from '../transfers/http'
  * is parsed before a session opens. A driver is 403. No session is 401.
  * A finished Ride is 409 and the stored booking is unchanged. The audit
  * entry does not contain the guest name, the flight, the note, the tabla, or the price.
- * No mail is sent.
+ * The current Driver is mailed changed after the booking is saved, when a
+ * mailed fact changed. The body is `{ transfer, ride, workOrders }`.
+ * The address is not on it. A rejected send leaves the correction.
  */
 export default defineEventHandler(async (event) => {
   try {
-    return recordedTransferSchema.parse(await correctTransfer(
+    return correctedTransferResultSchema.parse(await correctTransfer(
       toWebRequest(event).headers,
       getRouterParam(event, 'id'),
       await readBody(event),

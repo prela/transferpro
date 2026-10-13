@@ -2,7 +2,7 @@ import type { DisplayLocale } from './display-locale'
 import type { PaymentMethod } from './transfer'
 import { z } from 'zod'
 import { formatInstant } from './format-instant'
-import { rideSchema } from './transfer'
+import { rideSchema, transferSchema } from './transfer'
 
 /**
  * The mail for one assigned Ride. The locale and the time zone are the
@@ -177,6 +177,20 @@ export const cancelledRideResultSchema = z.object({
 })
 
 export type CancelledRideResult = z.infer<typeof cancelledRideResultSchema>
+
+/**
+ * A Transfer correction. `workOrders` is empty when nothing was mailed:
+ * no Driver, a save that changed no mailed fact, or a price change while
+ * payment is not cash. One entry when the current Driver was mailed
+ * changed. The address is not on this object.
+ */
+export const correctedTransferResultSchema = z.object({
+  transfer: transferSchema,
+  ride: rideSchema,
+  workOrders: z.array(workOrderNoticeSchema),
+})
+
+export type CorrectedTransferResult = z.infer<typeof correctedTransferResultSchema>
 
 /**
  * The assign, vehicle-change, clear, or reassign action.

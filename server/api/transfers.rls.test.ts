@@ -5,11 +5,12 @@ import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../../shared'
+import { captureLogs } from '../core/testing'
 import { createClient } from '../modules/clients'
 import { createDriver, updateDriver } from '../modules/drivers'
 import { archiveLocation, createLocation } from '../modules/locations'
-import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
-import { acceptRide, assignRide, declineRide, listTransferDay, listUpcomingRides, readOfficeHome } from '../modules/transfers'
+import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale } from '../modules/tenancy'
+import { acceptRide, assignRide, correctTransfer, declineRide, listTransferDay, listUpcomingRides, readOfficeHome } from '../modules/transfers'
 import { createVehicle } from '../modules/vehicles'
 import getTransfers from './transfers.get'
 import postTransfer from './transfers.post'
@@ -1151,4 +1152,379 @@ it('refuses an archived Location and writes nothing', async () => {
   expect(refused.status).toBe(409)
   expect(await storedTransfer(body.transfer.id)).toMatchObject({ guest_name: guest })
   expect(await correctionAudits(created.tenantId)).toEqual(before)
+})
+
+interface SentWorkOrder { to: string, subject: string, text: string }
+
+function workOrderMailer(sent: SentWorkOrder[]) {
+  return {
+    async sendInvitation() {},
+    async sendWorkOrder(mail: SentWorkOrder) {
+      sent.push({ to: mail.to, subject: mail.subject, text: mail.text })
+    },
+    async notifyArrivalMoved() {},
+    async notifyFlightWillNotArrive() {},
+  }
+}
+
+function expectNoPaymentLine(text: string) {
+  expect(text).not.toContain('Cijena')
+  expect(text).not.toContain('Plaćanje')
+  expect(text).not.toContain('Gotovina')
+  expect(text).not.toContain('Kartica')
+  expect(text).not.toContain('voucher')
+  expect(text).not.toContain('Vaučer')
+  expect(text).not.toContain('ne naplać')
+}
+
+it('emails one changed work order for each mailed fact, and a quiet save sends nothing', async () => {
+  const created = await tenant('htr-wo-fields', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-wo-fields-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-wo-fields-dispatcher@example.test')
+  await updateUserLocale(dispatcher, 'en')
+  const address = 'ana-correct@example.test'
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const other = await createClient(dispatcher, { name: 'Hotel Sunce', kind: 'hotel' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const split = await createLocation(dispatcher, { name: 'Zračna luka Split', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  const later = await createLocation(dispatcher, { name: 'Hotel Excelsior', kind: 'hotel' })
+  const driver = await createDriver(dispatcher, {
+    name: 'Ana Correct',
+    kind: 'own',
+    phone: '+385911111681',
+    email: address,
+    drivingLicenceExpiresOn: '2031-01-01',
+    transportLicenceExpiresOn: '2031-01-01',
+  })
+  const blank = await createDriver(dispatcher, {
+    name: 'Marko Blank',
+    kind: 'own',
+    phone: '+385911111682',
+    drivingLicenceExpiresOn: '2031-01-01',
+    transportLicenceExpiresOn: '2031-01-01',
+  })
+  const vehicle = await createVehicle(dispatcher, {
+    registrationPlate: 'ZG9168AA',
+    kind: 'fixed',
+    registrationExpiresOn: '2031-01-01',
+    technicalInspectionExpiresOn: '2031-01-01',
+    insuranceExpiresOn: '2031-01-01',
+  })
+  const pickupAt = '2026-10-15T22:30:00.000Z'
+  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+    flightNumber: 'OU 384',
+    note: 'Čeka',
+    tabla: 'GOSPOĐA',
+  }))
+  const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
+  await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  const sent: SentWorkOrder[] = []
+  const mailer = workOrderMailer(sent)
+  let body = correctionBody(client.id, start.id, end.id, pickupAt, {
+    flightNumber: 'OU 384',
+    note: 'Čeka',
+    tabla: 'GOSPOĐA',
+  })
+
+  async function correct(overrides: Record<string, unknown> = {}) {
+    body = { ...body, ...overrides }
+    return correctTransfer(dispatcher, createdBody.transfer.id, body, { mailer })
+  }
+
+  async function expectOne(overrides: Record<string, unknown>, fact: string) {
+    const before = sent.length
+    const result = await correct(overrides)
+    expect(result.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+    expect(JSON.stringify(result)).not.toContain(address)
+    expect(sent).toHaveLength(before + 1)
+    expect(sent.at(-1)?.to).toBe(address)
+    expect(sent.at(-1)?.text.startsWith('Promijenjeno\n')).toBe(true)
+    expect(sent.at(-1)?.text).toContain(fact)
+    expect(sent.at(-1)?.text).toContain('Registracija: ZG9168AA')
+    expect(sent.at(-1)?.text).not.toContain('http')
+    expect(sent.at(-1)?.text).not.toContain('Prihvati')
+  }
+
+  await expectOne({ guestName: 'Iva Nova' }, 'Gost: Iva Nova')
+  expect(sent[0]?.subject).toBe('Promijenjeno · 16. 10. 2026. 00:30 · Zračna luka Dubrovnik')
+  expect(sent[0]?.text).toContain('Cijena: 42,50')
+  expect(sent[0]?.text).toContain('Plaćanje: Gotovina')
+  await expectOne({ passengerCount: 4 }, 'Putnici: 4')
+  await expectOne({ luggageCount: 3 }, 'Prtljaga: 3')
+  await expectOne({ childSeatCount: 2 }, 'Dječje sjedalice: 2')
+  await expectOne({ flightNumber: 'OU392' }, 'Let: OU392')
+  await expectOne({ note: 'Nova napomena' }, 'Napomena: Nova napomena')
+  await expectOne({ tabla: 'NOVA TABLA' }, 'Tabla: NOVA TABLA')
+  await expectOne({ pickupAt: '2026-10-16T22:30:00.000Z' }, 'Polazak: 17. 10. 2026. 00:30')
+  expect(sent.at(-1)?.subject).toBe('Promijenjeno · 17. 10. 2026. 00:30 · Zračna luka Dubrovnik')
+  await expectOne({ startLocationId: split.id }, 'Polazište: Zračna luka Split')
+  expect(sent.at(-1)?.subject).toBe('Promijenjeno · 17. 10. 2026. 00:30 · Zračna luka Split')
+  await expectOne({ endLocationId: later.id }, 'Odredište: Hotel Excelsior')
+  await expectOne({ clientId: other.id }, 'Klijent: Hotel Sunce')
+
+  const beforeSeveral = sent.length
+  const several = await correct({
+    guestName: 'Leo Više',
+    note: 'Drugi ulaz',
+    passengerCount: 5,
+    luggageCount: 4,
+  })
+  expect(several.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(sent).toHaveLength(beforeSeveral + 1)
+  expect(sent.at(-1)?.text).toContain('Gost: Leo Više')
+  expect(sent.at(-1)?.text).toContain('Napomena: Drugi ulaz')
+  expect(sent.at(-1)?.text).toContain('Putnici: 5')
+  expect(sent.at(-1)?.text).toContain('Prtljaga: 4')
+
+  const quiet = await correct()
+  expect(quiet.workOrders).toEqual([])
+  expect(sent).toHaveLength(beforeSeveral + 1)
+
+  const previous = sent.at(-1)?.text
+  const marked = await correct({ airportMark: false })
+  expect(marked.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(sent.at(-1)?.text).toBe(previous)
+
+  const openRecorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, '2026-10-17T10:00:00.000Z'))
+  const openBody = await openRecorded.json() as { transfer: { id: string } }
+  const beforeOpen = sent.length
+  const open = await correctTransfer(dispatcher, openBody.transfer.id, correctionBody(client.id, start.id, end.id, '2026-10-17T10:00:00.000Z', {
+    guestName: 'Nitko Gost',
+  }), { mailer })
+  expect(open.workOrders).toEqual([])
+  expect(open.ride.driverId).toBeNull()
+  expect(sent).toHaveLength(beforeOpen)
+
+  const blankRecorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, '2026-10-17T16:00:00.000Z'))
+  const blankBody = await blankRecorded.json() as { transfer: { id: string }, ride: { id: string } }
+  await assignRide(dispatcher, { rideId: blankBody.ride.id, driverId: blank.id, vehicleId: vehicle.id })
+  const noEmail = await correctTransfer(dispatcher, blankBody.transfer.id, correctionBody(client.id, start.id, end.id, '2026-10-17T16:00:00.000Z', {
+    guestName: 'Bez Adrese',
+  }), { mailer })
+  expect(noEmail.workOrders).toEqual([{ driverId: blank.id, outcome: 'no_email' }])
+  expect(sent).toHaveLength(beforeOpen)
+  expect(JSON.stringify(noEmail)).not.toContain(address)
+
+  const viaRoute = await call('PATCH', `/api/transfers/${createdBody.transfer.id}`, dispatcher, {
+    ...body,
+    guestName: 'Ruta Gost',
+  })
+  expect(viaRoute.status).toBe(200)
+  const routed = await viaRoute.json()
+  expect(routed.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(JSON.stringify(routed)).not.toContain(address)
+})
+
+it('mails a price change only while payment is cash, and a payment-method change always', async () => {
+  const created = await tenant('htr-wo-pay', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-wo-pay-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-wo-pay-dispatcher@example.test')
+  const address = 'ana-pay@example.test'
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  const driver = await createDriver(dispatcher, {
+    name: 'Ana Pay',
+    kind: 'own',
+    phone: '+385911111683',
+    email: address,
+    drivingLicenceExpiresOn: '2031-01-01',
+    transportLicenceExpiresOn: '2031-01-01',
+  })
+  const vehicle = await createVehicle(dispatcher, {
+    registrationPlate: 'ZG9168BB',
+    kind: 'fixed',
+    registrationExpiresOn: '2031-01-01',
+    technicalInspectionExpiresOn: '2031-01-01',
+    insuranceExpiresOn: '2031-01-01',
+  })
+  const pickupAt = '2026-10-15T22:30:00.000Z'
+  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt))
+  const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
+  await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  const sent: SentWorkOrder[] = []
+  const mailer = workOrderMailer(sent)
+  let body = correctionBody(client.id, start.id, end.id, pickupAt)
+
+  async function correct(overrides: Record<string, unknown> = {}) {
+    body = { ...body, ...overrides }
+    return correctTransfer(dispatcher, createdBody.transfer.id, body, { mailer })
+  }
+
+  const raised = await correct({ price: 55.5 })
+  expect(raised.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(sent).toHaveLength(1)
+  expect(sent[0]?.text).toContain('Cijena: 55,50')
+  expect(sent[0]?.text).toContain('Plaćanje: Gotovina')
+  const again = await correct({ price: 10 })
+  expect(again.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(sent[1]?.text).toContain('Cijena: 10,00')
+
+  const card = await correct({ payment: 'card' })
+  expect(card.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expectNoPaymentLine(sent[2]?.text ?? '')
+  const hidden = await correct({ price: 12 })
+  expect(hidden.workOrders).toEqual([])
+  expect(hidden.transfer.price).toBe('12.00')
+  expect(sent).toHaveLength(3)
+
+  const invoice = await correct({ payment: 'invoice_to_agency' })
+  expect(invoice.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(sent[3]?.text).toBe(sent[2]?.text)
+  expectNoPaymentLine(sent[3]?.text ?? '')
+  const stillHidden = await correct({ price: 18 })
+  expect(stillHidden.workOrders).toEqual([])
+  expect(stillHidden.transfer.price).toBe('18.00')
+  expect(sent).toHaveLength(4)
+
+  const cash = await correct({ payment: 'cash' })
+  expect(cash.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(sent[4]?.text).toContain('Cijena: 18,00')
+  expect(sent[4]?.text).toContain('Plaćanje: Gotovina')
+  const removed = await correct({ payment: 'card' })
+  expect(removed.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(sent[5]?.text).toBe(sent[3]?.text)
+  expectNoPaymentLine(sent[5]?.text ?? '')
+  expect(JSON.stringify(removed)).not.toContain(address)
+})
+
+it('a rejected send leaves the correction, and the audit stays the correction', async () => {
+  const created = await tenant('htr-wo-fail', 'Hana Admin')
+  const dispatcherId = await addMember(created.tenantId, 'htr-wo-fail-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-wo-fail-dispatcher@example.test')
+  const address = 'ana-fail@example.test'
+  const guestName = 'Gost Odbijen'
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  const driver = await createDriver(dispatcher, {
+    name: 'Ana Fail',
+    kind: 'own',
+    phone: '+385911111684',
+    email: address,
+    drivingLicenceExpiresOn: '2031-01-01',
+    transportLicenceExpiresOn: '2031-01-01',
+  })
+  const vehicle = await createVehicle(dispatcher, {
+    registrationPlate: 'ZG9168CC',
+    kind: 'fixed',
+    registrationExpiresOn: '2031-01-01',
+    technicalInspectionExpiresOn: '2031-01-01',
+    insuranceExpiresOn: '2031-01-01',
+  })
+  const pickupAt = '2026-10-15T22:30:00.000Z'
+  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+    guestName,
+    tabla: 'TABLA ODBIJENA',
+    price: 77.5,
+  }))
+  const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
+  await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  const logs = captureLogs()
+  const failed = await correctTransfer(dispatcher, createdBody.transfer.id, correctionBody(client.id, start.id, end.id, pickupAt, {
+    guestName: 'Iva Ostaje',
+    tabla: 'TABLA ODBIJENA',
+    price: 77.5,
+  }), {
+    logger: logs.logger,
+    mailer: {
+      async sendInvitation() {},
+      async sendWorkOrder() {
+        throw new Error(`rejected ${address} ${guestName} TABLA ODBIJENA ZG9168CC`)
+      },
+      async notifyArrivalMoved() {},
+      async notifyFlightWillNotArrive() {},
+    },
+  })
+  expect(failed.workOrders).toEqual([{ driverId: driver.id, outcome: 'failed' }])
+  expect(failed.transfer.guestName).toBe('Iva Ostaje')
+  expect(await storedTransfer(createdBody.transfer.id)).toMatchObject({ guest_name: 'Iva Ostaje' })
+  expect(JSON.stringify(failed)).not.toContain(address)
+  const audits = await correctionAudits(created.tenantId)
+  expect(audits.map(row => row.action)).toEqual(['transfer.corrected'])
+  expect(audits[0]?.actor_user_id).toBe(dispatcherId)
+  expect(JSON.stringify(audits)).not.toContain(address)
+  expect(JSON.stringify(audits)).not.toContain('email')
+  expect(JSON.stringify(audits)).not.toContain('Iva Ostaje')
+  expect(JSON.stringify(audits)).not.toContain(guestName)
+  const line = JSON.stringify(logs.lines()[0])
+  expect(line).toContain(createdBody.ride.id)
+  expect(line).toContain(driver.id)
+  expect(line).not.toContain(address)
+  expect(line).not.toContain(guestName)
+  expect(line).not.toContain('TABLA ODBIJENA')
+  expect(line).not.toContain('ZG9168CC')
+  expect(line).not.toContain('77.50')
+  expect(line).not.toContain('77,50')
+  expect(line).not.toContain('Zračna luka Dubrovnik')
+})
+
+it('a change that returns an accepted Ride to assigned uses changed and does not ask the Driver to accept', async () => {
+  const created = await tenant('htr-wo-accept', 'Hana Admin')
+  const driverUserId = await addMember(created.tenantId, 'htr-wo-accept-driver@example.test', 'Drago Driver', 'driver')
+  await addMember(created.tenantId, 'htr-wo-accept-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-wo-accept-dispatcher@example.test')
+  const admin = await signIn('htr-wo-accept-admin@example.test')
+  const driverSession = await signIn('htr-wo-accept-driver@example.test')
+  const address = 'htr-wo-accept-driver@example.test'
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  const later = await createLocation(dispatcher, { name: 'Hotel Excelsior', kind: 'hotel' })
+  const driver = await createDriver(dispatcher, {
+    name: 'Drago Accept',
+    kind: 'own',
+    phone: '+385911111685',
+    drivingLicenceExpiresOn: '2031-01-01',
+    transportLicenceExpiresOn: '2031-01-01',
+    memberUserId: driverUserId,
+  })
+  await updateDriver(admin, driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(dispatcher, {
+    registrationPlate: 'ZG9168DD',
+    kind: 'fixed',
+    registrationExpiresOn: '2031-01-01',
+    technicalInspectionExpiresOn: '2031-01-01',
+    insuranceExpiresOn: '2031-01-01',
+  })
+  const pickupAt = '2026-10-15T22:30:00.000Z'
+  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU384' }))
+  const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
+  await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  await acceptRide(driverSession, createdBody.ride.id, {})
+  const sent: SentWorkOrder[] = []
+  const mailer = workOrderMailer(sent)
+
+  const spaced = await correctTransfer(dispatcher, createdBody.transfer.id, correctionBody(client.id, start.id, end.id, pickupAt, {
+    flightNumber: 'OU 384',
+  }), { mailer })
+  expect(spaced.ride).toMatchObject({ state: 'accepted', driverId: driver.id, mustAccept: true })
+  expect(spaced.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(sent[0]?.text.startsWith('Promijenjeno\n')).toBe(true)
+  expect(sent[0]?.text).toContain('Let: OU 384')
+  expect(sent[0]?.text).not.toContain('Prihvati')
+  expect(sent[0]?.subject.startsWith('Promijenjeno ·')).toBe(true)
+
+  const returned = await correctTransfer(dispatcher, createdBody.transfer.id, correctionBody(client.id, start.id, later.id, pickupAt, {
+    flightNumber: 'OU392',
+  }), { mailer })
+  expect(returned.ride).toMatchObject({ state: 'assigned', driverId: driver.id, vehicleId: vehicle.id, mustAccept: true })
+  expect(returned.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(sent).toHaveLength(2)
+  expect(sent[1]?.text.startsWith('Promijenjeno\n')).toBe(true)
+  expect(sent[1]?.text).toContain('Let: OU392')
+  expect(sent[1]?.text).toContain('Odredište: Hotel Excelsior')
+  expect(sent[1]?.text).not.toContain('Dodijeljeno')
+  expect(sent[1]?.text).not.toContain('Prihvati')
+  expect(sent[1]?.text).not.toContain('http')
+  expect(JSON.stringify(returned)).not.toContain(address)
+  const audits = await correctionAudits(created.tenantId)
+  expect(audits.map(row => row.action).sort()).toEqual([
+    'ride.returned_to_assigned',
+    'transfer.corrected',
+    'transfer.corrected',
+  ])
+  expect(JSON.stringify(audits)).not.toContain(address)
+  expect(JSON.stringify(audits)).not.toContain('email')
 })
