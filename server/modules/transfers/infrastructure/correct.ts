@@ -4,7 +4,7 @@ import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { canCorrectTransfer, changedTransferFields, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, occupiedEnd, parseCreateTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
+import { canCorrectTransfer, changedTransferFields, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, occupiedEnd, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
 import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
@@ -86,14 +86,8 @@ function parseCorrect(transferId: unknown, body: unknown): { id: string, input: 
   const id = z.uuid().safeParse(transferId)
   if (!id.success)
     throw new TransferInputError()
-  const record = z.record(z.string(), z.unknown()).safeParse(body)
-  if (!record.success)
-    throw new TransferInputError()
-  const confirm = record.data.confirm
-  if (confirm !== undefined && typeof confirm !== 'boolean')
-    throw new TransferInputError()
-  const { confirm: _confirm, ...booking } = record.data
-  return { id: id.data, input: parseCreateTransfer(booking), confirm: confirm === true }
+  const parsed = parseCorrectTransfer(body)
+  return { id: id.data, input: parsed.input, confirm: parsed.confirm }
 }
 
 function officeOnly(role: string): void {
@@ -171,13 +165,13 @@ export async function correctTransferForOffice(
   // and the will-not-arrive memory (ADR-0028). The occupation check reads
   // the row after this write, so a 409 rolls the clear back with the booking.
   const clearLanding = flightNumberChangeClearsLanding(stored.flightNumber, input.flightNumber)
-  const judge = await occupiedWindowMoves(transaction, current, input, clearLanding)
+  const occupation = await occupiedWindowMoves(transaction, current, input, clearLanding)
   await writeTransfer(transaction, transferId, input, clearLanding)
-  const relocationWarnings = judge
+  const relocationWarnings = occupation
     ? await checkRideSchedule(transaction, {
         rideId: current.rideId,
-        driverId: judge.driverId,
-        vehicleId: judge.vehicleId,
+        driverId: occupation.driverId,
+        vehicleId: occupation.vehicleId,
         confirm,
       })
     : []

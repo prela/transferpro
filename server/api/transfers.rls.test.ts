@@ -1683,16 +1683,27 @@ it('refuses a pickup correction that overlaps only the Vehicle and writes nothin
   await assignRide(office.dispatcher, { rideId: held.ride.id, driverId: firstDriver.id, vehicleId: vehicle.id })
   await assignRide(office.dispatcher, { rideId: moving.ride.id, driverId: secondDriver.id, vehicleId: vehicle.id })
   const before = await correctionAudits(office.created.tenantId)
+  const sent: SentWorkOrder[] = []
 
   const refused = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T10:30:00.000Z'))
   expect(refused.status).toBe(409)
   expect(await refused.text()).toContain('ride_overlap')
+  expect(await storedTransfer(moving.transfer.id)).toMatchObject({ guest_name: guest })
+  const pickup = await ownerPool.query<{ pickup_at: Date }>(
+    'select pickup_at from app.transfers where id = $1',
+    [moving.transfer.id],
+  )
+  expect(pickup.rows[0]?.pickup_at.toISOString()).toBe(movingAt)
   expect(await rideFacts(moving.ride.id)).toMatchObject({
     state: 'assigned',
     driver_id: secondDriver.id,
     vehicle_id: vehicle.id,
   })
   expect(await correctionAudits(office.created.tenantId)).toEqual(before)
+  await expect(correctTransfer(office.dispatcher, moving.transfer.id, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T10:30:00.000Z'), {
+    mailer: workOrderMailer(sent),
+  })).rejects.toMatchObject({ statusCode: 409, code: 'ride_overlap' })
+  expect(sent).toEqual([])
 })
 
 it('a confirmed overlap saves, returns an accepted Ride to assigned, and sends one changed work order', async () => {
