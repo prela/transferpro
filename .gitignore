@@ -12,6 +12,9 @@ dist/
 !.env.example
 !.env.migrate.example
 
+# Backup script work directory. Holds a plaintext dump and connection files.
+.backup-work/
+
 # Test coverage
 coverage/
 
