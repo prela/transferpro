@@ -149,6 +149,14 @@ jobs:
           pnpm db:migrate:local
           pnpm test:rls
 
+      # Disposable Postgres 18. The fast job has no Docker, so the restore
+      # proof lives here. It does not use the service database.
+      - name: Encrypted backup restore
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gnupg
+          pnpm exec vitest run --config vitest.backup.config.ts
+
       # Browsers live in the runner cache. OS packages do not, so a cache hit
       # still installs system dependencies. The key is the installed Playwright
       # version, which tracks the lockfile without busting on unrelated bumps.
