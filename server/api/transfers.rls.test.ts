@@ -33,6 +33,7 @@ function required(name: string): string {
 
 const authDatabaseUrl = required('AUTH_DATABASE_URL')
 const migrateDatabaseUrl = required('DATABASE_MIGRATE_URL')
+const databaseUrl = required('DATABASE_URL')
 const password = 'transfers-http-password'
 const guest = 'Ana Anić'
 const flight = 'OU 384'
@@ -40,6 +41,7 @@ const note = 'Čeka na terminalu'
 const tabla = 'GOSPOĐA HORVAT'
 const authPool = new pg.Pool({ connectionString: authDatabaseUrl })
 const ownerPool = new pg.Pool({ connectionString: migrateDatabaseUrl })
+const appPool = new pg.Pool({ connectionString: databaseUrl })
 const authUrl = required('BETTER_AUTH_URL')
 
 const app = createApp()
@@ -111,6 +113,7 @@ afterAll(async () => {
   await closeTenantRuntime()
   await authPool.end()
   await ownerPool.end()
+  await appPool.end()
 })
 
 async function tenant(slug: string, adminName: string) {
@@ -676,6 +679,57 @@ async function correctionAudits(tenantId: string) {
     [tenantId],
   )
   return result.rows
+}
+
+async function withAppTenant<T>(tenantId: string, run: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+  const client = await appPool.connect()
+  try {
+    await client.query('begin')
+    await client.query('select set_config(\'app.tenant_id\', $1, true)', [tenantId])
+    const result = await run(client)
+    await client.query('commit')
+    return result
+  }
+  catch (error) {
+    await client.query('rollback')
+    throw error
+  }
+  finally {
+    client.release()
+  }
+}
+
+function driverInput(name: string, phone: string) {
+  return {
+    name,
+    kind: 'own' as const,
+    phone,
+    drivingLicenceExpiresOn: '2031-01-01',
+    transportLicenceExpiresOn: '2031-01-01',
+  }
+}
+
+function vehicleInput(registrationPlate: string) {
+  return {
+    registrationPlate,
+    kind: 'fixed' as const,
+    registrationExpiresOn: '2031-01-01',
+    technicalInspectionExpiresOn: '2031-01-01',
+    insuranceExpiresOn: '2031-01-01',
+  }
+}
+
+async function rideFacts(rideId: string) {
+  const result = await ownerPool.query<{
+    state: string
+    driver_id: string | null
+    vehicle_id: string | null
+    must_accept: boolean | null
+  }>(
+    'select state, driver_id, vehicle_id, must_accept from app.rides where id = $1',
+    [rideId],
+  )
+  return result.rows[0]
 }
 
 async function storedTransfer(transferId: string) {
@@ -1527,4 +1581,410 @@ it('a change that returns an accepted Ride to assigned uses changed and does not
   ])
   expect(JSON.stringify(audits)).not.toContain(address)
   expect(JSON.stringify(audits)).not.toContain('email')
+})
+
+it('refuses a pickup correction that overlaps the Driver and writes nothing', async () => {
+  const created = await tenant('htr-ovlp-driver', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-ovlp-driver-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-ovlp-driver-dispatcher@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  const driver = await createDriver(dispatcher, {
+    name: 'Drago Driver',
+    kind: 'own',
+    phone: '+385911112130',
+    drivingLicenceExpiresOn: '2031-01-01',
+    transportLicenceExpiresOn: '2031-01-01',
+  })
+  const heldVehicle = await createVehicle(dispatcher, {
+    registrationPlate: 'ZG2130AA',
+    kind: 'fixed',
+    registrationExpiresOn: '2031-01-01',
+    technicalInspectionExpiresOn: '2031-01-01',
+    insuranceExpiresOn: '2031-01-01',
+  })
+  const movingVehicle = await createVehicle(dispatcher, {
+    registrationPlate: 'ZG2130BB',
+    kind: 'fixed',
+    registrationExpiresOn: '2031-01-01',
+    technicalInspectionExpiresOn: '2031-01-01',
+    insuranceExpiresOn: '2031-01-01',
+  })
+  const heldAt = '2026-11-02T10:00:00.000Z'
+  const movingAt = '2026-11-02T14:00:00.000Z'
+  const held = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, heldAt))
+  const moving = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, movingAt))
+  const heldBody = await held.json() as { ride: { id: string } }
+  const movingBody = await moving.json() as { transfer: { id: string }, ride: { id: string } }
+  await assignRide(dispatcher, { rideId: heldBody.ride.id, driverId: driver.id, vehicleId: heldVehicle.id })
+  await assignRide(dispatcher, { rideId: movingBody.ride.id, driverId: driver.id, vehicleId: movingVehicle.id })
+  const before = await correctionAudits(created.tenantId)
+  const sent: SentWorkOrder[] = []
+
+  const refused = await call('PATCH', `/api/transfers/${movingBody.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, '2026-11-02T10:30:00.000Z'))
+  expect(refused.status).toBe(409)
+  expect(await refused.text()).toContain('ride_overlap')
+  expect(await storedTransfer(movingBody.transfer.id)).toMatchObject({ guest_name: guest })
+  expect((await rideFacts(movingBody.ride.id))).toMatchObject({
+    state: 'assigned',
+    driver_id: driver.id,
+    vehicle_id: movingVehicle.id,
+  })
+  const pickup = await ownerPool.query<{ pickup_at: Date }>(
+    'select pickup_at from app.transfers where id = $1',
+    [movingBody.transfer.id],
+  )
+  expect(pickup.rows[0]?.pickup_at.toISOString()).toBe(movingAt)
+  expect(await correctionAudits(created.tenantId)).toEqual(before)
+
+  await expect(correctTransfer(dispatcher, movingBody.transfer.id, correctionBody(client.id, start.id, end.id, '2026-11-02T10:30:00.000Z'), {
+    mailer: workOrderMailer(sent),
+  })).rejects.toMatchObject({ statusCode: 409, code: 'ride_overlap' })
+  expect(sent).toEqual([])
+  const still = await ownerPool.query<{ pickup_at: Date }>(
+    'select pickup_at from app.transfers where id = $1',
+    [movingBody.transfer.id],
+  )
+  expect(still.rows[0]?.pickup_at.toISOString()).toBe(movingAt)
+})
+
+async function bookedOffice(slug: string) {
+  const created = await tenant(slug, 'Hana Admin')
+  await addMember(created.tenantId, `${slug}-dispatcher@example.test`, 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn(`${slug}-dispatcher@example.test`)
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  return { created, dispatcher, client, start, end }
+}
+
+async function recordRide(
+  dispatcher: Headers,
+  clientId: string,
+  startLocationId: string,
+  endLocationId: string,
+  pickupAt: string,
+) {
+  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(clientId, startLocationId, endLocationId, pickupAt))
+  expect(recorded.status).toBe(200)
+  return recorded.json() as Promise<{ transfer: { id: string }, ride: { id: string } }>
+}
+
+it('refuses a pickup correction that overlaps only the Vehicle and writes nothing', async () => {
+  const office = await bookedOffice('htr-ovlp-vehicle')
+  const firstDriver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112131'))
+  const secondDriver = await createDriver(office.dispatcher, driverInput('Ema Driver', '+385911112132'))
+  const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2131AA'))
+  const heldAt = '2026-11-02T10:00:00.000Z'
+  const movingAt = '2026-11-02T14:00:00.000Z'
+  const held = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, heldAt)
+  const moving = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, movingAt)
+  await assignRide(office.dispatcher, { rideId: held.ride.id, driverId: firstDriver.id, vehicleId: vehicle.id })
+  await assignRide(office.dispatcher, { rideId: moving.ride.id, driverId: secondDriver.id, vehicleId: vehicle.id })
+  const before = await correctionAudits(office.created.tenantId)
+
+  const refused = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T10:30:00.000Z'))
+  expect(refused.status).toBe(409)
+  expect(await refused.text()).toContain('ride_overlap')
+  expect(await rideFacts(moving.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: secondDriver.id,
+    vehicle_id: vehicle.id,
+  })
+  expect(await correctionAudits(office.created.tenantId)).toEqual(before)
+})
+
+it('a confirmed overlap saves, returns an accepted Ride to assigned, and sends one changed work order', async () => {
+  const office = await bookedOffice('htr-ovlp-confirm')
+  const driverUserId = await addMember(office.created.tenantId, 'htr-ovlp-confirm-driver@example.test', 'Drago Driver', 'driver')
+  const admin = await signIn('htr-ovlp-confirm-admin@example.test')
+  const driverSession = await signIn('htr-ovlp-confirm-driver@example.test')
+  const driver = await createDriver(office.dispatcher, {
+    ...driverInput('Drago Driver', '+385911112133'),
+    memberUserId: driverUserId,
+  })
+  await updateDriver(admin, driver.id, { mustAccept: true })
+  const heldVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2133AA'))
+  const movingVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2133BB'))
+  const held = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T10:00:00.000Z')
+  const moving = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T14:00:00.000Z')
+  await assignRide(office.dispatcher, { rideId: held.ride.id, driverId: driver.id, vehicleId: heldVehicle.id })
+  await assignRide(office.dispatcher, { rideId: moving.ride.id, driverId: driver.id, vehicleId: movingVehicle.id })
+  await acceptRide(driverSession, moving.ride.id, {})
+  const sent: SentWorkOrder[] = []
+  const mailer = workOrderMailer(sent)
+  const clash = correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T10:30:00.000Z')
+
+  await expect(correctTransfer(office.dispatcher, moving.transfer.id, clash, { mailer })).rejects.toMatchObject({
+    statusCode: 409,
+    code: 'ride_overlap',
+  })
+  expect(await rideFacts(moving.ride.id)).toMatchObject({ state: 'accepted', driver_id: driver.id, must_accept: true })
+  expect(sent).toEqual([])
+  expect(await correctionAudits(office.created.tenantId)).toEqual([])
+
+  const saved = await correctTransfer(office.dispatcher, moving.transfer.id, { ...clash, confirm: true }, { mailer })
+  expect(saved.ride).toMatchObject({
+    state: 'assigned',
+    driverId: driver.id,
+    vehicleId: movingVehicle.id,
+    mustAccept: true,
+  })
+  expect(saved.relocationWarnings).toEqual([])
+  expect(saved.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(sent).toHaveLength(1)
+  expect(sent[0]?.text.startsWith('Promijenjeno\n')).toBe(true)
+  const audits = await correctionAudits(office.created.tenantId)
+  expect(audits.map(row => row.action).sort()).toEqual(['ride.returned_to_assigned', 'transfer.corrected'])
+})
+
+it('does not judge a correction that leaves the occupied window where it was', async () => {
+  const office = await bookedOffice('htr-ovlp-quiet')
+  const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112134'))
+  const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2134AA'))
+  const otherVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2134BB'))
+  const later = await createLocation(office.dispatcher, { name: 'Hotel Excelsior', kind: 'hotel' })
+  const heldAt = '2026-11-02T10:00:00.000Z'
+  const movingAt = '2026-11-02T10:30:00.000Z'
+  const held = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, heldAt)
+  const moving = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, movingAt)
+  await assignRide(office.dispatcher, { rideId: held.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  await assignRide(office.dispatcher, {
+    rideId: moving.ride.id,
+    driverId: driver.id,
+    vehicleId: otherVehicle.id,
+    confirm: true,
+  })
+
+  const guestOnly = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, movingAt, {
+    guestName: 'Iva Ivić',
+  }))
+  expect(guestOnly.status).toBe(200)
+  expect(await guestOnly.json()).toMatchObject({
+    relocationWarnings: [],
+    ride: { state: 'assigned' },
+  })
+
+  const placeOnly = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, later.id, movingAt, {
+    guestName: 'Iva Ivić',
+  }))
+  expect(placeOnly.status).toBe(200)
+  expect(await placeOnly.json()).toMatchObject({ relocationWarnings: [] })
+
+  const spaced = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, later.id, movingAt, {
+    guestName: 'Iva Ivić',
+    flightNumber: 'ou384',
+  }))
+  expect(spaced.status).toBe(200)
+  expect(await spaced.json()).toMatchObject({ relocationWarnings: [], ride: { state: 'assigned' } })
+})
+
+it('refuses a flight-number change that pushes the occupied end into the next Ride', async () => {
+  const office = await bookedOffice('htr-ovlp-flight')
+  const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112135'))
+  const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2135AA'))
+  const otherVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2135BB'))
+  const moving = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T12:00:00.000Z')
+  const next = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T12:30:00.000Z')
+  await rememberLiveFlight(moving.transfer.id, '2026-11-02T11:00:00.000Z')
+  await assignRide(office.dispatcher, { rideId: moving.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  await assignRide(office.dispatcher, { rideId: next.ride.id, driverId: driver.id, vehicleId: otherVehicle.id })
+  const before = await correctionAudits(office.created.tenantId)
+
+  const refused = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T12:00:00.000Z', {
+    flightNumber: 'OU 392',
+  }))
+  expect(refused.status).toBe(409)
+  const flightText = await refused.text()
+  expect(flightText).toContain('ride_overlap')
+  expect(flightText).not.toContain('transfer_closed')
+  const stored = await storedTransfer(moving.transfer.id)
+  expect(stored?.flight_number).toBe('OU 384')
+  expect(stored?.landing_at?.toISOString()).toBe('2026-11-02T11:00:00.000Z')
+  expect(await correctionAudits(office.created.tenantId)).toEqual(before)
+})
+
+it('lets an unassigned Ride move onto an occupied time', async () => {
+  const office = await bookedOffice('htr-ovlp-free')
+  const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112136'))
+  const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2136AA'))
+  const held = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T10:00:00.000Z')
+  const moving = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T14:00:00.000Z')
+  await assignRide(office.dispatcher, { rideId: held.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+
+  const saved = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T10:30:00.000Z'))
+  expect(saved.status).toBe(200)
+  expect(await saved.json()).toMatchObject({
+    relocationWarnings: [],
+    ride: { state: 'unassigned', driverId: null },
+  })
+})
+
+it('a finished Ride stays transfer_closed when the new pickup would overlap', async () => {
+  const office = await bookedOffice('htr-ovlp-closed')
+  const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112137'))
+  const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2137AA'))
+  const otherVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2137BB'))
+  const held = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T10:00:00.000Z')
+  const moving = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T14:00:00.000Z')
+  await assignRide(office.dispatcher, { rideId: held.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  await assignRide(office.dispatcher, { rideId: moving.ride.id, driverId: driver.id, vehicleId: otherVehicle.id })
+  await ownerPool.query('update app.rides set state = $2 where id = $1', [moving.ride.id, 'done'])
+
+  const refused = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T10:30:00.000Z'))
+  expect(refused.status).toBe(409)
+  const closedText = await refused.text()
+  expect(closedText).toContain('transfer_closed')
+  expect(closedText).not.toContain('ride_overlap')
+})
+
+it('an archived Location is refused before an overlap', async () => {
+  const office = await bookedOffice('htr-ovlp-archived')
+  const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112138'))
+  const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2138AA'))
+  const otherVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2138BB'))
+  const hidden = await createLocation(office.dispatcher, { name: 'Stari hotel', kind: 'hotel' })
+  await archiveLocation(office.dispatcher, hidden.id)
+  const held = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T10:00:00.000Z')
+  const moving = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T14:00:00.000Z')
+  await assignRide(office.dispatcher, { rideId: held.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  await assignRide(office.dispatcher, { rideId: moving.ride.id, driverId: driver.id, vehicleId: otherVehicle.id })
+
+  const refused = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, hidden.id, '2026-11-02T10:30:00.000Z'))
+  expect(refused.status).toBe(409)
+  const archivedText = await refused.text()
+  expect(archivedText).toContain('location_archived')
+  expect(archivedText).not.toContain('ride_overlap')
+  const pickup = await ownerPool.query<{ pickup_at: Date }>(
+    'select pickup_at from app.transfers where id = $1',
+    [moving.transfer.id],
+  )
+  expect(pickup.rows[0]?.pickup_at.toISOString()).toBe('2026-11-02T14:00:00.000Z')
+})
+
+it('a save that changes nothing does not ask about an overlap that is already there', async () => {
+  const office = await bookedOffice('htr-ovlp-noop')
+  const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112139'))
+  const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2139AA'))
+  const otherVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2139BB'))
+  const movingAt = '2026-11-02T10:30:00.000Z'
+  const held = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T10:00:00.000Z')
+  const moving = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, movingAt)
+  await assignRide(office.dispatcher, { rideId: held.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  await assignRide(office.dispatcher, {
+    rideId: moving.ride.id,
+    driverId: driver.id,
+    vehicleId: otherVehicle.id,
+    confirm: true,
+  })
+  const before = await correctionAudits(office.created.tenantId)
+
+  const quiet = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, movingAt))
+  expect(quiet.status).toBe(200)
+  expect(await quiet.json()).toMatchObject({ relocationWarnings: [], workOrders: [] })
+  expect(await correctionAudits(office.created.tenantId)).toEqual(before)
+})
+
+it('a tight gap warns and a gap equal to the relocation setting does not', async () => {
+  const office = await bookedOffice('htr-ovlp-gap')
+  const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112140'))
+  const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2140AA'))
+  const otherVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2140BB'))
+  const held = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T10:00:00.000Z')
+  const moving = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T14:00:00.000Z')
+  await assignRide(office.dispatcher, { rideId: held.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  await assignRide(office.dispatcher, { rideId: moving.ride.id, driverId: driver.id, vehicleId: otherVehicle.id })
+
+  const tight = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T11:10:00.000Z'))
+  expect(tight.status).toBe(200)
+  expect(await tight.json()).toMatchObject({
+    relocationWarnings: [{ resource: 'driver', rideId: held.ride.id }],
+  })
+
+  const exact = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T11:15:00.000Z', {
+    guestName: 'Iva Ivić',
+  }))
+  expect(exact.status).toBe(200)
+  expect(await exact.json()).toMatchObject({ relocationWarnings: [] })
+})
+
+it('done, no-show, and cancelled neighbours do not occupy, and an in-progress Ride does', async () => {
+  const office = await bookedOffice('htr-ovlp-live')
+  const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112141'))
+  const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2141AA'))
+  for (const [state, day] of [['done', '03'], ['no-show', '04'], ['cancelled', '05']] as const) {
+    const held = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, `2026-11-${day}T10:00:00.000Z`)
+    const moving = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, `2026-11-${day}T14:00:00.000Z`)
+    await assignRide(office.dispatcher, { rideId: held.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+    await ownerPool.query('update app.rides set state = $2 where id = $1', [held.ride.id, state])
+    const movingVehicle = await createVehicle(office.dispatcher, vehicleInput(`ZG2141${state.slice(0, 2).toUpperCase()}`))
+    await assignRide(office.dispatcher, { rideId: moving.ride.id, driverId: driver.id, vehicleId: movingVehicle.id })
+    const saved = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, `2026-11-${day}T10:30:00.000Z`))
+    expect(saved.status).toBe(200)
+    expect(await saved.json()).toMatchObject({ relocationWarnings: [] })
+  }
+
+  const underwayAt = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  const laterAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()
+  const underway = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, underwayAt)
+  const later = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, laterAt)
+  const underwayVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2141UU'))
+  const laterVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2141VV'))
+  await assignRide(office.dispatcher, { rideId: underway.ride.id, driverId: driver.id, vehicleId: underwayVehicle.id })
+  await assignRide(office.dispatcher, { rideId: later.ride.id, driverId: driver.id, vehicleId: laterVehicle.id })
+  const refused = await call('PATCH', `/api/transfers/${later.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, new Date().toISOString()))
+  expect(refused.status).toBe(409)
+  expect(await refused.text()).toContain('ride_overlap')
+})
+
+it('asks again when a later pickup move overlaps, and another Tenant Ride does not occupy', async () => {
+  const office = await bookedOffice('htr-ovlp-again')
+  const other = await bookedOffice('htr-ovlp-other')
+  const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112142'))
+  const otherDriver = await createDriver(other.dispatcher, driverInput('Ema Driver', '+385911112143'))
+  const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2142AA'))
+  const movingVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2142BB'))
+  const otherVehicle = await createVehicle(other.dispatcher, vehicleInput('ZG2142CC'))
+  const held = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T10:00:00.000Z')
+  const moving = await recordRide(office.dispatcher, office.client.id, office.start.id, office.end.id, '2026-11-02T14:00:00.000Z')
+  const foreign = await recordRide(other.dispatcher, other.client.id, other.start.id, other.end.id, '2026-11-02T10:15:00.000Z')
+  await assignRide(office.dispatcher, { rideId: held.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  await assignRide(office.dispatcher, { rideId: moving.ride.id, driverId: driver.id, vehicleId: movingVehicle.id })
+  await assignRide(other.dispatcher, { rideId: foreign.ride.id, driverId: otherDriver.id, vehicleId: otherVehicle.id })
+
+  const confirmed = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, {
+    ...correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T10:30:00.000Z'),
+    confirm: true,
+  })
+  expect(confirmed.status).toBe(200)
+
+  const again = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T10:15:00.000Z'))
+  expect(again.status).toBe(409)
+  expect(await again.text()).toContain('ride_overlap')
+  const pickup = await ownerPool.query<{ pickup_at: Date }>(
+    'select pickup_at from app.transfers where id = $1',
+    [moving.transfer.id],
+  )
+  expect(pickup.rows[0]?.pickup_at.toISOString()).toBe('2026-11-02T10:30:00.000Z')
+
+  const seen = await withAppTenant(office.created.tenantId, async (client) => {
+    const result = await client.query<{ id: string }>(
+      `select r.id from app.rides as r where r.state in ('assigned', 'accepted')`,
+    )
+    return result.rows.map(row => row.id)
+  })
+  expect(seen).toContain(held.ride.id)
+  expect(seen).not.toContain(foreign.ride.id)
+})
+
+it('refuses confirm on the record route and a non-boolean confirm on a correction', async () => {
+  const body = correctionBody(
+    '9e4b3f6d-5555-4555-8555-555555555555',
+    'a1b2c3d4-5555-4555-8555-555555555555',
+    'b1b2c3d4-6666-4666-8666-666666666666',
+    '2026-11-02T10:00:00.000Z',
+  )
+  expect((await call('POST', '/api/transfers', undefined, { ...body, confirm: true })).status).toBe(400)
+  expect((await call('PATCH', '/api/transfers/9e4b3f6d-5555-4555-8555-555555555555', undefined, { ...body, confirm: 'yes' })).status).toBe(400)
 })

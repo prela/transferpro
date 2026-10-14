@@ -1,15 +1,16 @@
 import type { SQL } from 'drizzle-orm'
-import type { CorrectedTransferResult, CreateTransfer, RecordedTransfer, TransferCorrectionField } from '../../../../shared'
+import type { CorrectedTransferResult, CreateTransfer, RecordedTransfer, ScheduleClash, TransferCorrectionField } from '../../../../shared'
 import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { canCorrectTransfer, changedTransferFields, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, parseCreateTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
+import { canCorrectTransfer, changedTransferFields, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, occupiedEnd, parseCreateTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
 import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
-import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { loadTenantSettings, mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { checkRideSchedule } from './ride-schedule'
 import { toInstant, toPrice } from './transfers'
 import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
 
@@ -58,6 +59,7 @@ const lockedRows = z.object({
     driverId: z.uuid().nullable(),
     vehicleId: z.uuid().nullable(),
     mustAccept: z.boolean().nullable(),
+    landingAt: z.unknown().nullable(),
   })),
 })
 
@@ -75,14 +77,23 @@ const writtenRows = z.object({
 })
 
 /**
- * Accepts a Transfer id and the same body as a new Transfer. A bad id or a
- * bad body throws first, so the caller does not open a session.
+ * Accepts a Transfer id and the same body as a new Transfer, plus an optional
+ * `confirm`. A bad id or a bad body throws first, so the caller does not open
+ * a session. `confirm` is only for a true overlap the office has already seen.
+ * The record route does not accept it.
  */
-function parseCorrect(transferId: unknown, body: unknown): { id: string, input: CreateTransfer } {
+function parseCorrect(transferId: unknown, body: unknown): { id: string, input: CreateTransfer, confirm: boolean } {
   const id = z.uuid().safeParse(transferId)
   if (!id.success)
     throw new TransferInputError()
-  return { id: id.data, input: parseCreateTransfer(body) }
+  const record = z.record(z.string(), z.unknown()).safeParse(body)
+  if (!record.success)
+    throw new TransferInputError()
+  const confirm = record.data.confirm
+  if (confirm !== undefined && typeof confirm !== 'boolean')
+    throw new TransferInputError()
+  const { confirm: _confirm, ...booking } = record.data
+  return { id: id.data, input: parseCreateTransfer(booking), confirm: confirm === true }
 }
 
 function officeOnly(role: string): void {
@@ -99,9 +110,12 @@ function officeOnly(role: string): void {
  * the Vehicle, and the copied flag. Spacing or case of the same designator
  * does not. A different designator also clears the landing time,
  * the expected arrival, and the memory of what the Driver was told.
- * After the booking commits, the current Driver is mailed one work order
- * with status changed when a mailed fact changed. A price change mails
- * only while payment is cash. A Ride with no Driver sends nothing. A
+ * A pickup move, or a flight-number change that moves the occupied end,
+ * is judged like assign when the Ride already has a Driver. A true overlap
+ * writes nothing unless `confirm` is set. A tight gap is returned and does
+ * not refuse. After the booking commits, the current Driver is mailed one
+ * work order with status changed when a mailed fact changed. A price change
+ * mails only while payment is cash. A Ride with no Driver sends nothing. A
  * rejected send leaves the correction. Tests pass a mailer. The address
  * is not on the result.
  */
@@ -114,31 +128,33 @@ export async function correctTransfer(
   const parsed = parseCorrect(rawId, rawBody)
   const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input)
+    const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm)
     // The snapshot needs a Driver. An unassigned correction has nobody to mail.
     if (!corrected.notify || corrected.recorded.ride.driverId === null)
-      return { recorded: corrected.recorded, order: null }
+      return { recorded: corrected.recorded, order: null, relocationWarnings: corrected.relocationWarnings }
     const order = await readAssignedWorkOrder(transaction, corrected.recorded.ride.id)
-    return { recorded: corrected.recorded, order }
+    return { recorded: corrected.recorded, order, relocationWarnings: corrected.relocationWarnings }
   })
   if (saved.order === null)
-    return { ...saved.recorded, workOrders: [] }
+    return { ...saved.recorded, workOrders: [], relocationWarnings: saved.relocationWarnings }
   const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
   const notice = await deliverAssignedWorkOrder(saved.order, mailer, delivery?.logger, 'changed')
-  return { ...saved.recorded, workOrders: [notice] }
+  return { ...saved.recorded, workOrders: [notice], relocationWarnings: saved.relocationWarnings }
 }
 
 /**
  * The office correction, on the caller's transaction. The role allow-list
  * has already run. The audit rows commit with the writes. `notify` is true
  * when the current Driver should receive one changed work order after commit.
+ * `relocationWarnings` is empty when the occupied window did not move.
  */
 export async function correctTransferForOffice(
   transaction: TenantTransaction,
   actorUserId: string,
   transferId: string,
   input: CreateTransfer,
-): Promise<{ recorded: RecordedTransfer, notify: boolean }> {
+  confirm: boolean,
+): Promise<{ recorded: RecordedTransfer, notify: boolean, relocationWarnings: ScheduleClash[] }> {
   const current = await lockTransfer(transaction, transferId)
   if (!current)
     throw new TransferNotFoundError()
@@ -149,12 +165,22 @@ export async function correctTransferForOffice(
   const stored = toBooking(current)
   const changed = changedTransferFields(stored, input)
   if (changed.length === 0)
-    return { recorded: toRecorded(current, stored), notify: false }
+    return { recorded: toRecorded(current, stored), notify: false, relocationWarnings: [] }
 
   // A different designator throws away the landing, the expected arrival,
-  // and the will-not-arrive memory (ADR-0028).
+  // and the will-not-arrive memory (ADR-0028). The occupation check reads
+  // the row after this write, so a 409 rolls the clear back with the booking.
   const clearLanding = flightNumberChangeClearsLanding(stored.flightNumber, input.flightNumber)
+  const judge = await occupiedWindowMoves(transaction, current, input, clearLanding)
   await writeTransfer(transaction, transferId, input, clearLanding)
+  const relocationWarnings = judge
+    ? await checkRideSchedule(transaction, {
+        rideId: current.rideId,
+        driverId: judge.driverId,
+        vehicleId: judge.vehicleId,
+        confirm,
+      })
+    : []
   const returned = correctionReturnsAcceptedRide(current.state, changed, {
     before: stored.flightNumber,
     after: input.flightNumber,
@@ -190,7 +216,48 @@ export async function correctTransferForOffice(
     // only while the Driver collects cash. Card and invoice-to-agency keep
     // a fare change off the mail. ADR-0026.
     notify: changed.some(field => field !== 'price' || input.payment === 'cash'),
+    relocationWarnings,
   }
+}
+
+/**
+ * The Driver and Vehicle already on an assigned or accepted Ride, when this
+ * save moves the occupied window. A guest, a place, or a spacing change of
+ * the same flight designator does not. An unassigned Ride is not judged.
+ * ADR-0029.
+ */
+async function occupiedWindowMoves(
+  transaction: TenantTransaction,
+  current: LockedTransfer,
+  input: CreateTransfer,
+  clearLanding: boolean,
+): Promise<{ driverId: string, vehicleId: string } | null> {
+  if (current.driverId === null || current.vehicleId === null)
+    return null
+  if (current.state !== 'assigned' && current.state !== 'accepted')
+    return null
+  const beforePickup = new Date(toInstant(current.pickupAt))
+  const beforeLanding = current.landingAt == null ? null : new Date(toInstant(current.landingAt))
+  const afterPickup = new Date(input.pickupAt)
+  const afterLanding = clearLanding ? null : beforeLanding
+  if (beforePickup.getTime() === afterPickup.getTime() && sameInstant(beforeLanding, afterLanding))
+    return null
+  // The end uses the Tenant duration. A landing clear moves it only when
+  // the stored landing was not already the pickup.
+  if (beforePickup.getTime() === afterPickup.getTime()) {
+    const settings = await loadTenantSettings(transaction)
+    const beforeEnd = occupiedEnd(beforePickup, beforeLanding, settings.transferDurationMinutes)
+    const afterEnd = occupiedEnd(afterPickup, afterLanding, settings.transferDurationMinutes)
+    if (beforeEnd.getTime() === afterEnd.getTime())
+      return null
+  }
+  return { driverId: current.driverId, vehicleId: current.vehicleId }
+}
+
+function sameInstant(left: Date | null, right: Date | null): boolean {
+  if (left === null || right === null)
+    return left === right
+  return left.getTime() === right.getTime()
 }
 
 /** A hidden Location cannot be written onto the booking. The Client has to exist. */
@@ -227,7 +294,8 @@ async function lockTransfer(transaction: TenantTransaction, transferId: string):
            r.state,
            r.driver_id as "driverId",
            r.vehicle_id as "vehicleId",
-           r.must_accept as "mustAccept"
+           r.must_accept as "mustAccept",
+           t.landing_at as "landingAt"
     from app.transfers as t
     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
     where t.id = ${transferId}

@@ -380,6 +380,8 @@ it('shows an overlap across the operational-day boundary, after a correction, an
     luggageCount: 0,
     childSeatCount: 0,
     tabla: '',
+    // The move is a true overlap. The board warning is what a confirmed save leaves behind.
+    confirm: true,
   })
   expect(await warnings(places.dispatcher, '2026-10-22', 'Noon Ana')).toMatchObject({
     overlappingRideIds: [later.rideId],

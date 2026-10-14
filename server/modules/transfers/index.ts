@@ -17,6 +17,8 @@
  * The office or the assigned Driver can record or clear a landing time
  * while the Ride is unfinished. The Ride state stays. No mail.
  * The office can correct the Transfer while the Ride is unfinished.
+ * A correction that moves the occupied window of an assigned or accepted
+ * Ride is refused until the office confirms a true overlap.
  * A change of pickup, start, end, or flight number returns an accepted
  * Ride to assigned and keeps the Driver, the Vehicle, and the copied flag.
  * A real change mails the current Driver one work order with status
