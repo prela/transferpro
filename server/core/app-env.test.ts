@@ -48,6 +48,50 @@ it('requires MAILER=resend and the Resend key in production', () => {
   })
 })
 
+/**
+ * Preview runs the production image and must not spend the shared Resend
+ * quota. The opt-in is exact: `1`, together with `MAILER=console`.
+ * Anything else keeps the production rule (ADR-0013, ADR-0037).
+ */
+it('allows MAILER=console in production only when ALLOW_CONSOLE_MAILER is 1', () => {
+  const { RESEND_API_KEY: _removed, ...withoutKey } = base
+  expect(parseAppEnv({
+    ...withoutKey,
+    NODE_ENV: 'production',
+    MAILER: 'console',
+    ALLOW_CONSOLE_MAILER: '1',
+  })).toMatchObject({
+    MAILER: 'console',
+    RESEND_API_KEY: undefined,
+  })
+  expect(parseAppEnv({
+    ...base,
+    NODE_ENV: 'production',
+    MAILER: 'resend',
+    ALLOW_CONSOLE_MAILER: '1',
+  })).toMatchObject({
+    MAILER: 'resend',
+    RESEND_API_KEY: 'test-resend-key',
+  })
+  expect(() => parseAppEnv({
+    ...base,
+    NODE_ENV: 'production',
+    MAILER: 'console',
+    ALLOW_CONSOLE_MAILER: '0',
+  })).toThrow()
+  expect(() => parseAppEnv({
+    ...withoutKey,
+    NODE_ENV: 'production',
+    ALLOW_CONSOLE_MAILER: '1',
+  })).toThrow()
+  expect(() => parseAppEnv({
+    ...withoutKey,
+    NODE_ENV: 'production',
+    MAILER: 'resend',
+    ALLOW_CONSOLE_MAILER: '1',
+  })).toThrow()
+})
+
 it('accepts an optional SENTRY_DSN and SENTRY_RELEASE', () => {
   expect(parseAppEnv(base).SENTRY_DSN).toBeUndefined()
   expect(parseAppEnv(base).SENTRY_RELEASE).toBeUndefined()

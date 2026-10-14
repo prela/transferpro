@@ -151,6 +151,7 @@ const GENERIC_STATUS_MESSAGE: Record<number, string> = {
   403: 'Forbidden',
   404: 'Not Found',
   500: 'Internal Server Error',
+  503: 'Service Unavailable',
 }
 
 export interface ClientErrorBody {
