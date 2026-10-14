@@ -8,11 +8,11 @@ Dispatch for a transfer company: take a booking, assign the Ride, and record how
 A transfer company using Transferpro. The company and its Better Auth organization are the same Tenant.
 
 **Transfer**:
-The booking. It names the Client, the pickup time, the start and end Locations, the passenger count, the guest name, an optional flight number, a price in EUR, the payment (`cash`, `card`, or `invoice_to_agency`), whether the pickup is an airport, the luggage count, the child-seat count, an optional note, and an optional tabla. The tabla is the words on the meet sign for this pickup. It is text on the Transfer, not on the Client. A blank is stored as empty text. There is no image. Creating a Transfer creates one Ride in `unassigned`. The airport mark is stored as entered and is not inferred from the flight number. `invoice_to_agency` is a recorded choice. The Driver sees the price and the payment method only for cash; card and invoice to agency hide both (ADR-0009, extended by ADR-0020). That phone rule is not on the office screen.
-_Avoid_: Ride, job
+The booking. It names the Client, the pickup time, the start and end Locations, the passenger count, the guest name, an optional flight number, a price in EUR, the payment (`cash`, `card`, or `invoice_to_agency`), whether the pickup is an airport, the luggage count, the child-seat count, an optional note, and an optional tabla. The tabla is the words on the meet sign for this pickup. It is text on the Transfer, not on the Client. A blank is stored as empty text. There is no image. Creating a Transfer creates one Ride in `unassigned`. The airport mark is stored as entered and is not inferred from the flight number. `invoice_to_agency` is a recorded choice. The Driver sees the price and the payment method only for cash; card and invoice to agency hide both (ADR-0009, extended by ADR-0020). That phone rule is not on the office screen. The Transfer is the order: there is no separate Order above it. It has a Channel and an ExternalRef, and may carry a Client reference.
+_Avoid_: Ride, job, order
 
 **Ride**:
-The execution of a Transfer. One Transfer may have several Rides. In v1 it has exactly one, created with the Transfer. A Ride is not deleted.
+The execution of a Transfer. One Transfer may have several Rides when the same journey is split across several Vehicles. A return journey is its own Transfer, not a second Ride. In v1 it has exactly one, created with the Transfer. A Ride is not deleted.
 _Avoid_: trip, job, leg
 
 **Transfer duration**:
@@ -143,10 +143,16 @@ The platform owner. A user with a row in `platform.superadmin` and no Tenant mem
 _Avoid_: admin, owner
 
 **Partner**:
-A subcontractor company a Ride is handed to. *(draft)*
+A subcontractor company a Ride is handed to. It has no login. A company that both books Transfers and takes Rides handed to it is a Client and a Partner, two records with no link between them. In Croatian it is Podizvođač; the Croatian word partner is not used.
+_Avoid_: agency, hotel, Client
 
 **Client**:
-An agency, hotel, or individual who books a Transfer. *(draft)*
+An agency, hotel, or individual who books a Transfer. An invoice for a Transfer goes to its Client. In Croatian it is Naručitelj.
+_Avoid_: partner, customer
+
+**Guest**:
+The person who travels, named on the Transfer by one name, the lead of the group. The passenger count covers the rest. A guest is not a Client or a Partner and has no record, contact, or history. A guest who also booked as an individual Client is not linked to that Client. In Croatian it is Gost.
+_Avoid_: passenger, customer, client
 
 **Location**:
 A place a Ride starts or ends. An airport Location may carry an optional IATA code of three letters. A hotel, an address, or any other kind does not. A Location may carry a reference to its place on a map, set when the office picks a suggested address. Changing the address by hand removes that reference.
@@ -160,11 +166,17 @@ _Avoid_: expected arrival, ETA
 The live status's current estimate of when that aircraft will arrive, on an airport pickup. It is stored whenever the status reports one, including a change of less than 15 minutes. A change of at least 15 minutes from the last estimate the Driver was told, or from the first stored estimate when the Driver has been told nothing, is handed to the work-order port. A Ride with no Driver stores the movement and tells nobody until the next ask after a Driver is assigned. A cancelled flight, or one that will arrive at another airport, clears it and hands that port a different fact: the flight will not arrive here. That fact is handed at most once for the designator. It does not start the airport wait, and it does not return an accepted Ride to assigned. Changing the flight number to a different designator clears the expected arrival, the basis of what the Driver was told, the landing time, and that will-not-arrive memory, in the same change. Spacing or case of the same designator clears none of those.
 _Avoid_: landing time, ETA
 
-**BookingSource**:
-A port through which bookings are imported. *(draft)*
+**Channel**:
+The way a Transfer reached the Tenant. Manual entry by the office is a channel. The Client is not the channel, and neither is a phone call or a message the office reads before entering the Transfer by hand.
+_Avoid_: source, booking source
+
+**Client reference**:
+The number under which the Client keeps a booking, such as a voucher number. It is optional and not unique: an arrival and its return journey may share it, and two Clients may use the same number. It is how the office ties a return journey to its arrival. It is not an ExternalRef.
+_Avoid_: voucher id, external id
 
 **ExternalRef**:
-The `source` and `external_id` that identify an imported booking. *(draft)*
+The Channel and that channel's own identity for one Transfer. No two Transfers of a Tenant share one. On manual entry, Transferpro gives each entry its own, and the office does not type it.
+_Avoid_: voucher, Client reference
 
 **Work package (WP)**:
 A unit of planned work (`0.1`, `1.2`, …): one branch, one PR. *(draft)*
