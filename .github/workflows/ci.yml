@@ -51,7 +51,7 @@ jobs:
       postgres:
         # docker.io is required. An unqualified name makes the runner call
         # `docker login` with an empty registry, which fails before the pull.
-        image: docker.io/library/postgres:17
+        image: docker.io/library/postgres:18
         # Service containers start before steps, so docker/login-action cannot
         # authenticate this pull. These credentials are the registry login
         # GitHub uses during Initialize containers (Docker Hub rate limit).
