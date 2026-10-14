@@ -53,6 +53,7 @@ export async function listTransferDay(headers: Headers, rawDate: unknown, now: D
       date,
       rides: await applyBoardWarnings(
         transaction,
+        actor.role,
         rides,
         settings.timeZone,
         date,

@@ -5,12 +5,12 @@ import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { EXPIRING_DOCUMENT_KINDS, instantFromWallClock } from '../../shared'
 import { createClient } from '../modules/clients'
-import { createDriver, updateDriver } from '../modules/drivers'
+import { createDriver, loadDriverDocumentExpiry, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
-import { setRosterDay } from '../modules/roster'
-import { closeTenantRuntime, createTenant, handleAuthRequest, updateTenantSettings } from '../modules/tenancy'
+import { rosteredDriversOnDates, setRosterDay } from '../modules/roster'
+import { closeTenantRuntime, createTenant, handleAuthRequest, updateTenantSettings, withTenantFromSession } from '../modules/tenancy'
 import { acceptRide, assignRide, correctTransfer, createTransfer, listTransferDay } from '../modules/transfers'
-import { archiveVehicle, createVehicle } from '../modules/vehicles'
+import { archiveVehicle, createVehicle, loadVehicleDocumentExpiry } from '../modules/vehicles'
 
 /**
  * Day-board warnings on GET /api/transfers via listTransferDay.
@@ -438,6 +438,51 @@ it('a finished ride neither shows nor causes an overlap', async () => {
     overlappingRideIds: [],
   })
   expect((await warnings(places.dispatcher, '2026-10-20', 'Live Ana')).overlappingRideIds).toEqual([])
+})
+
+it('refuses a driver on each day-board warning read and still returns those rows to the office', async () => {
+  const places = await office('hbw-role')
+  await addMember(places.tenantId, 'hbw-role-driver@example.test', 'Drago Driver', 'driver')
+  const driverSession = await signIn('hbw-role-driver@example.test')
+  const ana = await driver(places.dispatcher, 'Ana Ana', '+385910000271', '2026-04-04', '2026-05-05')
+  const car = await vehicle(places.dispatcher, 'DU271AA', '2026-06-06', '2026-07-07', '2026-08-08')
+  await setRosterDay(places.dispatcher, {
+    rosterDate: '2026-10-20',
+    driverId: ana.id,
+    vehicleId: car.id,
+  })
+
+  await withTenantFromSession(driverSession, async ({ actor, transaction }) => {
+    await expect(loadDriverDocumentExpiry(transaction, actor.role, [ana.id])).rejects.toMatchObject({ statusCode: 403 })
+    await expect(loadVehicleDocumentExpiry(transaction, actor.role, [car.id])).rejects.toMatchObject({ statusCode: 403 })
+    await expect(rosteredDriversOnDates(transaction, actor.role, ['2026-10-20'])).rejects.toMatchObject({ statusCode: 403 })
+  })
+
+  await withTenantFromSession(places.dispatcher, async ({ actor, transaction }) => {
+    await expect(loadDriverDocumentExpiry(transaction, actor.role, [ana.id])).resolves.toEqual([{
+      id: ana.id,
+      drivingLicenceExpiresOn: '2026-04-04',
+      transportLicenceExpiresOn: '2026-05-05',
+    }])
+    await expect(loadVehicleDocumentExpiry(transaction, actor.role, [car.id])).resolves.toEqual([{
+      id: car.id,
+      registrationExpiresOn: '2026-06-06',
+      technicalInspectionExpiresOn: '2026-07-07',
+      insuranceExpiresOn: '2026-08-08',
+    }])
+    await expect(rosteredDriversOnDates(transaction, actor.role, ['2026-10-20'])).resolves.toEqual([{
+      rosterDate: '2026-10-20',
+      vehicleId: car.id,
+      driverId: ana.id,
+    }])
+  })
+  await withTenantFromSession(places.admin, async ({ actor, transaction }) => {
+    await expect(loadDriverDocumentExpiry(transaction, actor.role, [ana.id])).resolves.toEqual([{
+      id: ana.id,
+      drivingLicenceExpiresOn: '2026-04-04',
+      transportLicenceExpiresOn: '2026-05-05',
+    }])
+  })
 })
 
 it('refuses a driver and keeps another tenant out of the warnings', async () => {
