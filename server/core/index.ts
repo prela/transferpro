@@ -41,6 +41,17 @@ export interface AppEnv {
    */
   readonly RESEND_API_KEY: string | undefined
   /**
+   * Which maps adapter runs. `none` is the default in every environment,
+   * so a fresh process never calls the provider. `google` requires the key.
+   * ADR-0031.
+   */
+  readonly MAPS: 'google' | 'none'
+  /**
+   * Places API key. Required only when `MAPS=google`. The name is redacted
+   * (`apikey`). It never reaches the browser.
+   */
+  readonly MAPS_API_KEY: string | undefined
+  /**
    * Sentry or GlitchTip DSN. When unset, the SDK is not initialised and no
    * events are sent. ADR charter observability baseline (#34).
    */
@@ -102,6 +113,30 @@ function parseResendApiKey(source: NodeJS.ProcessEnv): string | undefined {
   return resendKeySchema.parse(key)
 }
 
+/**
+ * Unset or blank is `none` in every environment, including production.
+ * `google` is the only other value. A typo fails boot.
+ */
+function parseMaps(source: NodeJS.ProcessEnv): 'google' | 'none' {
+  const raw = blankEnv(source.MAPS)
+  if (raw === undefined)
+    return 'none'
+  return z.enum(['google', 'none']).parse(raw)
+}
+
+/**
+ * `MAPS=google` cannot boot without a key. A blank value counts as missing.
+ * `none` may omit the key. The value is not copied into the error text.
+ */
+function parseMapsApiKey(source: NodeJS.ProcessEnv, maps: 'google' | 'none'): string | undefined {
+  const key = blankEnv(source.MAPS_API_KEY)
+  if (maps === 'google')
+    return z.string().min(1).parse(key)
+  if (key === undefined)
+    return undefined
+  return z.string().min(1).parse(key)
+}
+
 function parseSentryDsn(source: NodeJS.ProcessEnv): string | undefined {
   const dsn = blankEnv(source.SENTRY_DSN)
   if (dsn === undefined)
@@ -138,6 +173,7 @@ export function nodeEnv(): string | undefined {
 
 /** Parse one source. Boot uses `loadAppEnv`, which caches this. */
 export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
+  const MAPS = parseMaps(source)
   return {
     ...appEnvSchema.parse({
       DATABASE_URL: source.DATABASE_URL,
@@ -150,6 +186,8 @@ export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
     LOG_LEVEL: parseLogLevel(source),
     MAILER: parseMailer(source),
     RESEND_API_KEY: parseResendApiKey(source),
+    MAPS,
+    MAPS_API_KEY: parseMapsApiKey(source, MAPS),
     SENTRY_DSN: parseSentryDsn(source),
     SENTRY_RELEASE: parseSentryRelease(source),
   }

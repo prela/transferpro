@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH, locationAddressError, locationIataError, LocationInputError, locationKindError, locationListSchema, locationNameError, parseCreateLocation, parseLocationPatch } from './location'
+import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH, locationAddressError, locationIataError, LocationInputError, locationKindError, locationListSchema, locationNameError, parseCreateLocation, parseLocationPatch, parseSuggestAddresses } from './location'
 
 const name = 'Zračna luka Dubrovnik'
 const address = 'Dobrota bb, Čilipi'
@@ -15,6 +15,7 @@ it('accepts a Location, trims the name, and stores a missing address as null', (
     kind: 'airport',
     address: null,
     iata: null,
+    place: null,
   })
   expect(parseCreateLocation({ ...createBody, kind: 'hotel' }).kind).toBe('hotel')
   expect(parseCreateLocation({ ...createBody, kind: 'address' }).kind).toBe('address')
@@ -102,6 +103,56 @@ it('names the field the form got wrong, and the error text never carries the add
   expect(message).not.toContain(name)
 })
 
+const place = { provider: 'google' as const, placeRef: 'ChIJvilla' }
+const sessionToken = 'a1b2c3d4-5555-4555-8555-555555555555'
+
+it('stores a picked place with the address, and refuses a place that has no address', () => {
+  expect(parseCreateLocation({ ...createBody, address, place })).toEqual({
+    name,
+    kind: 'airport',
+    address,
+    iata: null,
+    place,
+  })
+  expect(parseCreateLocation({ ...createBody, address, place: null }).place).toBeNull()
+  expect(() => parseCreateLocation({ ...createBody, place })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, address: '   ', place })).toThrow(LocationInputError)
+  expect(() => parseCreateLocation({ ...createBody, address, place: { provider: 'other', placeRef: 'x' } })).toThrow(LocationInputError)
+  expect(() => parseLocationPatch({ address: null, place })).toThrow(LocationInputError)
+  expect(parseLocationPatch({ address, place })).toEqual({ address, place })
+  expect(parseLocationPatch({ place: null })).toEqual({ place: null })
+
+  let message = ''
+  try {
+    parseCreateLocation({ ...createBody, place, address })
+    parseCreateLocation({ ...createBody, place })
+  }
+  catch (error) {
+    message = error instanceof Error ? error.message : ''
+  }
+  expect(message).toBe('Bad request')
+  expect(message).not.toContain(place.placeRef)
+  expect(message).not.toContain(address)
+})
+
+it('accepts a suggestion lookup and refuses a short text, a bad token, or an extra key', () => {
+  expect(parseSuggestAddresses({ text: `  ${address}  `, sessionToken })).toEqual({
+    text: address,
+    sessionToken,
+  })
+  expect(() => parseSuggestAddresses({ text: 'ab', sessionToken })).toThrow(LocationInputError)
+  expect(() => parseSuggestAddresses({ text: address, sessionToken: 'not-a-uuid' })).toThrow(LocationInputError)
+  expect(() => parseSuggestAddresses({ text: address, sessionToken, region: 'HR' })).toThrow(LocationInputError)
+  let message = ''
+  try {
+    parseSuggestAddresses({ text: address, sessionToken: 'nope' })
+  }
+  catch (error) {
+    message = error instanceof Error ? error.message : ''
+  }
+  expect(message).not.toContain(address)
+})
+
 it('reads a list of Locations, including one that is archived', () => {
   const listed = locationListSchema.parse({
     locations: [{
@@ -110,6 +161,7 @@ it('reads a list of Locations, including one that is archived', () => {
       kind: 'airport',
       address,
       iata: 'DBV',
+      place: null,
       archivedAt: '2026-10-05T10:00:00.000Z',
     }],
   })

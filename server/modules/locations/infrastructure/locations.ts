@@ -3,7 +3,7 @@ import type { CreateLocation, Location, LocationField, LocationPatch } from '../
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { LOCATION_FIELDS, LocationInputError, locationKindSchema, locationSchema } from '../../../../shared'
+import { LOCATION_FIELDS, LocationInputError, locationKindSchema, locationPlaceSchema, locationSchema } from '../../../../shared'
 import { appendAuditEntry } from '../../audit'
 
 const locationRowSchema = z.object({
@@ -12,6 +12,8 @@ const locationRowSchema = z.object({
   kind: locationKindSchema,
   address: z.string().nullable(),
   iata: z.string().nullable(),
+  placeProvider: z.string().nullable(),
+  placeRef: z.string().nullable(),
   archivedAt: z.unknown().nullable(),
 })
 
@@ -41,7 +43,10 @@ export class LocationArchivedError extends Error {
 }
 
 const locationColumns = sql`
-  id, name, kind, address, iata, archived_at as "archivedAt"
+  id, name, kind, address, iata,
+  place_provider as "placeProvider",
+  place_ref as "placeRef",
+  archived_at as "archivedAt"
 `
 
 /**
@@ -85,7 +90,7 @@ export async function loadLocation(
 /**
  * Insert one Location and append `location.created` on this transaction.
  * The entry names the fields that were set. It does not store the name,
- * the kind, the address, or the code.
+ * the kind, the address, the code, or the place reference.
  * The caller has already required a dispatcher or an admin.
  */
 export async function addLocation(
@@ -94,8 +99,15 @@ export async function addLocation(
   input: CreateLocation,
 ): Promise<Location> {
   const selected = locationRows.parse(await writeLocation(transaction, sql`
-    insert into app.locations (name, kind, address, iata)
-    values (${input.name}, ${input.kind}, ${input.address}, ${input.iata})
+    insert into app.locations (name, kind, address, iata, place_provider, place_ref)
+    values (
+      ${input.name},
+      ${input.kind},
+      ${input.address},
+      ${input.iata},
+      ${input.place?.provider ?? null},
+      ${input.place?.placeRef ?? null}
+    )
     returning ${locationColumns}
   `))
   const row = selected.rows[0]
@@ -138,7 +150,9 @@ export async function correctLocation(
     set name = ${next.name},
         kind = ${next.kind},
         address = ${next.address},
-        iata = ${next.iata}
+        iata = ${next.iata},
+        place_provider = ${next.place?.provider ?? null},
+        place_ref = ${next.place?.placeRef ?? null}
     where id = ${next.id}
   `)
 
@@ -191,24 +205,59 @@ function createdFields(input: CreateLocation): LocationField[] {
     set.add('address')
   if (input.iata !== null)
     set.add('iata')
+  if (input.place !== null)
+    set.add('placeRef')
   return LOCATION_FIELDS.filter(field => set.has(field))
 }
 
+/**
+ * A change of provider or of reference is one `placeRef` entry.
+ * The entry stores the field name only.
+ */
 function changedFields(current: Location, next: Location): LocationField[] {
-  return LOCATION_FIELDS.filter(field => next[field] !== current[field])
+  return LOCATION_FIELDS.filter((field) => {
+    if (field === 'placeRef')
+      return placeChanged(current.place, next.place)
+    return next[field] !== current[field]
+  })
+}
+
+function placeChanged(current: Location['place'], next: Location['place']): boolean {
+  if (current === null || next === null)
+    return current !== next
+  return current.provider !== next.provider || current.placeRef !== next.placeRef
 }
 
 function applyPatch(current: Location, patch: LocationPatch): Location {
   const kind = patch.kind === undefined ? current.kind : patch.kind
   const iata = nextIata(current, patch, kind)
+  const address = patch.address === undefined ? current.address : patch.address
   return locationSchema.parse({
     id: current.id,
     name: patch.name === undefined ? current.name : patch.name,
     kind,
-    address: patch.address === undefined ? current.address : patch.address,
+    address,
     iata,
+    place: nextPlace(current, patch, address),
     archivedAt: current.archivedAt,
   })
+}
+
+/**
+ * A new place replaces the stored one. A hand edit of the address, or
+ * clearing it, drops the place in the same write. Sending a place when the
+ * address ends up empty is refused, and the caller writes nothing.
+ */
+function nextPlace(current: Location, patch: LocationPatch, address: string | null): Location['place'] {
+  if (patch.place != null && address === null)
+    throw new LocationInputError()
+  if (address === null)
+    return null
+  if (patch.place !== undefined)
+    return patch.place
+  if (patch.address !== undefined && patch.address !== current.address)
+    return null
+  return current.place
 }
 
 /**
@@ -240,9 +289,30 @@ async function lockLocation(transaction: TenantTransaction, locationId: string):
 
 function toLocation(row: z.infer<typeof locationRowSchema>): Location {
   return locationSchema.parse({
-    ...row,
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    address: row.address,
+    iata: row.iata,
+    place: placeFromRow(row),
     archivedAt: toArchivedAt(row.archivedAt),
   })
+}
+
+/**
+ * Both columns are set or both are empty. A broken pair is a fixed error.
+ * The reference is not copied into the message, because that text is logged.
+ */
+function placeFromRow(row: z.infer<typeof locationRowSchema>): Location['place'] {
+  if (row.placeProvider === null && row.placeRef === null)
+    return null
+  const parsed = locationPlaceSchema.safeParse({
+    provider: row.placeProvider,
+    placeRef: row.placeRef,
+  })
+  if (!parsed.success)
+    throw new Error('Location read failed')
+  return parsed.data
 }
 
 /**

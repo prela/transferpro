@@ -49,6 +49,9 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
     price: '42.00 EUR',
     notes: 'allergic to nuts',
     tabla: 'GOSPOĐA HORVAT',
+    text: 'Villa Rosa 12, Čilipi',
+    placeRef: 'ChIJsecretPlace',
+    MAPS_API_KEY: 'maps-live-key',
     cookie: 'better-auth.session=abc',
     connectionString: 'postgres://app:secret@localhost/transferpro',
     user_id: '6b1e0c3a-1111-4111-8111-111111111111',
@@ -63,6 +66,9 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
     price: '[Redacted]',
     notes: '[Redacted]',
     tabla: '[Redacted]',
+    text: '[Redacted]',
+    placeRef: '[Redacted]',
+    MAPS_API_KEY: '[Redacted]',
     cookie: '[Redacted]',
     connectionString: '[Redacted]',
     user_id: '6b1e0c3a-1111-4111-8111-111111111111',
@@ -72,6 +78,9 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
   expect(text).not.toContain('postgres://app:secret')
   expect(text).not.toContain('allergic to nuts')
   expect(text).not.toContain('GOSPOĐA HORVAT')
+  expect(text).not.toContain('Villa Rosa')
+  expect(text).not.toContain('ChIJsecretPlace')
+  expect(text).not.toContain('maps-live-key')
 })
 
 it('redacts an invitation id and an invite link', () => {

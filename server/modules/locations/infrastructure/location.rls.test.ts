@@ -171,3 +171,40 @@ it('keeps an archived Location readable by id inside the Tenant', async () => {
   })
   expect(seen.rows).toEqual([{ name: 'Hotel Excelsior', archived: true }])
 })
+
+it('tenant B cannot read or change Tenant A place references', async () => {
+  await withTenant(tenantA, async (client) => {
+    await client.query(
+      `insert into app.locations (name, kind, address, place_provider, place_ref)
+       values ('Villa Rosa', 'address', 'Put 1', 'google', 'ChIJsecret')`,
+    )
+  })
+
+  const seenByB = await withTenant(tenantB, async (client) => {
+    const selected = await client.query('select place_provider, place_ref from app.locations')
+    const updated = await client.query(`update app.locations set place_ref = 'ChIJother'`)
+    return { rows: selected.rows, updated: updated.rowCount }
+  })
+  expect(seenByB.rows).toEqual([])
+  expect(seenByB.updated).toBe(0)
+
+  const seenByA = await withTenant(tenantA, async (client) => {
+    return client.query(
+      `select place_provider, place_ref from app.locations where name = 'Villa Rosa'`,
+    )
+  })
+  expect(seenByA.rows).toEqual([{ place_provider: 'google', place_ref: 'ChIJsecret' }])
+})
+
+it('refuses a place reference without its pair or without an address', async () => {
+  await expect(withTenant(tenantA, client =>
+    client.query(`insert into app.locations (name, kind, address, place_provider) values ('Hotel Park', 'hotel', 'Put 1', 'google')`))).rejects.toMatchObject({ code: '23514' })
+  await expect(withTenant(tenantA, client =>
+    client.query(`insert into app.locations (name, kind, address, place_ref) values ('Hotel Park', 'hotel', 'Put 1', 'ChIJonly')`))).rejects.toMatchObject({ code: '23514' })
+  await expect(withTenant(tenantA, client =>
+    client.query(`insert into app.locations (name, kind, place_provider, place_ref) values ('Hotel Park', 'hotel', 'google', 'ChIJbare')`))).rejects.toMatchObject({ code: '23514' })
+  await expect(withTenant(tenantA, client =>
+    client.query(`insert into app.locations (name, kind, address, place_provider, place_ref) values ('Hotel Park', 'hotel', 'Put 1', 'photon', 'ChIJother')`))).rejects.toMatchObject({ code: '23514' })
+  await expect(withTenant(tenantA, client =>
+    client.query(`insert into app.locations (name, kind, address, place_provider, place_ref) values ('Hotel Park', 'hotel', 'Put 1', 'google', '')`))).rejects.toMatchObject({ code: '23514' })
+})

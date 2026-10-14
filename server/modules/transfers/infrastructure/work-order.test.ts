@@ -125,7 +125,7 @@ it('reads the tenant locale from the row, and a database failure drops the guest
       if (text.includes('from app.locations')) {
         const id = String(dialect.sqlToQuery(query).params[0])
         const name = id === endLocationId ? dropOffPlace : pickupPlace
-        return { rows: [{ id, name, kind: 'hotel', address: null, iata: null, archivedAt: null }] }
+        return { rows: [{ id, name, kind: 'hotel', address: null, iata: null, placeProvider: null, placeRef: null, archivedAt: null }] }
       }
       if (text.includes('from app.vehicles')) {
         return {

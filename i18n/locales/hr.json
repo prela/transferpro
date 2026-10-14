@@ -247,6 +247,7 @@
     "forbidden": "Vozač ne može dodavati ni ispravljati lokacije.",
     "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
     "saveFailed": "Lokacija nije spremljena. Pokušajte ponovno.",
+    "suggestionsUnavailable": "Prijedlozi adresa nisu dostupni. Adresu i dalje možete upisati.",
     "kinds": {
       "airport": "Aerodrom",
       "hotel": "Hotel",
@@ -257,7 +258,8 @@
       "name": "Ime",
       "kind": "Vrsta",
       "address": "Adresa",
-      "iata": "IATA oznaka"
+      "iata": "IATA oznaka",
+      "placeRef": "Referenca mjesta"
     }
   },
   "transfers": {
@@ -366,6 +368,7 @@
     "empty": "Nemate nadolazećih vožnji.",
     "from": "Od",
     "to": "Do",
+    "openInMaps": "Otvori u kartama",
     "passengers": "Putnici",
     "flight": "Let",
     "landing": "Vrijeme slijetanja",

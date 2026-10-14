@@ -267,6 +267,13 @@
       "when": 1791400027000,
       "tag": "0037_ride_no_show",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791400028000,
+      "tag": "0038_location_place",
+      "breakpoints": true
     }
   ]
 }

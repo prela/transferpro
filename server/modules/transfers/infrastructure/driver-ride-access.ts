@@ -1,9 +1,10 @@
-import type { ClientKind, DriverUpcomingList, DriverUpcomingRide } from '../../../../shared'
+import type { ClientKind, DriverUpcomingList, DriverUpcomingRide, LocationPlace } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { presentDriverRide } from '../../../../shared'
+import { loadAppEnv } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadDriverLinkedToMember } from '../../drivers'
-import { loadLocation } from '../../locations'
+import { loadLocation, mapsForApp } from '../../locations'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { loadUpcomingRidesForDriver } from './driver-rides'
@@ -19,6 +20,7 @@ function driverOnly(role: string): void {
 interface LocationLine {
   readonly name: string
   readonly address: string | null
+  readonly place: LocationPlace | null
 }
 
 interface ClientLine {
@@ -36,7 +38,11 @@ async function locationLine(transaction: TenantTransaction, locationId: string, 
   if (known)
     return known
   const location = await loadLocation(transaction, locationId)
-  const line: LocationLine = { name: location.name, address: location.address }
+  const line: LocationLine = {
+    name: location.name,
+    address: location.address,
+    place: location.place,
+  }
   locations.set(locationId, line)
   return line
 }
@@ -93,6 +99,7 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
       const clients = new Map<string, ClientLine>()
       const plates = new Map<string, string>()
       const rides: DriverUpcomingRide[] = []
+      const maps = mapsForApp(loadAppEnv())
       for (const row of rows) {
         const from = await locationLine(transaction, row.startLocationId, locations)
         const to = await locationLine(transaction, row.endLocationId, locations)
@@ -112,6 +119,8 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
           clientKind: client.kind,
           fromAddress: from.address,
           toAddress: to.address,
+          fromMapsUrl: maps.navigationLink(from),
+          toMapsUrl: maps.navigationLink(to),
           luggageCount: row.luggageCount,
           childSeatCount: row.childSeatCount,
           note: row.note,

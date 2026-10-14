@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
-import type { Location, LocationKind } from '../../shared'
+import type { AddressSuggestion, Location, LocationKind, LocationPlace } from '../../shared'
 import { z } from 'zod'
-import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, locationAddressSchema, locationIataError, locationIataSchema, locationListSchema, locationSchema } from '../../shared'
+import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, LOCATION_SUGGEST_MIN_LENGTH, locationAddressSchema, locationIataError, locationIataSchema, locationListSchema, locationSchema, suggestAddressesResponseSchema } from '../../shared'
 
 const { t } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
@@ -26,6 +26,20 @@ const state = reactive<{ name: string, kind?: LocationKind, address: string, iat
   address: '',
   iata: '',
 })
+
+/**
+ * A pick holds the place until the next keystroke. The pause keeps the list
+ * from flickering and spends the quota once per pause, not once per key.
+ */
+const SUGGEST_PAUSE_MS = 300
+const heldPlace = ref<LocationPlace | null>(null)
+const pickedText = ref<string | null>(null)
+const sessionToken = ref<string | null>(null)
+const suggestions = ref<AddressSuggestion[]>([])
+const attribution = ref<string | null>(null)
+const suggestionsUnavailable = ref(false)
+let suggestTimer: number | undefined
+let suggestGeneration = 0
 
 type LocationFailure = 'locations.loadFailed' | 'locations.rejected' | 'locations.notFound' | 'locations.forbidden' | 'locations.signedOut' | 'locations.saveFailed' | 'locations.archivedLocked'
 interface LocationForm {
@@ -146,11 +160,27 @@ async function loadLocations() {
   }
 }
 
+/**
+ * A lookup that is already in flight must not fill a later field.
+ * The generation is what the response checks.
+ */
+function dropPendingSuggestions() {
+  suggestGeneration += 1
+  window.clearTimeout(suggestTimer)
+  suggestions.value = []
+  attribution.value = null
+}
+
 function resetForm() {
   state.name = ''
   state.kind = undefined
   state.address = ''
   state.iata = ''
+  heldPlace.value = null
+  pickedText.value = null
+  sessionToken.value = null
+  suggestionsUnavailable.value = false
+  dropPendingSuggestions()
   formErrorKey.value = null
 }
 
@@ -166,8 +196,75 @@ function openEdit(location: Location) {
   state.kind = location.kind
   state.address = location.address ?? ''
   state.iata = location.iata ?? ''
+  heldPlace.value = location.place
+  pickedText.value = location.address
+  sessionToken.value = null
+  suggestionsUnavailable.value = false
+  dropPendingSuggestions()
   formErrorKey.value = null
   formMode.value = 'edit'
+}
+
+const suggestionItems = computed(() => suggestions.value.map(suggestion => suggestion.text))
+
+function onAddressInput(value: string | number | null | undefined) {
+  const next = value == null ? '' : String(value)
+  const match = suggestions.value.find(suggestion => suggestion.text === next)
+  // A pick is the suggested text. Anything else, including Enter, keeps the typed address.
+  if (match) {
+    pickedText.value = match.text
+    heldPlace.value = { provider: match.provider, placeRef: match.placeRef }
+    sessionToken.value = null
+    dropPendingSuggestions()
+    return
+  }
+  if (next !== pickedText.value)
+    heldPlace.value = null
+  window.clearTimeout(suggestTimer)
+  suggestTimer = window.setTimeout(() => {
+    void lookupSuggestions()
+  }, SUGGEST_PAUSE_MS)
+}
+
+/** Enter submits the typed address. It must not store the highlighted row. */
+function closeSuggestionsForSubmit() {
+  dropPendingSuggestions()
+}
+
+async function lookupSuggestions() {
+  const text = state.address.trim()
+  if (text.length < LOCATION_SUGGEST_MIN_LENGTH) {
+    dropPendingSuggestions()
+    return
+  }
+  // One token for this typing run. A pick clears it so the next run is new.
+  if (sessionToken.value === null)
+    sessionToken.value = crypto.randomUUID()
+  const generation = ++suggestGeneration
+  try {
+    const result = suggestAddressesResponseSchema.parse(await $fetch('/api/locations/suggestions', {
+      method: 'POST',
+      body: { text, sessionToken: sessionToken.value },
+    }))
+    if (generation !== suggestGeneration)
+      return
+    if (!result.available) {
+      suggestions.value = []
+      attribution.value = null
+      suggestionsUnavailable.value = true
+      return
+    }
+    suggestionsUnavailable.value = false
+    suggestions.value = [...result.suggestions]
+    attribution.value = result.suggestions.length > 0 ? result.attribution : null
+  }
+  catch {
+    if (generation !== suggestGeneration)
+      return
+    suggestions.value = []
+    attribution.value = null
+    suggestionsUnavailable.value = true
+  }
 }
 
 function locationBody(data: LocationForm) {
@@ -176,6 +273,7 @@ function locationBody(data: LocationForm) {
     name: data.name,
     kind: data.kind,
     address,
+    place: address === null ? null : heldPlace.value,
     // A hotel, an address, or other kind cannot carry a code, so the key
     // stays off the body unless this row is an airport. Leaving airport
     // omits the key. The server clears a stored code in that same change.
@@ -418,13 +516,36 @@ onMounted(loadLocations)
             name="address"
             size="xl"
           >
-            <UInput
+            <UInputMenu
               v-model="state.address"
+              mode="autocomplete"
               name="address"
-              type="text"
               autocomplete="off"
+              size="xl"
               class="w-full"
-            />
+              :items="suggestionItems"
+              :ignore-filter="true"
+              :trailing-icon="false"
+              :portal="false"
+              :content="{ hideWhenEmpty: true }"
+              @update:model-value="onAddressInput"
+              @keydown.enter.capture="closeSuggestionsForSubmit"
+            >
+              <template #content-bottom>
+                <p
+                  v-if="attribution"
+                  class="px-3 py-2 text-sm text-muted"
+                >
+                  {{ attribution }}
+                </p>
+              </template>
+            </UInputMenu>
+            <p
+              v-if="suggestionsUnavailable"
+              class="mt-1 text-sm text-muted"
+            >
+              {{ t('locations.suggestionsUnavailable') }}
+            </p>
             <template #error="{ error }">
               <span
                 v-if="error"
