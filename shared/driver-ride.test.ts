@@ -25,6 +25,8 @@ const ride = {
   payment: 'cash' as const,
   state: 'assigned' as const,
   mustAccept: false,
+  fromMapsUrl: 'https://www.google.com/maps/dir/?api=1&destination=Zra%C4%8Dna+luka+Dubrovnik',
+  toMapsUrl: 'https://www.google.com/maps/dir/?api=1&destination=Masarykov+put+1',
 }
 
 it('shows the price and cash when the Ride is cash, and does not include a Driver email', () => {
@@ -54,6 +56,8 @@ it('shows the price and cash when the Ride is cash, and does not include a Drive
     payment: 'cash',
     state: 'assigned',
     mustAccept: false,
+    fromMapsUrl: ride.fromMapsUrl,
+    toMapsUrl: ride.toMapsUrl,
   })
 })
 

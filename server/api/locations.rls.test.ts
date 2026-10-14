@@ -4,11 +4,13 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { FAKE_PLACE_REF, lastTestMapsQuery, setTestMapsUnavailable } from '../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
 import getLocations from './locations.get'
 import postLocation from './locations.post'
 import patchLocation from './locations/[id].patch'
 import archiveLocation from './locations/[id]/archive.post'
+import postSuggestions from './locations/suggestions.post'
 
 /**
  * GET, POST, PATCH /api/locations, and POST /api/locations/:id/archive.
@@ -43,6 +45,8 @@ app.use('/api/locations', (event) => {
       return postLocation(event)
     return getLocations(event)
   }
+  if (rest === 'suggestions')
+    return postSuggestions(event)
   const [id, action] = rest.split('/')
   event.context.params = { id: id ?? '' }
   if (action === 'archive')
@@ -196,6 +200,7 @@ it('a dispatcher and an admin can add, correct, list, and archive a Location, an
     kind: 'airport',
     address,
     iata: null,
+    place: null,
     archivedAt: null,
   })
 
@@ -376,5 +381,88 @@ it('sets an airport code, refuses a bad code and a code on a hotel, clears it wh
   expect(fieldChanges).toEqual(expect.arrayContaining([
     { locationId: row.id, field: 'iata' },
     { locationId: row.id, field: 'kind' },
+  ]))
+})
+
+it('suggests for the office in the Tenant language, refuses a driver, and does not audit the lookup', async () => {
+  setTestMapsUnavailable(false)
+  const created = await tenant('hlc-maps', 'Maja Admin')
+  await addMember(created.tenantId, 'hlc-maps-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  await addMember(created.tenantId, 'hlc-maps-driver@example.test', 'Drago Driver', 'driver')
+  const admin = await signIn('hlc-maps-admin@example.test')
+  const dispatcher = await signIn('hlc-maps-dispatcher@example.test')
+  const driver = await signIn('hlc-maps-driver@example.test')
+  const typed = 'Villa Rosa 12'
+  const token = 'b1b2c3d4-5555-4555-8555-555555555555'
+  const before = await auditRows(created.tenantId)
+
+  const unsigned = await call('POST', '/api/locations/suggestions', undefined, { text: typed, sessionToken: token })
+  expect(unsigned.status).toBe(401)
+  expect(await unsigned.text()).not.toContain(typed)
+
+  const short = await call('POST', '/api/locations/suggestions', undefined, { text: 'ab', sessionToken: token })
+  expect(short.status).toBe(400)
+  expect(await short.text()).not.toContain('ab')
+
+  const extra = await call('POST', '/api/locations/suggestions', undefined, { text: typed, sessionToken: token, region: 'HR' })
+  expect(extra.status).toBe(400)
+  expect(await extra.text()).not.toContain(typed)
+
+  const refused = await call('POST', '/api/locations/suggestions', driver, { text: typed, sessionToken: token })
+  expect(refused.status).toBe(403)
+  expect(await refused.text()).not.toContain(typed)
+
+  const suggested = await call('POST', '/api/locations/suggestions', dispatcher, { text: `  ${typed}  `, sessionToken: token })
+  expect(suggested.status).toBe(200)
+  expect(await suggested.json()).toEqual({
+    available: true,
+    attribution: 'Google',
+    suggestions: [{
+      text: `${typed}, Dubrovnik`,
+      provider: 'google',
+      placeRef: FAKE_PLACE_REF,
+    }],
+  })
+  expect(lastTestMapsQuery()).toEqual({ text: typed, sessionToken: token, language: 'hr' })
+
+  await ownerPool.query(`update app.tenant_settings set default_locale = 'en' where tenant_id = $1`, [created.tenantId])
+  const english = await call('POST', '/api/locations/suggestions', admin, { text: typed, sessionToken: token })
+  expect(english.status).toBe(200)
+  expect(lastTestMapsQuery()?.language).toBe('en')
+  expect(await auditRows(created.tenantId)).toEqual(before)
+
+  const picked = await call('POST', '/api/locations', dispatcher, {
+    name: 'Villa Rosa',
+    kind: 'address',
+    address: `${typed}, Dubrovnik`,
+    place: { provider: 'google', placeRef: FAKE_PLACE_REF },
+  })
+  expect(picked.status).toBe(200)
+  const row = await picked.json()
+  expect(row.place).toEqual({ provider: 'google', placeRef: FAKE_PLACE_REF })
+
+  const bare = await call('POST', '/api/locations', dispatcher, {
+    name: 'Bez adrese',
+    kind: 'address',
+    place: { provider: 'google', placeRef: FAKE_PLACE_REF },
+  })
+  expect(bare.status).toBe(400)
+  const bareText = await bare.text()
+  expect(bareText).not.toContain(FAKE_PLACE_REF)
+  expect(bareText).not.toContain(typed)
+
+  const edited = await call('PATCH', `/api/locations/${row.id}`, admin, { address: 'Put 9' })
+  expect(edited.status).toBe(200)
+  expect(await edited.json()).toMatchObject({ address: 'Put 9', place: null })
+
+  const rows = await auditRows(created.tenantId)
+  const text = JSON.stringify(rows)
+  expect(text).not.toContain(typed)
+  expect(text).not.toContain(FAKE_PLACE_REF)
+  expect(text).not.toContain('google')
+  expect(rows.map(entry => entry.data)).toEqual(expect.arrayContaining([
+    { locationId: row.id, fields: ['name', 'kind', 'address', 'placeRef'] },
+    { locationId: row.id, field: 'address' },
+    { locationId: row.id, field: 'placeRef' },
   ]))
 })

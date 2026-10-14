@@ -1,4 +1,4 @@
-import type { AuditFact, TenantSettings, TenantSettingsPatch } from '../../../../shared'
+import type { AuditFact, DisplayLocale, TenantSettings, TenantSettingsPatch } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -149,4 +149,24 @@ async function readRow(transaction: TenantTransaction, lock: boolean): Promise<T
     transferDurationMinutes: waitMinutesSchema.parse(row.transfer_duration_minutes),
     relocationGapMinutes: waitMinutesSchema.parse(row.relocation_gap_minutes),
   }
+}
+
+const localeRows = z.object({
+  rows: z.array(z.object({
+    default_locale: z.enum(['hr', 'en']),
+  })),
+})
+
+/**
+ * The Tenant default locale. Address suggestions use this language, not the
+ * signed-in user's locale, so the stored address matches the work order.
+ */
+export async function loadTenantDefaultLocale(transaction: TenantTransaction): Promise<DisplayLocale> {
+  const selected = localeRows.parse(await transaction.execute(sql`
+    select default_locale from app.tenant_settings
+  `))
+  const row = selected.rows.length === 1 ? selected.rows[0] : undefined
+  if (!row)
+    throw new TenantSettingsMissingError()
+  return row.default_locale
 }

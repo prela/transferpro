@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
-import type { Location, LocationKind } from '../../shared'
+import type { AddressSuggestion, Location, LocationKind, LocationPlace } from '../../shared'
 import { z } from 'zod'
-import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, locationAddressSchema, locationIataError, locationIataSchema, locationListSchema, locationSchema } from '../../shared'
+import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, LOCATION_SUGGEST_MIN_LENGTH, locationAddressSchema, locationIataError, locationIataSchema, locationListSchema, locationSchema, suggestAddressesResponseSchema } from '../../shared'
 
 const { t } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
@@ -26,6 +26,20 @@ const state = reactive<{ name: string, kind?: LocationKind, address: string, iat
   address: '',
   iata: '',
 })
+
+/**
+ * A pick holds the place until the next keystroke. The pause keeps the list
+ * from flickering and spends the quota once per pause, not once per key.
+ */
+const SUGGEST_PAUSE_MS = 300
+const heldPlace = ref<LocationPlace | null>(null)
+const pickedText = ref<string | null>(null)
+const sessionToken = ref<string | null>(null)
+const suggestions = ref<AddressSuggestion[]>([])
+const attribution = ref<string | null>(null)
+const suggestionsUnavailable = ref(false)
+let suggestTimer: number | undefined
+let suggestGeneration = 0
 
 type LocationFailure = 'locations.loadFailed' | 'locations.rejected' | 'locations.notFound' | 'locations.forbidden' | 'locations.signedOut' | 'locations.saveFailed' | 'locations.archivedLocked'
 interface LocationForm {
@@ -151,6 +165,13 @@ function resetForm() {
   state.kind = undefined
   state.address = ''
   state.iata = ''
+  heldPlace.value = null
+  pickedText.value = null
+  sessionToken.value = null
+  suggestions.value = []
+  attribution.value = null
+  suggestionsUnavailable.value = false
+  window.clearTimeout(suggestTimer)
   formErrorKey.value = null
 }
 
@@ -166,8 +187,80 @@ function openEdit(location: Location) {
   state.kind = location.kind
   state.address = location.address ?? ''
   state.iata = location.iata ?? ''
+  heldPlace.value = location.place
+  pickedText.value = location.address
+  suggestions.value = []
+  attribution.value = null
+  sessionToken.value = null
   formErrorKey.value = null
   formMode.value = 'edit'
+}
+
+function onAddressInput(value: string | number | null | undefined) {
+  const next = value == null ? '' : String(value)
+  // A hand edit must not keep a reference to a different place.
+  if (next !== pickedText.value)
+    heldPlace.value = null
+  state.address = next
+  window.clearTimeout(suggestTimer)
+  suggestTimer = window.setTimeout(() => {
+    void lookupSuggestions()
+  }, SUGGEST_PAUSE_MS)
+}
+
+function onAddressEnter(event: KeyboardEvent) {
+  const first = suggestions.value[0]
+  if (!first)
+    return
+  event.preventDefault()
+  pickSuggestion(first)
+}
+
+async function lookupSuggestions() {
+  const text = state.address.trim()
+  if (text.length < LOCATION_SUGGEST_MIN_LENGTH) {
+    suggestions.value = []
+    attribution.value = null
+    return
+  }
+  // One token for this typing run. A pick clears it so the next run is new.
+  if (sessionToken.value === null)
+    sessionToken.value = crypto.randomUUID()
+  const generation = ++suggestGeneration
+  try {
+    const result = suggestAddressesResponseSchema.parse(await $fetch('/api/locations/suggestions', {
+      method: 'POST',
+      body: { text, sessionToken: sessionToken.value },
+    }))
+    if (generation !== suggestGeneration)
+      return
+    if (!result.available) {
+      suggestions.value = []
+      attribution.value = null
+      suggestionsUnavailable.value = true
+      return
+    }
+    suggestionsUnavailable.value = false
+    suggestions.value = [...result.suggestions]
+    attribution.value = result.suggestions.length > 0 ? result.attribution : null
+  }
+  catch {
+    if (generation !== suggestGeneration)
+      return
+    suggestions.value = []
+    attribution.value = null
+    suggestionsUnavailable.value = true
+  }
+}
+
+function pickSuggestion(suggestion: AddressSuggestion) {
+  pickedText.value = suggestion.text
+  heldPlace.value = { provider: suggestion.provider, placeRef: suggestion.placeRef }
+  state.address = suggestion.text
+  suggestions.value = []
+  attribution.value = null
+  sessionToken.value = null
+  window.clearTimeout(suggestTimer)
 }
 
 function locationBody(data: LocationForm) {
@@ -176,6 +269,7 @@ function locationBody(data: LocationForm) {
     name: data.name,
     kind: data.kind,
     address,
+    place: address === null ? null : heldPlace.value,
     // A hotel, an address, or other kind cannot carry a code, so the key
     // stays off the body unless this row is an airport. Leaving airport
     // omits the key. The server clears a stored code in that same change.
@@ -419,12 +513,50 @@ onMounted(loadLocations)
             size="xl"
           >
             <UInput
-              v-model="state.address"
+              :model-value="state.address"
               name="address"
               type="text"
               autocomplete="off"
               class="w-full"
+              :aria-expanded="suggestions.length > 0"
+              aria-controls="location-suggestions"
+              aria-autocomplete="list"
+              @update:model-value="onAddressInput"
+              @keydown.enter="onAddressEnter"
             />
+            <ul
+              v-if="suggestions.length > 0"
+              id="location-suggestions"
+              role="listbox"
+              class="mt-1 overflow-hidden rounded-md border border-default"
+            >
+              <li
+                v-for="suggestion in suggestions"
+                :key="suggestion.placeRef"
+                role="presentation"
+              >
+                <button
+                  type="button"
+                  role="option"
+                  class="w-full px-3 py-2 text-left text-base hover:bg-elevated"
+                  @click="pickSuggestion(suggestion)"
+                >
+                  {{ suggestion.text }}
+                </button>
+              </li>
+            </ul>
+            <p
+              v-if="attribution"
+              class="mt-1 text-sm text-muted"
+            >
+              {{ attribution }}
+            </p>
+            <p
+              v-if="suggestionsUnavailable"
+              class="mt-1 text-sm text-muted"
+            >
+              {{ t('locations.suggestionsUnavailable') }}
+            </p>
             <template #error="{ error }">
               <span
                 v-if="error"

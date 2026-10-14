@@ -176,3 +176,62 @@ test('dispatcher adds a location and the screen shows the tenant name', async ({
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('button', { name: 'Radnje: Hotel Park' })).toBeVisible()
 })
+
+test('the office picks a suggestion, a hand edit drops it, and a typed address still saves when suggestions are off', async ({ page }) => {
+  const tenant = await seedTenant('locations-maps')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await page.request.post('/api/locations/suggestions-mode', { data: { unavailable: false } })
+  try {
+    await page.getByRole('link', { name: 'Lokacije' }).click()
+    await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+    let dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Ime').fill('Villa Rosa')
+    await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Adresa')
+    await dialog.getByLabel('Adresa').fill('Obala 12')
+    await expect(dialog.getByRole('option', { name: 'Obala 12, Dubrovnik' })).toBeVisible()
+    await expect(dialog.getByText('Google', { exact: true })).toBeVisible()
+    await dialog.getByRole('option', { name: 'Obala 12, Dubrovnik' }).click()
+    await expect(dialog.getByText('Google', { exact: true })).toHaveCount(0)
+    await expect(dialog.getByLabel('Adresa')).toHaveValue('Obala 12, Dubrovnik')
+    await dialog.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+    await expect(dialog).toBeHidden()
+
+    const picked = await page.request.get('/api/locations')
+    const pickedBody = await picked.json() as { locations: { id: string, name: string, address: string | null, place: { placeRef: string } | null }[] }
+    const row = pickedBody.locations.find(location => location.name === 'Villa Rosa')
+    expect(row?.address).toBe('Obala 12, Dubrovnik')
+    expect(row?.place?.placeRef).toBe('ChIJfakeDubrovnik')
+
+    await page.getByRole('button', { name: 'Radnje: Villa Rosa' }).click()
+    await page.getByRole('menuitem', { name: 'Ispravi lokaciju', exact: true }).click()
+    dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Adresa').fill('Obala 12, kat 2')
+    await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
+    await expect(dialog).toBeHidden()
+
+    const edited = await page.request.get('/api/locations')
+    const editedBody = await edited.json() as { locations: { name: string, address: string | null, place: unknown }[] }
+    const corrected = editedBody.locations.find(location => location.name === 'Villa Rosa')
+    expect(corrected?.address).toBe('Obala 12, kat 2')
+    expect(corrected?.place).toBeNull()
+
+    await page.request.post('/api/locations/suggestions-mode', { data: { unavailable: true } })
+    await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+    dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Ime').fill('Kuća Mira')
+    await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Adresa')
+    await dialog.getByLabel('Adresa').fill('Put 4')
+    await expect(dialog.getByText('Prijedlozi adresa nisu dostupni. Adresu i dalje možete upisati.')).toBeVisible()
+    await dialog.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+    await expect(dialog).toBeHidden()
+
+    const saved = await page.request.get('/api/locations')
+    const savedBody = await saved.json() as { locations: { name: string, address: string | null, place: unknown }[] }
+    const plain = savedBody.locations.find(location => location.name === 'Kuća Mira')
+    expect(plain?.address).toBe('Put 4')
+    expect(plain?.place).toBeNull()
+  }
+  finally {
+    await page.request.post('/api/locations/suggestions-mode', { data: { unavailable: false } })
+  }
+})

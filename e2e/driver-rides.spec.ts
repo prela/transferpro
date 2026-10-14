@@ -158,6 +158,11 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   const addressedStartId = await createdId(await page.request.post('/api/locations', {
     data: { name: 'Čilipi', kind: 'airport', address: 'Čilipi 1' },
   }))
+  const placed = await page.request.patch(`/api/locations/${addressedStartId}`, {
+    data: { place: { provider: 'google', placeRef: 'ChIJexactGate' } },
+  })
+  if (!placed.ok())
+    throw new Error(`${placed.status()} ${await placed.text()}`)
   const endLocationId = await createdId(await page.request.post('/api/locations', {
     data: { name: 'Hotel Park', kind: 'hotel', address: 'Masarykov put 1' },
   }))
@@ -253,6 +258,16 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(cashCard.getByText('Arhivirano')).toHaveCount(0)
   await expect(cardCard.getByText('Čilipi 1')).toBeVisible()
   await expect(cardCard.getByText('Masarykov put 1')).toBeVisible()
+  const cardStartLink = cardCard.getByRole('link', { name: 'Otvori u kartama' }).first()
+  const cardEndLink = cardCard.getByRole('link', { name: 'Otvori u kartama' }).nth(1)
+  await expect(cardStartLink).toHaveAttribute('href', /google\.com\/maps\/dir\//)
+  await expect(cardStartLink).toHaveAttribute('href', /destination_place_id=ChIJexactGate/)
+  await expect(cardStartLink).toHaveAttribute('target', '_blank')
+  await expect(cardEndLink).toHaveAttribute('href', /Masarykov\+put\+1/)
+  await expect(cardEndLink).not.toHaveAttribute('href', /destination_place_id/)
+  const cashStartLink = cashCard.getByRole('link', { name: 'Otvori u kartama' }).first()
+  await expect(cashStartLink).toHaveAttribute('href', /destination=Polazak/)
+  await expect(cashStartLink).not.toHaveAttribute('href', /destination_place_id/)
   await expect(cardCard.getByText('Adresa', { exact: true })).toHaveCount(2)
   await expect(cardCard.getByText('Voucher fare 99.00')).toBeVisible()
   await expect(cardCard.getByText('GOSPOĐA HORVAT')).toBeVisible()
@@ -283,6 +298,7 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
 
   await switchLocale(page, 'en')
   await expect(page.getByRole('heading', { name: 'My rides' })).toBeVisible()
+  await expect(cashCard.getByRole('link', { name: 'Open in maps' }).first()).toBeVisible()
   await expect(cashCard.getByText('Cash')).toBeVisible()
   await expect(cashCard.getByText('42.50 EUR')).toBeVisible()
   await expect(cashCard.getByText('Airport')).toBeVisible()

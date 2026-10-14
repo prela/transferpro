@@ -43,6 +43,8 @@ interface FakeLocation {
   kind: 'airport' | 'hotel'
   address: string | null
   iata: string | null
+  placeProvider: string | null
+  placeRef: string | null
   archivedAt: string | null
 }
 
@@ -109,8 +111,8 @@ function fakeTransaction(options: {
 }
 
 const places: FakeLocation[] = [
-  { id: startLocationId, name: 'Zračna luka Dubrovnik', kind: 'airport', address: null, iata: null, archivedAt: null },
-  { id: endLocationId, name: 'Hotel Park', kind: 'hotel', address: null, iata: null, archivedAt: null },
+  { id: startLocationId, name: 'Zračna luka Dubrovnik', kind: 'airport', address: null, iata: null, placeProvider: null, placeRef: null, archivedAt: null },
+  { id: endLocationId, name: 'Hotel Park', kind: 'hotel', address: null, iata: null, placeProvider: null, placeRef: null, archivedAt: null },
 ]
 
 function auditPayloads(queries: Array<{ params: unknown[] }>): unknown[] {

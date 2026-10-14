@@ -247,6 +247,7 @@
     "forbidden": "A driver cannot add or correct locations.",
     "signedOut": "You are signed out. Sign in and try again.",
     "saveFailed": "The location was not saved. Try again.",
+    "suggestionsUnavailable": "Address suggestions are unavailable. You can still type the address.",
     "kinds": {
       "airport": "Airport",
       "hotel": "Hotel",
@@ -257,7 +258,8 @@
       "name": "Name",
       "kind": "Kind",
       "address": "Address",
-      "iata": "IATA code"
+      "iata": "IATA code",
+      "placeRef": "Map reference"
     }
   },
   "transfers": {
@@ -366,6 +368,7 @@
     "empty": "You have no upcoming rides.",
     "from": "From",
     "to": "To",
+    "openInMaps": "Open in maps",
     "passengers": "Passengers",
     "flight": "Flight",
     "landing": "Landing time",

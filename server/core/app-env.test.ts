@@ -73,3 +73,23 @@ it('leaves MAILER unset in development and test', () => {
   expect(parseAppEnv({ ...base, NODE_ENV: 'development', MAILER: 'console' }).MAILER).toBe('console')
   expect(parseAppEnv({ ...base, NODE_ENV: 'development', MAILER: 'resend' }).MAILER).toBe('resend')
 })
+
+it('defaults MAPS to none and refuses google without a key', () => {
+  expect(parseAppEnv(base).MAPS).toBe('none')
+  expect(parseAppEnv(base).MAPS_API_KEY).toBeUndefined()
+  expect(parseAppEnv({ ...base, NODE_ENV: 'production', MAILER: 'resend' }).MAPS).toBe('none')
+  expect(parseAppEnv({ ...base, MAPS: 'none', MAPS_API_KEY: '' }).MAPS_API_KEY).toBeUndefined()
+  expect(() => parseAppEnv({ ...base, MAPS: 'google' })).toThrow()
+  expect(() => parseAppEnv({ ...base, MAPS: 'google', MAPS_API_KEY: '' })).toThrow()
+  expect(() => parseAppEnv({ ...base, MAPS: 'osm' })).toThrow()
+  expect(parseAppEnv({ ...base, MAPS: 'google', MAPS_API_KEY: 'maps-live-key' })).toMatchObject({
+    MAPS: 'google',
+    MAPS_API_KEY: 'maps-live-key',
+  })
+  try {
+    parseAppEnv({ ...base, MAPS: 'google' })
+  }
+  catch (error) {
+    expect(String(error)).not.toContain('maps-live-key')
+  }
+})

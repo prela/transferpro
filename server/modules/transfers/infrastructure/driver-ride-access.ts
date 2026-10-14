@@ -1,9 +1,9 @@
-import type { ClientKind, DriverUpcomingList, DriverUpcomingRide } from '../../../../shared'
+import type { ClientKind, DriverUpcomingList, DriverUpcomingRide, LocationPlace } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { presentDriverRide } from '../../../../shared'
 import { loadClient } from '../../clients'
 import { loadDriverLinkedToMember } from '../../drivers'
-import { loadLocation } from '../../locations'
+import { loadLocation, navigationLink } from '../../locations'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { loadUpcomingRidesForDriver } from './driver-rides'
@@ -19,6 +19,7 @@ function driverOnly(role: string): void {
 interface LocationLine {
   readonly name: string
   readonly address: string | null
+  readonly place: LocationPlace | null
 }
 
 interface ClientLine {
@@ -36,7 +37,11 @@ async function locationLine(transaction: TenantTransaction, locationId: string, 
   if (known)
     return known
   const location = await loadLocation(transaction, locationId)
-  const line: LocationLine = { name: location.name, address: location.address }
+  const line: LocationLine = {
+    name: location.name,
+    address: location.address,
+    place: location.place,
+  }
   locations.set(locationId, line)
   return line
 }
@@ -112,6 +117,8 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
           clientKind: client.kind,
           fromAddress: from.address,
           toAddress: to.address,
+          fromMapsUrl: navigationLink(from),
+          toMapsUrl: navigationLink(to),
           luggageCount: row.luggageCount,
           childSeatCount: row.childSeatCount,
           note: row.note,

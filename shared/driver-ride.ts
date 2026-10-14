@@ -41,6 +41,8 @@ export const driverUpcomingRideSchema = z.object({
   payment: z.literal('cash').nullable(),
   state: z.enum(['assigned', 'accepted']),
   mustAccept: z.boolean(),
+  fromMapsUrl: z.url(),
+  toMapsUrl: z.url(),
 }).superRefine((row, ctx) => {
   const showsFare = row.payment === 'cash'
   if (showsFare !== (row.price !== null)) {
@@ -98,6 +100,10 @@ export interface DriverRideSource {
   readonly payment: PaymentMethod
   readonly state: 'assigned' | 'accepted'
   readonly mustAccept: boolean
+  /** Directions for the start. Built when the list is read. Not stored. */
+  readonly fromMapsUrl: string
+  /** Directions for the end. Built when the list is read. Not stored. */
+  readonly toMapsUrl: string
 }
 
 /**
@@ -142,5 +148,7 @@ export function presentDriverRide(source: DriverRideSource): DriverUpcomingRide 
     payment: cash ? 'cash' : null,
     state: source.state,
     mustAccept: source.mustAccept,
+    fromMapsUrl: source.fromMapsUrl,
+    toMapsUrl: source.toMapsUrl,
   })
 }

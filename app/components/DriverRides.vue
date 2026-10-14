@@ -442,6 +442,19 @@ onMounted(loadRides)
               <dd class="break-words">
                 {{ ride.from }}
               </dd>
+              <dd>
+                <UButton
+                  :to="ride.fromMapsUrl"
+                  target="_blank"
+                  external
+                  :locale="false"
+                  variant="link"
+                  color="primary"
+                  size="xl"
+                  class="px-0"
+                  :label="t('driverRides.openInMaps')"
+                />
+              </dd>
             </div>
             <!-- A missing address is not a blank line. An archived Location still has its line. -->
             <div v-if="ride.fromAddress">
@@ -458,6 +471,19 @@ onMounted(loadRides)
               </dt>
               <dd class="break-words">
                 {{ ride.to }}
+              </dd>
+              <dd>
+                <UButton
+                  :to="ride.toMapsUrl"
+                  target="_blank"
+                  external
+                  :locale="false"
+                  variant="link"
+                  color="primary"
+                  size="xl"
+                  class="px-0"
+                  :label="t('driverRides.openInMaps')"
+                />
               </dd>
             </div>
             <div v-if="ride.toAddress">

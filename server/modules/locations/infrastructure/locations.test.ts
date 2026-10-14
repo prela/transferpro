@@ -20,7 +20,24 @@ const stored: Location = {
   kind: 'airport',
   address: null,
   iata: null,
+  place: null,
   archivedAt: null,
+}
+
+const picked = { provider: 'google' as const, placeRef: 'ChIJoldPlace' }
+const replacement = { provider: 'google' as const, placeRef: 'ChIJnewPlace' }
+
+function asRow(location: Location) {
+  return {
+    id: location.id,
+    name: location.name,
+    kind: location.kind,
+    address: location.address,
+    iata: location.iata,
+    placeProvider: location.place?.provider ?? null,
+    placeRef: location.place?.placeRef ?? null,
+    archivedAt: location.archivedAt,
+  }
 }
 
 function fakeTransaction(
@@ -43,22 +60,24 @@ function fakeTransaction(
             kind: compiled.params[1],
             address: compiled.params[2] ?? null,
             iata: compiled.params[3] ?? null,
+            placeProvider: compiled.params[4] ?? null,
+            placeRef: compiled.params[5] ?? null,
             archivedAt: null,
           }],
         }
       }
       if (text.includes('for update') || (text.includes('select') && text.includes('where id'))) {
         const id = compiled.params[0]
-        return { rows: locations.filter(row => row.id === id) }
+        return { rows: locations.filter(row => row.id === id).map(asRow) }
       }
       if (text.includes('set archived_at')) {
-        const archived = { ...locations[0]!, archivedAt: new Date('2026-10-05T10:00:00.000Z') }
-        return { rows: [archived] }
+        const archived = asRow({ ...locations[0]!, archivedAt: '2026-10-05T10:00:00.000Z' })
+        return { rows: [{ ...archived, archivedAt: new Date('2026-10-05T10:00:00.000Z') }] }
       }
       if (text.includes('update'))
         return { rows: [] }
       if (text.includes('from app.locations'))
-        return { rows: locations }
+        return { rows: locations.map(asRow) }
       return { rows: [] }
     }),
   }
@@ -88,6 +107,7 @@ const input = {
   kind: 'airport' as const,
   address: null,
   iata: null,
+  place: null,
 }
 
 it('adds a Location and records field names, not the name or the address', async () => {
@@ -264,6 +284,97 @@ it('clears the code when the kind leaves airport, in that same change', async ()
     JSON.stringify({ locationId, field: 'iata' }),
   ])
   expect(JSON.stringify(auditPayloads(queries))).not.toContain('DBV')
+})
+
+it('stores a picked place with the address and records placeRef by name only', async () => {
+  const { transaction, queries } = fakeTransaction([])
+  await expect(addLocation(transaction, actorUserId, { ...input, address, place: picked })).resolves.toMatchObject({
+    address,
+    place: picked,
+  })
+  expect(auditPayloads(queries)).toEqual([
+    JSON.stringify({
+      locationId,
+      fields: ['name', 'kind', 'address', 'placeRef'],
+    }),
+  ])
+  const text = JSON.stringify(auditPayloads(queries))
+  expect(text).not.toContain(address)
+  expect(text).not.toContain(picked.placeRef)
+  expect(text).not.toContain(picked.provider)
+})
+
+it('drops the place when the address is edited by hand', async () => {
+  const nextAddress = 'Frana Supila 12'
+  const { transaction, queries } = fakeTransaction([{ ...stored, address, place: picked }])
+  await expect(correctLocation(transaction, actorUserId, locationId, { address: nextAddress })).resolves.toMatchObject({
+    address: nextAddress,
+    place: null,
+  })
+  expect(auditPayloads(queries)).toEqual([
+    JSON.stringify({ locationId, field: 'address' }),
+    JSON.stringify({ locationId, field: 'placeRef' }),
+  ])
+  const text = JSON.stringify(auditPayloads(queries))
+  expect(text).not.toContain(address)
+  expect(text).not.toContain(nextAddress)
+  expect(text).not.toContain(picked.placeRef)
+})
+
+it('drops the place when the address is cleared', async () => {
+  const { transaction, queries } = fakeTransaction([{ ...stored, address, place: picked }])
+  await expect(correctLocation(transaction, actorUserId, locationId, { address: null })).resolves.toMatchObject({
+    address: null,
+    place: null,
+  })
+  expect(auditPayloads(queries)).toEqual([
+    JSON.stringify({ locationId, field: 'address' }),
+    JSON.stringify({ locationId, field: 'placeRef' }),
+  ])
+  expect(JSON.stringify(auditPayloads(queries))).not.toContain(picked.placeRef)
+})
+
+it('replaces the place when a new one is picked', async () => {
+  const nextAddress = 'Put od Republike 9'
+  const { transaction, queries } = fakeTransaction([{ ...stored, address, place: picked }])
+  await expect(correctLocation(transaction, actorUserId, locationId, {
+    address: nextAddress,
+    place: replacement,
+  })).resolves.toMatchObject({
+    address: nextAddress,
+    place: replacement,
+  })
+  expect(auditPayloads(queries)).toEqual([
+    JSON.stringify({ locationId, field: 'address' }),
+    JSON.stringify({ locationId, field: 'placeRef' }),
+  ])
+  const text = JSON.stringify(auditPayloads(queries))
+  expect(text).not.toContain(picked.placeRef)
+  expect(text).not.toContain(replacement.placeRef)
+  expect(text).not.toContain(nextAddress)
+})
+
+it('refuses a place without an address and writes nothing', async () => {
+  const { transaction, queries } = fakeTransaction([{ ...stored, address, place: picked }])
+  await expect(correctLocation(transaction, actorUserId, locationId, {
+    address: null,
+    place: replacement,
+  })).rejects.toBeInstanceOf(LocationInputError)
+  expect(queries.filter(query => query.sql.includes('update') && !query.sql.includes('for update'))).toEqual([])
+  expect(auditPayloads(queries)).toEqual([])
+})
+
+it('keeps the place when the correction does not change the address', async () => {
+  const { transaction, queries } = fakeTransaction([{ ...stored, address, place: picked }])
+  await expect(correctLocation(transaction, actorUserId, locationId, { name: 'Hotel Excelsior' })).resolves.toMatchObject({
+    name: 'Hotel Excelsior',
+    address,
+    place: picked,
+  })
+  expect(auditPayloads(queries)).toEqual([
+    JSON.stringify({ locationId, field: 'name' }),
+  ])
+  expect(JSON.stringify(auditPayloads(queries))).not.toContain(picked.placeRef)
 })
 
 it('refuses a correction of an archived Location and writes nothing', async () => {

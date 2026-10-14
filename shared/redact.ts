@@ -40,6 +40,10 @@ const PERSONAL_KEYS = new Set([
   'note',
   'notes',
   'tabla',
+  // The suggestion lookup sends the typed address as `text`.
+  'text',
+  // A place reference is an address. The audit row stores the field name only.
+  'placeref',
   // Postgres `detail` carries the row values that caused the error.
   'detail',
   'connectionstring',
