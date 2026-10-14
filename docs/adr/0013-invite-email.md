@@ -1,6 +1,8 @@
 # Invitation email and the accept path
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0037
+
+ADR-0037 amends "Production boot requires `MAILER=resend` and `RESEND_API_KEY`." Preview may set `ALLOW_CONSOLE_MAILER` to exactly `1` and `MAILER` to `console`. Every other production boot still requires Resend. The rest of this decision stands.
 
 ## Context
 

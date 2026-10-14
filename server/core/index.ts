@@ -226,13 +226,22 @@ export function loadAppEnv(): AppEnv {
 }
 
 /**
+ * The runtime-role probe. Boot and readiness both use it. The adapter
+ * stays behind this import so the kernel entry does not name the driver.
+ */
+async function loadRuntimeRoleCheck(): Promise<(env: AppEnv) => Promise<void>> {
+  const { assertRuntimeRoles } = await import('./infrastructure')
+  return assertRuntimeRoles
+}
+
+/**
  * Parse once, then refuse to start if the app, auth, queue, or platform
  * role is over-privileged. The privilege query lives in the adapter.
  */
 export async function boot(): Promise<AppEnv> {
   const env = loadAppEnv()
   configureLogger(env.LOG_LEVEL)
-  const { assertRuntimeRoles } = await import('./infrastructure')
+  const assertRuntimeRoles = await loadRuntimeRoleCheck()
   await assertRuntimeRoles(env)
   return env
 }
@@ -243,7 +252,7 @@ export async function boot(): Promise<AppEnv> {
  * probe is used, so a URL that drifted onto the migrator still fails.
  */
 export async function assertReady(env: AppEnv = loadAppEnv()): Promise<void> {
-  const { assertRuntimeRoles } = await import('./infrastructure')
+  const assertRuntimeRoles = await loadRuntimeRoleCheck()
   await guardReadiness(() => assertRuntimeRoles(env))
 }
 
