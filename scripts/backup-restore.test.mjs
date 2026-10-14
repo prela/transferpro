@@ -144,26 +144,30 @@ function scriptEnv(extra) {
   }
 }
 
-function waitUntilReady() {
-  return new Promise((resolve, reject) => {
-    const started = Date.now()
-    const tick = () => {
-      run('docker', ['exec', container, 'pg_isready', '-U', 'postgres', '-d', 'transferpro'], {
-        PATH: process.env.PATH,
-      }).then((result) => {
-        if (result.code === 0) {
-          resolve()
-          return
-        }
-        if (Date.now() - started > 30_000) {
-          reject(new Error('disposable Postgres did not become ready'))
-          return
-        }
-        setTimeout(tick, 500)
-      }).catch(reject)
-    }
-    tick()
-  })
+// The image's temporary init server has no TCP listener. A socket check can
+// pass during that window, then the real server replaces it and the next
+// connection is refused. TCP is up only after that replacement.
+async function waitUntilReady() {
+  const deadline = Date.now() + 60_000
+  while (Date.now() < deadline) {
+    const result = await run('docker', [
+      'exec',
+      container,
+      'pg_isready',
+      '-h',
+      '127.0.0.1',
+      '-p',
+      '5432',
+      '-U',
+      'postgres',
+      '-d',
+      'transferpro',
+    ], { PATH: process.env.PATH })
+    if (result.code === 0)
+      return
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+  throw new Error('disposable Postgres did not become ready')
 }
 
 /**
