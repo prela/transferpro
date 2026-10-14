@@ -28,6 +28,13 @@ const memberRows = z.object({
   rows: z.array(z.object({ role: z.string() })),
 })
 
+function officeOnly(role: string): void {
+  // Licence dates are office data. A driver is refused on this read.
+  if (role === 'admin' || role === 'dispatcher')
+    return
+  throw new TenantAccessError(403)
+}
+
 /** The Driver is not in this Tenant. Another Tenant's row looks the same. */
 export class DriverNotFoundError extends Error {
   readonly statusCode = 404
@@ -105,13 +112,15 @@ export interface DriverDocumentExpiry {
 /**
  * Expiry days for these Drivers. The phone, the email, and the name stay
  * unread. An empty id list reads nothing. Another Tenant's id is absent.
- * The caller has already required an office role on this transaction.
+ * An admin or a dispatcher may read. Any other role is 403 before a query.
  * This read does not open a session, same as `loadDrivers`.
  */
 export async function loadDriverDocumentExpiry(
   transaction: TenantTransaction,
+  role: string,
   driverIds: readonly string[],
 ): Promise<DriverDocumentExpiry[]> {
+  officeOnly(role)
   const unique = [...new Set(driverIds)]
   if (unique.length === 0)
     return []

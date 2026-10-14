@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { isCalendarDate, RosterInputError } from '../../../../shared'
 import { appendAuditEntry } from '../../audit'
 import { driverIsInTenant } from '../../drivers'
+import { TenantAccessError } from '../../tenancy'
 import { vehiclePresence } from '../../vehicles'
 
 const rosterRowSchema = z.object({
@@ -20,6 +21,13 @@ const rosterRows = z.object({
 })
 
 type RosterRow = z.infer<typeof rosterRowSchema>
+
+function officeOnly(role: string): void {
+  // Who is rostered to a Vehicle is office data. A driver is refused on this read.
+  if (role === 'admin' || role === 'dispatcher')
+    return
+  throw new TenantAccessError(403)
+}
 
 const assignmentRows = z.object({
   rows: z.array(z.object({
@@ -113,13 +121,15 @@ export interface RosteredDriver {
  * The Driver each Vehicle is rostered to on these calendar dates.
  * A Vehicle with no row is absent. A row for an archived Vehicle still
  * counts: this read does not join Vehicles. An empty date list reads nothing.
- * The caller has already required an office role on this transaction.
+ * An admin or a dispatcher may read. Any other role is 403 before a query.
  * This read does not open a session. This module does not import Transfers.
  */
 export async function rosteredDriversOnDates(
   transaction: TenantTransaction,
+  role: string,
   dates: readonly string[],
 ): Promise<RosteredDriver[]> {
+  officeOnly(role)
   const unique = [...new Set(dates)]
   if (unique.length === 0)
     return []

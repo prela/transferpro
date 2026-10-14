@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { VEHICLE_FIELDS, vehicleDateSchema, VehicleInputError, vehicleKindSchema, vehicleSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
+import { TenantAccessError } from '../../tenancy'
 
 const vehicleRowSchema = z.object({
   id: z.uuid(),
@@ -25,6 +26,13 @@ const vehicleRows = z.object({
 const vehicleIdRows = z.object({
   rows: z.array(z.object({ id: z.uuid() })),
 })
+
+function officeOnly(role: string): void {
+  // Document dates are office data. A driver is refused on this read.
+  if (role === 'admin' || role === 'dispatcher')
+    return
+  throw new TenantAccessError(403)
+}
 
 /** The Vehicle is not in this Tenant. Another Tenant's row looks the same. */
 export class VehicleNotFoundError extends Error {
@@ -146,13 +154,15 @@ export interface VehicleDocumentExpiry {
  * Expiry days for these Vehicles, archived or not. A Ride that still uses
  * an archived Vehicle has to see a lapsed document. The plate stays unread.
  * An empty id list reads nothing. Another Tenant's id is absent.
- * The caller has already required an office role on this transaction.
+ * An admin or a dispatcher may read. Any other role is 403 before a query.
  * This read does not open a session, same as `loadVehicles`.
  */
 export async function loadVehicleDocumentExpiry(
   transaction: TenantTransaction,
+  role: string,
   vehicleIds: readonly string[],
 ): Promise<VehicleDocumentExpiry[]> {
+  officeOnly(role)
   const unique = [...new Set(vehicleIds)]
   if (unique.length === 0)
     return []

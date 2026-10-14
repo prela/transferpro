@@ -34,6 +34,7 @@ const neighbourRows = z.object({
  */
 export async function applyBoardWarnings(
   transaction: TenantTransaction,
+  role: string,
   rides: readonly TransferDayRide[],
   timeZone: string,
   day: string,
@@ -49,9 +50,9 @@ export async function applyBoardWarnings(
   const vehicleIds = idsOf(occupying.map(ride => ride.vehicleId))
   const pickupDates = occupying.map(ride => calendarDateInTimeZone(timeZone, new Date(ride.pickupAt)))
   // One session client. A parallel read on it fails with a query already in progress.
-  const drivers = await loadDriverDocumentExpiry(transaction, driverIds)
-  const vehicles = await loadVehicleDocumentExpiry(transaction, vehicleIds)
-  const roster = await rosteredDriversOnDates(transaction, pickupDates)
+  const drivers = await loadDriverDocumentExpiry(transaction, role, driverIds)
+  const vehicles = await loadVehicleDocumentExpiry(transaction, role, vehicleIds)
+  const roster = await rosteredDriversOnDates(transaction, role, pickupDates)
   const others = await loadNeighbours(transaction, occupying, timeZone, day, startHour, driverIds, vehicleIds)
   const driverExpiry = new Map(drivers.map(row => [row.id, row]))
   const vehicleExpiry = new Map(vehicles.map(row => [row.id, row]))
