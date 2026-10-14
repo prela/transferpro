@@ -7,6 +7,7 @@ import type { LogLevel } from './logger'
 import process from 'node:process'
 import { z } from 'zod'
 import { configureLogger, logLevels } from './logger'
+import { guardReadiness } from './readiness'
 
 export { hideDatabaseError, postgresErrorCode } from './database-error'
 export { configureLogger, createLogger, currentRequestId, currentTenantId, endRequestLog, getLogger, handleLoggedError, openRequestLog, resolveRequestId, runWithRequestId } from './logger'
@@ -30,14 +31,16 @@ export interface AppEnv {
   /** Pino level. Production defaults to `info`; anywhere else, `debug`. */
   readonly LOG_LEVEL: LogLevel
   /**
-   * Which transport `mailerForApp` may select. Production is always `resend`.
-   * Local and test leave this unset unless the operator opts in.
+   * Which transport `mailerForApp` may select. Production is `resend`
+   * unless preview sets `ALLOW_CONSOLE_MAILER=1` and `MAILER=console`
+   * (ADR-0037). Local and test leave this unset unless the operator opts in.
    */
   readonly MAILER: 'resend' | 'console' | undefined
   /**
    * Resend API key. Required in production together with `MAILER=resend`.
-   * Optional in development and test so `pnpm dev` does not share the
-   * daily quota. The name is redacted (`apikey`). ADR-0013.
+   * Omitted when preview opts into the console mailer. Optional in
+   * development and test so `pnpm dev` does not share the daily quota.
+   * The name is redacted (`apikey`). ADR-0013, ADR-0037.
    */
   readonly RESEND_API_KEY: string | undefined
   /**
@@ -86,27 +89,43 @@ function blankEnv(value: string | undefined): string | undefined {
 }
 
 /**
- * Production cannot boot without `MAILER=resend`. Anywhere else the
- * value is optional: unset means the console mailer in development
- * and the fake mailer in test.
+ * Preview is a production process that must not send mail. The flag is
+ * the string `1` only. `true`, `yes`, and blank do not opt in, so a
+ * production deploy cannot pick up a leftover truthy value.
+ */
+function consoleMailerAllowed(source: NodeJS.ProcessEnv): boolean {
+  return source.ALLOW_CONSOLE_MAILER === '1'
+}
+
+/**
+ * Production cannot boot without `MAILER=resend`, except the preview
+ * opt-in (ADR-0037). Anywhere else the value is optional: unset means
+ * the console mailer in development and the fake mailer in test.
  */
 function parseMailer(source: NodeJS.ProcessEnv): 'resend' | 'console' | undefined {
   const raw = blankEnv(source.MAILER)
-  if (source.NODE_ENV === 'production')
+  if (source.NODE_ENV === 'production') {
+    if (consoleMailerAllowed(source) && raw === 'console')
+      return 'console'
     return z.literal('resend').parse(raw)
+  }
   if (raw === undefined)
     return undefined
   return z.enum(['resend', 'console']).parse(raw)
 }
 
 /**
- * Production cannot boot without a key. Development and test omit it
- * so a local process does not send through the shared Resend quota.
- * A blank value counts as missing.
+ * Production cannot boot without a key, unless the console mailer was
+ * explicitly allowed. Development and test omit it so a local process
+ * does not send through the shared Resend quota. A blank value counts
+ * as missing.
  */
-function parseResendApiKey(source: NodeJS.ProcessEnv): string | undefined {
+function parseResendApiKey(
+  source: NodeJS.ProcessEnv,
+  mailer: 'resend' | 'console' | undefined,
+): string | undefined {
   const key = blankEnv(source.RESEND_API_KEY)
-  if (source.NODE_ENV === 'production')
+  if (source.NODE_ENV === 'production' && mailer !== 'console')
     return resendKeySchema.parse(key)
   if (key === undefined)
     return undefined
@@ -174,6 +193,7 @@ export function nodeEnv(): string | undefined {
 /** Parse one source. Boot uses `loadAppEnv`, which caches this. */
 export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
   const MAPS = parseMaps(source)
+  const MAILER = parseMailer(source)
   return {
     ...appEnvSchema.parse({
       DATABASE_URL: source.DATABASE_URL,
@@ -184,8 +204,8 @@ export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
       BETTER_AUTH_URL: source.BETTER_AUTH_URL,
     }),
     LOG_LEVEL: parseLogLevel(source),
-    MAILER: parseMailer(source),
-    RESEND_API_KEY: parseResendApiKey(source),
+    MAILER,
+    RESEND_API_KEY: parseResendApiKey(source, MAILER),
     MAPS,
     MAPS_API_KEY: parseMapsApiKey(source, MAPS),
     SENTRY_DSN: parseSentryDsn(source),
@@ -206,15 +226,34 @@ export function loadAppEnv(): AppEnv {
 }
 
 /**
+ * The runtime-role probe. Boot and readiness both use it. The adapter
+ * stays behind this import so the kernel entry does not name the driver.
+ */
+async function loadRuntimeRoleCheck(): Promise<(env: AppEnv) => Promise<void>> {
+  const { assertRuntimeRoles } = await import('./infrastructure')
+  return assertRuntimeRoles
+}
+
+/**
  * Parse once, then refuse to start if the app, auth, queue, or platform
  * role is over-privileged. The privilege query lives in the adapter.
  */
 export async function boot(): Promise<AppEnv> {
   const env = loadAppEnv()
   configureLogger(env.LOG_LEVEL)
-  const { assertRuntimeRoles } = await import('./infrastructure')
+  const assertRuntimeRoles = await loadRuntimeRoleCheck()
   await assertRuntimeRoles(env)
   return env
+}
+
+/**
+ * Readiness, as opposed to boot. Boot stops the process. This answers one
+ * HTTP check, including after the database has gone away. The same role
+ * probe is used, so a URL that drifted onto the migrator still fails.
+ */
+export async function assertReady(env: AppEnv = loadAppEnv()): Promise<void> {
+  const assertRuntimeRoles = await loadRuntimeRoleCheck()
+  await guardReadiness(() => assertRuntimeRoles(env))
 }
 
 /**

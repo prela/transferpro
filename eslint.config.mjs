@@ -49,8 +49,9 @@ const driverSpecifiers = new Set([
 
 /**
  * no-restricted-imports does not visit import(). This rule does.
- * boot() in server/core/index.ts is the one allowed dynamic load of
+ * The kernel entry is the one allowed dynamic load of
  * ./infrastructure: a static import would pull pg into the kernel module.
+ * boot() and assertReady() share that load.
  */
 const dynamicDriverImport = {
   meta: {

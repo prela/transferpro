@@ -28,7 +28,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0010 | Re-acceptance after the pickup, the places, or the flight change | accepted |
 | ADR-0011 | Tenant session, grant-walled roles, and the member read | accepted; partially superseded by ADR-0014 |
 | ADR-0012 | Logging, redaction, and error responses | accepted |
-| ADR-0013 | Invitation email and the accept path | accepted |
+| ADR-0013 | Invitation email and the accept path | accepted; partially superseded by ADR-0037 |
 | ADR-0014 | Append-only audit log | accepted; partially superseded by ADR-0015 and ADR-0019 |
 | ADR-0015 | Settings changes in the audit log | accepted; partially superseded by ADR-0025 |
 | ADR-0016 | UI: Nuxt UI + Tailwind v4 | proposed |
@@ -50,3 +50,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0032 | Board warnings are derived on read | accepted |
 | ADR-0033 | v1 scope: price list, invoices through a provider, Client card, and Partner record | accepted |
 | ADR-0036 | The Transfer is the order, and who owns the v1 modules | accepted |
+| ADR-0037 | Console mailer on preview | accepted |
