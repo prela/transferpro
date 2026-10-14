@@ -160,6 +160,17 @@ async function loadLocations() {
   }
 }
 
+/**
+ * A lookup that is already in flight must not fill a later field.
+ * The generation is what the response checks.
+ */
+function dropPendingSuggestions() {
+  suggestGeneration += 1
+  window.clearTimeout(suggestTimer)
+  suggestions.value = []
+  attribution.value = null
+}
+
 function resetForm() {
   state.name = ''
   state.kind = undefined
@@ -168,10 +179,8 @@ function resetForm() {
   heldPlace.value = null
   pickedText.value = null
   sessionToken.value = null
-  suggestions.value = []
-  attribution.value = null
   suggestionsUnavailable.value = false
-  window.clearTimeout(suggestTimer)
+  dropPendingSuggestions()
   formErrorKey.value = null
 }
 
@@ -189,38 +198,43 @@ function openEdit(location: Location) {
   state.iata = location.iata ?? ''
   heldPlace.value = location.place
   pickedText.value = location.address
-  suggestions.value = []
-  attribution.value = null
   sessionToken.value = null
+  suggestionsUnavailable.value = false
+  dropPendingSuggestions()
   formErrorKey.value = null
   formMode.value = 'edit'
 }
 
+const suggestionItems = computed(() => suggestions.value.map(suggestion => suggestion.text))
+
 function onAddressInput(value: string | number | null | undefined) {
   const next = value == null ? '' : String(value)
-  // A hand edit must not keep a reference to a different place.
+  const match = suggestions.value.find(suggestion => suggestion.text === next)
+  // A pick is the suggested text. Anything else, including Enter, keeps the typed address.
+  if (match) {
+    pickedText.value = match.text
+    heldPlace.value = { provider: match.provider, placeRef: match.placeRef }
+    sessionToken.value = null
+    dropPendingSuggestions()
+    return
+  }
   if (next !== pickedText.value)
     heldPlace.value = null
-  state.address = next
   window.clearTimeout(suggestTimer)
   suggestTimer = window.setTimeout(() => {
     void lookupSuggestions()
   }, SUGGEST_PAUSE_MS)
 }
 
-function onAddressEnter(event: KeyboardEvent) {
-  const first = suggestions.value[0]
-  if (!first)
-    return
-  event.preventDefault()
-  pickSuggestion(first)
+/** Enter submits the typed address. It must not store the highlighted row. */
+function closeSuggestionsForSubmit() {
+  dropPendingSuggestions()
 }
 
 async function lookupSuggestions() {
   const text = state.address.trim()
   if (text.length < LOCATION_SUGGEST_MIN_LENGTH) {
-    suggestions.value = []
-    attribution.value = null
+    dropPendingSuggestions()
     return
   }
   // One token for this typing run. A pick clears it so the next run is new.
@@ -251,16 +265,6 @@ async function lookupSuggestions() {
     attribution.value = null
     suggestionsUnavailable.value = true
   }
-}
-
-function pickSuggestion(suggestion: AddressSuggestion) {
-  pickedText.value = suggestion.text
-  heldPlace.value = { provider: suggestion.provider, placeRef: suggestion.placeRef }
-  state.address = suggestion.text
-  suggestions.value = []
-  attribution.value = null
-  sessionToken.value = null
-  window.clearTimeout(suggestTimer)
 }
 
 function locationBody(data: LocationForm) {
@@ -512,45 +516,30 @@ onMounted(loadLocations)
             name="address"
             size="xl"
           >
-            <UInput
-              :model-value="state.address"
+            <UInputMenu
+              v-model="state.address"
+              mode="autocomplete"
               name="address"
-              type="text"
               autocomplete="off"
+              size="xl"
               class="w-full"
-              :aria-expanded="suggestions.length > 0"
-              aria-controls="location-suggestions"
-              aria-autocomplete="list"
+              :items="suggestionItems"
+              :ignore-filter="true"
+              :trailing-icon="false"
+              :portal="false"
+              :content="{ hideWhenEmpty: true }"
               @update:model-value="onAddressInput"
-              @keydown.enter="onAddressEnter"
-            />
-            <ul
-              v-if="suggestions.length > 0"
-              id="location-suggestions"
-              role="listbox"
-              class="mt-1 overflow-hidden rounded-md border border-default"
+              @keydown.enter.capture="closeSuggestionsForSubmit"
             >
-              <li
-                v-for="suggestion in suggestions"
-                :key="suggestion.placeRef"
-                role="presentation"
-              >
-                <button
-                  type="button"
-                  role="option"
-                  class="w-full px-3 py-2 text-left text-base hover:bg-elevated"
-                  @click="pickSuggestion(suggestion)"
+              <template #content-bottom>
+                <p
+                  v-if="attribution"
+                  class="px-3 py-2 text-sm text-muted"
                 >
-                  {{ suggestion.text }}
-                </button>
-              </li>
-            </ul>
-            <p
-              v-if="attribution"
-              class="mt-1 text-sm text-muted"
-            >
-              {{ attribution }}
-            </p>
+                  {{ attribution }}
+                </p>
+              </template>
+            </UInputMenu>
             <p
               v-if="suggestionsUnavailable"
               class="mt-1 text-sm text-muted"

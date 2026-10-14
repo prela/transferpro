@@ -215,6 +215,20 @@ test('the office picks a suggestion, a hand edit drops it, and a typed address s
     expect(corrected?.address).toBe('Obala 12, kat 2')
     expect(corrected?.place).toBeNull()
 
+    await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+    dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Ime').fill('Tipkano')
+    await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Adresa')
+    await dialog.getByLabel('Adresa').fill('Ulica 3')
+    await expect(dialog.getByRole('option', { name: 'Ulica 3, Dubrovnik' })).toBeVisible()
+    await dialog.getByLabel('Adresa').press('Enter')
+    await expect(dialog).toBeHidden()
+    const typedIn = await page.request.get('/api/locations')
+    const typedBody = await typedIn.json() as { locations: { name: string, address: string | null, place: unknown }[] }
+    const typedRow = typedBody.locations.find(location => location.name === 'Tipkano')
+    expect(typedRow?.address).toBe('Ulica 3')
+    expect(typedRow?.place).toBeNull()
+
     await page.request.post('/api/locations/suggestions-mode', { data: { unavailable: true } })
     await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
     dialog = page.getByRole('dialog')

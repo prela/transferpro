@@ -1,9 +1,10 @@
 import type { ClientKind, DriverUpcomingList, DriverUpcomingRide, LocationPlace } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { presentDriverRide } from '../../../../shared'
+import { loadAppEnv } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadDriverLinkedToMember } from '../../drivers'
-import { loadLocation, navigationLink } from '../../locations'
+import { loadLocation, mapsForApp } from '../../locations'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { loadUpcomingRidesForDriver } from './driver-rides'
@@ -98,6 +99,7 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
       const clients = new Map<string, ClientLine>()
       const plates = new Map<string, string>()
       const rides: DriverUpcomingRide[] = []
+      const maps = mapsForApp(loadAppEnv())
       for (const row of rows) {
         const from = await locationLine(transaction, row.startLocationId, locations)
         const to = await locationLine(transaction, row.endLocationId, locations)
@@ -117,8 +119,8 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
           clientKind: client.kind,
           fromAddress: from.address,
           toAddress: to.address,
-          fromMapsUrl: navigationLink(from),
-          toMapsUrl: navigationLink(to),
+          fromMapsUrl: maps.navigationLink(from),
+          toMapsUrl: maps.navigationLink(to),
           luggageCount: row.luggageCount,
           childSeatCount: row.childSeatCount,
           note: row.note,

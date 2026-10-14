@@ -6,4 +6,3 @@
 export { archiveLocation, createLocation, listLocations, LocationArchivedError, LocationNotFoundError, suggestAddresses, updateLocation } from './infrastructure/location-access'
 export { loadLocation, loadLocations } from './infrastructure/locations'
 export { FAKE_PLACE_REF, lastTestMapsQuery, mapsForApp, setTestMapsUnavailable } from './infrastructure/maps'
-export { navigationLink } from './infrastructure/navigation-link'
