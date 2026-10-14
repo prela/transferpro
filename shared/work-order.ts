@@ -182,12 +182,15 @@ export type CancelledRideResult = z.infer<typeof cancelledRideResultSchema>
  * A Transfer correction. `workOrders` is empty when nothing was mailed:
  * no Driver, a save that changed no mailed fact, or a price change while
  * payment is not cash. One entry when the current Driver was mailed
- * changed. The address is not on this object.
+ * changed. `relocationWarnings` names a tight gap. It is empty when the
+ * correction was not judged or the gap is enough. A true overlap is a 409
+ * and is not in this list. The address is not on this object.
  */
 export const correctedTransferResultSchema = z.object({
   transfer: transferSchema,
   ride: rideSchema,
   workOrders: z.array(workOrderNoticeSchema),
+  relocationWarnings: z.array(relocationWarningSchema),
 })
 
 export type CorrectedTransferResult = z.infer<typeof correctedTransferResultSchema>

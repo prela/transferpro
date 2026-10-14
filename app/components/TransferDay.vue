@@ -74,6 +74,8 @@ const pending = ref(false)
 const placePending = ref(false)
 const saved = ref(false)
 const corrected = ref(false)
+// A true overlap keeps the slideover. Confirm re-sends the same booking.
+const overlapOpen = ref(false)
 /**
  * Add and correct share one slideover. Null is closed.
  * `edit` patches the Transfer in `editingTransferId`.
@@ -1067,6 +1069,7 @@ function closeForm() {
   editingTransferId.value = null
   placeTarget.value = null
   formErrorKey.value = null
+  overlapOpen.value = false
   clearFieldErrors()
   sessionStorage.removeItem(DRAFT_KEY)
   ignoreDraft = false
@@ -1104,6 +1107,7 @@ function openAdd() {
 function openCorrect(ride: TransferDayRide) {
   clearFieldErrors()
   formErrorKey.value = null
+  overlapOpen.value = false
   editingTransferId.value = ride.transferId
   clientId.value = ride.clientId
   pickupWall.value = wallClockInTimeZone(props.timeZone, new Date(ride.pickupAt))
@@ -1152,7 +1156,7 @@ function bookingBody() {
   }
 }
 
-async function saveCorrection() {
+async function saveCorrection(confirm = false) {
   const transferId = editingTransferId.value
   saved.value = false
   corrected.value = false
@@ -1166,10 +1170,20 @@ async function saveCorrection() {
   try {
     const correction = correctedTransferResultSchema.parse(await $fetch(`/api/transfers/${transferId}`, {
       method: 'PATCH',
-      body: bookingBody(),
+      body: {
+        ...bookingBody(),
+        ...(confirm ? { confirm: true } : {}),
+      },
     }))
+    overlapOpen.value = false
     corrected.value = true
     notifyAuditChanged()
+    if (correction.relocationWarnings.length > 0) {
+      toast.add({
+        title: t('ride.tightGap'),
+        color: 'warning',
+      })
+    }
     // The notice names the Driver by id. The name is already on the day list.
     // A Ride with no Driver has no notice. The response has no address.
     for (const notice of correction.workOrders) {
@@ -1184,6 +1198,11 @@ async function saveCorrection() {
     await loadDay()
   }
   catch (error) {
+    if (errorCode(error) === 'ride_overlap') {
+      overlapOpen.value = true
+      return
+    }
+    overlapOpen.value = false
     formErrorKey.value = failureKey(error)
   }
   finally {
@@ -2231,5 +2250,10 @@ onMounted(() => {
         </UButton>
       </template>
     </USlideover>
+    <RideOverlapDialog
+      v-model:open="overlapOpen"
+      :pending="pending"
+      @confirm="saveCorrection(true)"
+    />
   </section>
 </template>

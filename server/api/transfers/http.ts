@@ -3,12 +3,14 @@ import { QueryParamError, TransferInputError } from '../../../shared'
 import { ClientNotFoundError } from '../../modules/clients'
 import { LocationArchivedError, LocationNotFoundError } from '../../modules/locations'
 import { TenantAccessError } from '../../modules/tenancy'
-import { TransferNotCorrectableError, TransferNotFoundError } from '../../modules/transfers'
+import { RideOverlapError, TransferNotCorrectableError, TransferNotFoundError } from '../../modules/transfers'
 
 /**
  * Turn a Transfer failure into an HTTP error. The message stays a fixed phrase
  * for the status. A guest name is not copied from the thrown error.
  * An archived Location is the same 409 the Locations module already uses.
+ * `ride_overlap` is a true overlap of the Driver or the Vehicle already
+ * on the Ride. Nothing was written.
  */
 export function transferHttpError(error: unknown): never {
   if (
@@ -21,7 +23,7 @@ export function transferHttpError(error: unknown): never {
   ) {
     throw createError({ statusCode: error.statusCode })
   }
-  if (error instanceof TransferNotCorrectableError) {
+  if (error instanceof TransferNotCorrectableError || error instanceof RideOverlapError) {
     throw createError({
       statusCode: error.statusCode,
       data: { code: error.code },

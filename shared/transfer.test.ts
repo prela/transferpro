@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCreateTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
+import { canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCorrectTransfer, parseCreateTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -42,6 +42,17 @@ it('accepts a Transfer, trims the guest name, and stores a blank flight and note
     note: null,
     tabla: '',
   })
+})
+
+it('accepts confirm on a correction and refuses it on a new Transfer', () => {
+  expect(parseCorrectTransfer({ ...body, confirm: true }, now)).toMatchObject({
+    confirm: true,
+    input: { guestName: guest, pickupAt: '2026-10-06T22:30:00.000Z' },
+  })
+  expect(parseCorrectTransfer(body, now).confirm).toBe(false)
+  expect(() => parseCorrectTransfer({ ...body, confirm: 'yes' }, now)).toThrow(TransferInputError)
+  expect(() => parseCorrectTransfer({ ...body, confirm: true, plate: 'ZG1' }, now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer({ ...body, confirm: true }, now)).toThrow(TransferInputError)
 })
 
 it('stores a blank tabla as empty text and trims a meet sign of at most 200 characters', () => {

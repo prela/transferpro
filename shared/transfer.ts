@@ -454,6 +454,23 @@ export function parseCreateTransfer(raw: unknown, now: Date = new Date()): Creat
 }
 
 /**
+ * PATCH /api/transfers/:id. The booking is the record body. `confirm` is
+ * optional and only means the office has already seen a true overlap.
+ * The record route does not accept it.
+ */
+const correctionEnvelopeSchema = z.object({
+  confirm: z.boolean().optional(),
+}).passthrough()
+
+export function parseCorrectTransfer(raw: unknown, now: Date = new Date()): { input: CreateTransfer, confirm: boolean } {
+  const envelope = correctionEnvelopeSchema.safeParse(raw)
+  if (!envelope.success)
+    throw new TransferInputError()
+  const { confirm, ...booking } = envelope.data
+  return { input: parseCreateTransfer(booking, now), confirm: confirm === true }
+}
+
+/**
  * GET /api/transfers `date`. Absent means the operational day that contains
  * now, in the Tenant time zone. Anything else that is not `YYYY-MM-DD` is
  * refused before a session opens.
