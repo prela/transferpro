@@ -100,7 +100,7 @@ onMounted(() => {
         >
           {{ t('officeHome.counts') }}
         </h2>
-        <dl class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <dl class="grid grid-cols-2 gap-3 tabular-nums sm:grid-cols-4">
           <div>
             <dt class="text-sm text-muted">
               {{ t('officeHome.countRides') }}

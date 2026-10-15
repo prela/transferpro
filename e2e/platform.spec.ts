@@ -35,12 +35,12 @@ test('superadmin lists, opens, and renames a firm in Croatian and English, light
   await expect(page.getByRole('status')).toContainText('Naziv je spremljen.')
   await expect(page.getByRole('heading', { level: 1, name: renamed })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Tamna tema', exact: true }).click()
+  await page.getByRole('button', { name: 'Tamna', exact: true }).click()
   await expect(page.locator('html')).toHaveClass(/dark/)
   await page.getByRole('button', { name: 'English', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Firms', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Light theme', exact: true }).click()
+  await page.getByRole('button', { name: 'Light', exact: true }).click()
   await expect(page.locator('html')).not.toHaveClass(/dark/)
 })
 

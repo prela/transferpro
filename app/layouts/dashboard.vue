@@ -84,6 +84,7 @@ function link(label: string, icon: string, to: string, exact = false): Navigatio
       id="shell"
       collapsible
       :toggle="{ size: 'xl' }"
+      :ui="{ root: 'bg-[var(--tp-frame)]' }"
     >
       <template #default="{ collapsed }">
         <UNavigationMenu
@@ -96,7 +97,7 @@ function link(label: string, icon: string, to: string, exact = false): Navigatio
       </template>
     </UDashboardSidebar>
 
-    <UDashboardPanel>
+    <UDashboardPanel :ui="{ body: 'bg-[var(--tp-working)]' }">
       <template #header>
         <UDashboardNavbar :toggle="{ size: 'xl' }">
           <template #leading>

@@ -39,17 +39,19 @@ function priceLabel(price: string): string {
     {{ t('ride.driver') }}: {{ ride.driverName ?? '—' }}
   </p>
   <p>
-    {{ t('ride.vehicle') }}: {{ ride.vehiclePlate ?? '—' }}
+    {{ t('ride.vehicle') }}: <span class="font-mono">{{ ride.vehiclePlate ?? '—' }}</span>
   </p>
   <!--
     Office Home shows the price and the method for cash, card, and invoice
     to agency. The Driver phone still hides card and invoice to agency.
   -->
-  <p>{{ priceLabel(ride.price) }}</p>
+  <p class="tabular-nums">
+    {{ priceLabel(ride.price) }}
+  </p>
   <p>{{ t(`transfers.payments.${ride.payment}`) }}</p>
   <!-- The flight number is text. A live flight link is not on this row. -->
   <p v-if="ride.flightNumber">
-    {{ t('transfers.fields.flightNumber') }}: {{ ride.flightNumber }}
+    {{ t('transfers.fields.flightNumber') }}: <span class="font-mono">{{ ride.flightNumber }}</span>
   </p>
   <!-- The actual landing, in the Tenant zone. The estimate below is a different fact. -->
   <p v-if="ride.landingAt">

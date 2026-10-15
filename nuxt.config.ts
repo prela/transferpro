@@ -47,8 +47,8 @@ export default defineNuxtConfig({
       headers: { 'cache-control': 'no-cache' },
     },
   },
-  // System until the user picks light or dark. The stored string is the same
-  // `transferpro-theme` key as before, applied before paint (ADR-0016).
+  // Follow the device until the user picks light, dark, or system again.
+  // The stored string is `transferpro-theme`, applied before paint (ADR-0040).
   colorMode: {
     preference: 'system',
     fallback: 'light',

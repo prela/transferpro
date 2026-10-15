@@ -27,8 +27,10 @@
     "en": "English"
   },
   "theme": {
-    "useLight": "Svijetla tema",
-    "useDark": "Tamna tema"
+    "group": "Tema",
+    "light": "Svijetla",
+    "dark": "Tamna",
+    "system": "Prema uređaju"
   },
   "invite": {
     "title": "Pozovi člana",

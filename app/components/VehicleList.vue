@@ -347,6 +347,9 @@ onMounted(() => {
         <template #registration-cell="{ row }">
           {{ formatDay(row.original.registrationExpiresOn) }}
         </template>
+        <template #registrationPlate-cell="{ row }">
+          <span class="font-mono">{{ row.original.registrationPlate }}</span>
+        </template>
         <template #technical-cell="{ row }">
           {{ formatDay(row.original.technicalInspectionExpiresOn) }}
         </template>
@@ -429,7 +432,7 @@ onMounted(() => {
               name="registrationPlate"
               type="text"
               autocomplete="off"
-              class="w-full"
+              class="w-full font-mono"
             />
             <template #error="{ error }">
               <span

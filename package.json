@@ -48,6 +48,7 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^9.5.1",
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.4",
     "@types/pg": "^8.23.1",

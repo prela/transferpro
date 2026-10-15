@@ -85,7 +85,7 @@ test('signed-in home and an office page do not show locale or theme buttons', as
   await expect(page.getByRole('button', { name: 'English', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'English', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Sign in' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Dark theme', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dark', exact: true })).toBeVisible()
 })
 
 test('an admin, a dispatcher, and a driver save locale and theme on profile and the next screen uses that choice', async ({ page }) => {
@@ -161,13 +161,21 @@ test('the theme control changes light and dark for this browser only', async ({ 
   }
   page.on('request', onRequest)
   try {
-    await page.getByRole('button', { name: 'Tamna tema', exact: true }).click()
+    await page.getByRole('button', { name: 'Tamna', exact: true }).click()
     await expect(page.locator('html')).toHaveClass(/dark/)
     await expect(page.evaluate(() => localStorage.getItem('transferpro-theme'))).resolves.toBe('dark')
 
-    await page.getByRole('button', { name: 'Svijetla tema', exact: true }).click()
+    await page.getByRole('button', { name: 'Svijetla', exact: true }).click()
     await expect(page.locator('html')).not.toHaveClass(/dark/)
     await expect(page.evaluate(() => localStorage.getItem('transferpro-theme'))).resolves.toBe('light')
+
+    // After a fixed choice, follow-the-device tracks the phone again.
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.getByRole('button', { name: 'Prema uređaju', exact: true }).click()
+    await expect(page.evaluate(() => localStorage.getItem('transferpro-theme'))).resolves.toBe('system')
+    await expect(page.locator('html')).toHaveClass(/dark/)
+    await page.emulateMedia({ colorScheme: 'light' })
+    await expect(page.locator('html')).not.toHaveClass(/dark/)
     expect(writes).toEqual([])
   }
   finally {
@@ -297,7 +305,7 @@ async function focusByTab(page: Page, tab: ReturnType<Page['getByRole']>) {
 
 /** Locale and theme buttons, in either locale. Signed-in office screens have none. */
 async function expectNoLocaleTheme(page: Page) {
-  for (const name of ['English', 'Hrvatski', 'Tamna tema', 'Svijetla tema', 'Dark theme', 'Light theme'])
+  for (const name of ['English', 'Hrvatski', 'Tamna', 'Svijetla', 'Prema uređaju', 'Dark', 'Light', 'Follow the device'])
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0)
 }
 
