@@ -2,7 +2,7 @@ import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
+import { openRideMenu, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
 const waitingGuest = 'Nika Phone'
@@ -139,15 +139,15 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   const waitingRow = page.getByRole('row', { name: waitingGuest })
   const plainRow = page.getByRole('row', { name: plainGuest })
   const openRow = page.getByRole('row', { name: openGuest })
-  const acceptName = `Zabilježi prihvaćanje telefonom: ${waitingGuest}`
+  const acceptName = `Potvrdi telefonom: ${waitingGuest}`
 
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   await expect(waitingRow.getByRole('button', { name: acceptName })).toBeVisible()
-  await expect(waitingRow.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
-  await expect(plainRow.getByRole('button', { name: /Zabilježi prihvaćanje telefonom/ })).toHaveCount(0)
-  await expect(plainRow.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
-  await expect(openRow.getByRole('button', { name: /Zabilježi prihvaćanje telefonom/ })).toHaveCount(0)
-  await expect(openRow.getByRole('cell', { name: 'Nedodijeljeno', exact: true })).toBeVisible()
+  await expect(waitingRow.getByRole('cell', { name: 'Čeka prihvat', exact: true })).toBeVisible()
+  await expect(plainRow.getByRole('button', { name: /Potvrdi telefonom/ })).toHaveCount(0)
+  await expect(plainRow.getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
+  await expect(openRow.getByRole('button', { name: /Potvrdi telefonom/ })).toHaveCount(0)
+  await expect(openRow.getByRole('cell', { name: /^Nedodijeljeno/ })).toBeVisible()
   await expect(openRow.getByRole('button', { name: `Dodijeli: ${openGuest}` })).toBeVisible()
 
   await waitingRow.getByRole('button', { name: acceptName }).click()
@@ -161,7 +161,7 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   await expect(dialog).toBeHidden()
   expect(acceptPosts).toBe(0)
   expect(mail).toEqual([])
-  await expect(waitingRow.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
+  await expect(waitingRow.getByRole('cell', { name: 'Čeka prihvat', exact: true })).toBeVisible()
   expect(await dayRide(page, waiting.day, waitingGuest)).toMatchObject({ state: 'assigned', mustAccept: true })
 
   await switchTheme(page, 'dark')
@@ -174,10 +174,10 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   expect(acceptPosts).toBe(0)
 
   await switchLocale(page, 'en')
-  const englishName = `Record acceptance by phone: ${waitingGuest}`
+  const englishName = `Confirm by phone: ${waitingGuest}`
   await expect(waitingRow.getByRole('button', { name: englishName })).toBeVisible()
-  await expect(plainRow.getByRole('button', { name: /Record acceptance by phone/ })).toHaveCount(0)
-  await expect(openRow.getByRole('button', { name: /Record acceptance by phone/ })).toHaveCount(0)
+  await expect(plainRow.getByRole('button', { name: /Confirm by phone/ })).toHaveCount(0)
+  await expect(openRow.getByRole('button', { name: /Confirm by phone/ })).toHaveCount(0)
   await waitingRow.getByRole('button', { name: englishName }).click()
   await expect(dialog).toContainText('Record acceptance by phone')
   await expect(dialog).toContainText('This records acceptance confirmed with the driver by phone.')
@@ -197,30 +197,30 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   expect(mail).toEqual([])
 
   await expect(dialog).toBeHidden()
-  await expect(waitingRow.getByRole('cell', { name: 'Accepted', exact: true })).toBeVisible()
+  await expect(waitingRow.getByRole('cell', { name: /^Accepted/ })).toBeVisible()
   await expect(waitingRow.getByRole('button', { name: englishName })).toHaveCount(0)
-  await expect(waitingRow.getByRole('cell', { name: mustDriver, exact: true })).toBeVisible()
-  await expect(waitingRow.getByRole('cell', { name: mustPlate, exact: true })).toBeVisible()
-  await expect(plainRow.getByRole('cell', { name: 'Assigned', exact: true })).toBeVisible()
+  await expect(waitingRow).toContainText(mustDriver)
+  await expect(waitingRow).toContainText(mustPlate)
+  await expect(plainRow.getByRole('cell', { name: /^Assigned/ })).toBeVisible()
   expect(await dayRide(page, waiting.day, waitingGuest)).toMatchObject({ state: 'accepted', mustAccept: true })
   expect(await dayRide(page, plain.day, plainGuest)).toMatchObject({ state: 'assigned', mustAccept: false })
   expect(await dayRide(page, open.day, openGuest)).toMatchObject({ state: 'unassigned', mustAccept: null })
 
   await switchTheme(page, 'light')
   await expect(page.locator('html')).not.toHaveClass(/dark/)
-  await expect(waitingRow.getByRole('cell', { name: 'Accepted', exact: true })).toBeVisible()
+  await expect(waitingRow.getByRole('cell', { name: /^Accepted/ })).toBeVisible()
 
   await switchLocale(page, 'hr')
-  await expect(waitingRow.getByRole('cell', { name: 'Prihvaćeno', exact: true })).toBeVisible()
+  await expect(waitingRow.getByRole('cell', { name: /^Prihvaćeno/ })).toBeVisible()
   await expect(waitingRow.getByRole('button', { name: acceptName })).toHaveCount(0)
-  await expect(plainRow.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
-  await expect(openRow.getByRole('cell', { name: 'Nedodijeljeno', exact: true })).toBeVisible()
+  await expect(plainRow.getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
+  await expect(openRow.getByRole('cell', { name: /^Nedodijeljeno/ })).toBeVisible()
 
   await page.reload()
-  await expect(waitingRow.getByRole('cell', { name: 'Prihvaćeno', exact: true })).toBeVisible()
+  await expect(waitingRow.getByRole('cell', { name: /^Prihvaćeno/ })).toBeVisible()
   await expect(waitingRow.getByRole('button', { name: acceptName })).toHaveCount(0)
-  await expect(plainRow.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
-  await expect(openRow.getByRole('cell', { name: 'Nedodijeljeno', exact: true })).toBeVisible()
+  await expect(plainRow.getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
+  await expect(openRow.getByRole('cell', { name: /^Nedodijeljeno/ })).toBeVisible()
   expect(acceptPosts).toBe(1)
   expect(mail).toEqual([])
 })
@@ -260,10 +260,10 @@ test('the office marks a ride done, and the audit log names that person', async 
   const waitingRow = page.getByRole('row', { name: 'Nika Ceka' })
   const plainRow = page.getByRole('row', { name: 'Lara Gotova' })
   const openRow = page.getByRole('row', { name: 'Ema Open' })
-  const doneName = 'Označi obavljenom: Lara Gotova'
+  const doneName = 'Obavljeno: Lara Gotova'
 
   await expect(waitingRow.getByRole('button', { name: doneName })).toHaveCount(0)
-  await expect(openRow.getByRole('button', { name: /Označi obavljenom/ })).toHaveCount(0)
+  await expect(openRow.getByRole('button', { name: /Obavljeno/ })).toHaveCount(0)
   await expect(plainRow.getByRole('button', { name: doneName })).toBeVisible()
   await plainRow.getByRole('button', { name: doneName }).click()
   const dialog = page.getByRole('dialog')
@@ -276,7 +276,7 @@ test('the office marks a ride done, and the audit log names that person', async 
   await switchTheme(page, 'dark')
   await switchLocale(page, 'en')
   await expect(page.locator('html')).toHaveClass(/dark/)
-  const englishName = 'Mark done: Lara Gotova'
+  const englishName = 'Done: Lara Gotova'
   await plainRow.getByRole('button', { name: englishName }).click()
   await expect(dialog).toContainText('This closes the ride. No further change is possible.')
   const doneResponse = page.waitForResponse(response =>
@@ -331,12 +331,12 @@ test('the office cancels a ride, the row stays, and the audit log names that per
   const openRow = page.getByRole('row', { name: 'Ema Slobodna' })
   const heldRow = page.getByRole('row', { name: 'Luka Drzi' })
   const finishedRow = page.getByRole('row', { name: 'Mia Gotova' })
-  const cancelName = 'Otkaži vožnju: Luka Drzi'
 
-  await expect(openRow.getByRole('button', { name: 'Otkaži vožnju: Ema Slobodna' })).toBeVisible()
-  await expect(heldRow.getByRole('button', { name: cancelName })).toBeVisible()
+  await expect(openRow.getByRole('button', { name: 'Radnje: Ema Slobodna' })).toBeVisible()
+  await openRideMenu(page, 'Luka Drzi')
+  await expect(page.getByRole('menuitem', { name: 'Otkaži vožnju', exact: true })).toBeVisible()
   await expect(finishedRow.getByRole('button', { name: /Otkaži vožnju/ })).toHaveCount(0)
-  await heldRow.getByRole('button', { name: cancelName }).click()
+  await page.getByRole('menuitem', { name: 'Otkaži vožnju', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('Ovo otkazuje vožnju. Ostaje u evidenciji, a daljnja promjena nije moguća.')
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
@@ -348,7 +348,8 @@ test('the office cancels a ride, the row stays, and the audit log names that per
   await switchLocale(page, 'en')
   await expect(page.locator('html')).toHaveClass(/dark/)
   const englishName = 'Cancel ride: Luka Drzi'
-  await heldRow.getByRole('button', { name: englishName }).click()
+  await openRideMenu(page, 'Luka Drzi')
+  await page.getByRole('menuitem', { name: 'Cancel ride', exact: true }).click()
   await expect(dialog).toContainText('This calls the ride off. It stays on record, and no further change is possible.')
   const cancelResponse = page.waitForResponse(response =>
     response.url().includes(`/api/rides/${held.rideId}/cancel`) && response.request().method() === 'POST',
@@ -409,12 +410,11 @@ test('the office marks a no-show before the wait, and the audit log names that p
   const waitingRow = page.getByRole('row', { name: 'Nika Ceka' })
   const plainRow = page.getByRole('row', { name: 'Lara Nedo' })
   const openRow = page.getByRole('row', { name: 'Ema Open' })
-  const noShowName = 'Označi nedolazak: Lara Nedo'
 
   await expect(waitingRow.getByRole('button', { name: /Označi nedolazak/ })).toHaveCount(0)
   await expect(openRow.getByRole('button', { name: /Označi nedolazak/ })).toHaveCount(0)
-  await expect(plainRow.getByRole('button', { name: noShowName })).toBeVisible()
-  await plainRow.getByRole('button', { name: noShowName }).click()
+  await openRideMenu(page, 'Lara Nedo')
+  await page.getByRole('menuitem', { name: 'Označi nedolazak', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('Naknada se ne bilježi.')
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
@@ -426,7 +426,8 @@ test('the office marks a no-show before the wait, and the audit log names that p
   await switchLocale(page, 'en')
   await expect(page.locator('html')).toHaveClass(/dark/)
   const englishName = 'Mark no-show: Lara Nedo'
-  await plainRow.getByRole('button', { name: englishName }).click()
+  await openRideMenu(page, 'Lara Nedo')
+  await page.getByRole('menuitem', { name: 'Mark no-show', exact: true }).click()
   await expect(dialog).toContainText('No fee is recorded')
   const marked = page.waitForResponse(response =>
     response.url().includes(`/api/rides/${plain.rideId}/no-show`) && response.request().method() === 'POST',

@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedTenant } from './fixtures/seed'
-import { signIn, switchLocale } from './fixtures/ui'
+import { openRideMenu, signIn, switchLocale } from './fixtures/ui'
 
 const phone = '+385911112269'
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
@@ -101,28 +101,32 @@ test('cancel reports sent and no email, in Croatian, with an English smoke', asy
 
   await page.getByRole('link', { name: 'Transferi' }).click()
 
-  await row(page, 'Iva Quiet').getByRole('button', { name: 'Otkaži vožnju: Iva Quiet' }).click()
+  await openRideMenu(page, 'Iva Quiet')
+  await page.getByRole('menuitem', { name: 'Otkaži vožnju', exact: true }).click()
   await page.getByRole('dialog', { name: 'Otkaži vožnju' }).getByRole('button', { name: 'Otkaži vožnju', exact: true }).click()
   await expect(notice(page, 'Vožnja otkazana')).toHaveCount(1)
   await expect(notice(page, 'Vožnja otkazana')).not.toContainText('Radni nalog')
   await expect(row(page, 'Iva Quiet').getByRole('cell', { name: 'Otkazano', exact: true })).toBeVisible()
 
   const sentToAna = 'Radni nalog je poslan vozaču Ana Sent.'
-  await row(page, 'Iva Sent').getByRole('button', { name: 'Otkaži vožnju: Iva Sent' }).click()
+  await openRideMenu(page, 'Iva Sent')
+  await page.getByRole('menuitem', { name: 'Otkaži vožnju', exact: true }).click()
   await page.getByRole('dialog', { name: 'Otkaži vožnju' }).getByRole('button', { name: 'Otkaži vožnju', exact: true }).click()
   await expect(notice(page, 'Vožnja otkazana', sentToAna)).toHaveCount(1)
   await expect(page.getByText(sentAddress)).toHaveCount(0)
   await expect(row(page, 'Iva Sent').getByRole('cell', { name: 'Otkazano', exact: true })).toBeVisible()
 
   const blankAna = 'Vozač Ana Blank nema e-poštu. Radni nalog nije poslan.'
-  await row(page, 'Iva Blank').getByRole('button', { name: 'Otkaži vožnju: Iva Blank' }).click()
+  await openRideMenu(page, 'Iva Blank')
+  await page.getByRole('menuitem', { name: 'Otkaži vožnju', exact: true }).click()
   await page.getByRole('dialog', { name: 'Otkaži vožnju' }).getByRole('button', { name: 'Otkaži vožnju', exact: true }).click()
   await expect(notice(page, 'Vožnja otkazana', blankAna)).toHaveCount(1)
   await expect(page.getByText(sentAddress)).toHaveCount(0)
 
   await switchLocale(page, 'en')
   await page.getByRole('link', { name: 'Transfers' }).click()
-  await row(page, 'Iva English').getByRole('button', { name: 'Cancel ride: Iva English' }).click()
+  await openRideMenu(page, 'Iva English')
+  await page.getByRole('menuitem', { name: 'Cancel ride', exact: true }).click()
   await page.getByRole('dialog', { name: 'Cancel the ride' }).getByRole('button', { name: 'Cancel ride', exact: true }).click()
   await expect(notice(page, 'Ride cancelled', 'Work order sent to Ana Sent.')).toHaveCount(1)
   await expect(page.getByText(sentAddress)).toHaveCount(0)

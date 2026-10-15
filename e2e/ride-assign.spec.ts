@@ -96,16 +96,16 @@ test('an admin assigns a ride and the audit log names the actor', async ({ page 
   await recordTodayRide(page, guest)
 
   await openAssign(page, guest)
-  await expect(page.getByRole('cell', { name: 'Nedodijeljeno', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: /^Nedodijeljeno/ })).toBeVisible()
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), driverName)
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), plate)
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
   await expect(page.getByRole('listitem').filter({ hasText: 'Dodijeljeno' })).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
-  await expect(page.getByRole('cell', { name: driverName, exact: true })).toBeVisible()
-  await expect(page.getByRole('cell', { name: plate, exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
+  await expect(page.getByRole('row', { name: guest })).toContainText(driverName)
+  await expect(page.getByRole('row', { name: guest })).toContainText(plate)
   await expect(assignButton(page, guest)).toHaveCount(0)
 
   await openAudit(page)
@@ -143,10 +143,10 @@ test('the roster pre-fill picks the rostered vehicle, and an override is saved',
 
   await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
   await expect(page.getByRole('listitem').filter({ hasText: 'Dodijeljeno' })).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
-  await expect(page.getByRole('cell', { name: driverName, exact: true })).toBeVisible()
-  await expect(page.getByRole('cell', { name: otherPlate, exact: true })).toBeVisible()
-  await expect(page.getByRole('cell', { name: rosterPlate, exact: true })).toHaveCount(0)
+  await expect(page.getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
+  await expect(page.getByRole('row', { name: guest })).toContainText(driverName)
+  await expect(page.getByRole('row', { name: guest })).toContainText(otherPlate)
+  await expect(page.getByRole('row', { name: guest })).not.toContainText(rosterPlate)
 })
 
 test('switching from a rostered driver to one without a roster clears the vehicle and the hint', async ({ page }) => {
@@ -381,7 +381,7 @@ test('an assigned archived vehicle keeps its plate with a badge, and the picker 
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), livePlate)
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
-  await expect(page.getByRole('cell', { name: livePlate, exact: true })).toBeVisible()
+  await expect(page.getByRole('row', { name: assignedGuest })).toContainText(livePlate)
 
   const archived = await page.request.post(`/api/vehicles/${liveVehicleId}/archive`)
   expect(archived.ok()).toBeTruthy()
@@ -437,9 +437,8 @@ test('the assign form uses English copy', async ({ page }) => {
   await page.getByRole('link', { name: 'Transferi' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Transferi' })).toBeVisible()
   await switchLocale(page, 'en')
-  await expect(page.getByRole('columnheader', { name: 'Driver' })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: 'Vehicle' })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: 'Actions' })).toBeAttached()
+  await expect(page.getByRole('columnheader', { name: 'Driver · vehicle' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'State' })).toBeVisible()
   const assign = page.getByRole('row', { name: guest }).getByRole('button', { name: `Assign: ${guest}` })
   await expect(assign).toHaveAccessibleName(`Assign: ${guest}`)
   await assign.click()
@@ -448,7 +447,7 @@ test('the assign form uses English copy', async ({ page }) => {
   await expect(page.getByRole('combobox', { name: 'Vehicle' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Assign ride', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'Unassigned', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: /^Unassigned/ })).toBeVisible()
 })
 
 test('the assign form follows the dark theme', async ({ page }) => {

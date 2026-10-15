@@ -926,16 +926,16 @@ test('a driver declines an assigned ride and the board names them', async ({ pag
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.getByRole('link', { name: 'Transferi', exact: true }).click()
   await page.locator('#transfer-day').fill(day)
-  await expect(page.getByRole('alert').filter({ hasText: 'Nika Odbij je odbio vožnju za Gost Odbij.' })).toBeVisible()
+  await expect(page.getByRole('row', { name: 'Gost Odbij' })).toContainText('Odbio: Nika Odbij')
   // The alert sits above the day list. The returned Ride stays on the board.
-  await expect(page.getByRole('cell', { name: 'Gost Odbij', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: /^Gost Odbij/ })).toBeVisible()
 
   await switchLocale(page, 'en')
   await switchTheme(page, 'light')
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   await page.locator('#transfer-day').fill(day)
-  await expect(page.getByRole('alert').filter({ hasText: 'Nika Odbij declined the ride for Gost Odbij.' })).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'Gost Odbij', exact: true })).toBeVisible()
+  await expect(page.getByRole('row', { name: 'Gost Odbij' })).toContainText('Declined: Nika Odbij')
+  await expect(page.getByRole('cell', { name: /^Gost Odbij/ })).toBeVisible()
 })
 
 test('a driver with no linked Driver sees an empty list', async ({ page }) => {

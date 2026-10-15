@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import type { DisplayLocale, Driver, Location, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, DisplayLocale, Driver, Location, TransferDayRide, Vehicle } from '../../shared'
 
-defineProps<{
+const props = defineProps<{
   rides: TransferDayRide[]
   loading: boolean
   loadError: boolean
   locations: Location[]
   drivers: Driver[]
   vehicles: Vehicle[]
+  clients: Client[]
+  declinesFor: (rideId: string) => { driverName: string }[]
   timeZone: string
   locale: DisplayLocale
+  day: string
+  nowMs: number
+  filteredEmpty: boolean
 }>()
 
 const emit = defineEmits<{
@@ -23,153 +28,172 @@ const emit = defineEmits<{
   reassign: [ride: TransferDayRide]
   clear: [ride: TransferDayRide]
   correct: [ride: TransferDayRide]
+  add: []
 }>()
 
 const { t } = useI18n()
 const dayListRegion = ref<HTMLElement | null>(null)
+// False until mount, so the server and the first client render agree.
+// The phone list replaces the table after that, and button ids stay unique.
+const phoneLayout = ref(false)
 
-// Reserved ride states are labeled. This screen does not set them.
+onMounted(() => {
+  const query = window.matchMedia('(max-width: 1023px)')
+  const apply = () => {
+    phoneLayout.value = query.matches
+  }
+  apply()
+  query.addEventListener('change', apply)
+  onScopeDispose(() => query.removeEventListener('change', apply))
+})
+
+const clip = { class: { td: 'max-w-0 overflow-hidden text-ellipsis whitespace-nowrap', th: 'max-w-0' } }
 const columns = computed(() => [
-  { id: 'pickup', header: t('transfers.pickupAt') },
-  { id: 'landing', header: t('transfers.fields.landingAt') },
-  { id: 'expectedArrival', header: t('transfers.fields.expectedArrival') },
-  { accessorKey: 'guestName' as const, header: t('transfers.guest') },
-  { id: 'tabla', header: t('transfers.tabla') },
-  { id: 'start', header: t('transfers.start') },
-  { id: 'end', header: t('transfers.end') },
-  { id: 'state', header: t('transfers.status') },
-  { id: 'driver', header: t('ride.driver') },
-  { id: 'vehicle', header: t('ride.vehicle') },
-  { id: 'actions', header: t('ride.actions') },
+  { id: 'time', header: t('transfers.columns.time'), meta: { class: { td: 'whitespace-nowrap w-14', th: 'w-14' } } },
+  { id: 'flight', header: t('transfers.columns.flight'), meta: clip },
+  { id: 'guest', header: t('transfers.columns.guest'), meta: clip },
+  { id: 'route', header: t('transfers.columns.route'), meta: clip },
+  { id: 'client', header: t('transfers.columns.client'), meta: clip },
+  { id: 'crew', header: t('transfers.columns.crew'), meta: clip },
+  { id: 'state', header: t('transfers.columns.state'), meta: clip },
+  { id: 'price', header: t('transfers.columns.price'), meta: { class: { td: 'whitespace-nowrap w-28', th: 'w-28' } } },
+  { id: 'actions', header: '', meta: { class: { td: 'whitespace-nowrap w-48', th: 'w-48' } } },
 ])
+
+const showSkeleton = computed(() => props.loading && props.rides.length === 0 && !props.loadError)
+const showEmptyDay = computed(() => !props.loading && !props.loadError && props.rides.length === 0)
 
 function focusList() {
   dayListRegion.value?.focus()
 }
 
 defineExpose({ focusList })
+
+const shared = computed(() => ({
+  locations: props.locations,
+  drivers: props.drivers,
+  vehicles: props.vehicles,
+  clients: props.clients,
+  timeZone: props.timeZone,
+  locale: props.locale,
+  day: props.day,
+  nowMs: props.nowMs,
+}))
 </script>
 
 <template>
-  <p
-    v-if="loading"
+  <div
+    v-if="showSkeleton"
+    class="flex flex-col gap-2"
     role="status"
+    :aria-label="t('transfers.loading')"
   >
-    {{ t('transfers.loading') }}
+    <USkeleton
+      v-for="row in 6"
+      :key="row"
+      class="h-9 w-full"
+    />
+  </div>
+  <p v-else-if="filteredEmpty">
+    {{ t('transfers.filterEmpty') }}
   </p>
-  <p v-else-if="!loadError && rides.length === 0">
-    {{ t('transfers.empty') }}
-  </p>
+  <div
+    v-else-if="showEmptyDay"
+    class="flex flex-col items-start gap-3"
+  >
+    <p>{{ t('transfers.empty') }}</p>
+    <UButton
+      type="button"
+      size="sm"
+      icon="i-lucide-plus"
+      class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11"
+      @click="emit('add')"
+    >
+      {{ t('shell.newTransfer') }}
+    </UButton>
+  </div>
   <div
     v-else-if="!loadError"
     ref="dayListRegion"
-    class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    class="focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
     role="region"
     :aria-label="t('transfers.title')"
     tabindex="0"
   >
     <UTable
+      v-if="!phoneLayout"
       :data="rides"
       :columns="columns"
-      class="whitespace-nowrap"
+      :ui="{
+        root: 'relative overflow-x-hidden',
+        base: 'w-full table-fixed',
+        th: 'px-2 py-1 text-xs font-semibold text-start',
+        td: '!px-2 !py-1 text-sm leading-5 text-default align-middle',
+        tr: 'h-9',
+      }"
     >
-      <template #pickup-cell="{ row }">
+      <template #time-cell="{ row }">
         <TransferRideRow
-          cell="pickup"
+          cell="time"
           :ride="row.original"
-          :locations="locations"
-          :drivers="drivers"
-          :vehicles="vehicles"
-          :time-zone="timeZone"
-          :locale="locale"
+          v-bind="shared"
+          :declines="declinesFor(row.original.rideId)"
         />
       </template>
-      <template #landing-cell="{ row }">
+      <template #flight-cell="{ row }">
         <TransferRideRow
-          cell="landing"
+          cell="flight"
           :ride="row.original"
-          :locations="locations"
-          :drivers="drivers"
-          :vehicles="vehicles"
-          :time-zone="timeZone"
-          :locale="locale"
+          v-bind="shared"
+          :declines="declinesFor(row.original.rideId)"
         />
       </template>
-      <template #expectedArrival-cell="{ row }">
+      <template #guest-cell="{ row }">
         <TransferRideRow
-          cell="expectedArrival"
+          cell="guest"
           :ride="row.original"
-          :locations="locations"
-          :drivers="drivers"
-          :vehicles="vehicles"
-          :time-zone="timeZone"
-          :locale="locale"
+          v-bind="shared"
+          :declines="declinesFor(row.original.rideId)"
         />
       </template>
-      <template #tabla-cell="{ row }">
+      <template #route-cell="{ row }">
         <TransferRideRow
-          cell="tabla"
+          cell="route"
           :ride="row.original"
-          :locations="locations"
-          :drivers="drivers"
-          :vehicles="vehicles"
-          :time-zone="timeZone"
-          :locale="locale"
+          v-bind="shared"
+          :declines="declinesFor(row.original.rideId)"
         />
       </template>
-      <template #start-cell="{ row }">
+      <template #client-cell="{ row }">
         <TransferRideRow
-          cell="start"
+          cell="client"
           :ride="row.original"
-          :locations="locations"
-          :drivers="drivers"
-          :vehicles="vehicles"
-          :time-zone="timeZone"
-          :locale="locale"
+          v-bind="shared"
+          :declines="declinesFor(row.original.rideId)"
         />
       </template>
-      <template #end-cell="{ row }">
+      <template #crew-cell="{ row }">
         <TransferRideRow
-          cell="end"
+          cell="crew"
           :ride="row.original"
-          :locations="locations"
-          :drivers="drivers"
-          :vehicles="vehicles"
-          :time-zone="timeZone"
-          :locale="locale"
+          v-bind="shared"
+          :declines="declinesFor(row.original.rideId)"
         />
       </template>
       <template #state-cell="{ row }">
         <TransferRideRow
           cell="state"
           :ride="row.original"
-          :locations="locations"
-          :drivers="drivers"
-          :vehicles="vehicles"
-          :time-zone="timeZone"
-          :locale="locale"
+          v-bind="shared"
+          :declines="declinesFor(row.original.rideId)"
         />
       </template>
-      <template #driver-cell="{ row }">
+      <template #price-cell="{ row }">
         <TransferRideRow
-          cell="driver"
+          cell="price"
           :ride="row.original"
-          :locations="locations"
-          :drivers="drivers"
-          :vehicles="vehicles"
-          :time-zone="timeZone"
-          :locale="locale"
-        />
-      </template>
-      <template #vehicle-cell="{ row }">
-        <TransferRideRow
-          cell="vehicle"
-          :ride="row.original"
-          :locations="locations"
-          :drivers="drivers"
-          :vehicles="vehicles"
-          :time-zone="timeZone"
-          :locale="locale"
+          v-bind="shared"
+          :declines="declinesFor(row.original.rideId)"
         />
       </template>
       <template #actions-header>
@@ -179,11 +203,8 @@ defineExpose({ focusList })
         <TransferRideRow
           cell="actions"
           :ride="row.original"
-          :locations="locations"
-          :drivers="drivers"
-          :vehicles="vehicles"
-          :time-zone="timeZone"
-          :locale="locale"
+          v-bind="shared"
+          :declines="declinesFor(row.original.rideId)"
           @assign="emit('assign', $event)"
           @landing="emit('landing', $event)"
           @accept-by-phone="emit('acceptByPhone', $event)"
@@ -197,5 +218,31 @@ defineExpose({ focusList })
         />
       </template>
     </UTable>
+    <ul
+      v-else
+      class="flex flex-col gap-2"
+    >
+      <li
+        v-for="ride in rides"
+        :key="ride.rideId"
+      >
+        <TransferRideRow
+          cell="phone"
+          :ride="ride"
+          v-bind="shared"
+          :declines="declinesFor(ride.rideId)"
+          @assign="emit('assign', $event)"
+          @landing="emit('landing', $event)"
+          @accept-by-phone="emit('acceptByPhone', $event)"
+          @cancel-ride="emit('cancelRide', $event)"
+          @mark-done="emit('markDone', $event)"
+          @mark-no-show="emit('markNoShow', $event)"
+          @change-vehicle="emit('changeVehicle', $event)"
+          @reassign="emit('reassign', $event)"
+          @clear="emit('clear', $event)"
+          @correct="emit('correct', $event)"
+        />
+      </li>
+    </ul>
   </div>
 </template>

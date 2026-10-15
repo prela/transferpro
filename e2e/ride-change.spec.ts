@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedTenant } from './fixtures/seed'
-import { chooseOption, openAudit, signIn, switchLocale, useTheme } from './fixtures/ui'
+import { chooseOption, openAudit, openRideMenu, signIn, switchLocale, useTheme } from './fixtures/ui'
 
 const phone = '+385911112244'
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
@@ -82,31 +82,34 @@ test('an admin changes the vehicle, reassigns, and clears, and the audit log nam
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), firstDriver)
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), firstPlate)
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
-  await expect(row(page, guest).getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
+  await expect(row(page, guest).getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
 
-  await row(page, guest).getByRole('button', { name: `Promijeni vozilo: ${guest}` }).click()
+  await openRideMenu(page, guest)
+  await page.getByRole('menuitem', { name: 'Promijeni vozilo', exact: true }).click()
   await expect(page.getByRole('heading', { level: 2, name: 'Promjena vozila' })).toBeVisible()
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), secondPlate)
   await page.getByRole('button', { name: 'Promijeni vozilo', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Promjena vozila' })).toHaveCount(0)
-  await expect(row(page, guest).getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
-  await expect(row(page, guest).getByRole('cell', { name: firstDriver, exact: true })).toBeVisible()
-  await expect(row(page, guest).getByRole('cell', { name: secondPlate, exact: true })).toBeVisible()
+  await expect(row(page, guest).getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
+  await expect(row(page, guest)).toContainText(firstDriver)
+  await expect(row(page, guest)).toContainText(secondPlate)
 
-  await row(page, guest).getByRole('button', { name: `Prebaci: ${guest}` }).click()
+  await openRideMenu(page, guest)
+  await page.getByRole('menuitem', { name: 'Prebaci', exact: true }).click()
   await expect(page.getByRole('heading', { level: 2, name: 'Prebacivanje vožnje' })).toBeVisible()
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), secondDriver)
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), firstPlate)
   await page.getByRole('button', { name: 'Prebaci vožnju', exact: true }).click()
-  await expect(row(page, guest).getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
-  await expect(row(page, guest).getByRole('cell', { name: secondDriver, exact: true })).toBeVisible()
-  await expect(row(page, guest).getByRole('cell', { name: firstPlate, exact: true })).toBeVisible()
+  await expect(row(page, guest).getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
+  await expect(row(page, guest)).toContainText(secondDriver)
+  await expect(row(page, guest)).toContainText(firstPlate)
 
-  await row(page, guest).getByRole('button', { name: `Ukloni dodjelu: ${guest}` }).click()
+  await openRideMenu(page, guest)
+  await page.getByRole('menuitem', { name: 'Ukloni dodjelu', exact: true }).click()
   const clearDialog = page.getByRole('dialog', { name: 'Uklanjanje dodjele' })
   await expect(clearDialog).toBeVisible()
   await clearDialog.getByRole('button', { name: 'Ukloni dodjelu', exact: true }).click()
-  await expect(row(page, guest).getByRole('cell', { name: 'Nedodijeljeno', exact: true })).toBeVisible()
+  await expect(row(page, guest).getByRole('cell', { name: /^Nedodijeljeno/ })).toBeVisible()
   await expect(row(page, guest).getByRole('button', { name: `Dodijeli: ${guest}` })).toBeVisible()
 
   await openAudit(page)
@@ -136,13 +139,14 @@ test('the change, reassign, and clear controls use English copy in the dark them
   await chooseOption(page, page.getByRole('combobox', { name: 'Driver' }), driverName)
   await chooseOption(page, page.getByRole('combobox', { name: 'Vehicle' }), plate)
   await page.getByRole('button', { name: 'Assign ride', exact: true }).click()
-  await expect(row(page, guest).getByRole('cell', { name: 'Assigned', exact: true })).toBeVisible()
+  await expect(row(page, guest).getByRole('cell', { name: /^Assigned/ })).toBeVisible()
   await expect(page.locator('html')).toHaveClass(/dark/)
 
-  await expect(row(page, guest).getByRole('button', { name: `Change vehicle: ${guest}` })).toBeVisible()
-  await expect(row(page, guest).getByRole('button', { name: `Reassign: ${guest}` })).toBeVisible()
-  await expect(row(page, guest).getByRole('button', { name: `Clear: ${guest}` })).toBeVisible()
-  await row(page, guest).getByRole('button', { name: `Change vehicle: ${guest}` }).click()
+  await openRideMenu(page, guest)
+  await expect(page.getByRole('menuitem', { name: 'Change vehicle', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Reassign', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Clear', exact: true })).toBeVisible()
+  await page.getByRole('menuitem', { name: 'Change vehicle', exact: true }).click()
   await expect(page.getByRole('heading', { level: 2, name: 'Change the vehicle' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible()
 })

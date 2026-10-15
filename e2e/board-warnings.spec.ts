@@ -1,6 +1,6 @@
 import type { APIResponse } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { instantFromWallClock } from '../shared/date'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
@@ -114,11 +114,9 @@ test('the day board shows an expired document, a roster mismatch, and an overlap
 
   await page.goto('/transfers')
   async function showDay(): Promise<void> {
-    const today = operationalDateInTimeZone(timeZone, new Date())
-    // The server paints today's operational day before Vue hydrates. Filling
-    // earlier sticks in the DOM, then hydration writes that day back.
     await hydrated(page)
-    await expect(page.locator('#transfer-day')).toHaveValue(today)
+    if (await page.locator('#transfer-day').inputValue() === day)
+      return
     const listed = page.waitForResponse(response =>
       response.url().includes('/api/transfers')
       && response.url().includes(`date=${day}`)
@@ -132,23 +130,23 @@ test('the day board shows an expired document, a roster mismatch, and an overlap
 
   const warned = page.getByRole('row').filter({ hasText: 'Warned Ivo' })
   const clean = page.getByRole('row').filter({ hasText: 'Clean Tea' })
-  await expect(warned).toContainText('Istekli dokumenti: Vozačka dozvola, Osiguranje')
+  await expect(warned).toContainText('Istekao dokument')
   await expect(warned).toContainText('Nesklad rasporeda')
-  await expect(warned).toContainText('Preklapanje s drugom vožnjom')
+  await expect(warned).toContainText('Preklapanje')
   await expect(warned).not.toContainText('Warned Iva')
-  await expect(clean).not.toContainText('Istekli dokumenti')
+  await expect(clean).not.toContainText('Istekao dokument')
   await expect(clean).not.toContainText('Nesklad rasporeda')
   await expect(clean).not.toContainText('Preklapanje')
 
-  await page.getByRole('button', { name: 'Osvježi popis', exact: true }).click()
+  await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
   await expect(warned).toContainText('Nesklad rasporeda')
 
   await switchLocale(page, 'en')
   await showDay()
   const warnedEn = page.getByRole('row').filter({ hasText: 'Warned Ivo' })
-  await expect(warnedEn).toContainText('Expired documents: Driving licence, Insurance')
+  await expect(warnedEn).toContainText('Expired document')
   await expect(warnedEn).toContainText('Roster mismatch')
-  await expect(warnedEn).toContainText('Overlaps another ride')
+  await expect(warnedEn).toContainText('Overlap')
   await expect(warnedEn).not.toContainText('Warned Iva')
   await switchTheme(page, 'dark')
   await showDay()
@@ -158,11 +156,11 @@ test('the day board shows an expired document, a roster mismatch, and an overlap
 
   await page.setViewportSize({ width: 390, height: 844 })
   await showDay()
-  const narrow = page.getByRole('row').filter({ hasText: 'Warned Ivo' })
-  const overlap = narrow.getByText('Overlaps another ride')
+  const narrow = page.getByRole('listitem').filter({ hasText: 'Warned Ivo' })
+  const overlap = narrow.getByText('Overlap')
   await overlap.scrollIntoViewIfNeeded()
   await expect(overlap).toBeInViewport()
-  await expect(narrow).toContainText('Expired documents: Driving licence, Insurance')
+  await expect(narrow).toContainText('Expired document')
   await expect(narrow).toContainText('Roster mismatch')
-  await expect(page.getByRole('row').filter({ hasText: 'Clean Tea' })).not.toContainText('Roster mismatch')
+  await expect(page.getByRole('listitem').filter({ hasText: 'Clean Tea' })).not.toContainText('Roster mismatch')
 })

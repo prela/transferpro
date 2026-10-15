@@ -245,21 +245,9 @@ const shownTime = computed(() =>
             :key="ride.rideId"
           >
             <article class="rounded-lg border border-default bg-default p-4 text-base">
-              <h3 class="text-lg font-semibold">
-                {{ ride.guestName }}
-              </h3>
-              <!--
-                The name is the alarm. Color is not the signal (ADR-0023).
-                The mark sends no mail.
-              -->
-              <p
-                v-if="ride.unassignedAlarm"
-                class="mt-1"
-              >
-                {{ t('officeHome.unassignedAlarm') }}
-              </p>
-              <OfficeHomeRideFacts
-                :ride="ride"
+              <TransferRideRow
+                cell="home"
+                :summary="ride"
                 :time-zone="timeZone"
                 :locale="locale"
               />
@@ -290,11 +278,9 @@ const shownTime = computed(() =>
             :key="ride.rideId"
           >
             <article class="rounded-lg border border-default bg-default p-4 text-base">
-              <h3 class="text-lg font-semibold">
-                {{ ride.guestName }}
-              </h3>
-              <OfficeHomeRideFacts
-                :ride="ride"
+              <TransferRideRow
+                cell="home"
+                :summary="ride"
                 :time-zone="timeZone"
                 :locale="locale"
               />
@@ -325,31 +311,9 @@ const shownTime = computed(() =>
             :key="ride.rideId"
           >
             <article class="rounded-lg border border-default bg-default p-4 text-base">
-              <h3 class="text-lg font-semibold">
-                {{ ride.guestName }}
-              </h3>
-              <!--
-                The name is the mark. Color is not the signal (ADR-0027).
-                The mark sends no mail and changes no Ride command.
-              -->
-              <p
-                v-if="ride.unclosedMark"
-                class="mt-1"
-              >
-                {{ t('officeHome.unclosedMark') }}
-              </p>
-              <!--
-                A stored landing starts its own clock. The unclosed mark
-                stays on the scheduled pickup (ADR-0027, ADR-0030).
-              -->
-              <p
-                v-if="ride.landingAlarm"
-                class="mt-1"
-              >
-                {{ t('officeHome.landingAlarm') }}
-              </p>
-              <OfficeHomeRideFacts
-                :ride="ride"
+              <TransferRideRow
+                cell="home"
+                :summary="ride"
                 :time-zone="timeZone"
                 :locale="locale"
               />

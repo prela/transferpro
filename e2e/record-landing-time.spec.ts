@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { openAudit, openUserMenu, signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'
+import { openAudit, openRideMenu, openUserMenu, signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'
 
 const landingWall = '2026-01-15T10:30'
 const landingHr = '15. 01. 2026. 10:30'
@@ -63,7 +63,8 @@ test('the office and the Driver record a landing time in both languages and both
   const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
 
   await page.goto('/transfers')
-  await page.getByRole('button', { name: `Zabilježi slijetanje: ${guest}` }).click()
+  await openRideMenu(page, guest)
+  await page.getByRole('menuitem', { name: 'Zabilježi slijetanje', exact: true }).click()
   await page.locator('#landing-time').fill(landingWall)
   await page.getByRole('button', { name: 'Spremi vrijeme slijetanja', exact: true }).click()
   await expect(page.getByText(landingHr)).toBeVisible()
@@ -95,12 +96,13 @@ test('the office and the Driver record a landing time in both languages and both
   await switchTheme(page, 'dark')
   await expect(page.getByText(driverHr)).toBeVisible()
   await switchLocale(page, 'en')
-  await expect(page.getByRole('columnheader', { name: 'Landing time' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Flight' })).toBeVisible()
   await expect(page.getByText(driverEn)).toBeVisible()
   await switchTheme(page, 'light')
   await expect(page.getByText(driverEn)).toBeVisible()
 
-  await page.getByRole('button', { name: `Record landing: ${guest}` }).click()
+  await openRideMenu(page, guest)
+  await page.getByRole('menuitem', { name: 'Record landing', exact: true }).click()
   await page.getByRole('button', { name: 'Clear landing time', exact: true }).click()
   await expect(page.getByText(driverEn)).toHaveCount(0)
 })

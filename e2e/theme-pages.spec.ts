@@ -78,7 +78,7 @@ test.describe('@phone', () => {
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       await openOfficeLink(page, 'Transferi')
       await expect(page.getByRole('heading', { level: 1, name: 'Transferi' })).toBeVisible()
-      await expect(page.getByLabel('Dan')).toBeVisible()
+      await expect(page.getByRole('textbox', { name: 'Dan', exact: true })).toBeVisible()
       await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
       await expect(page.getByRole('dialog').getByLabel('Ime gosta')).toBeVisible()
 

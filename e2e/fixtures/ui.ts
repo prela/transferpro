@@ -181,6 +181,12 @@ export async function expectSettingsRedirect(page: Page, path: '/settings/tenant
   }
 }
 
+/** Opens the row's overflow menu. The contextual action stays a button. */
+export async function openRideMenu(page: Page, guest: string) {
+  const name = guest.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  await page.getByRole('button', { name: new RegExp(`^(Radnje|Actions): ${name}$`) }).click()
+}
+
 /** The audit log. Opening it reads the rows already written. */
 export async function openAudit(page: Page) {
   await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizija', exact: true }).click()

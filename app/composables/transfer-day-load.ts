@@ -1,5 +1,5 @@
-import type { Client, DeclineAlert, Driver, Location, TransferDayRide, Vehicle } from '../../shared'
-import { clientListSchema, driverListSchema, isCalendarDate, locationListSchema, operationalDateInTimeZone, transferDaySchema, vehicleListSchema } from '../../shared'
+import type { Client, DeclineAlert, Driver, LiveRefreshOutcome, Location, TransferDayRide, Vehicle } from '../../shared'
+import { claimDayLoad, claimFullLoad, clientListSchema, driverListSchema, isCalendarDate, locationListSchema, operationalDateInTimeZone, transferDaySchema, vehicleListSchema } from '../../shared'
 
 /**
  * Day list and the catalogs the row and the forms read.
@@ -17,7 +17,10 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
   const loading = ref(true)
   const loadError = ref(false)
 
-  let loadTicket = 0
+  // Shared with claimDayLoad. An unreadable day must not move this.
+  let loadCounter = 0
+  // The first successful read may show a skeleton. A later one keeps the rows.
+  let opened = false
 
   async function fetchCatalogs() {
     // Each $fetch is a Promise.all item. Awaiting inside the array would run them one after another.
@@ -47,36 +50,54 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
   }
 
   async function fetchTransferDay(date: string) {
-    return transferDaySchema.parse(await $fetch('/api/transfers', { query: { date } }))
+    // A refresh must not reuse the previous GET. The browser may otherwise
+    // answer from its heuristic cache and the failure path never runs.
+    return transferDaySchema.parse(await $fetch('/api/transfers', {
+      query: { date },
+      cache: 'no-store',
+    }))
   }
 
-  async function loadDay(ticket = ++loadTicket) {
-    if (!isCalendarDate(day.value))
-      return
-    loading.value = true
-    loadError.value = false
+  async function loadDay(): Promise<LiveRefreshOutcome> {
+    // Claim only after the date is readable. The default-argument increment
+    // used to retire an in-flight loadAll when the day was blank (issue #252).
+    const claimed = claimDayLoad(loadCounter, day.value)
+    if (!claimed)
+      return 'stale'
+    loadCounter = claimed.counter
+    const ticket = claimed.ticket
+    if (!opened)
+      loading.value = true
     try {
       const listed = await fetchTransferDay(day.value)
-      if (ticket !== loadTicket)
-        return
+      if (ticket !== loadCounter)
+        return 'stale'
       rides.value = listed.rides
       declineAlerts.value = listed.declineAlerts
+      loadError.value = false
+      opened = true
+      return 'ok'
     }
     catch {
-      if (ticket !== loadTicket)
-        return
-      loadError.value = true
+      if (ticket !== loadCounter)
+        return 'stale'
+      // A failed refresh keeps the rows. Only the first read may show the error.
+      if (!opened)
+        loadError.value = true
+      return 'fail'
     }
     finally {
-      if (ticket === loadTicket)
+      if (ticket === loadCounter)
         loading.value = false
     }
   }
 
-  async function loadAll() {
-    const ticket = ++loadTicket
-    loading.value = true
-    loadError.value = false
+  async function loadAll(): Promise<LiveRefreshOutcome> {
+    const claimed = claimFullLoad(loadCounter)
+    loadCounter = claimed.counter
+    const ticket = claimed.ticket
+    if (!opened)
+      loading.value = true
     try {
       const dayPromise = isCalendarDate(day.value)
         ? fetchTransferDay(day.value)
@@ -85,20 +106,25 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
       // A day change during this load must not drop the catalogs. The newer
       // day read already replaced the rows.
       applyCatalogs(catalogs)
-      if (ticket !== loadTicket)
-        return
+      if (ticket !== loadCounter)
+        return 'stale'
       if (listed) {
         rides.value = listed.rides
         declineAlerts.value = listed.declineAlerts
       }
+      loadError.value = false
+      opened = true
+      return 'ok'
     }
     catch {
-      if (ticket !== loadTicket)
-        return
-      loadError.value = true
+      if (ticket !== loadCounter)
+        return 'stale'
+      if (!opened)
+        loadError.value = true
+      return 'fail'
     }
     finally {
-      if (ticket === loadTicket)
+      if (ticket === loadCounter)
         loading.value = false
     }
   }
