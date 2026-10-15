@@ -119,7 +119,7 @@ export async function signOut(page: Page) {
   if (!(await onPage.isVisible()) && !(await inMenu.isVisible()))
     await page.locator('button[aria-haspopup="menu"]').click()
   await onPage.or(inMenu).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
 }
 
 export type InviteRole = 'Administrator' | 'Dispečer' | 'Vozač'

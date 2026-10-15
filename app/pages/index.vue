@@ -83,10 +83,72 @@ function httpStatus(error: unknown): number | undefined {
 
 <template>
   <!--
-    Office staff fill the dashboard panel. Sign-in and Driver Home stay
-    at most 28rem (ADR-0016).
+    Signed out: the shared auth frame (ADR-0038). Office staff fill the
+    dashboard panel. Driver Home stays at most 28rem (ADR-0016).
   -->
+  <AuthFrame
+    v-if="!loadError && !session"
+    @choose="chooseLocale"
+  >
+    <form @submit.prevent="signIn">
+      <UFormField
+        :label="t('signIn.email')"
+        name="email"
+        class="mb-4"
+        size="xl"
+      >
+        <UInput
+          id="email"
+          v-model="email"
+          name="email"
+          type="email"
+          autocomplete="email"
+          required
+          class="w-full"
+        />
+      </UFormField>
+      <UFormField
+        :label="t('signIn.password')"
+        name="password"
+        class="mb-4"
+        size="xl"
+      >
+        <UInput
+          id="password"
+          v-model="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          class="w-full"
+        />
+      </UFormField>
+      <UButton
+        type="submit"
+        size="xl"
+        block
+        :disabled="pending"
+      >
+        {{ pending ? t('signIn.submitting') : t('signIn.submit') }}
+      </UButton>
+    </form>
+    <!-- The failure stays under the button. Typed values are kept. -->
+    <!--
+      The error variant's text is red on a red wash, under 4.5:1 in light.
+      Body text at full opacity keeps the alert and passes the contrast rule.
+    -->
+    <UAlert
+      v-if="formError"
+      color="error"
+      variant="subtle"
+      role="alert"
+      class="mt-4"
+      :description="t(formError)"
+      :ui="{ description: 'text-sm text-default opacity-100' }"
+    />
+  </AuthFrame>
   <main
+    v-else
     class="box-border w-full p-4"
     :class="isOfficeMember(session?.role) ? undefined : 'mx-auto max-w-md'"
   >
@@ -158,64 +220,6 @@ function httpStatus(error: unknown): number | undefined {
         class="mt-4"
         :description="t(shellError)"
       />
-    </section>
-
-    <section v-else>
-      <h1 class="mb-4 text-2xl font-semibold">
-        {{ t('signIn.title') }}
-      </h1>
-      <UAlert
-        v-if="formError"
-        color="error"
-        variant="subtle"
-        role="alert"
-        class="mb-4"
-        :description="t(formError)"
-      />
-      <form @submit.prevent="signIn">
-        <UFormField
-          :label="t('signIn.email')"
-          name="email"
-          class="mb-4"
-          size="xl"
-        >
-          <UInput
-            id="email"
-            v-model="email"
-            name="email"
-            type="email"
-            autocomplete="email"
-            required
-            class="w-full"
-          />
-        </UFormField>
-        <UFormField
-          :label="t('signIn.password')"
-          name="password"
-          class="mb-4"
-          size="xl"
-        >
-          <UInput
-            id="password"
-            v-model="password"
-            name="password"
-            type="password"
-            autocomplete="current-password"
-            required
-            class="w-full"
-          />
-        </UFormField>
-        <UButton
-          type="submit"
-          size="xl"
-          :disabled="pending"
-        >
-          {{ pending ? t('signIn.submitting') : t('signIn.submit') }}
-        </UButton>
-      </form>
-      <div class="mt-4 flex flex-wrap gap-2">
-        <LocaleThemeActions @choose="chooseLocale" />
-      </div>
     </section>
   </main>
 </template>

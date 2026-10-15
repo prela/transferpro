@@ -163,10 +163,10 @@ function httpStatus(error: unknown): number | undefined {
 </script>
 
 <template>
-  <main class="mx-auto box-border w-full max-w-md p-4">
-    <h1 class="mb-4 text-2xl font-semibold">
+  <AuthFrame @choose="chooseLocale">
+    <h2 class="mb-4 text-lg font-semibold text-highlighted">
       {{ t('acceptInvite.title') }}
-    </h1>
+    </h2>
     <p
       v-if="preview === null"
       role="status"
@@ -179,41 +179,37 @@ function httpStatus(error: unknown): number | undefined {
       variant="subtle"
       role="alert"
       :description="t('acceptInvite.invalid')"
+      :ui="{ description: 'text-sm text-default opacity-100' }"
     />
     <template v-else-if="preview === 'wrong-account'">
-      <UAlert
-        v-if="formError"
-        color="error"
-        variant="subtle"
-        role="alert"
-        class="mb-4"
-        :description="formErrorText"
-      />
       <UAlert
         color="error"
         variant="subtle"
         role="alert"
         class="mb-4"
         :description="t('acceptInvite.wrongAccount', { account: signedInAs })"
+        :ui="{ description: 'text-sm text-default opacity-100' }"
       />
       <UButton
         type="button"
         size="xl"
+        block
         :disabled="pending"
         @click="signOut"
       >
         {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
       </UButton>
-    </template>
-    <template v-else>
       <UAlert
         v-if="formError"
         color="error"
         variant="subtle"
         role="alert"
-        class="mb-4"
+        class="mt-4"
         :description="formErrorText"
+        :ui="{ description: 'text-sm text-default opacity-100' }"
       />
+    </template>
+    <template v-else>
       <p
         v-if="preview === 'sign-in'"
         class="mb-4"
@@ -259,6 +255,7 @@ function httpStatus(error: unknown): number | undefined {
         <UButton
           type="submit"
           size="xl"
+          block
           :disabled="pending"
         >
           {{ pending ? t('signIn.submitting') : t('acceptInvite.signInSubmit') }}
@@ -309,14 +306,22 @@ function httpStatus(error: unknown): number | undefined {
         <UButton
           type="submit"
           size="xl"
+          block
           :disabled="pending"
         >
           {{ pending ? t('acceptInvite.submitting') : t('acceptInvite.submit') }}
         </UButton>
       </form>
+      <!-- Same card as sign-in: the failure sits under the button. -->
+      <UAlert
+        v-if="formError"
+        color="error"
+        variant="subtle"
+        role="alert"
+        class="mt-4"
+        :description="formErrorText"
+        :ui="{ description: 'text-sm text-default opacity-100' }"
+      />
     </template>
-    <div class="mt-4 flex flex-wrap gap-2">
-      <LocaleThemeActions @choose="chooseLocale" />
-    </div>
-  </main>
+  </AuthFrame>
 </template>

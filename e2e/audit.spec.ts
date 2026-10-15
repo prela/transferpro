@@ -81,7 +81,7 @@ test('a driver who opens /audit lands on home without requesting the audit log',
 test('a signed-out visit to /audit shows the sign-in form', async ({ page }) => {
   await page.goto('/audit')
   await expect(page).toHaveURL('/')
-  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Prijavi se', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toHaveCount(0)
 })

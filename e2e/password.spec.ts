@@ -17,8 +17,20 @@ test('the set-password form shows the rules and names the one that failed', asyn
   await expect(page.getByText(`Lozinka mora imati najmanje ${body.minPasswordLength} i najviše ${body.maxPasswordLength} znakova.`)).toBeVisible()
   await page.getByLabel('Ime').fill('Kratka Lozinka')
   await page.getByLabel('Lozinka').fill('a'.repeat(body.minPasswordLength - 1))
-  await page.getByRole('button', { name: 'Otvori račun', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText(`Lozinka mora imati najmanje ${body.minPasswordLength} znakova.`)
+  const submit = page.getByRole('button', { name: 'Otvori račun', exact: true })
+  const full = await submit.evaluate((button) => {
+    const form = button.closest('form')
+    if (!form)
+      return false
+    return Math.abs(button.getBoundingClientRect().width - form.getBoundingClientRect().width) < 2
+  })
+  expect(full).toBe(true)
+  await submit.click()
+  const alert = page.getByRole('alert')
+  await expect(alert).toContainText(`Lozinka mora imati najmanje ${body.minPasswordLength} znakova.`)
+  const submitBox = await submit.boundingBox()
+  const alertBox = await alert.boundingBox()
+  expect(alertBox!.y).toBeGreaterThan((submitBox?.y ?? 0) + (submitBox?.height ?? 0) - 1)
 
   await page.getByLabel('Lozinka').fill('a'.repeat(body.maxPasswordLength + 1))
   await page.getByRole('button', { name: 'Otvori račun', exact: true }).click()

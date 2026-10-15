@@ -90,9 +90,11 @@ test('signed-in home keeps locale and theme in the profile menu, not as page but
 
   await signOut(page)
   await hydrated(page)
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'English', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'English', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Sign in' })).toBeVisible()
+  await expect(page.getByText('Dispatch system for transfers', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Dark', exact: true })).toBeVisible()
 })
 

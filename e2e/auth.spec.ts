@@ -14,7 +14,7 @@ test('admin signs in and signs out', async ({ page }) => {
   const cookies = await page.context().cookies()
   expect(cookies.filter(cookie => cookie.name.includes('session_token') && cookie.value !== '')).toEqual([])
   await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
 })
 
 test('sign-out from an office page clears the tenant, returns to Croatian, and keeps the theme', async ({ page }) => {
@@ -37,7 +37,7 @@ test('the next sign-in loads the member locale from the session shell', async ({
   await switchLocale(page, 'en')
   await openUserMenu(page, tenant.name)
   await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toHaveCount(0)
   await page.getByLabel('E-pošta').fill(tenant.adminEmail)
   await page.getByLabel('Lozinka').fill(tenant.password)
@@ -66,8 +66,13 @@ test('wrong password shows an error', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('E-pošta').fill(tenant.adminEmail)
   await page.getByLabel('Lozinka').fill('not-the-password')
-  await page.getByRole('button', { name: 'Prijavi se', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('Prijava nije uspjela. Provjerite e-poštu i lozinku pa pokušajte ponovno.')
+  const submit = page.getByRole('button', { name: 'Prijavi se', exact: true })
+  await submit.click()
+  const alert = page.getByRole('alert')
+  await expect(alert).toContainText('Prijava nije uspjela. Provjerite e-poštu i lozinku pa pokušajte ponovno.')
+  const submitBox = await submit.boundingBox()
+  const alertBox = await alert.boundingBox()
+  expect(alertBox!.y).toBeGreaterThan((submitBox?.y ?? 0) + (submitBox?.height ?? 0) - 1)
 })
 
 test('a user with no membership sees the no-access message', async ({ page }) => {
