@@ -5,7 +5,8 @@ Dispatch for a transfer company: take a booking, assign the Ride, and record how
 ## Language
 
 **Tenant**:
-A transfer company using Transferpro. The company and its Better Auth organization are the same Tenant.
+A transfer company using Transferpro. The company and its Better Auth organization are the same Tenant. In Croatian it is Tvrtka, and in the English UI it is Company.
+_Avoid_: organization, firm
 
 **Transfer**:
 The booking. It names the Client, the pickup time, the start and end Locations, the passenger count, the guest name, an optional flight number, a price in EUR, the payment (`cash`, `card`, or `invoice_to_agency`), whether the pickup is an airport, the luggage count, the child-seat count, an optional note, and an optional tabla. The tabla is the words on the meet sign for this pickup. It is text on the Transfer, not on the Client. A blank is stored as empty text. There is no image. Creating a Transfer creates one Ride in `unassigned`. The airport mark is stored as entered and is not inferred from the flight number. `invoice_to_agency` is a recorded choice. The Driver sees the price and the payment method only for cash; card and invoice to agency hide both (ADR-0009, extended by ADR-0020). That phone rule is not on the office screen. The Transfer is the order: there is no separate Order above it. It has a Channel and an ExternalRef, and may carry a Client reference.
@@ -27,6 +28,18 @@ A Ride with no Driver and no Vehicle.
 **Unassigned alarm**:
 An unfinished unassigned Ride during the four hours before its pickup. It is not an acceptance deadline.
 _Avoid_: acceptance deadline
+
+**Unassigned past pickup**:
+An unfinished unassigned Ride once its pickup is in the past. It is urgent and sends nothing.
+_Avoid_: missed pickup, no-show, overdue
+
+**Urgent**:
+The tier of what asks the office to act now: an unassigned past pickup, an unassigned alarm, a decline alert, a landing alarm, or an unclosed mark. It cannot be acknowledged or snoozed; it ends when its cause ends. In Croatian it is Hitno.
+_Avoid_: notification, critical
+
+**Warning**:
+The tier of an overlap warning, a roster mismatch, or an expired-document warning. It does not block and asks for no action now. In Croatian it is Upozorenje.
+_Avoid_: alarm, urgent
 
 **Assigned**:
 A Ride with both a Driver and a Vehicle. When it requires acceptance, it is waiting on acceptance, including after an earlier acceptance was cleared. Whether it requires acceptance is copied from the Driver at assignment and stays on the Ride. The Vehicle on a new assignment starts as that Driver's roster Vehicle for the calendar day, and the office can still choose a different Vehicle for that one Ride. A roster change does not change a Ride already assigned. An assigned Ride occupies its Driver and its Vehicle for the transfer duration, including when it is in progress. A true overlap blocks assign, a vehicle change, a reassignment, and a Transfer correction that moves when the Ride starts or ends, until the office confirms. Clear does not.
@@ -143,7 +156,7 @@ The platform owner. A user with a row in `platform.superadmin` and no Tenant mem
 _Avoid_: admin, owner
 
 **Partner**:
-A subcontractor company a Ride is handed to. It has no login. A company that both books Transfers and takes Rides handed to it is a Client and a Partner, two records with no link between them. In Croatian it is Podizvođač; the Croatian word partner is not used.
+A subcontractor company a Ride is handed to. It has no login. A company that both books Transfers and takes Rides handed to it is a Client and a Partner, two records with no link between them. In Croatian it is Podizvođač; the Croatian word partner is not used. In the English UI it is Subcontractor.
 _Avoid_: agency, hotel, Client
 
 **Client**:

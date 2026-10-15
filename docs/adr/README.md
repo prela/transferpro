@@ -31,23 +31,26 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0013 | Invitation email and the accept path | accepted; partially superseded by ADR-0037 |
 | ADR-0014 | Append-only audit log | accepted; partially superseded by ADR-0015 and ADR-0019 |
 | ADR-0015 | Settings changes in the audit log | accepted; partially superseded by ADR-0025 |
-| ADR-0016 | UI: Nuxt UI + Tailwind v4 | proposed |
+| ADR-0016 | UI: Nuxt UI + Tailwind v4 | accepted; partially superseded by ADR-0038 and ADR-0040 |
 | ADR-0017 | A Client keeps its name off the audit log | accepted |
 | ADR-0018 | Module boundaries | accepted; partially superseded by ADR-0033 |
 | ADR-0019 | Superadmin | accepted |
 | ADR-0020 | Invoice to agency is a recorded payment | accepted; partially superseded by ADR-0033 |
 | ADR-0021 | Operational day | accepted; partially superseded by ADR-0025 |
 | ADR-0022 | In progress is not a Ride state | accepted |
-| ADR-0023 | Unassigned alarm | accepted |
-| ADR-0024 | One office home read | accepted |
+| ADR-0023 | Unassigned alarm | accepted; partially superseded by ADR-0039 |
+| ADR-0024 | One office home read | accepted; partially superseded by ADR-0039 |
 | ADR-0025 | Operational-day start | accepted |
 | ADR-0026 | Driver work-order email | accepted |
-| ADR-0027 | Unclosed mark | accepted |
+| ADR-0027 | Unclosed mark | accepted; partially superseded by ADR-0039 |
 | ADR-0028 | Live flight | accepted |
 | ADR-0029 | Ride occupation | accepted |
-| ADR-0030 | Landing alarm | accepted |
+| ADR-0030 | Landing alarm | accepted; partially superseded by ADR-0039 |
 | ADR-0031 | Maps for Locations behind a port | accepted |
 | ADR-0032 | Board warnings are derived on read | accepted |
 | ADR-0033 | v1 scope: price list, invoices through a provider, Client card, and Partner record | accepted |
 | ADR-0036 | The Transfer is the order, and who owns the v1 modules | accepted |
 | ADR-0037 | Console mailer on preview | accepted |
+| ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted |
+| ADR-0039 | Urgent and warning tiers, and live refresh | accepted |
+| ADR-0040 | Theme tokens and contrast rules | accepted |
