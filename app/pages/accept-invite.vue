@@ -209,6 +209,15 @@ function httpStatus(error: unknown): number | undefined {
       </UButton>
     </template>
     <template v-else>
+      <UAlert
+        v-if="formError"
+        color="error"
+        variant="subtle"
+        role="alert"
+        class="mb-4"
+        :description="formErrorText"
+        :ui="{ description: 'text-sm text-default opacity-100' }"
+      />
       <p
         v-if="preview === 'sign-in'"
         class="mb-4"
@@ -254,7 +263,6 @@ function httpStatus(error: unknown): number | undefined {
         <UButton
           type="submit"
           size="xl"
-          block
           :disabled="pending"
         >
           {{ pending ? t('signIn.submitting') : t('acceptInvite.signInSubmit') }}
@@ -305,22 +313,11 @@ function httpStatus(error: unknown): number | undefined {
         <UButton
           type="submit"
           size="xl"
-          block
           :disabled="pending"
         >
           {{ pending ? t('acceptInvite.submitting') : t('acceptInvite.submit') }}
         </UButton>
       </form>
-      <!-- Same place as sign-in: the failure sits under the button. -->
-      <UAlert
-        v-if="formError"
-        color="error"
-        variant="subtle"
-        role="alert"
-        class="mt-4"
-        :description="formErrorText"
-        :ui="{ description: 'text-sm text-default opacity-100' }"
-      />
     </template>
   </AuthFrame>
 </template>
