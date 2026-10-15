@@ -17,20 +17,26 @@ const loading = ref(true)
 const loadError = ref(false)
 // A slower reload must not replace the rows from a newer one.
 let loadTicket = 0
+// A later read keeps the rows. The first read may show the loading copy.
+let attempted = false
 
 async function loadDocuments() {
   const ticket = ++loadTicket
-  loading.value = true
-  loadError.value = false
+  const first = !attempted
+  attempted = true
+  if (first)
+    loading.value = true
   try {
     const next = expiringDocumentListSchema.parse(await $fetch('/api/expiring-documents')).documents
     if (ticket !== loadTicket)
       return
     documents.value = next
+    loadError.value = false
   }
   catch {
     if (ticket !== loadTicket)
       return
+    // A failed refresh keeps the rows. The first read has none to keep.
     loadError.value = true
   }
   finally {
@@ -74,23 +80,25 @@ onMounted(loadDocuments)
       color="error"
       variant="subtle"
       role="alert"
+      class="mb-4"
       :description="t('expiringDocuments.loadFailed')"
     />
     <p
-      v-else-if="loading"
+      v-if="loading && documents.length === 0"
       role="status"
     >
       {{ t('expiringDocuments.loading') }}
     </p>
-    <p v-else-if="documents.length === 0">
+    <p v-else-if="!loading && documents.length === 0 && !loadError">
       {{ t('expiringDocuments.empty') }}
     </p>
     <!--
       One list for every role. The server decides who is on it: the office
-      sees the Tenant, a driver sees only their own licences.
+      sees the Tenant, a driver sees only their own licences. A refresh
+      keeps these rows on screen (ADR-0039).
     -->
     <ul
-      v-else
+      v-else-if="documents.length > 0"
       class="flex flex-col gap-4"
       :aria-label="t('expiringDocuments.title')"
     >

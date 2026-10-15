@@ -34,9 +34,10 @@ test('a signed-out visitor gets the sign-in form and no office lists', async ({ 
   await expect(page.getByLabel('E-pošta')).toBeVisible()
 })
 
-test('office home loads both reads, stays still, and a keyboard refresh loads both again', async ({ page }) => {
+test('office home loads both reads, refreshes after 60 seconds while visible, and a keyboard refresh loads both again', async ({ page }) => {
   const tenant = await seedTenant('home-refresh')
   const reads = watchReads(page)
+  await installOfficeClock(page)
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
@@ -52,21 +53,32 @@ test('office home loads both reads, stays still, and a keyboard refresh loads bo
   await expect(page.getByRole('button', { name: 'Svijetla', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Tamna', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Prema uređaju', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('switch', { name: 'Automatsko osvježavanje' })).toBeChecked()
+  await expect(page.getByText(/Ažurirano u \d{2}:\d{2}/)).toBeVisible()
   await expect.poll(() => reads.office).toBeGreaterThan(0)
   await expect.poll(() => reads.documents).toBeGreaterThan(0)
+  // Pause after the page is up, then arm a fresh minute so 59 s cannot be early.
+  await pauseOfficeClock(page)
+  await rearmAutomaticRefresh(page)
 
   const officeAfterOpen = reads.office
   const documentsAfterOpen = reads.documents
-  // Long enough that a short poll would have fired. Home has no timer.
-  await page.waitForTimeout(1500)
+  await page.clock.fastForward(59_000)
   expect(reads.office).toBe(officeAfterOpen)
   expect(reads.documents).toBe(documentsAfterOpen)
 
-  const refresh = page.getByRole('button', { name: 'Osvježi početnu', exact: true })
-  await refresh.focus()
-  await page.keyboard.press('Enter')
+  await page.clock.fastForward(1_000)
   await expect.poll(() => reads.office).toBeGreaterThan(officeAfterOpen)
   await expect.poll(() => reads.documents).toBeGreaterThan(documentsAfterOpen)
+  await expect(page.getByText('Ažurirano u 12:01')).toBeVisible()
+
+  const officeAfterTick = reads.office
+  const documentsAfterTick = reads.documents
+  const refresh = page.getByRole('button', { name: 'Osvježi', exact: true })
+  await refresh.focus()
+  await page.keyboard.press('Enter')
+  await expect.poll(() => reads.office).toBeGreaterThan(officeAfterTick)
+  await expect.poll(() => reads.documents).toBeGreaterThan(documentsAfterTick)
 })
 
 test('the lists show the alarm, every price, and the flight as text, in both locales and both themes', async ({ page }) => {
@@ -158,7 +170,7 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
   expect(openAssigned.ok()).toBeTruthy()
   expect(freshAssigned.ok()).toBeTruthy()
 
-  await page.getByRole('button', { name: 'Osvježi početnu', exact: true }).click()
+  await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
 
   const unassigned = page.getByRole('region', { name: 'Nedodijeljeno' })
   const alarm = unassigned.getByRole('listitem').filter({ hasText: 'Alarm Ana' })
@@ -201,6 +213,9 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
 
   await switchLocale(page, 'en')
   await expect(page.getByRole('heading', { name: 'Counts for the operational day' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible()
+  await expect(page.getByRole('switch', { name: 'Automatic refresh' })).toBeChecked()
+  await expect(page.getByText(/Updated at \d{2}:\d{2}/)).toBeVisible()
   await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Meet sign: GOSPOĐA HORVAT')
   await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Unassigned alarm')
   await expect(page.getByRole('region', { name: 'In progress' }).getByRole('listitem').filter({ hasText: 'Open Lara' })).toContainText('Unclosed mark')
@@ -215,6 +230,114 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
   await switchTheme(page, 'light')
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toBeVisible()
+})
+
+test('a hidden tab sends no request and a visible tab reloads at once', async ({ page }) => {
+  const tenant = await seedTenant('home-visibility')
+  const reads = watchReads(page)
+  await installOfficeClock(page)
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await expect.poll(() => reads.office).toBeGreaterThan(0)
+  await expect.poll(() => reads.documents).toBeGreaterThan(0)
+  await pauseOfficeClock(page)
+
+  await setTabVisibility(page, 'hidden')
+  const officeHidden = reads.office
+  const documentsHidden = reads.documents
+  await page.clock.fastForward(120_000)
+  expect(reads.office).toBe(officeHidden)
+  expect(reads.documents).toBe(documentsHidden)
+
+  await setTabVisibility(page, 'visible')
+  await expect.poll(() => reads.office).toBeGreaterThan(officeHidden)
+  await expect.poll(() => reads.documents).toBeGreaterThan(documentsHidden)
+})
+
+test('switching automatic refresh off stops the timer and Osvježi still works', async ({ page }) => {
+  const tenant = await seedTenant('home-automatic')
+  const reads = watchReads(page)
+  await installOfficeClock(page)
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await expect.poll(() => reads.office).toBeGreaterThan(0)
+  await pauseOfficeClock(page)
+
+  const automatic = page.getByRole('switch', { name: 'Automatsko osvježavanje' })
+  await automatic.click()
+  await expect(automatic).not.toBeChecked()
+  const officePaused = reads.office
+  const documentsPaused = reads.documents
+  await page.clock.fastForward(120_000)
+  expect(reads.office).toBe(officePaused)
+  expect(reads.documents).toBe(documentsPaused)
+
+  await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
+  await expect.poll(() => reads.office).toBeGreaterThan(officePaused)
+  await expect.poll(() => reads.documents).toBeGreaterThan(documentsPaused)
+  await expect(automatic).not.toBeChecked()
+})
+
+test('a failed refresh keeps the rows and shows the last time', async ({ page }) => {
+  const tenant = await seedTenant('home-stale')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const places = await placesFor(page)
+  await record(page, 'Stalna Ana', new Date(Date.now() + 3 * 60 * 60 * 1000), places, {
+    price: 10,
+    payment: 'cash',
+  })
+  await page.getByRole('switch', { name: 'Automatsko osvježavanje' }).click()
+  await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
+  const row = page.getByRole('region', { name: 'Nedodijeljeno' }).getByRole('listitem').filter({ hasText: 'Stalna Ana' })
+  await expect(row).toBeVisible()
+  const status = page.getByText(/Ažurirano u \d{2}:\d{2}/)
+  const time = (await status.textContent())?.match(/\d{2}:\d{2}/)?.[0]
+  expect(time).toBeTruthy()
+
+  await page.route('**/api/office-home', route => route.abort())
+  await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
+  await expect(page.getByText(`Nije osvježeno, zadnje u ${time}`)).toBeVisible()
+  await expect(row).toBeVisible()
+  await expect(page.getByText('Početna se nije mogla učitati. Pokušajte ponovno.')).toHaveCount(0)
+})
+
+test('a refresh leaves scroll and focus where they were', async ({ page }) => {
+  const tenant = await seedTenant('home-still')
+  const reads = watchReads(page)
+  await installOfficeClock(page)
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await expect.poll(() => reads.office).toBeGreaterThan(0)
+  await pauseOfficeClock(page)
+  await rearmAutomaticRefresh(page)
+  const officeAfterOpen = reads.office
+
+  const scrolled = await scrollWorkingPanel(page)
+  expect(scrolled).toBeGreaterThan(0)
+  const automatic = page.getByRole('switch', { name: 'Automatsko osvježavanje' })
+  await automatic.focus()
+  await page.clock.fastForward(60_000)
+  await expect.poll(() => reads.office).toBeGreaterThan(officeAfterOpen)
+  await expect(automatic).toBeFocused()
+  expect(await scrollTop(page)).toBe(scrolled)
+})
+
+test('a new urgent item is announced once and an unchanged refresh says nothing', async ({ page }) => {
+  const tenant = await seedTenant('home-urgent')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const live = page.locator('main [aria-live="polite"]')
+  await expect(live).toHaveText('')
+  await page.getByRole('switch', { name: 'Automatsko osvježavanje' }).click()
+
+  const places = await placesFor(page)
+  await record(page, 'Hitna Mia', new Date(Date.now() + 2 * 60 * 60 * 1000), places, {
+    price: 10,
+    payment: 'cash',
+  })
+  await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Nedodijeljeno' }).getByRole('listitem').filter({ hasText: 'Hitna Mia' })).toContainText('Alarm za nedodijeljenu vožnju')
+  await expect(live).toHaveText('Nova hitna stavka')
+
+  await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
+  await expect(live).toHaveText('')
+  await expect(page.getByRole('region', { name: 'Nedodijeljeno' }).getByRole('listitem').filter({ hasText: 'Hitna Mia' })).toBeVisible()
 })
 
 test('expiring documents still show when the office read fails', async ({ page }) => {
@@ -244,11 +367,100 @@ test('a driver does not see the lists or counts and the office read is not reque
   await expect(page.getByRole('heading', { name: 'Moje vožnje' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Osvježi početnu' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Osvježi', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Osvježi dokumente' })).toBeVisible()
   expect(reads.office).toBe(0)
   await expect.poll(() => reads.documents).toBeGreaterThan(0)
 })
+
+async function installOfficeClock(page: Page) {
+  // A minute before the pause point, so page load can run its own timers.
+  await page.clock.install({ time: new Date('2026-10-15T09:59:00.000Z') })
+}
+
+async function pauseOfficeClock(page: Page) {
+  // 10:00 UTC is 12:00 in Europe/Zagreb on this date.
+  await page.clock.pauseAt(new Date('2026-10-15T10:00:00.000Z'))
+}
+
+async function rearmAutomaticRefresh(page: Page) {
+  const automatic = page.getByRole('switch', { name: 'Automatsko osvježavanje' })
+  await automatic.click()
+  await expect(automatic).not.toBeChecked()
+  await automatic.click()
+  await expect(automatic).toBeChecked()
+}
+
+async function setTabVisibility(page: Page, state: 'visible' | 'hidden') {
+  await page.evaluate((next) => {
+    const view = document as Document & { __tpVisibility?: 'visible' | 'hidden' }
+    if (!Object.hasOwn(document, 'visibilityState')) {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get() {
+          return view.__tpVisibility ?? 'visible'
+        },
+      })
+      Object.defineProperty(document, 'hidden', {
+        configurable: true,
+        get() {
+          return (view.__tpVisibility ?? 'visible') === 'hidden'
+        },
+      })
+    }
+    view.__tpVisibility = next
+    document.dispatchEvent(new Event('visibilitychange'))
+  }, state)
+}
+
+async function scrollWorkingPanel(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const main = document.querySelector('main')
+    if (!main)
+      throw new Error('missing main')
+    const filler = document.createElement('div')
+    filler.style.height = '2400px'
+    main.append(filler)
+    let node: HTMLElement | null = main.parentElement
+    while (node) {
+      const style = getComputedStyle(node)
+      if (/auto|scroll/.test(style.overflowY)) {
+        node.scrollTop = 360
+        if (node.scrollTop > 0)
+          return node.scrollTop
+      }
+      node = node.parentElement
+    }
+    throw new Error('missing scroll container')
+  })
+}
+
+async function scrollTop(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const main = document.querySelector('main')
+    let node: HTMLElement | null = main?.parentElement ?? null
+    while (node) {
+      const style = getComputedStyle(node)
+      if (/auto|scroll/.test(style.overflowY) && node.scrollTop > 0)
+        return node.scrollTop
+      node = node.parentElement
+    }
+    return 0
+  })
+}
+
+async function placesFor(page: Page) {
+  const clientId = await createdId(await page.request.post('/api/clients', {
+    data: { name: 'Agencija Mora', kind: 'agency' },
+  }))
+  const startLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Zračna luka Dubrovnik', kind: 'airport' },
+  }))
+  const endLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Hotel Excelsior', kind: 'hotel' },
+  }))
+  return { clientId, startLocationId, endLocationId }
+}
 
 async function record(
   page: Page,

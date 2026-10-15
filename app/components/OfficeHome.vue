@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { DisplayLocale, OfficeHome } from '../../shared'
-import { officeHomeSchema } from '../../shared'
+import type { DisplayLocale, LiveRefreshOutcome, OfficeHome } from '../../shared'
+import { clockLabel, officeHomeSchema, officeHomeUrgentKeys } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -20,26 +20,38 @@ const loading = ref(true)
 const loadError = ref(false)
 // A slower reload must not replace the rows from a newer one.
 let loadTicket = 0
+// The first read may show the loading copy. A later one keeps the lists.
+let attempted = false
+const announcedCount = ref(0)
 
-async function loadSnapshot(refresh = false) {
+const announcement = computed(() =>
+  announcedCount.value > 0 ? t('liveRefresh.newUrgent') : '',
+)
+
+/**
+ * Lists and counts fail together. A refresh that fails keeps the last
+ * snapshot; the failure line is the refresher's, not an emptied list.
+ */
+async function loadSnapshot(isRefresh: boolean): Promise<LiveRefreshOutcome> {
   const ticket = ++loadTicket
-  // A refresh keeps the lists on screen. The first read still shows loading
-  // so the empty copy does not flash.
-  if (!refresh)
+  if (!isRefresh)
     loading.value = true
-  loadError.value = false
   try {
     const next = officeHomeSchema.parse(await $fetch('/api/office-home'))
     if (ticket !== loadTicket)
-      return
+      return 'stale'
     snapshot.value = next
+    loadError.value = false
+    return 'ok'
   }
   catch {
     if (ticket !== loadTicket)
-      return
-    // Lists and counts fail together. Documents are a different read.
-    snapshot.value = null
-    loadError.value = true
+      return 'stale'
+    if (!isRefresh) {
+      snapshot.value = null
+      loadError.value = true
+    }
+    return 'fail'
   }
   finally {
     if (ticket === loadTicket)
@@ -47,34 +59,85 @@ async function loadSnapshot(refresh = false) {
   }
 }
 
-/**
- * One control reloads the office snapshot and the expiring-documents read.
- * There is no timer: Home does not poll.
- */
-async function refresh() {
-  await Promise.all([loadSnapshot(true), props.refreshDocuments()])
-}
-
-onMounted(() => {
-  void loadSnapshot()
+const { automatic, refreshing, updatedAt, failed, refresh } = useLiveRefresh({
+  async reload() {
+    const isRefresh = attempted
+    attempted = true
+    const [outcome] = await Promise.all([
+      loadSnapshot(isRefresh),
+      props.refreshDocuments(),
+    ])
+    return outcome
+  },
+  urgentKeys: () => snapshot.value ? officeHomeUrgentKeys(snapshot.value) : [],
+  async onAnnounce(count) {
+    // A polite region repeats only when the text changes. Clear first so a
+    // second new urgent item is announced, not only the first.
+    if (count === 0) {
+      announcedCount.value = 0
+      return
+    }
+    announcedCount.value = 0
+    await nextTick()
+    announcedCount.value = count
+  },
 })
+
+const shownTime = computed(() =>
+  updatedAt.value === null ? '' : clockLabel(updatedAt.value, props.timeZone, props.locale),
+)
 </script>
 
 <template>
   <div class="mt-2">
-    <UButton
-      type="button"
-      color="neutral"
-      variant="outline"
-      size="xl"
-      :disabled="loading"
-      @click="refresh"
+    <!--
+      The time is not a live region. Only a new urgent item is announced
+      (ADR-0039). The button stays enabled so a refresh does not drop focus.
+    -->
+    <div
+      class="flex flex-wrap items-center gap-3"
+      :aria-busy="refreshing"
     >
-      {{ t('officeHome.refresh') }}
-    </UButton>
+      <UButton
+        type="button"
+        color="neutral"
+        variant="outline"
+        size="sm"
+        class="max-lg:min-h-11 max-lg:text-base"
+        @click="refresh"
+      >
+        {{ t('liveRefresh.refresh') }}
+      </UButton>
+      <p
+        v-if="updatedAt"
+        class="text-sm text-muted"
+      >
+        {{ failed ? t('liveRefresh.failed', { time: shownTime }) : t('liveRefresh.updatedAt', { time: shownTime }) }}
+      </p>
+      <UIcon
+        v-if="refreshing"
+        name="i-lucide-loader-circle"
+        class="size-5 animate-spin text-muted motion-reduce:animate-none"
+        aria-hidden="true"
+      />
+      <USwitch
+        v-model="automatic"
+        size="sm"
+        class="max-lg:min-h-11"
+        :label="t('liveRefresh.automatic')"
+        :ui="{ label: 'max-lg:text-base' }"
+      />
+    </div>
+    <p
+      class="sr-only"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      {{ announcement }}
+    </p>
 
     <UAlert
-      v-if="loadError"
+      v-if="loadError && !snapshot"
       color="error"
       variant="subtle"
       role="alert"

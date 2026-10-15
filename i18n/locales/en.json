@@ -650,8 +650,14 @@
     "unknownDriver": "Unknown driver",
     "unknownVehicle": "Unknown vehicle"
   },
+  "liveRefresh": {
+    "refresh": "Refresh",
+    "updatedAt": "Updated at {time}",
+    "failed": "Not refreshed, last at {time}",
+    "automatic": "Automatic refresh",
+    "newUrgent": "New urgent item"
+  },
   "officeHome": {
-    "refresh": "Refresh home",
     "loading": "Loading home",
     "loadFailed": "Home could not be loaded. Try again.",
     "unassigned": "Unassigned",

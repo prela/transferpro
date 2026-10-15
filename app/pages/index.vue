@@ -195,8 +195,8 @@ function httpStatus(error: unknown): number | undefined {
         :locale="session.locale"
       />
       <!--
-        Office Home is the three lists, the seven counts, and one refresh.
-        The example instant is gone. Locale and theme stay on Profile.
+        Office Home is the three lists, the counts from one read, and the
+        shared live refresh. Locale and theme stay on Profile.
       -->
       <OfficeHome
         v-else

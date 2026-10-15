@@ -650,8 +650,14 @@
     "unknownDriver": "Nepoznat vozač",
     "unknownVehicle": "Nepoznato vozilo"
   },
+  "liveRefresh": {
+    "refresh": "Osvježi",
+    "updatedAt": "Ažurirano u {time}",
+    "failed": "Nije osvježeno, zadnje u {time}",
+    "automatic": "Automatsko osvježavanje",
+    "newUrgent": "Nova hitna stavka"
+  },
   "officeHome": {
-    "refresh": "Osvježi početnu",
     "loading": "Učitavanje početne",
     "loadFailed": "Početna se nije mogla učitati. Pokušajte ponovno.",
     "unassigned": "Nedodijeljeno",
