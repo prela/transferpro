@@ -29,7 +29,7 @@ async function createdId(response: APIResponse): Promise<string> {
 
 test('a signed-out visitor gets the sign-in form and no office lists', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toHaveCount(0)
   await expect(page.getByLabel('E-pošta')).toBeVisible()
 })

@@ -1,6 +1,8 @@
 {
   "signIn": {
     "title": "Prijava",
+    "mark": "Transferpro",
+    "subtitle": "Dispečerski sustav za transfere",
     "email": "E-pošta",
     "password": "Lozinka",
     "submit": "Prijavi se",

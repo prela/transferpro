@@ -6,7 +6,7 @@ test('signed-out visits to office, settings, and platform pages show the sign-in
   for (const path of officePaths) {
     await page.goto(path)
     await expect(page).toHaveURL('/')
-    await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Prijavi se', exact: true })).toBeVisible()
     await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toHaveCount(0)
     await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toHaveCount(0)

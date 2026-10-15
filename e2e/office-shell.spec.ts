@@ -133,11 +133,13 @@ test('the sidebar is usable in light and dark, in Croatian and English', async (
 
 test('sign-in and invitation accept stay at most 28rem wide', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
+  await expect(page.getByText('Dispečerski sustav za transfere', { exact: true })).toBeVisible()
   await expectNarrowColumn(page)
 
   await page.goto('/accept-invite')
-  await expect(page.getByRole('heading', { level: 1, name: 'Prihvati pozivnicu' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Prihvati pozivnicu' })).toBeVisible()
   await expectNarrowColumn(page)
 })
 
@@ -306,7 +308,7 @@ test('the user menu is reachable and operable from the keyboard', async ({ page 
     await page.keyboard.press('ArrowDown')
   await expect(item).toBeFocused()
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toHaveCount(0)
 })
 

@@ -10,7 +10,7 @@ test('an existing account signs in on the invite page and joins as a driver', as
   await signOut(page)
 
   await page.goto(link)
-  await expect(page.getByRole('heading', { level: 1, name: 'Prihvati pozivnicu' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Prihvati pozivnicu' })).toBeVisible()
   await expect(page.getByText('Već imate račun. Prijavite se da biste prihvatili pozivnicu.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Otvori račun', exact: true })).toHaveCount(0)
   await page.getByLabel('E-pošta').fill(existing.email)

@@ -62,9 +62,9 @@ test('superadmin signs out from the firm list', async ({ page }) => {
   const cookies = await page.context().cookies()
   expect(cookies.filter(cookie => cookie.name.includes('session_token') && cookie.value !== '')).toEqual([])
   await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
   await page.goto('/admin/tenants')
-  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 1, name: 'Tvrtke' })).toHaveCount(0)
 })
 

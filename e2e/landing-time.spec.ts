@@ -123,7 +123,7 @@ test('the office Ride and the Driver Ride show a stored landing time in both lan
   // The row's Radnje menu is also aria-haspopup, so sign-out uses the Tenant button.
   await openUserMenu(page, tenant.name)
   await page.getByRole('menuitem', { name: 'Odjava', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
   await signIn(page, driver.email, driver.password, tenant.name)
   await expect(page.getByText('Vrijeme slijetanja')).toBeVisible()
   await expect(page.getByText(landingHr)).toBeVisible()
