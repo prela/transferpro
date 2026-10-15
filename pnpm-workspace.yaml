@@ -1,4 +1,14 @@
 minimumReleaseAgeExcludePrune: true
+# 1.7.9 is younger than the release-age gate. Drop each line once that version installs without an exclude.
+minimumReleaseAgeExclude:
+  - '@better-auth/core@1.7.9'
+  - '@better-auth/drizzle-adapter@1.7.9'
+  - '@better-auth/kysely-adapter@1.7.9'
+  - '@better-auth/memory-adapter@1.7.9'
+  - '@better-auth/mongo-adapter@1.7.9'
+  - '@better-auth/prisma-adapter@1.7.9'
+  - '@better-auth/telemetry@1.7.9'
+  - better-auth@1.7.9
 # Babel still depends on semver 6.3.1, which this policy flags as a trust downgrade.
 trustPolicy: no-downgrade
 trustPolicyExclude:
