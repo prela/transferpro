@@ -145,8 +145,7 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   expect((await declineResponse).status()).toBe(200)
   await expect(declineDialog).toBeHidden()
   await expect(page.getByText('Nemate nadolazećih vožnji.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Odjava', exact: true })).toBeVisible()
-
+  // The Driver signs out from the profile menu, the same way the other specs do.
   await signOut(page)
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.goto('/transfers')

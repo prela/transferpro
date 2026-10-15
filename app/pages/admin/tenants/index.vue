@@ -9,7 +9,9 @@ definePageMeta({
 const requestFetch = useRequestFetch()
 const { t, shell, loadError, pending, shellError, signOut, loadMessage } = await usePlatformPage()
 
-bindScreenTitle(() => t('platform.title'))
+// The navbar title is the screen's h1. A 403 is not the firm list, so the
+// denial screen must not say Tvrtke.
+bindScreenTitle(() => shell.value ? t('platform.title') : '')
 
 const { data: list } = await useAsyncData('platform-tenants', async () => {
   if (!shell.value)
@@ -18,7 +20,7 @@ const { data: list } = await useAsyncData('platform-tenants', async () => {
 })
 
 useHead({
-  title: () => t('platform.title'),
+  title: () => shell.value ? t('platform.title') : '',
 })
 </script>
 

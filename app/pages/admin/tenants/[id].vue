@@ -26,10 +26,11 @@ watch(account, (value) => {
     name.value = value.name
 }, { immediate: true })
 
-bindScreenTitle(() => account.value?.name ?? t('platform.title'))
+// Same rule as the firm list: no platform shell, no platform title.
+bindScreenTitle(() => shell.value ? (account.value?.name ?? t('platform.title')) : '')
 
 useHead({
-  title: () => account.value?.name ?? t('platform.title'),
+  title: () => shell.value ? (account.value?.name ?? t('platform.title')) : '',
 })
 
 async function rename() {
