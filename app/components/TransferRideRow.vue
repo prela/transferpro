@@ -249,12 +249,16 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
         </UBadge>
       </span>
     </div>
-    <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-      <span>{{ placeLabel(ride.startLocationId) }} → {{ placeLabel(ride.endLocationId) }}</span>
-      <span>{{ crewText() }}</span>
-      <RideMarks :items="attention()" />
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="flex min-w-0 items-center gap-2">
+      <div class="min-w-0 flex-1">
+        <span class="block truncate text-xs">
+          {{ placeLabel(ride.startLocationId) }} → {{ placeLabel(ride.endLocationId) }} · {{ crewText() }}
+        </span>
+        <RideMarks
+          :items="attention()"
+          inline
+        />
+      </div>
       <TransferRideActions
         :ride="ride"
         :menu-items="menuItems"

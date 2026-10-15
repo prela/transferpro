@@ -3,6 +3,8 @@ import type { RideAttentionItem } from '../../shared'
 
 const props = defineProps<{
   items: RideAttentionItem[]
+  /** Phone row keeps marks on the second line instead of stacking a third. */
+  inline?: boolean
 }>()
 
 const { t } = useI18n()
@@ -40,7 +42,8 @@ function label(item: RideAttentionItem): string {
   -->
   <ul
     v-if="props.items.length > 0"
-    class="flex flex-col gap-0.5"
+    class="flex gap-x-2 gap-y-0.5"
+    :class="props.inline ? 'flex-row flex-wrap' : 'flex-col'"
   >
     <li
       v-for="(item, index) in props.items"
