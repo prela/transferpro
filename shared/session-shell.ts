@@ -13,6 +13,9 @@ export const sessionShellSchema = z.object({
   tenantId: z.uuid(),
   tenantName: z.string().min(1),
   userId: z.string().min(1),
+  // The signed-in account only. The members list still omits email.
+  userName: z.string().min(1),
+  email: z.string().min(1),
   locale: displayLocaleSchema,
   timeZone: z.string().min(1),
   operationalDayStartHour: operationalDayStartHourSchema,

@@ -351,6 +351,23 @@ export function createAuth(
       return row.success ? row.data.email : null
     },
     /**
+     * The signed-in account's own name and email, for the profile menu.
+     * Callers must not write either value to a log or an audit entry.
+     */
+    async accountIdentity(userId: string): Promise<{ name: string, email: string }> {
+      const result = await pool.query(
+        'select name, email from auth."user" where id = $1',
+        [userId],
+      )
+      const row = z.object({
+        name: z.string().min(1),
+        email: z.string().min(1),
+      }).safeParse(result.rows[0])
+      if (!row.success)
+        throw new Error('Account identity is missing.')
+      return { name: row.data.name, email: row.data.email }
+    },
+    /**
      * Same credential shape as the operator script. email_verified is true
      * because the invitation id is the proof of the mailbox.
      */

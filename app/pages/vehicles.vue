@@ -20,6 +20,8 @@ useHead({
   title: () => t('vehicles.title'),
 })
 
+bindScreenTitle(() => t('vehicles.title'))
+
 // The middleware is the gate. If a Driver still reaches this page, the list
 // does not mount, so the browser does not request the collection.
 const office = computed(() => isOfficeMember(session.value?.role))
@@ -46,12 +48,6 @@ const office = computed(() => isOfficeMember(session.value?.role))
     </section>
 
     <section v-else-if="session">
-      <p class="text-sm text-muted">
-        {{ t('shell.tenant') }}: {{ session.tenantName }}
-      </p>
-      <h1 class="mb-4 text-2xl font-semibold">
-        {{ t('vehicles.title') }}
-      </h1>
       <VehicleList v-if="office" />
       <UAlert
         v-if="shellError"

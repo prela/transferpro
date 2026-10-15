@@ -98,7 +98,7 @@ test('dispatcher gives a driver a vehicle for the day', async ({ page }) => {
   await addVehicle(page, plate)
 
   await page.getByRole('link', { name: 'Raspored' }).click()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
   await chooseVehicle(page, driverName, plate)
   await expect(page.getByRole('status')).toContainText('Spremljeno.')
   await page.reload()

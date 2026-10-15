@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { expectSettingsRedirect, signIn } from './fixtures/ui'
 
-const officeLinks = ['Početna', 'Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored'] as const
+const officeLinks = ['Početna', 'Naručitelji', 'Lokacije', 'Vozači', 'Vozila', 'Raspored'] as const
 
 test('a dispatcher sees office screens, and Home has no member list or settings form', async ({ page }) => {
   const tenant = await seedTenant('office-disp')
@@ -14,7 +14,8 @@ test('a dispatcher sees office screens, and Home has no member list or settings 
   for (const name of officeLinks)
     await expect(nav.getByRole('link', { name })).toBeVisible()
 
-  await expect(nav.getByRole('link', { name: 'Revizijski zapisnik', exact: true })).toHaveCount(0)
+  await expect(nav.getByRole('link', { name: 'Revizija', exact: true })).toHaveCount(0)
+  await expect(nav.getByRole('link', { name: 'Postavke tvrtke', exact: true })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Pozovi člana' })).toHaveCount(0)
@@ -25,8 +26,8 @@ test('a dispatcher sees office screens, and Home has no member list or settings 
   await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
   await expect(page.getByText('Samo administrator može ovo promijeniti.')).toHaveCount(0)
 
-  await nav.getByRole('link', { name: 'Klijenti' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  await nav.getByRole('link', { name: 'Naručitelji' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toBeVisible()
   await expect(page.getByText('Još nema klijenata.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Dodaj klijenta', exact: true })).toBeVisible()
 

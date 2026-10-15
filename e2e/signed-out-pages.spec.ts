@@ -8,7 +8,7 @@ test('signed-out visits to office, settings, and platform pages show the sign-in
     await expect(page).toHaveURL('/')
     await expect(page.getByRole('heading', { level: 1, name: 'Prijava' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Prijavi se', exact: true })).toBeVisible()
-    await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toHaveCount(0)
+    await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toHaveCount(0)
     await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toHaveCount(0)
     await expect(page.getByRole('heading', { level: 1, name: 'Tvrtke' })).toHaveCount(0)
   }

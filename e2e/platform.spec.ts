@@ -16,8 +16,8 @@ test('superadmin lists, opens, and renames a firm in Croatian and English, light
   await page.getByLabel('Lozinka').fill(owner.password)
   await page.getByRole('button', { name: 'Prijavi se', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Tvrtke' })).toBeVisible()
-  await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
-  await expect(page.getByText(owner.email)).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link')).toHaveText(['Tvrtke'])
+  await expect(page.locator('main').getByText(owner.email)).toHaveCount(0)
   for (const marker of [planted.clientName, planted.driverName, planted.vehicleDescription, 'E2EVH01'])
     await expect(page.getByText(marker)).toHaveCount(0)
 
@@ -35,12 +35,15 @@ test('superadmin lists, opens, and renames a firm in Croatian and English, light
   await expect(page.getByRole('status')).toContainText('Naziv je spremljen.')
   await expect(page.getByRole('heading', { level: 1, name: renamed })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Tamna', exact: true }).click()
+  await page.getByRole('button', { name: owner.name, exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Tamna', exact: true }).click()
   await expect(page.locator('html')).toHaveClass(/dark/)
-  await page.getByRole('button', { name: 'English', exact: true }).click()
+  await page.getByRole('button', { name: owner.name, exact: true }).click()
+  await page.getByRole('menuitem', { name: 'English', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Firms', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Light', exact: true }).click()
+  await expect(page.getByRole('link', { name: 'Companies', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: owner.name, exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Light', exact: true }).click()
   await expect(page.locator('html')).not.toHaveClass(/dark/)
 })
 
@@ -53,7 +56,7 @@ test('superadmin signs out from the firm list', async ({ page }) => {
   await page.getByLabel('Lozinka').fill(owner.password)
   await page.getByRole('button', { name: 'Prijavi se', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Tvrtke' })).toBeVisible()
-  await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link')).toHaveText(['Tvrtke'])
 
   await signOut(page)
   const cookies = await page.context().cookies()
@@ -71,7 +74,7 @@ test('a tenant admin does not get the platform screen', async ({ page }) => {
   await page.getByLabel('E-pošta').fill(tenant.adminEmail)
   await page.getByLabel('Lozinka').fill(tenant.password)
   await page.getByRole('button', { name: 'Prijavi se', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Početna' })).toBeVisible()
 
   await page.goto('/admin/tenants')
   await expect(page.getByRole('alert')).toContainText('Niste član nijednog prijevoznika. Odjavite se ili zatražite novu pozivnicu.')

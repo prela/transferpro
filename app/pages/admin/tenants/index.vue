@@ -3,10 +3,13 @@ import { companyAccountListSchema } from '../../../../shared'
 
 definePageMeta({
   middleware: 'platform-auth',
+  layout: 'platform',
 })
 
 const requestFetch = useRequestFetch()
-const { t, shell, loadError, pending, shellError, signOut, chooseLocale, loadMessage } = await usePlatformPage()
+const { t, shell, loadError, pending, shellError, signOut, loadMessage } = await usePlatformPage()
+
+bindScreenTitle(() => t('platform.title'))
 
 const { data: list } = await useAsyncData('platform-tenants', async () => {
   if (!shell.value)
@@ -20,7 +23,7 @@ useHead({
 </script>
 
 <template>
-  <main class="mx-auto box-border w-full max-w-3xl p-4">
+  <main class="box-border w-full p-4">
     <section v-if="loadError">
       <UAlert
         color="error"
@@ -40,9 +43,6 @@ useHead({
     </section>
 
     <section v-else-if="shell && list">
-      <h1 class="mb-4 text-2xl font-semibold">
-        {{ t('platform.title') }}
-      </h1>
       <p
         v-if="list.accounts.length === 0"
         class="text-sm text-muted"
@@ -76,18 +76,6 @@ useHead({
         class="mt-4"
         :description="t(shellError)"
       />
-      <div class="mt-4 flex flex-wrap gap-2">
-        <UButton
-          type="button"
-          size="xl"
-          class="flex-1 basis-32 justify-center"
-          :disabled="pending"
-          @click="signOut"
-        >
-          {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
-        </UButton>
-        <LocaleThemeActions @choose="chooseLocale" />
-      </div>
     </section>
   </main>
 </template>

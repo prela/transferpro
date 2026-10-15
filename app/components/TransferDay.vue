@@ -1100,6 +1100,16 @@ function openAdd() {
   formMode.value = 'add'
 }
 
+// The frame's Novi transfer button increments this. Opening Transfers
+// from another screen still finds the request, because the watch is immediate.
+const { nonce: newTransferNonce } = useNewTransferRequest()
+watch(newTransferNonce, (value) => {
+  if (value === 0)
+    return
+  newTransferNonce.value = 0
+  openAdd()
+}, { immediate: true })
+
 /**
  * Fills the booking form from the row. The landing time stays on the board.
  * Cancel drops the values and does not save.

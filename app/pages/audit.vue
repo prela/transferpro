@@ -30,6 +30,8 @@ if (session.value && session.value.role !== 'admin')
 useHead({
   title: () => t('audit.title'),
 })
+
+bindScreenTitle(() => t('audit.title'))
 </script>
 
 <template>
@@ -57,9 +59,6 @@ useHead({
       because the middleware read failed must not request the audit endpoint.
     -->
     <section v-else-if="session?.role === 'admin'">
-      <p class="text-sm text-muted">
-        {{ t('shell.tenant') }}: {{ session.tenantName }}
-      </p>
       <AuditLog
         :time-zone="session.timeZone"
         :locale="session.locale"

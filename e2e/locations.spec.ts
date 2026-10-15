@@ -11,7 +11,7 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   const tenant = await seedTenant('locations-admin')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.getByRole('link', { name: 'Lokacije' }).click()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
   await expect(page.getByText('Još nema lokacija.')).toBeVisible()
 
   await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
@@ -166,7 +166,7 @@ test('dispatcher adds a location and the screen shows the tenant name', async ({
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispečer')
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
   await page.getByRole('link', { name: 'Lokacije' }).click()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
   const dialog = page.getByRole('dialog')

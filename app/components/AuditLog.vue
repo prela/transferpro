@@ -9,7 +9,6 @@ defineProps<{
 
 const { t } = useI18n()
 const { generation } = useAuditRefresh()
-const titleId = useId()
 
 const entries = ref<AuditEntry[]>([])
 const loading = ref(false)
@@ -166,13 +165,7 @@ watch(generation, () => {
 
 <template>
   <section>
-    <!-- The log is the page. Home no longer hosts it, so this is the h1. -->
-    <h1
-      :id="titleId"
-      class="mb-4 text-2xl font-semibold"
-    >
-      {{ t('audit.title') }}
-    </h1>
+    <!-- The navbar is the h1. This region keeps the same name for the table. -->
     <UAlert
       v-if="loadError"
       color="error"
@@ -194,7 +187,7 @@ watch(generation, () => {
       v-else
       class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
       role="region"
-      :aria-labelledby="titleId"
+      :aria-label="t('audit.title')"
       tabindex="0"
     >
       <UTable

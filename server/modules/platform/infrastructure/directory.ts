@@ -4,7 +4,7 @@ import pg from 'pg'
 import { z } from 'zod'
 import { companyAccountListSchema, companyAccountSchema, parseRenameTenantAccount, PlatformInputError, platformShellSchema, resolveDisplayLocale, TENANT_TIME_ZONE_DEFAULT } from '../../../../shared'
 import { getLogger, loadAppEnv } from '../../../core/index'
-import { platformActorFromSession, readUserLocale, TenantAccessError } from '../../tenancy'
+import { platformActorFromSession, readAccountIdentity, readUserLocale, TenantAccessError } from '../../tenancy'
 import { appendTenantRenamed } from './audit'
 import { writePlatformLog } from './log'
 
@@ -68,8 +68,12 @@ export async function readPlatformShell(headers: Headers): Promise<PlatformShell
   return platformCall(headers, 'platform.session', null, async (actor) => {
     // The user's own locale. The tenant default is the literal hr, not a settings row.
     const locale = resolveDisplayLocale(await readUserLocale(actor.userId), 'hr')
+    // The owner's own name and email. The platform log records the user id only.
+    const identity = await readAccountIdentity(actor.userId)
     return platformShellSchema.parse({
       userId: actor.userId,
+      userName: identity.name,
+      email: identity.email,
       locale,
       timeZone: TENANT_TIME_ZONE_DEFAULT,
     })

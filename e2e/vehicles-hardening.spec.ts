@@ -23,7 +23,7 @@ test('correcting a plate to an archived plate shows the archived-conflict messag
   const tenant = await seedTenant('vehicles-archived-conflict')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.getByRole('link', { name: 'Vozila' }).click()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
 
   await addVehicle(page, archivedPlate, 'Stalno')
   await page.getByRole('button', { name: `Radnje: ${archivedPlate}` }).click()

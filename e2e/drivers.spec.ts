@@ -10,7 +10,7 @@ test('admin adds a driver, corrects it, and the audit log does not show the phon
   const linked = await seedMember(tenant.tenantId, 'driver', 'Vozac')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.getByRole('link', { name: 'Vozači' }).click()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
   await expect(page.getByText('Još nema vozača.')).toBeVisible()
 
   await page.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()
@@ -100,7 +100,7 @@ test('dispatcher adds a driver and cannot turn on must-accept', async ({ page })
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
   await page.getByRole('link', { name: 'Vozači' }).click()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()
   let dialog = page.getByRole('dialog')

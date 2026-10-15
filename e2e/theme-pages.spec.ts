@@ -5,16 +5,17 @@ import { seedTenant } from './fixtures/seed'
 import { signIn, switchLocale, useTheme } from './fixtures/ui'
 
 /**
- * Desktop shows the sidebar. The phone project hides it behind the navbar
- * toggle, so the same spec opens that toggle before the link.
+ * Desktop shows the sidebar. The phone project keeps catalogs behind Više.
  */
 async function openOfficeLink(page: Page, name: string) {
   const link = page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name, exact: true })
-  const open = page.getByRole('button', { name: 'Otvori bočnu traku', exact: true })
-  await expect(link.or(open)).toBeVisible()
-  if (!(await link.isVisible()))
-    await open.click()
-  await link.click()
+  if (await link.isVisible()) {
+    await link.click()
+    return
+  }
+  // Phone: catalogs sit behind Više. The bottom bar already shows Home, Transfers, and Roster.
+  await page.getByRole('button', { name: 'Više', exact: true }).click()
+  await page.getByRole('dialog').getByRole('link', { name, exact: true }).click()
 }
 
 // @phone: the phone project runs this file as well as the desktop project.

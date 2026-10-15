@@ -9,7 +9,7 @@
     "limited": "Previše pokušaja. Pričekajte i pokušajte ponovno."
   },
   "shell": {
-    "tenant": "Organizacija",
+    "tenant": "Tvrtka",
     "signOut": "Odjava",
     "signingOut": "Odjava u tijeku",
     "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno.",
@@ -20,7 +20,14 @@
     "nav": "Odjeljci",
     "home": "Početna",
     "settings": "Postavke",
-    "profile": "Profil"
+    "companySettings": "Postavke tvrtke",
+    "profile": "Profil",
+    "myProfile": "Moj profil",
+    "groupOperations": "Operativa",
+    "groupCatalogs": "Katalozi",
+    "groupManagement": "Uprava",
+    "more": "Više",
+    "newTransfer": "Novi transfer"
   },
   "locale": {
     "hr": "Hrvatski",
@@ -87,6 +94,7 @@
     "you": "vi"
   },
   "audit": {
+    "nav": "Revizija",
     "title": "Revizijski zapisnik",
     "loading": "Učitavanje revizijskog zapisnika",
     "loadFailed": "Revizijski zapisnik nije se mogao učitati. Pokušajte ponovno.",
@@ -183,8 +191,8 @@
     "adminOnly": "Samo administrator može ovo promijeniti."
   },
   "clients": {
-    "nav": "Klijenti",
-    "title": "Klijenti",
+    "nav": "Naručitelji",
+    "title": "Naručitelji",
     "add": "Dodaj klijenta",
     "edit": "Ispravi klijenta",
     "actions": "Radnje",

@@ -1,9 +1,10 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
+import { expectNoAxeViolations } from './fixtures/axe'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { openUserMenu, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
-const sections = ['Početna', 'Transferi', 'Klijenti', 'Lokacije', 'Vozači', 'Vozila', 'Raspored', 'Revizijski zapisnik', 'Postavke'] as const
+const sections = ['Početna', 'Transferi', 'Raspored', 'Naručitelji', 'Lokacije', 'Vozači', 'Vozila', 'Revizija', 'Postavke tvrtke'] as const
 
 test('an admin moves through the sidebar, sees the current item, and the office page fills the panel', async ({ page }) => {
   const tenant = await seedTenant('shell-admin')
@@ -14,14 +15,14 @@ test('an admin moves through the sidebar, sees the current item, and the office 
   await expect(nav.getByRole('link')).toHaveText([...sections])
   await expect(nav.getByRole('link', { name: 'Početna', exact: true })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
-  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Početna' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
   await expectOfficePanelWidth(page)
 
   const pages = [
     ['Transferi', 'Transferi'],
-    ['Klijenti', 'Klijenti'],
+    ['Naručitelji', 'Naručitelji'],
     ['Lokacije', 'Lokacije'],
     ['Vozači', 'Vozači'],
     ['Vozila', 'Vozila'],
@@ -35,8 +36,8 @@ test('an admin moves through the sidebar, sees the current item, and the office 
     await expect(nav.getByRole('link', { name: link, exact: true })).toHaveAttribute('aria-current', 'page')
   }
 
-  await nav.getByRole('link', { name: 'Klijenti', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  await nav.getByRole('link', { name: 'Naručitelji', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toBeVisible()
   await expectOfficePanelWidth(page)
 })
 
@@ -72,34 +73,38 @@ test('collapse is stored under transferpro-dashboard and the rail stays keyboard
   const cookies = await page.context().cookies()
   expect(cookies.filter(cookie => cookie.name.startsWith('transferpro-dashboard'))).toEqual([])
 
-  const clients = nav.getByRole('link', { name: 'Klijenti', exact: true })
+  const clients = nav.getByRole('link', { name: 'Naručitelji', exact: true })
   await expect(clients).toBeVisible()
   await clients.focus()
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toBeVisible()
 })
 
-test('a narrow viewport opens the sidebar as a slideover from the keyboard', async ({ page }) => {
+test('a phone viewport opens the rest of the navigation from Više', async ({ page }) => {
   const tenant = await seedTenant('shell-narrow')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.setViewportSize({ width: 390, height: 844 })
 
-  const open = page.getByRole('button', { name: 'Otvori bočnu traku', exact: true })
-  await expect(open).toBeVisible()
-  await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
+  const bar = page.getByRole('navigation', { name: 'Odjeljci' })
+  await expect(bar.getByRole('link', { name: 'Početna', exact: true })).toBeVisible()
+  await expect(bar.getByRole('link', { name: 'Transferi', exact: true })).toBeVisible()
+  await expect(bar.getByRole('link', { name: 'Raspored', exact: true })).toBeVisible()
+  await expect(bar.getByRole('link', { name: 'Naručitelji', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Novi transfer', exact: true })).toBeVisible()
 
-  await page.keyboard.press('Tab')
-  await expect(open).toBeFocused()
+  const more = page.getByRole('button', { name: 'Više', exact: true })
+  await more.focus()
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('dialog')).toBeVisible()
-
-  const clients = page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Klijenti', exact: true })
-  for (let step = 0; step < 8 && !(await clients.evaluate(el => el === document.activeElement)); step++)
-    await page.keyboard.press('Tab')
-  await expect(clients).toBeFocused()
-  await page.keyboard.press('Enter')
-  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  const panel = page.getByRole('dialog')
+  await expect(panel).toBeVisible()
+  const clients = panel.getByRole('link', { name: 'Naručitelji', exact: true })
+  await expect(clients).toBeVisible()
+  await expect(panel.getByRole('link', { name: 'Revizija', exact: true })).toBeVisible()
+  await expect(panel.getByRole('link', { name: 'Postavke tvrtke', exact: true })).toBeVisible()
+  await clients.click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Novi transfer', exact: true })).toHaveCount(0)
 })
 
 test('the sidebar is usable in light and dark, in Croatian and English', async ({ page }) => {
@@ -107,7 +112,7 @@ test('the sidebar is usable in light and dark, in Croatian and English', async (
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
 
   const nav = page.getByRole('navigation', { name: 'Odjeljci' })
-  await expect(nav.getByRole('link', { name: 'Klijenti', exact: true })).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'Naručitelji', exact: true })).toBeVisible()
   await expect(page.locator('html')).not.toHaveClass(/dark/)
 
   await switchTheme(page, 'dark')
@@ -153,18 +158,19 @@ test('an admin signs out from the user menu on home and on an office page, and t
 
   const menu = await openUserMenu(page, tenant.name)
   await expect(menu.getByText(tenant.name, { exact: true })).toBeVisible()
-  await expect(menu.getByRole('menuitem')).toHaveCount(2)
-  await expect(menu.getByRole('menuitem', { name: 'Postavke', exact: true })).toBeVisible()
+  await expect(menu.getByText(tenant.adminEmail, { exact: true })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Moj profil', exact: true })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Svijetla', exact: true })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Tamna', exact: true })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Prema uređaju', exact: true })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Odjava', exact: true })).toBeVisible()
-  await expect(menu.getByText(tenant.adminName)).toHaveCount(0)
-  await expect(menu.getByText(tenant.adminEmail)).toHaveCount(0)
   await signOut(page)
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toHaveCount(0)
   await expect(page.evaluate(() => localStorage.getItem('transferpro-theme'))).resolves.toBe('dark')
 
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Klijenti', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Naručitelji', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toBeVisible()
   const officeMenu = await openUserMenu(page, tenant.name)
   await expect(officeMenu.getByText(tenant.name, { exact: true })).toBeVisible()
   await signOut(page)
@@ -176,7 +182,7 @@ test('a dispatcher signs out from the user menu on home and on an office page', 
   const tenant = await seedTenant('shell-menu-dispatcher')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
-  await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Postavke', exact: true })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Postavke tvrtke', exact: true })).toHaveCount(0)
 
   const menu = await openUserMenu(page, tenant.name)
   await expect(menu.getByText(tenant.name, { exact: true })).toBeVisible()
@@ -195,19 +201,61 @@ test('a failed sign-out from the user menu keeps the tenant and shows the failur
   const tenant = await seedTenant('shell-menu-fail')
   await useTheme(page, 'light')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Klijenti', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Naručitelji', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toBeVisible()
   await page.route('**/api/auth/sign-out', async (route) => {
     await route.fulfill({ status: 500, contentType: 'application/json', body: '{}' })
   })
 
   const menu = await openUserMenu(page, tenant.name)
   await menu.getByRole('menuitem', { name: 'Odjava', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toBeVisible()
   await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
   await expect(page.getByRole('alert').filter({ hasText: 'Odjava nije uspjela. Pokušajte ponovno.' })).toBeVisible()
   await expect(page.evaluate(() => localStorage.getItem('transferpro-theme'))).resolves.toBe('light')
+})
+
+test.describe('@phone', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`the office frame follows ${theme} density and passes axe`, async ({ page }) => {
+      const tenant = await seedTenant(`shell-frame-${theme}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      const phone = (page.viewportSize()?.width ?? 1280) < 1024
+
+      if (phone) {
+        const bar = page.getByRole('navigation', { name: 'Odjeljci' })
+        await expect(bar.getByRole('link', { name: 'Početna', exact: true })).toBeVisible()
+        await expect(bar.getByRole('link', { name: 'Naručitelji', exact: true })).toHaveCount(0)
+        const fab = page.getByRole('button', { name: 'Novi transfer', exact: true })
+        await expect(fab).toBeVisible()
+        const fabBox = await fab.boundingBox()
+        expect(fabBox?.height ?? 0).toBeGreaterThanOrEqual(44)
+        await page.getByRole('button', { name: 'Više', exact: true }).click()
+        await expect(page.getByRole('dialog').getByRole('link', { name: 'Postavke tvrtke', exact: true })).toBeVisible()
+        await page.keyboard.press('Escape')
+      }
+      else {
+        await expect(page.getByRole('button', { name: 'Više', exact: true })).toHaveCount(0)
+        const add = page.getByRole('button', { name: 'Novi transfer', exact: true })
+        await expect(add).toBeVisible()
+        const box = await add.boundingBox()
+        expect(box?.height ?? 0).toBeLessThan(40)
+        await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByText('Operativa', { exact: true })).toBeVisible()
+      }
+
+      await expectNoAxeViolations(page)
+      if (theme === 'light') {
+        await switchLocale(page, 'en')
+        const nav = page.getByRole('navigation', { name: 'Sections' })
+        if (phone)
+          await expect(nav.getByRole('link', { name: 'Home', exact: true })).toBeVisible()
+        else
+          await expect(nav.getByRole('link', { name: 'Clients', exact: true })).toBeVisible()
+        await expectNoAxeViolations(page)
+      }
+    })
+  }
 })
 
 test('the user menu is reachable and operable from the keyboard', async ({ page }) => {
@@ -227,7 +275,7 @@ test('the user menu is reachable and operable from the keyboard', async ({ page 
 
   const item = page.getByRole('menuitem', { name: 'Odjava', exact: true })
   await expect(item).toBeVisible()
-  for (let step = 0; step < 4 && !(await item.evaluate(el => el === document.activeElement)); step++)
+  for (let step = 0; step < 12 && !(await item.evaluate(el => el === document.activeElement)); step++)
     await page.keyboard.press('ArrowDown')
   await expect(item).toBeFocused()
   await page.keyboard.press('Enter')

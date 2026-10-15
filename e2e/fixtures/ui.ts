@@ -6,7 +6,10 @@ export async function signIn(page: Page, email: string, password: string, tenant
   await page.getByLabel('E-pošta').fill(email)
   await page.getByLabel('Lozinka').fill(password)
   await page.getByRole('button', { name: 'Prijavi se', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: tenantName })).toBeVisible()
+  // Office Home's h1 is Početna. A Driver's h1 stays the Tenant name.
+  const officeHome = page.getByRole('heading', { level: 1, name: 'Početna', exact: true })
+  const driverHome = page.getByRole('heading', { level: 1, name: tenantName, exact: true })
+  await expect(officeHome.or(driverHome)).toBeVisible()
 }
 
 const localeButton = {
@@ -97,7 +100,7 @@ export async function useTheme(page: Page, theme: 'light' | 'dark') {
   }, theme)
 }
 
-/** The office navbar trigger's accessible name is the Tenant. */
+/** The office navbar trigger's accessible name is the Tenant, including on a phone where only the initials show. */
 export async function openUserMenu(page: Page, tenantName: string) {
   await page.getByRole('button', { name: tenantName, exact: true }).click()
   const menu = page.getByRole('menu')
@@ -180,7 +183,7 @@ export async function expectSettingsRedirect(page: Page, path: '/settings/tenant
 
 /** The audit log. Opening it reads the rows already written. */
 export async function openAudit(page: Page) {
-  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizijski zapisnik', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizija', exact: true }).click()
   await expect(page).toHaveURL(/\/audit$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Revizijski zapisnik' })).toBeVisible()
 }

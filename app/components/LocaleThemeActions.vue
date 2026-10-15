@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import type { ThemeChoice } from '../composables/theme'
 
+const props = withDefaults(defineProps<{
+  /**
+   * Desktop pickers stay small. Phone layouts pass xl so the target is at
+   * least 44px (ADR-0038). Sign-in keeps the default: small on every screen.
+   */
+  size?: 'sm' | 'xl'
+}>(), {
+  size: 'sm',
+})
+
 const emit = defineEmits<{
   choose: [locale: 'hr' | 'en']
 }>()
@@ -35,8 +45,8 @@ function pressed(choice: ThemeChoice): true | undefined {
       type="button"
       color="neutral"
       variant="outline"
-      size="xl"
-      class="flex-1 basis-32 justify-center"
+      :size="props.size"
+      :class="props.size === 'xl' ? 'min-h-11 flex-1 basis-32 justify-center' : 'justify-center'"
       @click="chooseOther"
     >
       {{ locale === 'hr' ? t('locale.en') : t('locale.hr') }}
@@ -52,8 +62,8 @@ function pressed(choice: ThemeChoice): true | undefined {
         type="button"
         color="neutral"
         :variant="pressed(choice) ? 'solid' : 'outline'"
-        size="xl"
-        class="justify-center"
+        :size="props.size"
+        :class="props.size === 'xl' ? 'min-h-11 justify-center' : 'justify-center'"
         :aria-pressed="pressed(choice)"
         @click="choose(choice)"
       >

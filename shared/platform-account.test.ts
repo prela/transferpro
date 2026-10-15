@@ -29,7 +29,13 @@ it('accepts a rename name and refuses any other key', () => {
 })
 
 it('builds a shell without reading a tenant settings row', () => {
-  const shell = { userId: account.id, locale: 'hr' as const, timeZone: 'Europe/Zagreb' as const }
+  const shell = {
+    userId: account.id,
+    userName: 'Ana',
+    email: 'ana@example.test',
+    locale: 'hr' as const,
+    timeZone: 'Europe/Zagreb' as const,
+  }
   expect(platformShellSchema.parse(shell)).toEqual(shell)
   expect(platformShellSchema.safeParse({ ...shell, timeZone: 'Europe/Paris' }).success).toBe(false)
   expect(platformShellSchema.safeParse({ ...shell, tenantId: account.id }).success).toBe(false)

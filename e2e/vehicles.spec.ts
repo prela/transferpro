@@ -9,7 +9,7 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   const tenant = await seedTenant('vehicles-admin')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.getByRole('link', { name: 'Vozila' }).click()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
   await expect(page.getByText('Još nema vozila.')).toBeVisible()
 
   await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
@@ -111,7 +111,7 @@ test('dispatcher adds a vehicle and lists it', async ({ page }) => {
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
   await page.getByRole('link', { name: 'Vozila' }).click()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
   let dialog = page.getByRole('dialog')

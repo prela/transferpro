@@ -22,15 +22,14 @@ if (session.value && session.value.role !== 'admin')
   await navigateTo('/settings/profile', { replace: true })
 
 useHead({
-  title: () => t('shell.tenant'),
+  title: () => t('shell.companySettings'),
 })
+
+bindScreenTitle(() => t('shell.companySettings'))
 </script>
 
 <template>
   <section v-if="session?.role === 'admin'">
-    <h1 class="mb-4 text-2xl font-semibold">
-      {{ t('shell.tenant') }}
-    </h1>
     <TenantSettings
       :is-admin="session.role === 'admin'"
       @saved="refresh()"

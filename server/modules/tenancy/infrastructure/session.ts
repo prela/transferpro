@@ -158,10 +158,15 @@ export async function readSessionShell(headers: Headers): Promise<SessionShell> 
     if (!role.success)
       throw new TenantAccessError(403)
 
+    // Name and email stay out of logs. They exist so the profile menu can
+    // name the signed-in account (ADR-0038).
+    const identity = await handle.accountIdentity(parsed.data.user.id)
     return sessionShellSchema.parse({
       tenantId: context.tenantId,
       tenantName: await handle.organizationName(context.tenantId),
       userId: parsed.data.user.id,
+      userName: identity.name,
+      email: identity.email,
       locale: resolveDisplayLocale(userLocale, settings.default_locale),
       timeZone: settings.time_zone,
       operationalDayStartHour: operationalDayStartHourSchema.parse(settings.operational_day_start_hour),
@@ -353,6 +358,14 @@ export async function platformActorFromSession(headers: Headers): Promise<Platfo
 /** The signed-in user's locale, or null when they have not chosen one. No tenant session. */
 export async function readUserLocale(userId: string): Promise<string | null> {
   return tenantRuntime().handle.userLocale(userId)
+}
+
+/**
+ * The signed-in account's name and email. The caller shows them in the
+ * profile menu and does not log them.
+ */
+export async function readAccountIdentity(userId: string): Promise<{ name: string, email: string }> {
+  return tenantRuntime().handle.accountIdentity(userId)
 }
 
 async function actorFromSession(handle: Runtime['handle'], headers: Headers): Promise<Actor> {
