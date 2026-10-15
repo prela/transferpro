@@ -2,6 +2,7 @@
 import type { Driver, TransferDayRide } from '../../shared'
 import { cancelledRideResultSchema } from '../../shared'
 import { httpStatus } from '../transfer-day-http'
+import { driverDisplayName } from '../transfer-day-labels'
 import { cancelRideButtonId } from '../transfer-ride-buttons'
 import { canCallOff } from '../transfer-ride-guards'
 import { workOrderNotice } from '../work-order-notice'
@@ -24,11 +25,8 @@ const cancelling = ref<{ rideId: string, guestName: string } | null>(null)
 const cancelPending = ref(false)
 const cancelErrorKey = ref<CancelRideFailure | null>(null)
 
-/** The day list stores ids. The screen shows the name, never the id. */
 function driverLabel(id: string | null): string {
-  if (id === null)
-    return ''
-  return props.drivers.find(driver => driver.id === id)?.name ?? t('ride.unknownDriver')
+  return driverDisplayName(props.drivers, id, t('ride.unknownDriver'))
 }
 
 function open(ride: TransferDayRide) {

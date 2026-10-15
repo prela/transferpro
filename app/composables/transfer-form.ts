@@ -2,6 +2,7 @@ import type { Client, DisplayLocale, Driver, Location, LocationKind, PaymentMeth
 import { z } from 'zod'
 import { calendarDateInTimeZone, childSeatCountError, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationKindSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, paymentMethodSchema, pickupAtError, priceError, priceFromInput, recordedTransferSchema, sameLocationError, tablaError, wallClockInTimeZone } from '../../shared'
 import { errorCode, httpStatus } from '../transfer-day-http'
+import { driverDisplayName } from '../transfer-day-labels'
 import { workOrderNotice } from '../work-order-notice'
 
 type TransferFailure
@@ -154,11 +155,8 @@ export function useTransferForm(options: {
     }
   }
 
-  /** The day list stores ids. The screen shows the name, never the id. */
   function driverLabel(id: string | null): string {
-    if (id === null)
-      return ''
-    return options.drivers().find(driver => driver.id === id)?.name ?? t('ride.unknownDriver')
+    return driverDisplayName(options.drivers(), id, t('ride.unknownDriver'))
   }
 
   function openPlace(target: 'start' | 'end') {

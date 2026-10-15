@@ -2,6 +2,7 @@
 import type { Driver, TransferDayRide } from '../../shared'
 import { assignedRideSchema } from '../../shared'
 import { errorCode, httpStatus } from '../transfer-day-http'
+import { driverDisplayName } from '../transfer-day-labels'
 import { clearRideButtonId } from '../transfer-ride-buttons'
 import { canChangeAssignment } from '../transfer-ride-guards'
 import { workOrderNotice } from '../work-order-notice'
@@ -19,11 +20,8 @@ const clearing = ref<{ rideId: string, guestName: string } | null>(null)
 const clearPending = ref(false)
 const clearErrorKey = ref<'ride.notOpen' | 'ride.notFound' | 'ride.signedOut' | 'ride.changeFailed' | null>(null)
 
-/** The day list stores ids. The screen shows the name, never the id. */
 function driverLabel(id: string | null): string {
-  if (id === null)
-    return ''
-  return props.drivers.find(driver => driver.id === id)?.name ?? t('ride.unknownDriver')
+  return driverDisplayName(props.drivers, id, t('ride.unknownDriver'))
 }
 
 function open(ride: TransferDayRide) {
