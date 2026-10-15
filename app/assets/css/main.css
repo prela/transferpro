@@ -15,4 +15,72 @@
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+
+  /* Times line up in a column. Amounts and counts opt in with tabular-nums. */
+  time {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/*
+ * Lift-36 surfaces (ADR-0040). These sit outside @layer so they win over
+ * Nuxt UI's theme layer. Hexes match shared/theme-contrast.ts.
+ * Radius is 6 px. The office row token is 36 px.
+ */
+:root {
+  --ui-radius: 0.375rem;
+  --tp-row: 36px;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+:root,
+.light {
+  --ui-bg: #f8fafc;
+  --ui-bg-muted: #e2e8f0;
+  --ui-bg-elevated: #ffffff;
+  --ui-bg-accented: #e2e8f0;
+  --ui-border: #cbd5e1;
+  --ui-border-muted: #cbd5e1;
+  --ui-border-accented: #64748b;
+  --ui-text: #0f172a;
+  --ui-text-highlighted: #0f172a;
+  --ui-text-toned: #475569;
+  --ui-text-muted: #475569;
+  --ui-text-dimmed: #475569;
+  --tp-frame: #e8eef5;
+  --tp-working: #f8fafc;
+  --tp-panel: #ffffff;
+  --tp-hover: #e2e8f0;
+}
+
+/*
+ * White label on blue-600 is 5.17:1. blue-500 is 3.68:1.
+ * Dark keeps blue-500: its label is slate-900, 4.85:1 there and 3.45:1 on blue-600.
+ */
+.light {
+  --ui-primary: #2563eb;
+}
+
+.dark {
+  --ui-primary: #3b82f6;
+  --ui-bg: #10192a;
+  --ui-bg-muted: #263246;
+  --ui-bg-elevated: #1c283c;
+  --ui-bg-accented: #263246;
+  --ui-border: #526077;
+  --ui-border-muted: #526077;
+  --ui-border-accented: #7a8ba3;
+  --ui-text: #e2e8f0;
+  --ui-text-highlighted: #e2e8f0;
+  --ui-text-toned: #94a3b8;
+  --ui-text-muted: #94a3b8;
+  --ui-text-dimmed: #94a3b8;
+  --tp-frame: #070d18;
+  --tp-working: #10192a;
+  --tp-panel: #1c283c;
+  --tp-hover: #263246;
+}
+
+html {
+  background: var(--tp-frame);
 }

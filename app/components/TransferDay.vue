@@ -1433,7 +1433,7 @@ onMounted(() => {
         </template>
         <template #vehicle-cell="{ row }">
           <span>
-            {{ vehicleLabel(row.original.vehicleId) }}
+            <span class="font-mono">{{ vehicleLabel(row.original.vehicleId) }}</span>
             <UBadge
               v-if="vehicleArchived(row.original.vehicleId)"
               color="neutral"
@@ -2114,7 +2114,7 @@ onMounted(() => {
               name="flight"
               type="text"
               autocomplete="off"
-              class="w-full"
+              class="w-full font-mono"
             />
             <template #error="{ error }">
               <span role="alert">{{ error }}</span>
@@ -2134,7 +2134,7 @@ onMounted(() => {
               type="text"
               inputmode="decimal"
               autocomplete="off"
-              class="w-full"
+              class="w-full tabular-nums"
             />
             <template #error="{ error }">
               <span role="alert">{{ error }}</span>

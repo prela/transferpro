@@ -304,7 +304,7 @@ onMounted(() => {
               :name="`vehicle-${driver.id}`"
               :items="vehicleItems"
               :placeholder="t('roster.chooseVehicle')"
-              class="w-full"
+              class="w-full font-mono"
               @update:model-value="saved = false"
             />
           </UFormField>

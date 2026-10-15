@@ -49,7 +49,9 @@ test('office home loads both reads, stays still, and a keyboard refresh loads bo
   await expect(progress).toContainText('Ovaj popis je prazan.')
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Hrvatski' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Svijetla tema' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Svijetla', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Tamna', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Prema uređaju', exact: true })).toHaveCount(0)
   await expect.poll(() => reads.office).toBeGreaterThan(0)
   await expect.poll(() => reads.documents).toBeGreaterThan(0)
 

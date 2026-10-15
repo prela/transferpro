@@ -20,8 +20,9 @@ const profileHeading = {
 } as const
 
 const themeButton = {
-  light: /^(Svijetla tema|Light theme)$/,
-  dark: /^(Tamna tema|Dark theme)$/,
+  light: /^(Svijetla|Light)$/,
+  dark: /^(Tamna|Dark)$/,
+  system: /^(Prema uređaju|Follow the device)$/,
 } as const
 
 /**
@@ -64,10 +65,10 @@ export async function switchLocale(page: Page, locale: 'hr' | 'en') {
 }
 
 /**
- * Change light or dark on Profile, then return to the screen under test.
+ * Change light, dark, or follow-the-device on Profile, then return.
  * The choice stays in `transferpro-theme` on this browser.
  */
-export async function switchTheme(page: Page, theme: 'light' | 'dark') {
+export async function switchTheme(page: Page, theme: 'light' | 'dark' | 'system') {
   const returnTo = page.url()
   await page.goto('/settings/profile')
   await expect(page.getByRole('heading', { level: 1, name: /^(Profil|Profile)$/ })).toBeVisible()
@@ -75,7 +76,7 @@ export async function switchTheme(page: Page, theme: 'light' | 'dark') {
   await page.getByRole('button', { name: themeButton[theme] }).click()
   if (theme === 'dark')
     await expect(page.locator('html')).toHaveClass(/dark/)
-  else
+  else if (theme === 'light')
     await expect(page.locator('html')).not.toHaveClass(/dark/)
   // An earlier useTheme() init script would put the old value back on the next
   // document. Register this choice after it so the return keeps the click.

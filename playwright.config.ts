@@ -52,6 +52,18 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Phone checks for steps 10–12. Only specs tagged @phone run here.
+    // The desktop project stays the full suite.
+    {
+      name: 'phone',
+      grep: /@phone/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+      },
+    },
   ],
   webServer: {
     command: 'node ./scripts/e2e-server.mjs',

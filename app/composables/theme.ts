@@ -1,14 +1,18 @@
 /**
- * System preference until the user toggles. The choice is stored on this device
- * under `transferpro-theme`. `@nuxtjs/color-mode` reads that key and applies it
- * before paint (ADR-0016). A toggle stores only light or dark, never system.
+ * Light, dark, or follow the device. The choice is stored on this device
+ * under `transferpro-theme`. `@nuxtjs/color-mode` reads that key and applies
+ * it before paint. Follow the device is the default for every role (ADR-0040).
  */
-export function useThemeToggle() {
+export type ThemeChoice = 'light' | 'dark' | 'system'
+
+export function useThemeChoice() {
   const colorMode = useColorMode()
 
-  function toggle() {
-    colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'
+  function choose(choice: ThemeChoice) {
+    colorMode.preference = choice
   }
 
-  return { toggle }
+  const preference = computed(() => colorMode.preference as ThemeChoice)
+
+  return { choose, preference }
 }

@@ -498,26 +498,34 @@ onMounted(loadRides)
               <dt class="text-sm text-muted">
                 {{ t('driverRides.passengers') }}
               </dt>
-              <dd>{{ ride.passengerCount }}</dd>
+              <dd class="tabular-nums">
+                {{ ride.passengerCount }}
+              </dd>
             </div>
             <!-- Zero is a fact: the Driver still needs to see that there is no bag and no seat. -->
             <div>
               <dt class="text-sm text-muted">
                 {{ t('transfers.luggage') }}
               </dt>
-              <dd>{{ ride.luggageCount }}</dd>
+              <dd class="tabular-nums">
+                {{ ride.luggageCount }}
+              </dd>
             </div>
             <div>
               <dt class="text-sm text-muted">
                 {{ t('transfers.childSeats') }}
               </dt>
-              <dd>{{ ride.childSeatCount }}</dd>
+              <dd class="tabular-nums">
+                {{ ride.childSeatCount }}
+              </dd>
             </div>
             <div v-if="ride.flightNumber">
               <dt class="text-sm text-muted">
                 {{ t('driverRides.flight') }}
               </dt>
-              <dd>{{ ride.flightNumber }}</dd>
+              <dd class="font-mono">
+                {{ ride.flightNumber }}
+              </dd>
             </div>
             <div v-if="ride.landingAt">
               <dt class="text-sm text-muted">
@@ -551,7 +559,9 @@ onMounted(loadRides)
               <dt class="text-sm text-muted">
                 {{ t('vehicles.registrationPlate') }}
               </dt>
-              <dd>{{ ride.registrationPlate }}</dd>
+              <dd class="font-mono">
+                {{ ride.registrationPlate }}
+              </dd>
             </div>
             <div v-if="ride.tabla">
               <dt class="text-sm text-muted">
@@ -569,7 +579,9 @@ onMounted(loadRides)
               <dt class="text-sm text-muted">
                 {{ t('driverRides.price') }}
               </dt>
-              <dd>{{ priceLabel(ride.price) }}</dd>
+              <dd class="tabular-nums">
+                {{ priceLabel(ride.price) }}
+              </dd>
               <dd>{{ t('driverRides.cash') }}</dd>
             </div>
           </dl>

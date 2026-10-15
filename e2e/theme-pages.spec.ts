@@ -1,79 +1,107 @@
+import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
+import { expectNoAxeViolations } from './fixtures/axe'
 import { seedTenant } from './fixtures/seed'
 import { signIn, switchLocale, useTheme } from './fixtures/ui'
 
-for (const theme of ['light', 'dark'] as const) {
-  test(`drivers page is usable in ${theme} mode`, async ({ page }) => {
-    const tenant = await seedTenant(`drivers-theme-${theme}`)
-    await useTheme(page, theme)
-    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-    await page.getByRole('link', { name: 'Vozači' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Vozači' })).toBeVisible()
-    await expect(page.getByText('Još nema vozača.')).toBeVisible()
-    await page.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()
-    await expect(page.getByRole('dialog').getByLabel('Ime')).toBeVisible()
-
-    await switchLocale(page, 'en')
-    await expect(page.getByRole('heading', { level: 1, name: 'Drivers' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Add a driver', exact: true })).toBeVisible()
-  })
-
-  test(`vehicles page is usable in ${theme} mode`, async ({ page }) => {
-    const tenant = await seedTenant(`vehicles-theme-${theme}`)
-    await useTheme(page, theme)
-    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-    await page.getByRole('link', { name: 'Vozila' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Vozila' })).toBeVisible()
-    await expect(page.getByText('Još nema vozila.')).toBeVisible()
-    await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
-    await expect(page.getByRole('dialog').getByLabel('Registarska oznaka', { exact: true })).toBeVisible()
-
-    await switchLocale(page, 'en')
-    await expect(page.getByRole('heading', { level: 1, name: 'Vehicles' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Add a vehicle', exact: true })).toBeVisible()
-  })
-
-  test(`locations page is usable in ${theme} mode`, async ({ page }) => {
-    const tenant = await seedTenant(`locations-theme-${theme}`)
-    await useTheme(page, theme)
-    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-    await page.getByRole('link', { name: 'Lokacije' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Lokacije' })).toBeVisible()
-    await expect(page.getByText('Još nema lokacija.')).toBeVisible()
-    await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
-    await expect(page.getByRole('dialog').getByLabel('Ime')).toBeVisible()
-
-    await switchLocale(page, 'en')
-    await expect(page.getByRole('heading', { level: 1, name: 'Locations' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Add a location', exact: true })).toBeVisible()
-  })
-
-  test(`transfers page is usable in ${theme} mode`, async ({ page }) => {
-    const tenant = await seedTenant(`transfers-theme-${theme}`)
-    await useTheme(page, theme)
-    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-    await page.getByRole('link', { name: 'Transferi' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Transferi' })).toBeVisible()
-    await expect(page.getByLabel('Dan')).toBeVisible()
-    await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
-    await expect(page.getByRole('dialog').getByLabel('Ime gosta')).toBeVisible()
-
-    await switchLocale(page, 'en')
-    const dialog = page.getByRole('dialog', { name: 'Record a transfer' })
-    await expect(dialog.getByLabel('Guest name')).toBeVisible()
-    await expect(dialog.getByRole('button', { name: 'Record transfer', exact: true })).toBeVisible()
-  })
-
-  test(`roster page is usable in ${theme} mode`, async ({ page }) => {
-    const tenant = await seedTenant(`roster-theme-${theme}`)
-    await useTheme(page, theme)
-    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-    await page.getByRole('link', { name: 'Raspored' }).click()
-    await expect(page.getByRole('heading', { level: 1, name: 'Raspored vozila' })).toBeVisible()
-    await expect(page.getByLabel('Datum')).toBeVisible()
-
-    await switchLocale(page, 'en')
-    await expect(page.getByRole('heading', { level: 1, name: 'Vehicle roster' })).toBeVisible()
-    await expect(page.getByLabel('Date')).toBeVisible()
-  })
+/**
+ * Desktop shows the sidebar. The phone project hides it behind the navbar
+ * toggle, so the same spec opens that toggle before the link.
+ */
+async function openOfficeLink(page: Page, name: string) {
+  const link = page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name, exact: true })
+  const open = page.getByRole('button', { name: 'Otvori bočnu traku', exact: true })
+  await expect(link.or(open)).toBeVisible()
+  if (!(await link.isVisible()))
+    await open.click()
+  await link.click()
 }
+
+// @phone: the phone project runs this file as well as the desktop project.
+test.describe('@phone', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`drivers page is usable in ${theme} mode`, async ({ page }) => {
+      const tenant = await seedTenant(`drivers-theme-${theme}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      await openOfficeLink(page, 'Vozači')
+      await expect(page.getByRole('heading', { level: 1, name: 'Vozači' })).toBeVisible()
+      await expect(page.getByText('Još nema vozača.')).toBeVisible()
+      await page.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()
+      await expect(page.getByRole('dialog').getByLabel('Ime')).toBeVisible()
+
+      await expectNoAxeViolations(page)
+      await switchLocale(page, 'en')
+      await expect(page.getByRole('heading', { level: 1, name: 'Drivers' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Add a driver', exact: true })).toBeVisible()
+      await expectNoAxeViolations(page)
+    })
+
+    test(`vehicles page is usable in ${theme} mode`, async ({ page }) => {
+      const tenant = await seedTenant(`vehicles-theme-${theme}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      await openOfficeLink(page, 'Vozila')
+      await expect(page.getByRole('heading', { level: 1, name: 'Vozila' })).toBeVisible()
+      await expect(page.getByText('Još nema vozila.')).toBeVisible()
+      await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
+      await expect(page.getByRole('dialog').getByLabel('Registarska oznaka', { exact: true })).toBeVisible()
+
+      await expectNoAxeViolations(page)
+      await switchLocale(page, 'en')
+      await expect(page.getByRole('heading', { level: 1, name: 'Vehicles' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Add a vehicle', exact: true })).toBeVisible()
+      await expectNoAxeViolations(page)
+    })
+
+    test(`locations page is usable in ${theme} mode`, async ({ page }) => {
+      const tenant = await seedTenant(`locations-theme-${theme}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      await openOfficeLink(page, 'Lokacije')
+      await expect(page.getByRole('heading', { level: 1, name: 'Lokacije' })).toBeVisible()
+      await expect(page.getByText('Još nema lokacija.')).toBeVisible()
+      await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+      await expect(page.getByRole('dialog').getByLabel('Ime')).toBeVisible()
+
+      await expectNoAxeViolations(page)
+      await switchLocale(page, 'en')
+      await expect(page.getByRole('heading', { level: 1, name: 'Locations' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Add a location', exact: true })).toBeVisible()
+      await expectNoAxeViolations(page)
+    })
+
+    test(`transfers page is usable in ${theme} mode`, async ({ page }) => {
+      const tenant = await seedTenant(`transfers-theme-${theme}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      await openOfficeLink(page, 'Transferi')
+      await expect(page.getByRole('heading', { level: 1, name: 'Transferi' })).toBeVisible()
+      await expect(page.getByLabel('Dan')).toBeVisible()
+      await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+      await expect(page.getByRole('dialog').getByLabel('Ime gosta')).toBeVisible()
+
+      await expectNoAxeViolations(page)
+      await switchLocale(page, 'en')
+      const dialog = page.getByRole('dialog', { name: 'Record a transfer' })
+      await expect(dialog.getByLabel('Guest name')).toBeVisible()
+      await expect(dialog.getByRole('button', { name: 'Record transfer', exact: true })).toBeVisible()
+      await expectNoAxeViolations(page)
+    })
+
+    test(`roster page is usable in ${theme} mode`, async ({ page }) => {
+      const tenant = await seedTenant(`roster-theme-${theme}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      await openOfficeLink(page, 'Raspored')
+      await expect(page.getByRole('heading', { level: 1, name: 'Raspored vozila' })).toBeVisible()
+      await expect(page.getByLabel('Datum')).toBeVisible()
+
+      await expectNoAxeViolations(page)
+      await switchLocale(page, 'en')
+      await expect(page.getByRole('heading', { level: 1, name: 'Vehicle roster' })).toBeVisible()
+      await expect(page.getByLabel('Date')).toBeVisible()
+      await expectNoAxeViolations(page)
+    })
+  }
+})
