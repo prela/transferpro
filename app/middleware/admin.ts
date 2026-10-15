@@ -1,7 +1,7 @@
 /**
  * The only admin check. An Admin stays. A signed-out visitor gets the
  * sign-in form. A Dispatcher or a Driver is sent away before the page loads:
- * Tenant settings and Members go to Profile, and any other admin address
+ * Tenant settings and Members go to /profile, and any other admin address
  * goes Home. Audit will use that Home branch.
  */
 export default defineNuxtRouteMiddleware(async (to) => {
@@ -13,7 +13,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     return
   if (lookup.session.role === 'admin')
     return
-  const denied = isSettingsAdminPath(to.path) ? '/settings/profile' : '/'
+  const denied = isSettingsAdminPath(to.path) ? '/profile' : '/'
   return nuxtApp.runWithContext(() => navigateTo(denied))
 })
 

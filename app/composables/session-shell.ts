@@ -165,10 +165,14 @@ export async function useSessionShell(options?: SessionShellOptions) {
 type ShellError = 'shell.saveFailed' | 'shell.signOutFailed' | null
 
 /**
- * Sign-out for the office navbar and for the pages that still have the button.
- * Pending and the failure live in shared state so the menu and the page alert
- * are one action. A route change drops the failure, which is what a fresh
- * page ref used to do. The device theme is not touched.
+ * The one sign-out for every Tenant role (office menu, Driver menu, and the
+ * pages that still have the button). Pending and the failure live in shared
+ * state so the menu and the page alert are one action. A route change drops
+ * the failure, which is what a fresh page ref used to do. The device theme
+ * is not touched.
+ *
+ * The Transfer draft is cleared here, before the session cookie is dropped,
+ * when that ticket lands. Do not add a second member sign-out.
  */
 export function useShellSignOut() {
   const { setLocale } = useI18n()

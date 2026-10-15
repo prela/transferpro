@@ -62,5 +62,5 @@ test('a dispatcher who opens tenant settings or members lands on profile', async
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
   await expectSettingsRedirect(page, '/settings/tenant')
   await expectSettingsRedirect(page, '/settings/members')
-  await expect(page.getByRole('navigation', { name: 'Postavke' }).getByRole('link')).toHaveText(['Profil'])
+  await expect(page.getByRole('navigation', { name: 'Postavke' })).toHaveCount(0)
 })

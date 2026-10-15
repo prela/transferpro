@@ -109,18 +109,24 @@ function httpStatus(error: unknown): number | undefined {
     </section>
 
     <section v-else-if="session">
-      <p
+      <!--
+        The Driver header is the Tenant name and the profile menu. Today's
+        date is step 12. The large Profile and sign-out buttons left this list.
+      -->
+      <div
         v-if="session.role === 'driver'"
-        class="text-sm text-muted"
+        class="mb-4 flex items-start justify-between gap-3"
       >
-        {{ t('shell.tenant') }}
-      </p>
-      <h1
-        v-if="session.role === 'driver'"
-        class="mb-4 text-2xl font-semibold"
-      >
-        {{ session.tenantName }}
-      </h1>
+        <div>
+          <p class="text-sm text-muted">
+            {{ t('shell.tenant') }}
+          </p>
+          <h1 class="text-2xl font-semibold">
+            {{ session.tenantName }}
+          </h1>
+        </div>
+        <OfficeUserMenu />
+      </div>
       <DriverRides
         v-if="session.role === 'driver'"
         :time-zone="session.timeZone"
@@ -152,36 +158,6 @@ function httpStatus(error: unknown): number | undefined {
         class="mt-4"
         :description="t(shellError)"
       />
-      <!--
-        Office staff reach Settings from the sidebar and the navbar menu.
-        A Driver has no sidebar, so Profile opens from this phone column.
-        Sign-out stays here for the same reason. Locale and theme for a
-        signed-in Member are on Profile. The sign-in form below keeps both.
-      -->
-      <div
-        v-if="session.role === 'driver'"
-        class="mt-4 flex flex-wrap gap-2"
-      >
-        <UButton
-          to="/settings"
-          color="neutral"
-          variant="outline"
-          size="xl"
-          icon="i-lucide-settings"
-          class="flex-1 basis-32 justify-center"
-        >
-          {{ t('shell.settings') }}
-        </UButton>
-        <UButton
-          type="button"
-          size="xl"
-          class="flex-1 basis-32 justify-center"
-          :disabled="pending"
-          @click="signOut"
-        >
-          {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
-        </UButton>
-      </div>
     </section>
 
     <section v-else>

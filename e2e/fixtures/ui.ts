@@ -47,7 +47,7 @@ export async function hydrated(page: Page) {
  */
 export async function switchLocale(page: Page, locale: 'hr' | 'en') {
   const returnTo = page.url()
-  await page.goto('/settings/profile')
+  await page.goto('/profile')
   await expect(page.getByRole('heading', { level: 1, name: /^(Profil|Profile)$/ })).toBeVisible()
   await hydrated(page)
   const saved = page.waitForResponse(response =>
@@ -58,7 +58,7 @@ export async function switchLocale(page: Page, locale: 'hr' | 'en') {
   await page.getByRole('button', { name: localeButton[locale], exact: true }).click()
   await saved
   await expect(page.getByRole('heading', { level: 1, name: profileHeading[locale] })).toBeVisible()
-  if (new URL(returnTo).pathname !== '/settings/profile') {
+  if (new URL(returnTo).pathname !== '/profile') {
     await page.goto(returnTo)
     // The returned screen's first click is a Vue handler. Fields that were
     // already in the document survived a click during hydration; a slideover
@@ -73,7 +73,7 @@ export async function switchLocale(page: Page, locale: 'hr' | 'en') {
  */
 export async function switchTheme(page: Page, theme: 'light' | 'dark' | 'system') {
   const returnTo = page.url()
-  await page.goto('/settings/profile')
+  await page.goto('/profile')
   await expect(page.getByRole('heading', { level: 1, name: /^(Profil|Profile)$/ })).toBeVisible()
   await hydrated(page)
   await page.getByRole('button', { name: themeButton[theme] }).click()
@@ -86,7 +86,7 @@ export async function switchTheme(page: Page, theme: 'light' | 'dark' | 'system'
   await page.addInitScript((value) => {
     localStorage.setItem('transferpro-theme', value)
   }, theme)
-  if (new URL(returnTo).pathname !== '/settings/profile') {
+  if (new URL(returnTo).pathname !== '/profile') {
     await page.goto(returnTo)
     await hydrated(page)
   }
@@ -109,9 +109,9 @@ export async function openUserMenu(page: Page, tenantName: string) {
 }
 
 /**
- * Office staff keep Odjava in the navbar user menu. A Driver, a Superadmin,
- * and the invitation accept screen still show that control on the page.
- * Open the menu only when Odjava is not already on screen, then click it.
+ * Odjava lives in the profile menu for office staff, the Driver, and a
+ * Superadmin. The invitation accept screen still shows that control on the
+ * page. Open the menu only when Odjava is not already on screen, then click it.
  */
 export async function signOut(page: Page) {
   const onPage = page.getByRole('button', { name: 'Odjava', exact: true })
@@ -168,7 +168,7 @@ export async function expectSettingsRedirect(page: Page, path: '/settings/tenant
   page.on('request', onRequest)
   try {
     await page.goto(path)
-    await expect(page).toHaveURL(/\/settings\/profile$/)
+    await expect(page).toHaveURL(/\/profile$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
     await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
     await expect(page.getByRole('region', { name: 'Pozovi člana' })).toHaveCount(0)

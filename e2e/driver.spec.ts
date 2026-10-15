@@ -23,7 +23,8 @@ test('a driver who opens an office address lands on Driver Home before office da
 
   await expect(page.getByRole('navigation')).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Postavke', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Postavke', exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Naručitelji' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Lokacije' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Vozila' })).toHaveCount(0)
@@ -45,7 +46,7 @@ test('a driver who opens tenant settings or members lands on profile', async ({ 
   await expectSettingsRedirect(page, '/settings/tenant')
   await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
   await expectSettingsRedirect(page, '/settings/members')
-  await expect(page.getByRole('navigation', { name: 'Postavke' }).getByRole('link')).toHaveText(['Profil'])
+  await expect(page.getByRole('navigation', { name: 'Postavke' })).toHaveCount(0)
 })
 
 /** Home, with the Tenant name as the only h1, and no request for that page's collection. */
