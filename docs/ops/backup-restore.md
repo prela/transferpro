@@ -60,6 +60,5 @@ It prints `restore_seconds=<n>`. A failed check leaves the isolated database in 
 ## Measured duration
 
 A disposable Postgres 18 restore on this repo, through the script, took 6 seconds (`restore_seconds=6`). That run used a local stand-in for R2, so it does not include the preview network. The owner records the R2 restore duration here after that restore.
-R2 restore of preview on 15.10.2026: restore_seconds=2.
 
 R2 restore of preview on 15.10.2026: `restore_seconds=2`.
