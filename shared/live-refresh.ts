@@ -33,7 +33,7 @@ export interface LiveRefreshOptions {
    * `count` is how many urgent keys are new. Zero clears the polite
    * announcement so an unchanged refresh says nothing.
    */
-  announce: (count: number) => void
+  announce: (count: number) => void | Promise<void>
 }
 
 export interface LiveRefreshController {
@@ -75,7 +75,7 @@ type RunKind = 'settle' | 'refresh'
 export function createLiveRefresh(deps: LiveRefreshDeps, options: LiveRefreshOptions): LiveRefreshController {
   let stopped = false
   let running = false
-  let follow: RunKind | null = null
+  let queued: RunKind | null = null
   let cancelTimer: (() => void) | null = null
   let knownUrgent: readonly string[] | null = null
 
@@ -98,7 +98,7 @@ export function createLiveRefresh(deps: LiveRefreshDeps, options: LiveRefreshOpt
     if (stopped)
       return
     if (running) {
-      follow = follow === 'refresh' || kind === 'refresh' ? 'refresh' : 'settle'
+      queued = queued === 'refresh' || kind === 'refresh' ? 'refresh' : 'settle'
       return
     }
     if (kind === 'settle' && (deps.visibility() !== 'visible' || !options.automatic())) {
@@ -127,8 +127,8 @@ export function createLiveRefresh(deps: LiveRefreshDeps, options: LiveRefreshOpt
     if (stopped)
       return
     arm()
-    const nextRun = follow
-    follow = null
+    const nextRun = queued
+    queued = null
     if (nextRun)
       await run(nextRun)
   }

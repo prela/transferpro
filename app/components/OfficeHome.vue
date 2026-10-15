@@ -70,7 +70,15 @@ const { automatic, refreshing, updatedAt, failed, refresh } = useLiveRefresh({
     return outcome
   },
   urgentKeys: () => snapshot.value ? officeHomeUrgentKeys(snapshot.value) : [],
-  onAnnounce(count) {
+  async onAnnounce(count) {
+    // A polite region repeats only when the text changes. Clear first so a
+    // second new urgent item is announced, not only the first.
+    if (count === 0) {
+      announcedCount.value = 0
+      return
+    }
+    announcedCount.value = 0
+    await nextTick()
     announcedCount.value = count
   },
 })
@@ -94,7 +102,8 @@ const shownTime = computed(() =>
         type="button"
         color="neutral"
         variant="outline"
-        size="xl"
+        size="sm"
+        class="max-lg:min-h-11 max-lg:text-base"
         @click="refresh"
       >
         {{ t('liveRefresh.refresh') }}
@@ -113,8 +122,10 @@ const shownTime = computed(() =>
       />
       <USwitch
         v-model="automatic"
-        size="xl"
+        size="sm"
+        class="max-lg:min-h-11"
         :label="t('liveRefresh.automatic')"
+        :ui="{ label: 'max-lg:text-base' }"
       />
     </div>
     <p
