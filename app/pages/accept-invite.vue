@@ -183,15 +183,6 @@ function httpStatus(error: unknown): number | undefined {
     />
     <template v-else-if="preview === 'wrong-account'">
       <UAlert
-        v-if="formError"
-        color="error"
-        variant="subtle"
-        role="alert"
-        class="mb-4"
-        :description="formErrorText"
-        :ui="{ description: 'text-sm text-default opacity-100' }"
-      />
-      <UAlert
         color="error"
         variant="subtle"
         role="alert"
@@ -202,22 +193,23 @@ function httpStatus(error: unknown): number | undefined {
       <UButton
         type="button"
         size="xl"
+        block
         :disabled="pending"
         @click="signOut"
       >
         {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
       </UButton>
-    </template>
-    <template v-else>
       <UAlert
         v-if="formError"
         color="error"
         variant="subtle"
         role="alert"
-        class="mb-4"
+        class="mt-4"
         :description="formErrorText"
         :ui="{ description: 'text-sm text-default opacity-100' }"
       />
+    </template>
+    <template v-else>
       <p
         v-if="preview === 'sign-in'"
         class="mb-4"
@@ -263,6 +255,7 @@ function httpStatus(error: unknown): number | undefined {
         <UButton
           type="submit"
           size="xl"
+          block
           :disabled="pending"
         >
           {{ pending ? t('signIn.submitting') : t('acceptInvite.signInSubmit') }}
@@ -313,11 +306,22 @@ function httpStatus(error: unknown): number | undefined {
         <UButton
           type="submit"
           size="xl"
+          block
           :disabled="pending"
         >
           {{ pending ? t('acceptInvite.submitting') : t('acceptInvite.submit') }}
         </UButton>
       </form>
+      <!-- Same card as sign-in: the failure sits under the button. -->
+      <UAlert
+        v-if="formError"
+        color="error"
+        variant="subtle"
+        role="alert"
+        class="mt-4"
+        :description="formErrorText"
+        :ui="{ description: 'text-sm text-default opacity-100' }"
+      />
     </template>
   </AuthFrame>
 </template>

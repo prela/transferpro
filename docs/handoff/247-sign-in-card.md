@@ -7,12 +7,12 @@ Out of scope: password recovery (#241), replacing the text mark with a logo, and
 - The English subtitle is "Dispatch system for transfers". ADR-0038 states only the Croatian line.
 - `AuthFrame` is the shared frame. The mark is the only `h1` ("Transferpro"). The invitation title is an `h2`.
 - Language and theme stay `size="sm"` on this frame, including the phone.
-- The sign-in error sits under the button. After the spec review, the invitation form keeps its previous button width and its error above the fields. Do not widen those buttons unless a ticket says so.
+- The invitation uses the same card as sign-in: each action button is full width, and a form error sits under that button. The owner confirmed this on 15 October 2026 after the first review had left the invite controls narrower.
 - Error alerts on these screens set the description to `text-sm text-default opacity-100`. The error colour on the error wash is under 4.5:1 in light (ADR-0040).
 
 Local check before push:
 
-`pnpm exec nuxi build && E2E_PORT=3032 PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" pnpm test:e2e`
+`pnpm exec nuxi build && E2E_PORT=3033 PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" pnpm test:e2e`
 
 162 passed.
 
@@ -27,10 +27,11 @@ Changed specs, and why:
 - `e2e/office-home.spec.ts`, `e2e/signed-out-pages.spec.ts`, `e2e/platform.spec.ts`, `e2e/audit.spec.ts`, `e2e/expected-arrival.spec.ts`, `e2e/record-landing-time.spec.ts`, `e2e/landing-time.spec.ts` — a signed-out screen is the Transferpro mark, not the Prijava heading.
 - `e2e/accept-invite-invalid.spec.ts`, `e2e/accept-invite-existing.spec.ts` — the invitation title is `h2` under the mark.
 - `e2e/settings-profile.spec.ts` — English on the signed-out card changes the subtitle and the Sign in button; the heading stays Transferpro.
+- `e2e/password.spec.ts` — the account-opening button fills the card and the length error sits under it.
 
 ## Code review
 
-Fixed point `origin/develop`, commit `2f81cba`. The reports below are the review as it ran. The invitation button and error placement they call scope creep were reverted after the review.
+Fixed point `origin/develop`, commit `2f81cba`. The reports below are the review as it ran. A later commit aligns the invitation button and the form error with sign-in, which is what the owner asked for after that review.
 
 ### Standards
 
