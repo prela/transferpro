@@ -15,6 +15,7 @@
   "scripts": {
     "prepare": "husky",
     "dev": "nuxi dev --port 3000",
+    "prototype": "nuxi dev --port 3000",
     "lint": "eslint .",
     "typecheck": "nuxi typecheck && tsc -p e2e/tsconfig.json --noEmit",
     "test": "vitest run",

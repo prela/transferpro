@@ -1,9 +1,10 @@
 export default defineAppConfig({
   ui: {
     colors: {
-      // Blue stands in for the old focus #0b4f8a. Stone is the warm paper and ink.
+      // ADR-0040: slate neutral, blue primary. This branch is the throwaway
+      // prototype and must not merge; develop keeps stone until step 10.
       primary: 'blue',
-      neutral: 'stone',
+      neutral: 'slate',
     },
   },
 })
