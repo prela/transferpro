@@ -177,7 +177,7 @@ const profile = computed<DropdownMenuItem[][]>(() => [
 
   <UButton
     v-if="phone && !detailOpen"
-    class="fixed right-4 bottom-20 z-30 shadow-lg md:hidden"
+    class="fixed right-4 bottom-20 z-30 size-12 shadow-lg md:hidden"
     icon="i-lucide-plus"
     size="lg"
     :aria-label="copy.newTransfer"

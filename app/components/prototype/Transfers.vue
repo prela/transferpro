@@ -145,14 +145,16 @@ function actionLabel(ride: PrototypeRide): string {
       </div>
 
       <div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_12rem_12rem]">
-        <UInput v-model="search" icon="i-lucide-search" :placeholder="copy.search" :aria-label="copy.search" />
+        <UInput v-model="search" class="text-base" icon="i-lucide-search" :placeholder="copy.search" :aria-label="copy.search" />
         <USelect
           v-model="client"
+          class="text-base"
           :aria-label="copy.client"
           :items="[{ label: copy.allClients, value: 'all' }, ...clients.map(name => ({ label: name, value: name }))]"
         />
         <USelect
           v-model="driver"
+          class="text-base"
           :aria-label="copy.driver"
           :items="[{ label: copy.allDrivers, value: 'all' }, ...drivers.map(name => ({ label: name, value: name }))]"
         />

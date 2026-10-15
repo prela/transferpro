@@ -62,7 +62,7 @@ const closed = computed(() => props.ride.state === 'done' || props.ride.state ==
       size="xs"
       color="primary"
       variant="soft"
-      class="h-7 shrink-0"
+      class="h-11 shrink-0 md:h-7"
       :label="copy.actions[action]"
       @click="emit('command')"
     />

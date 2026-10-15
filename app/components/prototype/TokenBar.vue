@@ -47,26 +47,22 @@ function variantTo(name: string) {
       :to="variantTo(name)"
     />
     <span class="tabular-nums">{{ copy.row }} {{ row }} px</span>
-    <span class="hidden font-mono lg:inline dark:hidden">
+    <span class="w-full font-mono dark:hidden">
       {{ copy.frame }} {{ lightTokens.frame }}
       · {{ copy.working }} {{ lightTokens.working }}
       · {{ copy.panel }} {{ lightTokens.panel }}
       · {{ copy.hover }} {{ lightTokens.hover }}
-    </span>
-    <span class="hidden font-mono dark:lg:inline">
-      {{ copy.frame }} {{ darkTokens.frame }}
-      · {{ copy.working }} {{ darkTokens.working }}
-      · {{ copy.panel }} {{ darkTokens.panel }}
-      · {{ copy.hover }} {{ darkTokens.hover }}
-    </span>
-    <span class="hidden font-mono xl:inline dark:hidden">
-      {{ copy.secondary }} {{ lightTokens.secondary }}
+      · {{ copy.secondary }} {{ lightTokens.secondary }}
       · {{ copy.control }} {{ lightTokens.control }}
       · {{ copy.structural }} {{ lightTokens.structural }}
       · {{ copy.contrast }} {{ lightRatios.text }} / {{ lightRatios.control }} / {{ lightRatios.structural }}
     </span>
-    <span class="hidden font-mono dark:xl:inline">
-      {{ copy.secondary }} {{ darkTokens.secondary }}
+    <span class="hidden w-full font-mono dark:block">
+      {{ copy.frame }} {{ darkTokens.frame }}
+      · {{ copy.working }} {{ darkTokens.working }}
+      · {{ copy.panel }} {{ darkTokens.panel }}
+      · {{ copy.hover }} {{ darkTokens.hover }}
+      · {{ copy.secondary }} {{ darkTokens.secondary }}
       · {{ copy.control }} {{ darkTokens.control }}
       · {{ copy.structural }} {{ darkTokens.structural }}
       · {{ copy.contrast }} {{ darkRatios.text }} / {{ darkRatios.control }} / {{ darkRatios.structural }}

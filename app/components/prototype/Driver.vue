@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { DRIVER_NEXT_ID, DRIVER_RIDE_IDS, findRide } from '../../prototype/day'
-import { money } from '../../prototype/present'
+import { money, stateBadge } from '../../prototype/present'
 
 const { copy } = usePrototypeCopy()
 const colorMode = useColorMode()
@@ -102,7 +102,7 @@ const profile = computed(() => [[
         <p class="text-4xl font-medium tabular-nums text-highlighted">
           {{ nextRide.time }}
         </p>
-        <UBadge color="warning" variant="outline">
+        <UBadge :color="stateBadge(nextRide.state).color" :variant="stateBadge(nextRide.state).variant">
           {{ copy.states[nextRide.state] }}
         </UBadge>
         <p v-if="nextRide.flight" class="font-mono">

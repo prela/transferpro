@@ -72,7 +72,7 @@ function ping() {
           :to="to('/prototype/transfers', { filter: part.filter, ride: undefined, day: undefined })"
         >
           <span class="text-lg tabular-nums text-highlighted">{{ part.value }}</span>
-          <span class="text-[11px] text-muted">{{ copy.counts[part.key] }}</span>
+          <span class="text-xs text-muted">{{ copy.counts[part.key] }}</span>
         </UButton>
       </div>
 
