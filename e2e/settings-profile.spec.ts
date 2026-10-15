@@ -81,7 +81,7 @@ test('signed-in home keeps locale and theme in the profile menu, not as page but
   await expectNoLocaleTheme(page)
 
   await page.goto('/settings/tenant')
-  await expect(page.getByRole('heading', { level: 1, name: 'Tvrtka' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Postavke tvrtke' })).toBeVisible()
   await expectNoLocaleTheme(page)
 
   await signOut(page)

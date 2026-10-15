@@ -677,9 +677,9 @@
     }
   },
   "platform": {
-    "title": "Firms",
-    "empty": "No firms yet.",
-    "back": "Firms",
+    "title": "Companies",
+    "empty": "No companies yet.",
+    "back": "Companies",
     "name": "Name",
     "slug": "Slug",
     "created": "Created",
@@ -689,7 +689,7 @@
     "rename": "Rename",
     "renamed": "The name was saved.",
     "nameInvalid": "Enter a name of at most 120 characters.",
-    "notFound": "That firm was not found.",
+    "notFound": "That company was not found.",
     "saveFailed": "The name was not saved. Try again."
   }
 }

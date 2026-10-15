@@ -124,7 +124,7 @@ function onPhoneNavigate() {
   </UDashboardGroup>
 
   <nav
-    class="fixed inset-x-0 bottom-0 z-30 flex border-t border-default bg-default lg:hidden"
+    class="fixed inset-x-0 bottom-0 z-30 flex border-t border-default bg-[var(--tp-frame)] lg:hidden"
     :aria-label="t('shell.nav')"
   >
     <UButton
@@ -137,8 +137,14 @@ function onPhoneNavigate() {
       variant="ghost"
       size="xl"
       class="min-h-11 flex-1 justify-center"
-      :label="link.label"
-    />
+    >
+      {{ link.label }}
+      <!-- Home leaves this empty until the urgent count arrives (ADR-0039). -->
+      <span
+        v-if="typeof link.urgentCount === 'number'"
+        class="ms-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs text-inverted"
+      >{{ link.urgentCount }}</span>
+    </UButton>
     <UButton
       type="button"
       color="neutral"

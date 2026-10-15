@@ -22,10 +22,10 @@ if (session.value && session.value.role !== 'admin')
   await navigateTo('/settings/profile', { replace: true })
 
 useHead({
-  title: () => t('shell.tenant'),
+  title: () => t('shell.companySettings'),
 })
 
-bindScreenTitle(() => t('shell.tenant'))
+bindScreenTitle(() => t('shell.companySettings'))
 </script>
 
 <template>

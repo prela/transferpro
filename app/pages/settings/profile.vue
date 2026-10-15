@@ -34,15 +34,18 @@ bindScreenTitle(() => t('shell.profile'))
       class="mb-4"
       :description="t(shellError)"
     />
-    <div class="flex flex-wrap gap-2">
-      <!-- Desktop pickers are small. The phone copy is xl and at least 44px. -->
+    <!--
+      Two copies, one size each. The wrapper is what hides, because the
+      actions root is display:contents and would fight a hidden class on itself.
+    -->
+    <div class="hidden flex-wrap gap-2 lg:flex">
       <LocaleThemeActions
-        class="hidden lg:contents"
         size="sm"
         @choose="chooseLocale"
       />
+    </div>
+    <div class="flex flex-wrap gap-2 lg:hidden">
       <LocaleThemeActions
-        class="contents lg:hidden"
         size="xl"
         @choose="chooseLocale"
       />
