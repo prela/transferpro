@@ -24,7 +24,7 @@ test('a driver who opens an office address lands on Driver Home before office da
   await expect(page.getByRole('navigation')).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Postavke', exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Klijenti' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Naručitelji' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Lokacije' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Vozila' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Vozači' })).toHaveCount(0)

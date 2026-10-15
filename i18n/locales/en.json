@@ -9,18 +9,25 @@
     "limited": "Too many attempts. Wait and try again."
   },
   "shell": {
-    "tenant": "Tenant",
+    "tenant": "Company",
     "signOut": "Sign out",
     "signingOut": "Signing out",
     "signOutFailed": "Sign-out failed. Try again.",
     "exampleTime": "Example time",
     "unavailable": "The screen could not be loaded. Try again.",
-    "noAccess": "You are not a member of any tenant. Sign out or ask for a new invitation.",
+    "noAccess": "You are not a member of any company. Sign out or ask for a new invitation.",
     "saveFailed": "The locale was not saved. Try again.",
     "nav": "Sections",
     "home": "Home",
     "settings": "Settings",
-    "profile": "Profile"
+    "companySettings": "Company settings",
+    "profile": "Profile",
+    "myProfile": "My profile",
+    "groupOperations": "Operations",
+    "groupCatalogs": "Catalogs",
+    "groupManagement": "Management",
+    "more": "More",
+    "newTransfer": "New transfer"
   },
   "locale": {
     "hr": "Hrvatski",
@@ -87,6 +94,7 @@
     "you": "you"
   },
   "audit": {
+    "nav": "Audit",
     "title": "Audit log",
     "loading": "Loading the audit log",
     "loadFailed": "The audit log could not be loaded. Try again.",

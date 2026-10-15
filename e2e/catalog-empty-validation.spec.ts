@@ -7,16 +7,16 @@ test('empty catalog lists and remaining field messages appear on the screens', a
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   const nav = page.getByRole('navigation', { name: 'Odjeljci' })
 
-  await nav.getByRole('link', { name: 'Klijenti' }).click()
+  await nav.getByRole('link', { name: 'Naručitelji' }).click()
   await expect(page.getByText('Još nema klijenata.')).toBeVisible()
 
   await nav.getByRole('link', { name: 'Početna' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Početna' })).toBeVisible()
   await nav.getByRole('link', { name: 'Lokacije' }).click()
   await expect(page.getByText('Još nema lokacija.')).toBeVisible()
 
   await nav.getByRole('link', { name: 'Početna' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Početna' })).toBeVisible()
   await nav.getByRole('link', { name: 'Vozači' }).click()
   await expect(page.getByText('Još nema vozača.')).toBeVisible()
   await page.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()
@@ -32,7 +32,7 @@ test('empty catalog lists and remaining field messages appear on the screens', a
   await expect(dialog).toBeHidden()
 
   await nav.getByRole('link', { name: 'Početna' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Početna' })).toBeVisible()
   await nav.getByRole('link', { name: 'Vozila' }).click()
   await expect(page.getByText('Još nema vozila.')).toBeVisible()
   await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
@@ -46,7 +46,7 @@ test('empty catalog lists and remaining field messages appear on the screens', a
   await expect(dialog).toBeHidden()
 
   await nav.getByRole('link', { name: 'Početna' }).click()
-  await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Početna' })).toBeVisible()
   await nav.getByRole('link', { name: 'Raspored' }).click()
   await expect(page.getByText('Još nema vozača.')).toBeVisible()
 })

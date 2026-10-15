@@ -5,8 +5,8 @@ import { chooseOption, openAudit, signIn, switchLocale } from './fixtures/ui'
 test('admin adds a client, corrects it, and the audit log shows the entries', async ({ page }) => {
   const tenant = await seedTenant('clients-admin')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await page.getByRole('link', { name: 'Klijenti' }).click()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await page.getByRole('link', { name: 'Naručitelji' }).click()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
   await expect(page.getByText('Još nema klijenata.')).toBeVisible()
 
   await page.getByRole('button', { name: 'Dodaj klijenta', exact: true }).click()
@@ -73,7 +73,7 @@ test('admin adds a client, corrects it, and the audit log shows the entries', as
   await expect(page.getByRole('cell', { name: 'Vrsta klijenta ispravljena', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Osoba', exact: true })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Klijenti' }).click()
+  await page.getByRole('link', { name: 'Naručitelji' }).click()
   await expect(page).toHaveURL(/\/clients$/)
   await page.reload()
   await expect(page.getByRole('button', { name: 'Radnje: Hotel Park' })).toBeVisible()
@@ -86,8 +86,8 @@ test('dispatcher adds a client and the screen shows the tenant name', async ({ p
   const tenant = await seedTenant('clients-disp')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispečer')
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
-  await page.getByRole('link', { name: 'Klijenti' }).click()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await page.getByRole('link', { name: 'Naručitelji' }).click()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Dodaj klijenta', exact: true }).click()
   const dialog = page.getByRole('dialog')

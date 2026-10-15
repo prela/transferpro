@@ -229,7 +229,7 @@ it('gives a superadmin no tenant session and only firm metadata', async () => {
 
   const shell = await call('GET', '/api/platform/session', session)
   expect(shell.status).toBe(200)
-  expect(Object.keys(await shell.json() as object).sort()).toEqual(['locale', 'timeZone', 'userId'])
+  expect(Object.keys(await shell.json() as object).sort()).toEqual(['email', 'locale', 'timeZone', 'userId', 'userName'])
 
   const opened = await call('GET', `/api/platform/tenants/${created.tenantId}`, session)
   expect(opened.status).toBe(200)

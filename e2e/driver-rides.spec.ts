@@ -103,11 +103,10 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await useTheme(page, 'light')
   await page.setViewportSize({ width: 390, height: 844 })
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  // Phone width keeps the sections in the slideover, not a row on the page.
-  await page.getByRole('button', { name: 'Otvori bočnu traku', exact: true }).click()
-  await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Transferi' })).toBeVisible()
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog')).toBeHidden()
+  // Phone width puts Transferi on the bottom bar. There is no sidebar slideover.
+  const bar = page.getByRole('navigation', { name: 'Odjeljci' })
+  await expect(bar.getByRole('link', { name: 'Transferi', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Otvori bočnu traku', exact: true })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Moje vožnje' })).toHaveCount(0)
 
   const licence = '2031-01-01'

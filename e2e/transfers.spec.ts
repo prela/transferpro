@@ -14,7 +14,7 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispečer')
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
 
-  await page.getByRole('link', { name: 'Klijenti' }).click()
+  await page.getByRole('link', { name: 'Naručitelji' }).click()
   await page.getByRole('button', { name: 'Dodaj klijenta', exact: true }).click()
   const clientDialog = page.getByRole('dialog')
   await clientDialog.getByLabel('Ime').fill(clientName)
@@ -25,7 +25,7 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
 
   await page.getByRole('link', { name: 'Početna' }).click()
   await page.getByRole('link', { name: 'Transferi' }).click()
-  await expect(page.getByText(`Organizacija: ${tenant.name}`)).toBeVisible()
+  await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
   await expect(page.getByText('Nema vožnji ovaj dan.')).toBeVisible()
 
   await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()

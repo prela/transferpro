@@ -14,11 +14,16 @@ const {
 useHead({
   title: () => t('shell.profile'),
 })
+
+bindScreenTitle(() => t('shell.profile'))
 </script>
 
 <template>
   <section v-if="session">
-    <h1 class="mb-4 text-2xl font-semibold">
+    <h1
+      v-if="session.role === 'driver'"
+      class="mb-4 text-2xl font-semibold"
+    >
       {{ t('shell.profile') }}
     </h1>
     <UAlert
@@ -30,7 +35,17 @@ useHead({
       :description="t(shellError)"
     />
     <div class="flex flex-wrap gap-2">
-      <LocaleThemeActions @choose="chooseLocale" />
+      <!-- Desktop pickers are small. The phone copy is xl and at least 44px. -->
+      <LocaleThemeActions
+        class="hidden lg:contents"
+        size="sm"
+        @choose="chooseLocale"
+      />
+      <LocaleThemeActions
+        class="contents lg:hidden"
+        size="xl"
+        @choose="chooseLocale"
+      />
     </div>
   </section>
 </template>

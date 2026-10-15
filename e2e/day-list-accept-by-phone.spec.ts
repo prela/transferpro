@@ -291,7 +291,7 @@ test('the office marks a ride done, and the audit log names that person', async 
   expect(await dayRide(page, open.day, 'Ema Open')).toMatchObject({ state: 'unassigned', mustAccept: null })
   expect(mail).toEqual([])
 
-  await page.getByRole('link', { name: 'Audit log' }).click()
+  await page.getByRole('link', { name: 'Audit', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible()
   const doneRow = page.getByRole('row', { name: 'Ride marked done' })
   await expect(doneRow).toContainText(tenant.adminName)
@@ -364,7 +364,7 @@ test('the office cancels a ride, the row stays, and the audit log names that per
   expect(await dayRide(page, open.day, 'Ema Slobodna')).toMatchObject({ state: 'unassigned' })
   expect(mail).toEqual([])
 
-  await page.getByRole('link', { name: 'Audit log' }).click()
+  await page.getByRole('link', { name: 'Audit', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible()
   const cancelledRow = page.getByRole('row', { name: 'Ride cancelled' })
   await expect(cancelledRow).toContainText(tenant.adminName)
@@ -444,7 +444,7 @@ test('the office marks a no-show before the wait, and the audit log names that p
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   await expect(plainRow.getByRole('cell', { name: 'No-show', exact: true })).toBeVisible()
 
-  await page.getByRole('link', { name: 'Audit log' }).click()
+  await page.getByRole('link', { name: 'Audit', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible()
   const earlyRow = page.getByRole('row', { name: 'No-show before the wait' })
   await expect(earlyRow).toContainText(tenant.adminName)

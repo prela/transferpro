@@ -125,7 +125,7 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   await switchTheme(page, 'light')
   await expect(page.getByRole('cell', { name: renamed, exact: true })).toBeVisible()
 
-  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Audit log', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Audit', exact: true }).click()
   await expect(page).toHaveURL(/\/audit$/)
   const returned = page.getByRole('row', { name: 'Ride returned to assigned' })
   await expect(returned.getByRole('cell', { name: tenant.adminName })).toBeVisible()

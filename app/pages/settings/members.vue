@@ -23,13 +23,12 @@ if (session.value && session.value.role !== 'admin')
 useHead({
   title: () => t('members.title'),
 })
+
+bindScreenTitle(() => t('members.title'))
 </script>
 
 <template>
   <section v-if="session?.role === 'admin'">
-    <h1 class="mb-4 text-2xl font-semibold">
-      {{ t('members.title') }}
-    </h1>
     <MemberInvite />
     <MemberList
       :is-admin="session.role === 'admin'"

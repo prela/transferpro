@@ -6,7 +6,7 @@ import { signIn, switchLocale, switchTheme } from './fixtures/ui'
 test('admin changes the waits and the time zone, and the audit log updates', async ({ page }) => {
   const tenant = await seedTenant('settings')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await openSettingsTab(page, 'Organizacija')
+  await openSettingsTab(page, 'Tvrtka')
   const settings = page.getByRole('region', { name: 'Postavke' })
 
   await settings.getByLabel('Čekanje na aerodromu (minute)').fill('45')
@@ -38,7 +38,7 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
 test('admin sets the operational-day start and sees it after reload, in light and in dark', async ({ page }) => {
   const tenant = await seedTenant('settings-hour')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await openSettingsTab(page, 'Organizacija')
+  await openSettingsTab(page, 'Tvrtka')
   const settings = page.getByRole('region', { name: 'Postavke' })
   const hour = settings.getByLabel('Sat početka operativnog dana')
 
@@ -70,6 +70,6 @@ test('admin sets the operational-day start and sees it after reload, in light an
 
 /** Settings in the sidebar, then the named tab. */
 async function openSettingsTab(page: Page, name: string) {
-  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Postavke', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Postavke tvrtke', exact: true }).click()
   await page.getByRole('navigation', { name: 'Postavke' }).getByRole('link', { name, exact: true }).click()
 }

@@ -41,6 +41,9 @@ useHead({
   title: () => session.value?.tenantName ?? t('signIn.title'),
 })
 
+// Office Home's h1 is the navbar title. A Driver keeps the name in the page.
+bindScreenTitle(() => isOfficeMember(session.value?.role) ? t('shell.home') : '')
+
 async function signIn() {
   formError.value = null
   pending.value = true
@@ -106,10 +109,16 @@ function httpStatus(error: unknown): number | undefined {
     </section>
 
     <section v-else-if="session">
-      <p class="text-sm text-muted">
+      <p
+        v-if="session.role === 'driver'"
+        class="text-sm text-muted"
+      >
         {{ t('shell.tenant') }}
       </p>
-      <h1 class="mb-4 text-2xl font-semibold">
+      <h1
+        v-if="session.role === 'driver'"
+        class="mb-4 text-2xl font-semibold"
+      >
         {{ session.tenantName }}
       </h1>
       <DriverRides

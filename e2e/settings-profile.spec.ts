@@ -22,7 +22,7 @@ test('/settings opens Profile for an admin, a dispatcher, and a driver', async (
     const tabs = page.getByRole('navigation', { name: 'Postavke' })
     const admin = member.email === tenant.adminEmail
     await expect(tabs.getByRole('link')).toHaveText(admin
-      ? ['Profil', 'Organizacija', 'Članovi']
+      ? ['Profil', 'Tvrtka', 'Članovi']
       : ['Profil'])
     await expect(tabs.getByRole('link', { name: 'Profil', exact: true })).toHaveAttribute('aria-current', 'page')
     // Driver Home is where that role signs out. Office staff can leave from here.
@@ -63,21 +63,25 @@ test('profile saves hr and en through POST /api/locale and the next screen uses 
 
   await page.goto('/')
   await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Početna', exact: true })).toBeVisible()
-  await page.getByRole('link', { name: 'Klijenti', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  await page.getByRole('link', { name: 'Naručitelji', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toBeVisible()
 })
 
-test('signed-in home and an office page do not show locale or theme buttons', async ({ page }) => {
+test('signed-in home keeps locale and theme in the profile menu, not as page buttons', async ({ page }) => {
   const tenant = await seedTenant('settings-profile-no-chrome')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const menu = await openUserMenu(page, tenant.name)
+  await expect(menu.getByRole('menuitem', { name: 'Svijetla', exact: true })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Hrvatski', exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
   await expectNoLocaleTheme(page)
 
-  await page.getByRole('link', { name: 'Klijenti', exact: true }).click()
-  await expect(page.getByRole('heading', { level: 1, name: 'Klijenti' })).toBeVisible()
+  await page.getByRole('link', { name: 'Naručitelji', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toBeVisible()
   await expectNoLocaleTheme(page)
 
   await page.goto('/settings/tenant')
-  await expect(page.getByRole('heading', { level: 1, name: 'Organizacija' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Tvrtka' })).toBeVisible()
   await expectNoLocaleTheme(page)
 
   await signOut(page)
@@ -183,7 +187,7 @@ test('the theme control changes light and dark for this browser only', async ({ 
   }
 })
 
-test('an admin and a dispatcher open Profile from the sidebar and the user menu', async ({ page }) => {
+test('an admin and a dispatcher open Profile from the user menu', async ({ page }) => {
   const tenant = await seedTenant('settings-profile-entry')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   const members = [
@@ -193,24 +197,16 @@ test('an admin and a dispatcher open Profile from the sidebar and the user menu'
 
   for (const member of members) {
     await signIn(page, member.email, member.password, tenant.name)
-    await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Postavke', exact: true }).click()
+    const menuHere = await openUserMenu(page, tenant.name)
+    await menuHere.getByRole('menuitem', { name: 'Moj profil', exact: true }).click()
     await expect(page).toHaveURL(/\/settings\/profile$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toBeVisible()
 
-    // The parent stays mounted. Choosing Settings again must still open Profile.
-    await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Postavke', exact: true }).click()
-    await expect(page).toHaveURL(/\/settings\/profile$/)
-    await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
-    const menuHere = await openUserMenu(page, tenant.name)
-    await menuHere.getByRole('menuitem', { name: 'Postavke', exact: true }).click()
-    await expect(page).toHaveURL(/\/settings\/profile$/)
-    await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
-
     await page.goto('/')
     await hydrated(page)
     const menu = await openUserMenu(page, tenant.name)
-    await menu.getByRole('menuitem', { name: 'Postavke', exact: true }).click()
+    await menu.getByRole('menuitem', { name: 'Moj profil', exact: true }).click()
     await expect(page).toHaveURL(/\/settings\/profile$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
     await signOut(page)
@@ -270,7 +266,7 @@ test('the settings tabs are reachable and operable from the keyboard', async ({ 
 
   const nav = page.getByRole('navigation', { name: 'Postavke' })
   const profile = nav.getByRole('link', { name: 'Profil', exact: true })
-  const tenantTab = nav.getByRole('link', { name: 'Organizacija', exact: true })
+  const tenantTab = nav.getByRole('link', { name: 'Tvrtka', exact: true })
   const members = nav.getByRole('link', { name: 'Članovi', exact: true })
 
   await focusByTab(page, profile)

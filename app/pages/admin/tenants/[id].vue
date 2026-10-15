@@ -3,11 +3,12 @@ import { companyAccountSchema, formatInstant } from '../../../../shared'
 
 definePageMeta({
   middleware: 'platform-auth',
+  layout: 'platform',
 })
 
 const requestFetch = useRequestFetch()
 const route = useRoute()
-const { t, locale, shell, loadError, pending, shellError, signOut, chooseLocale, loadMessage } = await usePlatformPage()
+const { t, locale, shell, loadError, pending, shellError, signOut, loadMessage } = await usePlatformPage()
 
 const name = ref('')
 const formError = ref<'platform.nameInvalid' | 'platform.saveFailed' | 'platform.notFound' | null>(null)
@@ -24,6 +25,8 @@ watch(account, (value) => {
   if (value)
     name.value = value.name
 }, { immediate: true })
+
+bindScreenTitle(() => account.value?.name ?? t('platform.title'))
 
 useHead({
   title: () => account.value?.name ?? t('platform.title'),
@@ -68,7 +71,7 @@ function httpStatus(error: unknown): number | undefined {
 </script>
 
 <template>
-  <main class="mx-auto box-border w-full max-w-3xl p-4">
+  <main class="box-border w-full p-4">
     <section v-if="loadError">
       <UAlert
         color="error"
@@ -88,22 +91,6 @@ function httpStatus(error: unknown): number | undefined {
     </section>
 
     <section v-else-if="shell && account">
-      <nav
-        class="mb-4"
-        :aria-label="t('shell.nav')"
-      >
-        <UButton
-          to="/admin/tenants"
-          color="neutral"
-          variant="outline"
-          size="xl"
-        >
-          {{ t('platform.back') }}
-        </UButton>
-      </nav>
-      <h1 class="mb-4 text-2xl font-semibold">
-        {{ account.name }}
-      </h1>
       <dl class="mb-4 grid gap-2 text-sm">
         <div>
           <dt class="text-muted">
@@ -177,18 +164,6 @@ function httpStatus(error: unknown): number | undefined {
         class="mt-4"
         :description="t(shellError)"
       />
-      <div class="mt-4 flex flex-wrap gap-2">
-        <UButton
-          type="button"
-          size="xl"
-          class="flex-1 basis-32 justify-center"
-          :disabled="pending"
-          @click="signOut"
-        >
-          {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
-        </UButton>
-        <LocaleThemeActions @choose="chooseLocale" />
-      </div>
     </section>
   </main>
 </template>

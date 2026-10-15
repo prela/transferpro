@@ -55,6 +55,9 @@ export function parseRenameTenantAccount(raw: unknown): { name: string } {
  */
 export const platformShellSchema = z.strictObject({
   userId: z.string().min(1),
+  // The signed-in account only, for the profile menu. Not a firm field.
+  userName: z.string().min(1),
+  email: z.string().min(1),
   locale: z.enum(['hr', 'en']),
   timeZone: z.literal('Europe/Zagreb'),
 })

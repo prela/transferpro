@@ -9,7 +9,7 @@ test('an admin opens the audit log from the sidebar, newest first, and can refre
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
 
   const nav = page.getByRole('navigation', { name: 'Odjeljci' })
-  await expect(nav.getByRole('link', { name: 'Revizijski zapisnik', exact: true })).toBeVisible()
+  await expect(nav.getByRole('link', { name: 'Revizija', exact: true })).toBeVisible()
 
   await page.goto('/settings/members')
   const member = page.getByRole('row', { name: driver.name })
@@ -24,7 +24,7 @@ test('an admin opens the audit log from the sidebar, newest first, and can refre
   await expect(page.getByRole('status').filter({ hasText: 'Spremljeno.' })).toBeVisible()
 
   // Opening Audit reads the rows already written. The log does not update while this page is open.
-  await nav.getByRole('link', { name: 'Revizijski zapisnik', exact: true }).click()
+  await nav.getByRole('link', { name: 'Revizija', exact: true }).click()
   await expect(page).toHaveURL(/\/audit$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Revizijski zapisnik' })).toBeVisible()
 
@@ -57,15 +57,15 @@ test('a dispatcher has no audit item in the sidebar', async ({ page }) => {
 
   const nav = page.getByRole('navigation', { name: 'Odjeljci' })
   await expect(nav.getByRole('link', { name: 'Početna', exact: true })).toBeVisible()
-  await expect(nav.getByRole('link', { name: 'Postavke', exact: true })).toBeVisible()
-  await expect(nav.getByRole('link', { name: 'Revizijski zapisnik', exact: true })).toHaveCount(0)
+  await expect(nav.getByRole('link', { name: 'Postavke tvrtke', exact: true })).toHaveCount(0)
+  await expect(nav.getByRole('link', { name: 'Revizija', exact: true })).toHaveCount(0)
 })
 
 test('a dispatcher who opens /audit lands on home without requesting the audit log', async ({ page }) => {
   const tenant = await seedTenant('audit-disp')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
-  await expectAuditRedirectsHome(page, tenant.name)
+  await expectAuditRedirectsHome(page, 'Početna')
   await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
 })
