@@ -11,8 +11,9 @@ const props = defineProps<{
   email?: string
   role?: 'admin' | 'dispatcher' | 'driver'
   /**
-   * Office saves the locale on the user. The platform only switches this
-   * screen: POST /api/locale would open a tenant session a superadmin cannot mint.
+   * Office and the Driver save the locale on the user. The platform only
+   * switches this screen: POST /api/locale would open a tenant session a
+   * superadmin cannot mint.
    */
   persistLocale: boolean
   pending?: boolean
@@ -31,23 +32,39 @@ const shellError = useState<'shell.saveFailed' | 'shell.signOutFailed' | null>('
 const initials = computed(() => accountInitials(props.userName))
 const accessibleName = computed(() => props.tenantName || props.userName)
 
+// The stored choice is read after mount. Painting the check from the server
+// default would mismatch a device that already picked light or dark.
+const themeReady = ref(false)
+onMounted(() => {
+  themeReady.value = true
+})
+
 const items = computed<DropdownMenuItem[][]>(() => {
   const identity: DropdownMenuItem[] = []
   if (props.email)
-    identity.push({ label: props.email, type: 'label' })
+    identity.push({ label: props.email, type: 'label', class: 'w-full' })
   if (props.role)
-    identity.push({ label: t(`invite.roles.${props.role}`), type: 'label' })
-  if (props.tenantName)
-    identity.push({ label: props.tenantName, type: 'label' })
+    identity.push({ label: t(`invite.roles.${props.role}`), type: 'label', class: 'w-full' })
+  // The word is the label (Tvrtka / Company). The name stays its own text
+  // so the shell specs can find it without the prefix.
+  if (props.tenantName) {
+    identity.push({ label: t('shell.tenant'), type: 'label', class: 'w-full' })
+    identity.push({ label: props.tenantName, type: 'label', class: 'w-full' })
+  }
 
-  const groups: DropdownMenuItem[][] = [identity]
+  const groups: DropdownMenuItem[][] = []
+  if (identity.length > 0)
+    groups.push(identity)
   if (props.showProfile) {
     groups.push([{
       label: t('shell.myProfile'),
       icon: 'i-lucide-user',
-      to: '/settings/profile',
+      to: '/profile',
+      class: 'w-full',
     }])
   }
+  // One row each. A real menu item, so one click applies the choice and the
+  // arrow keys reach it. The check marks the current choice.
   groups.push(
     [
       localeItem('hr'),
@@ -62,6 +79,7 @@ const items = computed<DropdownMenuItem[][]>(() => {
       label: props.pending ? t('shell.signingOut') : t('shell.signOut'),
       icon: 'i-lucide-log-out',
       disabled: props.pending,
+      class: 'w-full',
       onSelect: () => {
         emit('signOut')
       },
@@ -72,8 +90,9 @@ const items = computed<DropdownMenuItem[][]>(() => {
 
 function localeItem(code: 'hr' | 'en'): DropdownMenuItem {
   return {
-    label: t(`locale.${code}`),
+    label: t(`locale.${code}Short`),
     icon: locale.value === code ? 'i-lucide-check' : undefined,
+    class: 'min-w-0 flex-1 basis-0 justify-center',
     onSelect: () => {
       void pickLocale(code)
     },
@@ -83,7 +102,8 @@ function localeItem(code: 'hr' | 'en'): DropdownMenuItem {
 function themeItem(choice: ThemeChoice): DropdownMenuItem {
   return {
     label: t(`theme.${choice}`),
-    icon: preference.value === choice ? 'i-lucide-check' : undefined,
+    icon: themeReady.value && preference.value === choice ? 'i-lucide-check' : undefined,
+    class: 'min-w-0 flex-1 basis-0 justify-center whitespace-normal text-center',
     onSelect: () => {
       choose(choice)
     },
@@ -113,12 +133,18 @@ async function pickLocale(next: 'hr' | 'en') {
   <!--
     One menu. The trigger is at least 44px on a phone and compact on the
     desktop (ADR-0038). The accessible name stays the Tenant when there is one,
-    which is how the shell specs open the menu.
+    which is how the shell specs open the menu. Language is HR | EN and theme
+    is one row, each choice a menu item so the keyboard and one click both work.
   -->
   <UDropdownMenu
     :items="items"
     size="sm"
-    :ui="{ item: 'min-h-11 lg:min-h-0' }"
+    :content="{ align: 'end' }"
+    :ui="{
+      content: 'w-72',
+      group: 'flex flex-row flex-wrap',
+      item: 'min-h-11 lg:min-h-0',
+    }"
   >
     <UButton
       type="button"

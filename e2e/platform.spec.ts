@@ -39,7 +39,7 @@ test('superadmin lists, opens, and renames a firm in Croatian and English, light
   await page.getByRole('menuitem', { name: 'Tamna', exact: true }).click()
   await expect(page.locator('html')).toHaveClass(/dark/)
   await page.getByRole('button', { name: owner.name, exact: true }).click()
-  await page.getByRole('menuitem', { name: 'English', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'EN', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Companies', exact: true })).toBeVisible()
   await page.getByRole('button', { name: owner.name, exact: true }).click()

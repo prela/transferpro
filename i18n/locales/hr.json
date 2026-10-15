@@ -30,8 +30,11 @@
     "newTransfer": "Novi transfer"
   },
   "locale": {
+    "group": "Jezik",
     "hr": "Hrvatski",
-    "en": "English"
+    "en": "English",
+    "hrShort": "HR",
+    "enShort": "EN"
   },
   "theme": {
     "group": "Tema",

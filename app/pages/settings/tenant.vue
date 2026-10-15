@@ -19,7 +19,7 @@ const {
 // a Dispatcher or a Driver, leave before the form mounts, so the browser
 // does not request the settings write.
 if (session.value && session.value.role !== 'admin')
-  await navigateTo('/settings/profile', { replace: true })
+  await navigateTo('/profile', { replace: true })
 
 useHead({
   title: () => t('shell.companySettings'),

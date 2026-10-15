@@ -18,7 +18,7 @@ const {
 // a Dispatcher or a Driver, leave before the forms mount, so the browser
 // does not request Members, invitations, role change, or removal.
 if (session.value && session.value.role !== 'admin')
-  await navigateTo('/settings/profile', { replace: true })
+  await navigateTo('/profile', { replace: true })
 
 useHead({
   title: () => t('members.title'),

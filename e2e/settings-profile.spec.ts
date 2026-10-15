@@ -1,31 +1,32 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { seedMember, seedTenant } from './fixtures/seed'
+import { expectNoAxeViolations } from './fixtures/axe'
+import { seedMember, seedSuperadmin, seedTenant } from './fixtures/seed'
 import { hydrated, openUserMenu, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
-test('/settings opens Profile for an admin, a dispatcher, and a driver', async ({ page }) => {
+test('/settings opens company settings for an admin, and /profile for a dispatcher and a driver', async ({ page }) => {
   const tenant = await seedTenant('settings-profile-open')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   const driver = await seedMember(tenant.tenantId, 'driver', 'Vozac')
 
-  const members = [
-    { email: tenant.adminEmail, password: tenant.password },
-    dispatcher,
-    driver,
-  ]
-  for (const member of members) {
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await page.goto('/settings')
+  await expect(page).toHaveURL(/\/settings\/tenant$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Postavke tvrtke' })).toBeVisible()
+  const tabs = page.getByRole('navigation', { name: 'Postavke' })
+  await expect(tabs.getByRole('link')).toHaveText(['Tvrtka', 'Članovi'])
+  await expect(tabs.getByRole('link', { name: 'Profil', exact: true })).toHaveCount(0)
+  await page.goto('/')
+  await hydrated(page)
+  await signOut(page)
+
+  for (const member of [dispatcher, driver]) {
     await signIn(page, member.email, member.password, tenant.name)
     await page.goto('/settings')
-    await expect(page).toHaveURL(/\/settings\/profile$/)
+    await expect(page).toHaveURL(/\/profile$/)
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
     await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
-    const tabs = page.getByRole('navigation', { name: 'Postavke' })
-    const admin = member.email === tenant.adminEmail
-    await expect(tabs.getByRole('link')).toHaveText(admin
-      ? ['Profil', 'Tvrtka', 'Članovi']
-      : ['Profil'])
-    await expect(tabs.getByRole('link', { name: 'Profil', exact: true })).toHaveAttribute('aria-current', 'page')
-    // Driver Home is where that role signs out. Office staff can leave from here.
+    await expect(page.getByRole('navigation', { name: 'Postavke' })).toHaveCount(0)
     await page.goto('/')
     await hydrated(page)
     await signOut(page)
@@ -35,7 +36,7 @@ test('/settings opens Profile for an admin, a dispatcher, and a driver', async (
 test('profile saves hr and en through POST /api/locale and the next screen uses that language', async ({ page }) => {
   const tenant = await seedTenant('settings-profile-locale')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await page.goto('/settings/profile')
+  await page.goto('/profile')
   await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
   await hydrated(page)
 
@@ -51,7 +52,7 @@ test('profile saves hr and en through POST /api/locale and the next screen uses 
   await page.getByRole('link', { name: 'Clients', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Clients' })).toBeVisible()
 
-  await page.goto('/settings/profile')
+  await page.goto('/profile')
   await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible()
   await hydrated(page)
   const croatian = page.waitForRequest(request =>
@@ -71,8 +72,11 @@ test('signed-in home keeps locale and theme in the profile menu, not as page but
   const tenant = await seedTenant('settings-profile-no-chrome')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   const menu = await openUserMenu(page, tenant.name)
+  await expect(menu.getByRole('menuitem', { name: 'HR', exact: true })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'EN', exact: true })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Svijetla', exact: true })).toBeVisible()
-  await expect(menu.getByRole('menuitem', { name: 'Hrvatski', exact: true })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Tamna', exact: true })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Prema uređaju', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   await expectNoLocaleTheme(page)
 
@@ -135,7 +139,7 @@ test('an admin, a dispatcher, and a driver save locale and theme on profile and 
 test('a failed locale save shows the existing failure message', async ({ page }) => {
   const tenant = await seedTenant('settings-profile-locale-fail')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await page.goto('/settings/profile')
+  await page.goto('/profile')
   await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
   await hydrated(page)
   await page.route('**/api/locale', async (route) => {
@@ -152,7 +156,7 @@ test('the theme control changes light and dark for this browser only', async ({ 
   const tenant = await seedTenant('settings-profile-theme')
   await useTheme(page, 'light')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await page.goto('/settings/profile')
+  await page.goto('/profile')
   await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
   // The theme class is set before Vue hydrates. A click in that gap is lost.
   await hydrated(page)
@@ -199,7 +203,7 @@ test('an admin and a dispatcher open Profile from the user menu', async ({ page 
     await signIn(page, member.email, member.password, tenant.name)
     const menuHere = await openUserMenu(page, tenant.name)
     await menuHere.getByRole('menuitem', { name: 'Moj profil', exact: true }).click()
-    await expect(page).toHaveURL(/\/settings\/profile$/)
+    await expect(page).toHaveURL(/\/profile$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toBeVisible()
 
@@ -207,23 +211,27 @@ test('an admin and a dispatcher open Profile from the user menu', async ({ page 
     await hydrated(page)
     const menu = await openUserMenu(page, tenant.name)
     await menu.getByRole('menuitem', { name: 'Moj profil', exact: true }).click()
-    await expect(page).toHaveURL(/\/settings\/profile$/)
+    await expect(page).toHaveURL(/\/profile$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
     await signOut(page)
   }
 })
 
-test('driver home opens Profile in the phone column and has no office sidebar', async ({ page }) => {
+test('driver home opens Profile from the menu and has no office sidebar', async ({ page }) => {
   const tenant = await seedTenant('settings-profile-driver')
   const driver = await seedMember(tenant.tenantId, 'driver', 'Vozac')
   await signIn(page, driver.email, driver.password, tenant.name)
 
   await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
-  await page.getByRole('link', { name: 'Postavke', exact: true }).click()
-  await expect(page).toHaveURL(/\/settings\/profile$/)
+  await expect(page.getByRole('link', { name: 'Postavke', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Odjava', exact: true })).toHaveCount(0)
+  const menu = await openUserMenu(page, tenant.name)
+  await menu.getByRole('menuitem', { name: 'Moj profil', exact: true }).click()
+  await expect(page).toHaveURL(/\/profile$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
-  await expect(page.getByRole('navigation', { name: 'Postavke' }).getByRole('link', { name: 'Profil', exact: true })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Postavke' })).toHaveCount(0)
+  await expect(page.getByLabel('E-pošta')).toHaveValue(driver.email)
   await expectNarrowColumn(page)
 })
 
@@ -244,7 +252,7 @@ test('a dispatcher and a driver on Profile do not request admin endpoints', asyn
     }
     page.on('request', onRequest)
     try {
-      await page.goto('/settings/profile')
+      await page.goto('/profile')
       await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
       await expect(page.getByRole('button', { name: 'English', exact: true })).toBeVisible()
       await page.waitForLoadState('networkidle')
@@ -262,17 +270,12 @@ test('a dispatcher and a driver on Profile do not request admin endpoints', asyn
 test('the settings tabs are reachable and operable from the keyboard', async ({ page }) => {
   const tenant = await seedTenant('settings-profile-keys')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await page.goto('/settings/profile')
+  await page.goto('/settings/tenant')
 
   const nav = page.getByRole('navigation', { name: 'Postavke' })
-  const profile = nav.getByRole('link', { name: 'Profil', exact: true })
   const tenantTab = nav.getByRole('link', { name: 'Tvrtka', exact: true })
   const members = nav.getByRole('link', { name: 'Članovi', exact: true })
-
-  await focusByTab(page, profile)
-  await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/\/settings\/profile$/)
-  await expect(profile).toHaveAttribute('aria-current', 'page')
+  await expect(nav.getByRole('link', { name: 'Profil', exact: true })).toHaveCount(0)
 
   await focusByTab(page, tenantTab)
   await page.keyboard.press('Enter')
@@ -285,6 +288,98 @@ test('the settings tabs are reachable and operable from the keyboard', async ({ 
   await expect(page).toHaveURL(/\/settings\/members$/)
   await expect(members).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('region', { name: 'Pozovi člana' })).toBeVisible()
+})
+
+test('the old profile address redirects to /profile', async ({ page }) => {
+  const tenant = await seedTenant('settings-profile-redirect')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await page.goto('/settings/profile')
+  await expect(page).toHaveURL(/\/profile$/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  await expect(page.getByLabel('E-pošta')).toHaveValue(tenant.adminEmail)
+  await expect(page.getByText('Administrator', { exact: true })).toBeVisible()
+  await expect(page.getByText(tenant.name, { exact: true }).last()).toBeVisible()
+})
+
+test('language and theme each change in one click from the menu', async ({ page }) => {
+  const tenant = await seedTenant('settings-profile-menu')
+  const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
+  const driver = await seedMember(tenant.tenantId, 'driver', 'Vozac')
+  const members = [
+    { email: tenant.adminEmail, password: tenant.password, englishHome: 'Home' },
+    { email: dispatcher.email, password: dispatcher.password, englishHome: 'Home' },
+    { email: driver.email, password: driver.password, englishHome: tenant.name },
+  ]
+
+  for (const member of members) {
+    await signIn(page, member.email, member.password, tenant.name)
+    await hydrated(page)
+    const menu = await openUserMenu(page, tenant.name)
+    const english = page.waitForRequest(request =>
+      request.method() === 'POST' && new URL(request.url()).pathname === '/api/locale',
+    )
+    await menu.getByRole('menuitem', { name: 'EN', exact: true }).click()
+    expect((await english).postDataJSON()).toEqual({ locale: 'en' })
+    await expect(page.getByRole('heading', { level: 1, name: member.englishHome })).toBeVisible()
+
+    const themeMenu = await openUserMenu(page, tenant.name)
+    await themeMenu.getByRole('menuitem', { name: 'Dark', exact: true }).click()
+    await expect(page.locator('html')).toHaveClass(/dark/)
+    await expect(page.evaluate(() => localStorage.getItem('transferpro-theme'))).resolves.toBe('dark')
+
+    const back = await openUserMenu(page, tenant.name)
+    const croatian = page.waitForRequest(request =>
+      request.method() === 'POST' && new URL(request.url()).pathname === '/api/locale',
+    )
+    await back.getByRole('menuitem', { name: 'HR', exact: true }).click()
+    expect((await croatian).postDataJSON()).toEqual({ locale: 'hr' })
+    const light = await openUserMenu(page, tenant.name)
+    await light.getByRole('menuitem', { name: 'Svijetla', exact: true }).click()
+    await expect(page.locator('html')).not.toHaveClass(/dark/)
+    await page.goto('/')
+    await hydrated(page)
+    await signOut(page)
+  }
+})
+
+test('a superadmin who opens /profile does not see a member profile', async ({ page }) => {
+  await seedTenant('profile-platform')
+  const owner = await seedSuperadmin('profile-platform')
+  await page.goto('/')
+  await page.getByLabel('E-pošta').fill(owner.email)
+  await page.getByLabel('Lozinka').fill(owner.password)
+  await page.getByRole('button', { name: 'Prijavi se', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Tvrtke' })).toBeVisible()
+
+  await page.goto('/profile')
+  await expect(page.getByRole('alert')).toContainText('Niste član nijednog prijevoznika. Odjavite se ili zatražite novu pozivnicu.')
+  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toHaveCount(0)
+  await expect(page.getByLabel('E-pošta')).toHaveCount(0)
+})
+
+// @phone: the phone project runs this file as well as the desktop project.
+test.describe('@phone', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`profile is usable in ${theme} mode`, async ({ page }) => {
+      const tenant = await seedTenant(`profile-phone-${theme}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      await page.goto('/profile')
+      await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+      await expect(page.getByLabel('E-pošta')).toHaveValue(tenant.adminEmail)
+      await expect(page.getByRole('button', { name: 'English', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Svijetla', exact: true })).toBeVisible()
+
+      await expectNoAxeViolations(page)
+      if (theme === 'light') {
+        await switchLocale(page, 'en')
+        await expect(page.getByRole('heading', { level: 1, name: 'Profile' })).toBeVisible()
+        await expect(page.getByRole('button', { name: 'Hrvatski', exact: true })).toBeVisible()
+        await expect(page.getByRole('button', { name: 'Light', exact: true })).toBeVisible()
+        await expectNoAxeViolations(page)
+      }
+    })
+  }
 })
 
 /** Tab from the top of the page until this control is focused. */

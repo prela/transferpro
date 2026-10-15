@@ -2,13 +2,12 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 
 /**
- * Settings is on `authenticated`, not `office` or `admin`: a Driver uses it.
- * `/settings` only redirects. The tab menu lists Profile for every Tenant
- * role, and Tenant and Members for an Admin. Office staff get the dashboard;
- * a Driver stays in the phone column. The layout is set here as well as in
- * the middleware, because
- * a sidebar jump can drop the middleware call and this layout is not constant
- * (it cannot live in `definePageMeta`).
+ * Settings is Admin only. `/settings` redirects an Admin to the Tenant tab.
+ * A Dispatcher or a Driver is sent to /profile. The old profile address
+ * redirects there too. Office staff get the dashboard; the layout is set
+ * here as well as in the middleware, because a sidebar jump can drop the
+ * middleware call and this layout is not constant (it cannot live in
+ * `definePageMeta`).
  */
 definePageMeta({
   middleware: 'authenticated',
@@ -44,8 +43,13 @@ function barePath(path: string) {
 function redirectTarget(path: string) {
   if (!session.value && !loadError.value)
     return '/'
-  if (session.value && path === '/settings')
-    return '/settings/profile'
+  if (!session.value)
+    return null
+  // Profile left the tabs. The old address still resolves, then leaves.
+  if (path === '/settings/profile')
+    return '/profile'
+  if (path === '/settings')
+    return session.value.role === 'admin' ? '/settings/tenant' : '/profile'
   return null
 }
 
@@ -59,18 +63,11 @@ onBeforeRouteUpdate((to) => {
     return navigateTo(target, { replace: true })
 })
 
-// Profile is every role. Tenant and Members are Admin addresses, so a
-// Dispatcher or a Driver never sees those links.
+// Tenant and Members. Profile is /profile, so it is not a tab.
 const tabs = computed<NavigationMenuItem[]>(() => {
-  const items: NavigationMenuItem[] = [{
-    label: t('shell.profile'),
-    icon: 'i-lucide-user',
-    to: '/settings/profile',
-    exact: true,
-  }]
   if (session.value?.role !== 'admin')
-    return items
-  items.push(
+    return []
+  return [
     {
       label: t('shell.tenant'),
       icon: 'i-lucide-building-2',
@@ -83,8 +80,7 @@ const tabs = computed<NavigationMenuItem[]>(() => {
       to: '/settings/members',
       exact: true,
     },
-  )
-  return items
+  ]
 })
 </script>
 

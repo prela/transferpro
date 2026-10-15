@@ -160,6 +160,8 @@ test('an admin signs out from the user menu on home and on an office page, and t
   await expect(menu.getByText(tenant.name, { exact: true })).toBeVisible()
   await expect(menu.getByText(tenant.adminEmail, { exact: true })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Moj profil', exact: true })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'HR', exact: true })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'EN', exact: true })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Svijetla', exact: true })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Tamna', exact: true })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Prema uređaju', exact: true })).toBeVisible()
@@ -256,6 +258,31 @@ test.describe('@phone', () => {
       }
     })
   }
+})
+
+test('the profile menu language group is operable from the keyboard', async ({ page }) => {
+  const tenant = await seedTenant('shell-menu-locale-keys')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+
+  const trigger = page.getByRole('button', { name: tenant.name, exact: true })
+  await trigger.focus()
+  await page.keyboard.press('Enter')
+
+  const hr = page.getByRole('menuitem', { name: 'HR', exact: true })
+  const en = page.getByRole('menuitem', { name: 'EN', exact: true })
+  await expect(hr).toBeVisible()
+  for (let step = 0; step < 8 && !(await hr.evaluate(element => element === document.activeElement)); step++)
+    await page.keyboard.press('ArrowDown')
+  await expect(hr).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(en).toBeFocused()
+
+  const saved = page.waitForRequest(request =>
+    request.method() === 'POST' && new URL(request.url()).pathname === '/api/locale',
+  )
+  await page.keyboard.press('Enter')
+  expect((await saved).postDataJSON()).toEqual({ locale: 'en' })
+  await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible()
 })
 
 test('the user menu is reachable and operable from the keyboard', async ({ page }) => {
