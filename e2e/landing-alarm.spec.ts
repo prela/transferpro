@@ -107,7 +107,7 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
   await storeLanding(landedId, landing.toISOString())
   await record('Open Lara')
 
-  await page.getByRole('button', { name: 'Osvježi početnu', exact: true }).click()
+  await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
   const progress = page.getByRole('region', { name: 'U tijeku' })
   const landed = progress.getByRole('listitem').filter({ hasText: 'Landed Lana' })
   const open = progress.getByRole('listitem').filter({ hasText: 'Open Lara' })

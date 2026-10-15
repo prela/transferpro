@@ -93,6 +93,26 @@ export const officeHomeSchema = z.strictObject({
 
 export type OfficeHome = z.infer<typeof officeHomeSchema>
 
+/**
+ * Urgent marks today's Home already shows (ADR-0039). A later Pozornost
+ * block adds the past-pickup and decline keys; this list stays the three
+ * flags on the current read. Waiting has none.
+ */
+export function officeHomeUrgentKeys(home: OfficeHome): string[] {
+  const keys: string[] = []
+  for (const ride of home.unassigned) {
+    if (ride.unassignedAlarm)
+      keys.push(`unassigned-alarm:${ride.rideId}`)
+  }
+  for (const ride of home.inProgress) {
+    if (ride.unclosedMark)
+      keys.push(`unclosed-mark:${ride.rideId}`)
+    if (ride.landingAlarm)
+      keys.push(`landing-alarm:${ride.rideId}`)
+  }
+  return keys
+}
+
 type AttentionList = 'unassigned' | 'waitingOnAcceptance' | 'inProgress'
 
 /**

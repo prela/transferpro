@@ -1,7 +1,7 @@
 import type { OfficeHomeRide } from './office-home'
 import { expect, it } from 'vitest'
 import { instantFromWallClock } from './date'
-import { buildOfficeHome } from './office-home'
+import { buildOfficeHome, officeHomeUrgentKeys } from './office-home'
 
 /**
  * The office home snapshot. Lists keep every matching Ride. Counts keep
@@ -528,6 +528,40 @@ it('shows price and payment for cash, card, and invoice to agency, and the fligh
     { guestName: 'Agency', price: '0.00', payment: 'invoice_to_agency', flightNumber: 'LH 123', tabla: '' },
   ])
   expect(snapshot.unassigned.every(row => !('flightUrl' in row))).toBe(true)
+})
+
+it('names the urgent marks already on the office home read', () => {
+  const now = new Date('2026-06-15T08:00:00.000Z')
+  const snapshot = buildOfficeHome([
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000051',
+      guestName: 'Soon',
+      pickupAt: '2026-06-15T09:00:00.000Z',
+      state: 'unassigned',
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000052',
+      guestName: 'Far',
+      pickupAt: '2026-06-15T13:00:00.000Z',
+      state: 'unassigned',
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000053',
+      guestName: 'Forgotten',
+      pickupAt: '2026-06-15T06:00:00.000Z',
+      state: 'accepted',
+      driverId: 'driver-1',
+      driverName: 'Ana',
+      vehiclePlate: 'DU1',
+      landingAt: '2026-06-15T05:00:00.000Z',
+    }),
+  ], now, zone)
+
+  expect(officeHomeUrgentKeys(snapshot)).toEqual([
+    'unassigned-alarm:00000000-0000-4000-8000-000000000051',
+    'unclosed-mark:00000000-0000-4000-8000-000000000053',
+    'landing-alarm:00000000-0000-4000-8000-000000000053',
+  ])
 })
 
 it('returns empty lists and zero counts when nothing matches', () => {
