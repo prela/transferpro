@@ -58,7 +58,7 @@ The Članovi tab shows `+ Pozovi člana` top right and the member table first: n
 
 ### Home
 
-Home opens with a balance of the operational day, its date, and its start hour. The parts add up to the total: unassigned, waiting on acceptance, assigned and not started, in progress, done, no-show, and cancelled. ADR-0039 adds the count for assigned and not started. A click on a part opens Transfers for that day with that filter in the URL. The balance is for the current operational day only. The lists below may hold Rides of other days, and such a row shows its date.
+Home opens with a balance of the operational day, its date, and its start hour. The balance is eight counts, the total and seven parts, and the seven parts add up to the total: unassigned, waiting on acceptance, assigned and not started, in progress, done, no-show, and cancelled. ADR-0039 adds the part assigned and not started. A click on a part opens Transfers for that day with that filter in the URL. The balance is for the current operational day only. The lists below may hold Rides of other days, and such a row shows its date.
 
 Each Ride appears once on Home. A Ride with an urgent item is in the "Pozornost" block (ADR-0039). Every other Ride is on its list: Nedodijeljeno (unassigned without an urgent item), Čeka prihvat, or U tijeku. On the desktop, the left column (about 60 %) holds Pozornost, Nedodijeljeno, and Čeka prihvat, and the right column (about 40 %) holds U tijeku and the expiring documents. On the phone they stack in that order under the balance, which takes two rows of compact numbers.
 
@@ -130,7 +130,7 @@ We keep `UDashboardGroup`, `UDashboardSidebar`, `UDashboardPanel`, `UDashboardNa
 
 ### Superseded
 
-In ADR-0016, "Controls that are tapped use size `xl`." It now reads as the phone layouts. The office desktop uses 28 px controls in a table row.
+In ADR-0016, "Controls that are tapped use size `xl`." Size `xl` now applies only to the phone layouts, the office's and the Driver's. On the office desktop, a control in a table row is 28 px.
 
 ### Out of this record
 

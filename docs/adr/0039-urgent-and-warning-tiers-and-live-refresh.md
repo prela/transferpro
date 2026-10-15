@@ -26,11 +26,11 @@ An unassigned past pickup is an unfinished unassigned Ride whose pickup is in th
 
 Home opens its lists with the "Pozornost" block: every Ride with an urgent item, grouped by kind, a count per group, one row per Ride with its action, and a row that opens the Ride detail. A Ride in Pozornost is not repeated on its own list. The Početna item in the sidebar and in the phone bottom bar carries the count of urgent Rides. On Transfers, a row shows each item as icon and short text, and the quick filters "Hitno (n)" and "Upozorenja (n)" narrow the day. The Ride detail shows the full text of each at the top. No page shows a strip of alarms across its top.
 
-There is no acknowledge and no snooze in v1. An urgent item ends when its cause ends: the Ride is assigned, closed, or no longer overlaps. A decline alert ends when the Ride is assigned again, as today.
+There is no acknowledge and no snooze in v1. An urgent item ends when its cause ends: the Ride is assigned or closed. A decline alert ends when the Ride is assigned again, as today.
 
 ### Counts
 
-The office home read returns eight counts for the current operational day. The new one is assigned and not started: an assigned or accepted Ride whose pickup is still ahead and that is not waiting on acceptance. With it, the parts add up to the total: unassigned, waiting on acceptance, assigned and not started, in progress, done, no-show, and cancelled. The three lists and the eight counts still come from one read taken at one moment.
+The office home read returns eight counts for the current operational day: the total and seven parts. The new count is the part assigned and not started: an assigned or accepted Ride whose pickup is still ahead and that is not waiting on acceptance. With it, the seven parts add up to the total: unassigned, waiting on acceptance, assigned and not started, in progress, done, no-show, and cancelled. The three lists and the eight counts still come from one read taken at one moment.
 
 ### Live refresh
 
@@ -42,13 +42,19 @@ A switch "Automatsko osvježavanje" sits beside the refresh time and starts on, 
 
 ### Superseded
 
-In ADR-0024, "The page does not poll." and "seven" in "the seven counts"; the read now returns eight.
+In ADR-0024, "The page does not poll." and "seven" in "the seven counts"; the read now returns eight counts, the total and seven parts.
 
 In ADR-0023, "The office home shows that mark on the unassigned list." The office home shows that Ride in Pozornost. The read still returns it on the unassigned list.
 
+In ADR-0023's consequences, "After pickup it stays on the list under the #29 warning". After pickup the Ride is an unassigned past pickup, which is urgent and shows in Pozornost. The read still returns it on the unassigned list, and the four-hour mark still does not apply.
+
 In ADR-0027, "The list stays every in-progress Ride. The mark is a flag on the row. There is no fourth list and no extra count." On the office home, a marked Ride shows in Pozornost and counts toward the urgent count. The read still returns it on the in-progress list.
 
+In ADR-0027's consequences, "The office home does not poll, so a page left open does not gain the mark until the next read." A visible page gains the mark at its next refresh, within 60 seconds, unless the user has switched automatic refresh off.
+
 In ADR-0030, "The office home shows it on the in-progress list" and "There is no extra list and no extra count." On the office home, the Ride shows in Pozornost and counts toward the urgent count. The read still returns it on the in-progress list.
+
+In ADR-0030's consequences, "The office home and the day board do not poll, so a page left open does not gain the alarm until the next read." A visible page gains the alarm at its next refresh, within 60 seconds, unless the user has switched automatic refresh off.
 
 ## Consequences
 
