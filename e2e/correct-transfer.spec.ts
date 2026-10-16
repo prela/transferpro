@@ -5,7 +5,7 @@ import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 function notice(page: Page, title: string, sentence: string) {
-  return page.getByRole('listitem').filter({ hasText: title }).filter({ hasText: sentence })
+  return page.getByRole('status').filter({ hasText: title }).filter({ hasText: sentence })
 }
 
 const guest = 'Ana Ispravak'
@@ -91,12 +91,12 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   await expect(page.getByRole('button', { name: `Radnje: ${finishedGuest}` })).toHaveCount(0)
   await expect(page.getByRole('cell', { name: 'Otkazano' })).toBeVisible()
   await page.getByRole('button', { name: `Radnje: ${guest}` }).click()
-  await page.getByRole('menuitem', { name: 'Ispravi', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Broj leta').fill('OU392')
   await dialog.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await expect(page.getByRole('status').getByText('Ispravljeno.')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Notifications (F8)' }).getByText('Ispravljeno.')).toBeVisible()
   await expect(notice(page, 'Ispravljeno.', 'Radni nalog je poslan vozaču Marko Ispravak.')).toHaveCount(1)
   await expect(page.getByText(driver.email)).toHaveCount(0)
   await expect(page.getByRole('cell', { name: 'Čeka prihvat', exact: true })).toBeVisible()
@@ -107,18 +107,20 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   await switchLocale(page, 'en')
   await expect(page.getByRole('button', { name: `Actions: ${guest}` })).toBeVisible()
   await page.getByRole('button', { name: `Actions: ${guest}` }).click()
-  await page.getByRole('menuitem', { name: 'Correct', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Correct transfer', exact: true }).click()
   let correctDialog = page.getByRole('dialog')
   await correctDialog.getByLabel('Guest name').fill(renamed)
   await correctDialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  // Cancel returns to the Ride facts. The detail itself stays until Close.
+  await page.getByRole('article').getByRole('button', { name: 'Close', exact: true }).click()
   await expect(correctDialog).toBeHidden()
   await expect(page.getByRole('cell', { name: new RegExp(`^${guest}`) })).toBeVisible()
   await page.getByRole('button', { name: `Actions: ${guest}` }).click()
-  await page.getByRole('menuitem', { name: 'Correct', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Correct transfer', exact: true }).click()
   correctDialog = page.getByRole('dialog')
   await correctDialog.getByLabel('Guest name').fill(renamed)
   await correctDialog.getByRole('button', { name: 'Save correction', exact: true }).click()
-  await expect(page.getByRole('status').getByText('Corrected.')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Notifications (F8)' }).getByText('Corrected.')).toBeVisible()
   await expect(notice(page, 'Corrected.', 'Work order sent to Marko Ispravak.')).toHaveCount(1)
   await expect(page.getByText(driver.email)).toHaveCount(0)
   await expect(page.getByRole('cell', { name: new RegExp(`^${renamed}`) })).toBeVisible()
@@ -210,7 +212,7 @@ test('a pickup correction that overlaps asks, and cancel leaves the slideover op
 
   await page.goto('/transfers')
   await page.getByRole('button', { name: `Radnje: ${movingGuest}` }).click()
-  await page.getByRole('menuitem', { name: 'Ispravi', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()
   const slideover = page.getByRole('dialog', { name: 'Ispravi ovaj transfer' })
   await slideover.getByLabel('Vrijeme preuzimanja').fill(`${day}T12:30`)
   await slideover.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
@@ -226,7 +228,14 @@ test('a pickup correction that overlaps asks, and cancel leaves the slideover op
   await slideover.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
   await expect(overlap).toBeVisible()
   await overlap.getByRole('button', { name: 'Nastavi svejedno', exact: true }).click()
-  await expect(slideover).toBeHidden()
+  // No email keeps the detail open, with the warning inside it.
+  const detail = page.locator('#ride-detail')
+  await expect(detail).toBeVisible()
+  const kept = detail.getByRole('alert').filter({ hasText: 'Vozač Ana Preklop nema e-poštu. Radni nalog nije poslan.' })
+  await expect(kept).toBeVisible()
+  await kept.getByRole('button', { name: 'Zatvori', exact: true }).click()
+  await expect(kept).toHaveCount(0)
+  await expect(detail).toBeVisible()
   await expect(page.getByRole('row', { name: movingGuest })).toContainText('12:30')
 })
 
@@ -288,7 +297,7 @@ test('the correction overlap question is in English in the dark theme', async ({
 
   await page.goto('/transfers')
   await page.getByRole('button', { name: 'Actions: Nika Clash' }).click()
-  await page.getByRole('menuitem', { name: 'Correct', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Correct transfer', exact: true }).click()
   const slideover = page.getByRole('dialog', { name: 'Correct this transfer' })
   await slideover.getByLabel('Pickup time').fill(`${day}T12:30`)
   await slideover.getByRole('button', { name: 'Save correction', exact: true }).click()

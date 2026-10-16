@@ -27,6 +27,7 @@ const { t } = useI18n()
 const route = useRoute()
 const title = useScreenTitle()
 const { requestNewTransfer } = useNewTransferRequest()
+const { phoneDetailOpen } = useRideDetailChrome()
 const moreOpen = ref(false)
 
 watch(() => route.fullPath, () => {
@@ -124,6 +125,7 @@ function onPhoneNavigate() {
   </UDashboardGroup>
 
   <nav
+    v-if="!phoneDetailOpen"
     class="fixed inset-x-0 bottom-0 z-30 flex border-t border-default bg-[var(--tp-frame)] lg:hidden"
     :aria-label="t('shell.nav')"
   >
@@ -175,7 +177,7 @@ function onPhoneNavigate() {
   </USlideover>
 
   <UButton
-    v-if="showFloating"
+    v-if="showFloating && !phoneDetailOpen"
     type="button"
     size="xl"
     icon="i-lucide-plus"

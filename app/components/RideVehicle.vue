@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { Driver, Vehicle } from '../../shared'
 import { assignedRideSchema } from '../../shared'
-import { workOrderNotice } from '../work-order-notice'
+import { useWorkOrderPresenter } from '../composables/kept-work-orders'
+import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
 const props = defineProps<{
   rideId: string
@@ -10,15 +11,20 @@ const props = defineProps<{
   vehicleId: string
   drivers: Driver[]
   vehicles: Vehicle[]
+  /** Phone uses the large targets. Desktop uses the office size. */
+  phone?: boolean
 }>()
 
 const emit = defineEmits<{
   saved: []
   cancel: []
 }>()
+const controlSize = computed(() => commandControlSize(props.phone === true))
+const controlClass = computed(() => commandControlClass(props.phone === true))
 
 const { t } = useI18n()
 const toast = useToast()
+const { present } = useWorkOrderPresenter()
 const { notifyAuditChanged } = useAuditRefresh()
 const titleId = useId()
 
@@ -103,15 +109,10 @@ async function submit(confirm = false) {
       })
     }
     // The notice names the Driver by id. The name is already on the day list.
-    // The response has no address, so the toast cannot show one.
+    // The response has no address, so neither the toast nor the detail can show one.
     for (const notice of saved.workOrders) {
-      const shown = workOrderNotice(notice.outcome)
       const name = props.drivers.find(driver => driver.id === notice.driverId)?.name ?? t('ride.unknownDriver')
-      toast.add({
-        title: t('ride.vehicleChanged'),
-        description: t(shown.key, { name }),
-        color: shown.color,
-      })
+      present(props.rideId, notice.outcome, name, t('ride.vehicleChanged'))
     }
     emit('saved')
   }
@@ -156,7 +157,8 @@ async function submit(confirm = false) {
       :label="t('ride.vehicle')"
       name="change-vehicle"
       class="mb-4"
-      size="xl"
+      :class="commandInputClass"
+      :size="controlSize"
     >
       <USelect
         id="change-vehicle"
@@ -172,7 +174,8 @@ async function submit(confirm = false) {
     <div class="flex flex-wrap gap-2">
       <UButton
         type="submit"
-        size="xl"
+        :size="controlSize"
+        :class="controlClass"
         :disabled="pending || !canSubmit"
         :loading="pending"
       >
@@ -182,7 +185,8 @@ async function submit(confirm = false) {
         type="button"
         color="neutral"
         variant="outline"
-        size="xl"
+        :size="controlSize"
+        :class="controlClass"
         :disabled="pending"
         @click="emit('cancel')"
       >

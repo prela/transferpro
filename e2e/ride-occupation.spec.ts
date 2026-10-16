@@ -105,17 +105,18 @@ test('a true overlap asks before it saves, and a tight gap warns without asking'
   await expect.poll(() => page.locator('tr').filter({ hasText: 'Nika Preklop' }).textContent()).toContain('Nedodijeljeno')
   await dialog.getByRole('button', { name: 'Nastavi svejedno', exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  await expect(page.getByRole('listitem').filter({ hasText: /^Dodijeljeno/ })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: /^Dodijeljeno/ })).toBeVisible()
   await expect(page.getByRole('row', { name: 'Nika Preklop' }).getByRole('button', { name: 'Dodijeli: Nika Preklop' })).toHaveCount(0)
 
   await recordRide(page, 'Tea Usko', '13:40')
   // The day list does not refetch when the nav link is already the current page.
   await page.reload()
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
   await page.getByRole('row', { name: 'Tea Usko' }).getByRole('button', { name: 'Dodijeli: Tea Usko' }).click()
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), 'Ana Zauzeto')
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), 'DU184CC')
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'Ovaj vozač ili vozilo već ima drugu vožnju' })).toHaveCount(0)
   await expect(page.getByRole('listitem').filter({ hasText: 'Razmak prije ili poslije druge vožnje je uzak.' })).toBeVisible()
   // The status cell also names the overlap warning, so the accessible name is longer than the state.
   await expect(page.getByRole('row', { name: 'Tea Usko' }).getByRole('cell', { name: /Dodijeljeno/ })).toContainText('Preklapanje')

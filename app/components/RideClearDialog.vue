@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { Driver, TransferDayRide } from '../../shared'
 import { assignedRideSchema } from '../../shared'
+import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
 import { clearRideButtonId } from '../transfer-ride-buttons'
 import { canChangeAssignment } from '../transfer-ride-guards'
-import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
   drivers: Driver[]
@@ -14,6 +14,7 @@ const props = defineProps<{
 
 const { t } = useI18n()
 const toast = useToast()
+const { present } = useWorkOrderPresenter()
 const { notifyAuditChanged } = useAuditRefresh()
 
 const clearing = ref<{ rideId: string, guestName: string } | null>(null)
@@ -66,12 +67,13 @@ async function confirmClear() {
     notifyAuditChanged()
     // The notice names the Driver who lost the Ride. The address is not on the response.
     const notice = cleared.workOrders[0]
-    const shown = notice === undefined ? undefined : workOrderNotice(notice.outcome)
-    toast.add({
-      title: t('ride.cleared'),
-      description: shown === undefined || notice === undefined ? undefined : t(shown.key, { name: driverLabel(notice.driverId) }),
-      color: shown?.color ?? 'success',
-    })
+    if (notice === undefined) {
+      const savedNotice = { title: t('ride.cleared'), color: 'success' as const, role: 'status' }
+      toast.add(savedNotice)
+    }
+    else {
+      present(target.rideId, notice.outcome, driverLabel(notice.driverId), t('ride.cleared'))
+    }
     clearing.value = null
     await props.loadDay()
   }

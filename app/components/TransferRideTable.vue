@@ -18,6 +18,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  open: [ride: TransferDayRide]
   assign: [ride: TransferDayRide]
   landing: [ride: TransferDayRide]
   acceptByPhone: [ride: TransferDayRide]
@@ -124,6 +125,7 @@ const shared = computed(() => ({
       v-if="!phoneLayout"
       :data="rides"
       :columns="columns"
+      :on-select="(_event, row) => emit('open', row.original)"
       :ui="{
         root: 'relative overflow-x-hidden',
         base: 'w-full table-fixed',
@@ -214,6 +216,7 @@ const shared = computed(() => ({
           @change-vehicle="emit('changeVehicle', $event)"
           @reassign="emit('reassign', $event)"
           @clear="emit('clear', $event)"
+          @open="emit('open', $event)"
           @correct="emit('correct', $event)"
         />
       </template>
@@ -240,6 +243,7 @@ const shared = computed(() => ({
           @change-vehicle="emit('changeVehicle', $event)"
           @reassign="emit('reassign', $event)"
           @clear="emit('clear', $event)"
+          @open="emit('open', $event)"
           @correct="emit('correct', $event)"
         />
       </li>

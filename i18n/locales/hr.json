@@ -320,6 +320,16 @@
       "rosterMismatch": "Nesklad rasporeda",
       "expiredDocument": "Istekao dokument"
     },
+    "attentionDetail": {
+      "unassignedAlarm": "Vožnja nije dodijeljena, a do preuzimanja je manje od četiri sata.",
+      "pastPickup": "Preuzimanje je prošlo, a vožnja još nije dodijeljena.",
+      "declined": "{driver} je odbio ovu vožnju.",
+      "landingAlarm": "Prošlo je očekivano trajanje nakon slijetanja, a vožnja nije zatvorena.",
+      "unclosed": "Od preuzimanja je prošlo više od sata, a vožnja nije zatvorena.",
+      "overlap": "Vrijeme se preklapa s drugom vožnjom ili je razmak do nje preuzak.",
+      "rosterMismatch": "Vozilo nije ono koje raspored daje vozaču za taj dan.",
+      "expiredDocument": "Vozaču ili vozilu je istekao dokument."
+    },
     "rowAccept": "Potvrdi telefonom",
     "rowAcceptFor": "Potvrdi telefonom: {guest}",
     "rowDone": "Obavljeno",
@@ -375,7 +385,7 @@
     "notFound": "Taj klijent ili mjesto nije na popisu.",
     "forbidden": "Vozač ne može zabilježiti ni ispraviti transfer, ni vidjeti dnevni popis.",
     "actionsFor": "Radnje: {guest}",
-    "correct": "Ispravi",
+    "correct": "Ispravi transfer",
     "correctFor": "Ispravi: {guest}",
     "correctTitle": "Ispravi ovaj transfer",
     "saveCorrection": "Spremi ispravak",
@@ -713,6 +723,13 @@
     "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
     "saveFailed": "Vožnja nije dodijeljena. Pokušajte ponovno.",
     "unknownDriver": "Nepoznat vozač",
+    "changed": "Vožnja je promijenjena",
+    "overlapHint": "Preklapanje s drugom vožnjom",
+    "noRosterVehicle": "Nema vozila u rasporedu",
+    "detailBack": "Natrag",
+    "detailClose": "Zatvori",
+    "detailMore": "Više",
+    "detailFacts": "Podaci o vožnji",
     "unknownVehicle": "Nepoznato vozilo"
   },
   "liveRefresh": {

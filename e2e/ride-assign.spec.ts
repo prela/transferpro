@@ -14,12 +14,13 @@ async function createdId(response: APIResponse): Promise<string> {
   return body.id
 }
 
-async function addDriver(page: Page, name: string): Promise<string> {
+async function addDriver(page: Page, name: string, email?: string): Promise<string> {
   return createdId(await page.request.post('/api/drivers', {
     data: {
       name,
       kind: 'own',
       phone,
+      email,
       drivingLicenceExpiresOn: licence,
       transportLicenceExpiresOn: licence,
     },
@@ -102,7 +103,7 @@ test('an admin assigns a ride and the audit log names the actor', async ({ page 
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
-  await expect(page.getByRole('listitem').filter({ hasText: /^Dodijeljeno/ })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: /^Dodijeljeno/ })).toBeVisible()
   await expect(page.getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
   await expect(page.getByRole('row', { name: guest })).toContainText(driverName)
   await expect(page.getByRole('row', { name: guest })).toContainText(plate)
@@ -142,7 +143,7 @@ test('the roster pre-fill picks the rostered vehicle, and an override is saved',
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
-  await expect(page.getByRole('listitem').filter({ hasText: /^Dodijeljeno/ })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: /^Dodijeljeno/ })).toBeVisible()
   await expect(page.getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
   await expect(page.getByRole('row', { name: guest })).toContainText(driverName)
   await expect(page.getByRole('row', { name: guest })).toContainText(otherPlate)
@@ -286,7 +287,8 @@ test('after assign, focus moves to the next unassigned ride assign button', asyn
   const driverName = 'Ana FocusNext'
   const plate = 'DU340AA'
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
-  await addDriver(page, driverName)
+  // An address makes the work order "sent", so the detail closes and focus can move.
+  await addDriver(page, driverName, 'ana-focus-next@example.test')
   await addVehicle(page, plate)
   await recordTodayRide(page, firstGuest, '10:00')
   await recordTodayRide(page, nextGuest, '11:00')
@@ -307,7 +309,8 @@ test('after assigning the last ride in the list, focus wraps to the first unassi
   const driverName = 'Ana FocusWrap'
   const plate = 'DU360AA'
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
-  await addDriver(page, driverName)
+  // An address makes the work order "sent", so the detail closes and focus can move.
+  await addDriver(page, driverName, 'ana-focus-wrap@example.test')
   await addVehicle(page, plate)
   await recordTodayRide(page, firstGuest, '10:00')
   await recordTodayRide(page, lastGuest, '11:00')
@@ -327,7 +330,8 @@ test('after the last assign, focus moves to the day list region', async ({ page 
   const driverName = 'Ana FocusRegion'
   const plate = 'DU350AA'
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
-  await addDriver(page, driverName)
+  // An address makes the work order "sent", so the detail closes and focus can move.
+  await addDriver(page, driverName, 'ana-focus-region@example.test')
   await addVehicle(page, plate)
   await recordTodayRide(page, guest)
 
@@ -339,7 +343,7 @@ test('after the last assign, focus moves to the day list region', async ({ page 
   await expect(page.getByRole('region', { name: 'Transferi' })).toBeFocused()
 })
 
-test('cancel closes the form and returns focus to assign', async ({ page }) => {
+test('cancel returns to the ride detail and focuses it', async ({ page }) => {
   const tenant = await seedTenant('assign-cancel')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   const guest = 'Iva Cancel'
@@ -349,8 +353,11 @@ test('cancel closes the form and returns focus to assign', async ({ page }) => {
   await openAssign(page, guest)
   await expect(page.getByRole('combobox', { name: 'Vozač' })).toBeFocused()
   await page.getByRole('button', { name: 'Odustani', exact: true }).click()
+  const detail = page.locator('#ride-detail')
   await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
-  await expect(assignButton(page, guest)).toBeFocused()
+  await expect(detail).toBeFocused()
+  await expect(detail).toContainText(guest)
+  await expect(assignButton(page, guest)).not.toBeFocused()
 })
 
 test('an assigned archived vehicle keeps its plate with a badge, and the picker omits it', async ({ page }) => {
@@ -389,6 +396,7 @@ test('an assigned archived vehicle keeps its plate with a badge, and the picker 
   const assignedRow = page.getByRole('row', { name: assignedGuest })
   await expect(assignedRow).toContainText(livePlate)
   await expect(assignedRow).toContainText('Arhivirano')
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
 
   await assignButton(page, openGuest).click()
   await page.getByRole('combobox', { name: 'Vozilo' }).click()

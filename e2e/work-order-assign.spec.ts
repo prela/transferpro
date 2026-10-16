@@ -88,11 +88,12 @@ test('assign reports sent and no email, in Croatian, with an English smoke', asy
   await recordTodayRide(page, 'Iva NoEmail', '14:00')
 
   await assign(page, 'Iva Sent', 'Ana Sent', plate, 'Dodijeli vožnju')
-  await expect(page.getByRole('listitem').filter({ hasText: 'Radni nalog je poslan vozaču Ana Sent.' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Radni nalog je poslan vozaču Ana Sent.' })).toBeVisible()
   await expect(page.getByText(sentAddress)).toHaveCount(0)
 
   await assign(page, 'Iva Blank', 'Ana Blank', plate, 'Dodijeli vožnju')
-  await expect(page.getByRole('listitem').filter({ hasText: 'Vozač Ana Blank nema e-poštu. Radni nalog nije poslan.' })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: 'Dodijeljeno' }).filter({ hasText: 'Vozač Ana Blank nema e-poštu. Radni nalog nije poslan.' })).toBeVisible()
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
 
   await switchLocale(page, 'en')
   await page.getByRole('link', { name: 'Transfers' }).click()
@@ -100,7 +101,7 @@ test('assign reports sent and no email, in Croatian, with an English smoke', asy
   await chooseOption(page, page.getByRole('combobox', { name: 'Driver' }), 'Ana Sent')
   await chooseOption(page, page.getByRole('combobox', { name: 'Vehicle' }), plate)
   await page.getByRole('button', { name: 'Assign ride', exact: true }).click()
-  await expect(page.getByRole('listitem').filter({ hasText: 'Work order sent to Ana Sent.' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Work order sent to Ana Sent.' })).toBeVisible()
   await expect(page.getByText(sentAddress)).toHaveCount(0)
 
   await page.getByRole('link', { name: 'Transfers' }).click()
@@ -108,5 +109,5 @@ test('assign reports sent and no email, in Croatian, with an English smoke', asy
   await chooseOption(page, page.getByRole('combobox', { name: 'Driver' }), 'Ana Blank')
   await chooseOption(page, page.getByRole('combobox', { name: 'Vehicle' }), plate)
   await page.getByRole('button', { name: 'Assign ride', exact: true }).click()
-  await expect(page.getByRole('listitem').filter({ hasText: 'Ana Blank has no email. No work order was sent.' })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: 'Assigned' }).filter({ hasText: 'Ana Blank has no email. No work order was sent.' })).toBeVisible()
 })

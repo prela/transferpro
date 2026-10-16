@@ -83,6 +83,7 @@ test('an admin changes the vehicle, reassigns, and clears, and the audit log nam
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), firstPlate)
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
   await expect(row(page, guest).getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
 
   await openRideMenu(page, guest)
   await page.getByRole('menuitem', { name: 'Promijeni vozilo', exact: true }).click()
@@ -93,6 +94,7 @@ test('an admin changes the vehicle, reassigns, and clears, and the audit log nam
   await expect(row(page, guest).getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
   await expect(row(page, guest)).toContainText(firstDriver)
   await expect(row(page, guest)).toContainText(secondPlate)
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
 
   await openRideMenu(page, guest)
   await page.getByRole('menuitem', { name: 'Prebaci', exact: true }).click()
@@ -103,6 +105,7 @@ test('an admin changes the vehicle, reassigns, and clears, and the audit log nam
   await expect(row(page, guest).getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
   await expect(row(page, guest)).toContainText(secondDriver)
   await expect(row(page, guest)).toContainText(firstPlate)
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
 
   await openRideMenu(page, guest)
   await page.getByRole('menuitem', { name: 'Ukloni dodjelu', exact: true }).click()
@@ -141,6 +144,7 @@ test('the change, reassign, and clear controls use English copy in the dark them
   await page.getByRole('button', { name: 'Assign ride', exact: true }).click()
   await expect(row(page, guest).getByRole('cell', { name: /^Assigned/ })).toBeVisible()
   await expect(page.locator('html')).toHaveClass(/dark/)
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Close', exact: true }).click()
 
   await openRideMenu(page, guest)
   await expect(page.getByRole('menuitem', { name: 'Change vehicle', exact: true })).toBeVisible()

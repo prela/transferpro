@@ -158,11 +158,14 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   await expect(dialog.getByRole('textbox')).toHaveCount(0)
   await expect(dialog.locator('textarea, input')).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
-  await expect(dialog).toBeHidden()
+  await expect(dialog.getByText('Ovo bilježi prihvaćanje potvrđeno s vozačem telefonom.')).toHaveCount(0)
+  await expect(page.locator('#ride-detail')).toBeFocused()
+  await expect(dialog).toContainText(waitingGuest)
   expect(acceptPosts).toBe(0)
   expect(mail).toEqual([])
   await expect(waitingRow.getByRole('cell', { name: 'Čeka prihvat', exact: true })).toBeVisible()
   expect(await dayRide(page, waiting.day, waitingGuest)).toMatchObject({ state: 'assigned', mustAccept: true })
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
 
   await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
@@ -170,8 +173,10 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   await expect(dialog).toContainText('Ovo bilježi prihvaćanje potvrđeno s vozačem telefonom.')
   await expect(dialog.getByRole('textbox')).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
-  await expect(dialog).toBeHidden()
+  await expect(dialog.getByText('Ovo bilježi prihvaćanje potvrđeno s vozačem telefonom.')).toHaveCount(0)
+  await expect(page.locator('#ride-detail')).toBeFocused()
   expect(acceptPosts).toBe(0)
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
 
   await switchLocale(page, 'en')
   const englishName = `Confirm by phone: ${waitingGuest}`
