@@ -14,6 +14,8 @@ No server change and no migration. Duplicate and return only prefill the Transfe
 - `e2e/correct-transfer.spec.ts` — a cancelled Ride used to have no actions button. It now has Dupliciraj and Povratni transfer, and still has no Ispravi transfer.
 - `e2e/duplicate-return-print.spec.ts` — new. A return saved from the detail is a second Transfer with no id link. Print in the dark theme is light, grouped, with unassigned last, in Croatian and English.
 
+Conclude, after `pnpm exec nuxi build`: `pnpm lint`, `pnpm typecheck`, and `pnpm test` (555) passed, then `E2E_PORT=30260 pnpm test:e2e` — 212 passed. No migration.
+
 ## Code review
 
 Fixed point `origin/develop`. The reports below are from the review before the print sheet was moved to `body` and before a return stopped copying price, note, and the airport mark. The follow-up commits address the hard glossary word, the extra copied fields, and the sheet that stayed hidden under `display: none`.
