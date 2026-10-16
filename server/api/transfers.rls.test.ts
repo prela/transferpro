@@ -429,6 +429,70 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
   })
 })
 
+it('a Client reference survives save and correction, and another Tenant cannot read it', async () => {
+  const firmA = await tenant('htr-ref-a', 'Ana Admin')
+  await tenant('htr-ref-b', 'Boris Admin')
+  await addMember(firmA.tenantId, 'htr-ref-a-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const officeA = await signIn('htr-ref-a-dispatcher@example.test')
+  const officeB = await signIn('htr-ref-b-admin@example.test')
+  const client = await createClient(officeA, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(officeA, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(officeA, { name: 'Hotel Park', kind: 'hotel' })
+  const pickupAt = pickupOnOpenBoard()
+  const added = await call('POST', '/api/transfers', officeA, {
+    clientId: client.id,
+    pickupAt,
+    startLocationId: start.id,
+    endLocationId: end.id,
+    passengerCount: 1,
+    guestName: 'Ana Referenca',
+    price: 10,
+    payment: 'cash',
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 0,
+    clientReference: '  V-19  ',
+  })
+  expect(added.status).toBe(200)
+  const created = await added.json() as { transfer: { id: string, clientReference: string | null }, ride: { id: string } }
+  expect(created.transfer.clientReference).toBe('V-19')
+
+  const listed = await call('GET', '/api/transfers', officeA)
+  expect(listed.status).toBe(200)
+  const day = await listed.json() as { rides: Array<{ transferId: string, clientReference: string | null }> }
+  expect(day.rides.find(ride => ride.transferId === created.transfer.id)?.clientReference).toBe('V-19')
+
+  const hidden = await call('GET', '/api/transfers', officeB)
+  expect(hidden.status).toBe(200)
+  expect(JSON.stringify(await hidden.json())).not.toContain('V-19')
+
+  const corrected = await call('PATCH', `/api/transfers/${created.transfer.id}`, officeA, correctionBody(client.id, start.id, end.id, pickupAt, {
+    guestName: 'Ana Referenca',
+    flightNumber: null,
+    price: 10,
+    airportMark: false,
+    note: null,
+    tabla: '',
+    clientReference: '  V-20  ',
+  }))
+  expect(corrected.status).toBe(200)
+  expect((await corrected.json() as { transfer: { clientReference: string | null } }).transfer.clientReference).toBe('V-20')
+
+  const reloaded = await call('GET', '/api/transfers', officeA)
+  const after = await reloaded.json() as { rides: Array<{ transferId: string, clientReference: string | null }> }
+  expect(after.rides.find(ride => ride.transferId === created.transfer.id)?.clientReference).toBe('V-20')
+  expect(JSON.stringify(await (await call('GET', '/api/transfers', officeB)).json())).not.toContain('V-20')
+
+  const audit = await ownerPool.query<{ data: unknown }>(
+    `select data from app.audit_entry where tenant_id = $1 and action::text in ('transfer.created', 'transfer.corrected')`,
+    [firmA.tenantId],
+  )
+  const auditText = JSON.stringify(audit.rows)
+  expect(auditText).not.toContain('V-19')
+  expect(auditText).not.toContain('V-20')
+  expect(auditText).toContain('clientReference')
+})
+
 it('an office user of Tenant B cannot record a Transfer that names Tenant A, and nothing is written', async () => {
   const firmA = await tenant('htr-cross-a', 'Ana Admin')
   const firmB = await tenant('htr-cross-b', 'Boris Admin')
@@ -1333,6 +1397,11 @@ it('emails one changed work order for each mailed fact, and a quiet save sends n
 
   const quiet = await correct()
   expect(quiet.workOrders).toEqual([])
+  expect(sent).toHaveLength(beforeSeveral + 1)
+
+  const referenceOnly = await correct({ clientReference: 'V-19' })
+  expect(referenceOnly.workOrders).toEqual([])
+  expect(referenceOnly.transfer.clientReference).toBe('V-19')
   expect(sent).toHaveLength(beforeSeveral + 1)
 
   const previous = sent.at(-1)?.text

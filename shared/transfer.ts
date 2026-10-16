@@ -37,6 +37,12 @@ export const NOTE_MAX_LENGTH = 1000
 export const TABLA_MAX_LENGTH = 200
 
 /**
+ * The Client's own booking number. A line, not a note: the same bound as a
+ * guest name. It is optional and not unique (ADR-0003).
+ */
+export const CLIENT_REFERENCE_MAX_LENGTH = 200
+
+/**
  * Look-back for a pickup instant: 30 × 24 hours from `now` (720 hours), not
  * 30 calendar days in the Tenant time zone. DST and local midnight do not
  * move the edge. The forward bound is {@link PICKUP_FUTURE_MONTHS} UTC
@@ -64,7 +70,8 @@ export const PAYMENT_METHODS = ['cash', 'card', 'invoice_to_agency'] as const
 
 /**
  * The only strings an audit row may store for a Transfer. Values (the guest
- * name, the flight, the note, the tabla text, the price) are not in this list.
+ * name, the flight, the note, the tabla text, the Client reference, the price)
+ * are not in this list.
  */
 export const TRANSFER_FIELDS = [
   'pickupAt',
@@ -78,6 +85,7 @@ export const TRANSFER_FIELDS = [
   'childSeatCount',
   'note',
   'tabla',
+  'clientReference',
 ] as const
 
 export const rideStateSchema = z.enum(RIDE_STATES)
@@ -123,8 +131,8 @@ export function canCorrectTransfer(state: RideState): boolean {
 /**
  * Field names a correction may store. The Client and the two Locations are
  * ids on the row as well, and a change of either is still a field name.
- * A guest name, a flight number, a note, a tabla, or a price is not a name
- * in this list: those values stay on the Transfer.
+ * A guest name, a flight number, a note, a tabla, a Client reference, or a
+ * price is not a name in this list: those values stay on the Transfer.
  */
 export const TRANSFER_CORRECTION_FIELDS = [
   'clientId',
@@ -226,6 +234,7 @@ function optionalLine(maxLength: number) {
 
 const flightNumberSchema = optionalLine(FLIGHT_NUMBER_MAX_LENGTH)
 const noteSchema = optionalLine(NOTE_MAX_LENGTH)
+const clientReferenceSchema = optionalLine(CLIENT_REFERENCE_MAX_LENGTH)
 
 /**
  * Missing, null, and whitespace become ''. A real sign is trimmed.
@@ -249,6 +258,7 @@ export const transferSchema = z.object({
   childSeatCount: z.number().int().min(CHILD_SEAT_COUNT_MIN).max(CHILD_SEAT_COUNT_MAX),
   note: z.string().min(1).max(NOTE_MAX_LENGTH).nullable(),
   tabla: z.string().max(TABLA_MAX_LENGTH),
+  clientReference: z.string().min(1).max(CLIENT_REFERENCE_MAX_LENGTH).nullable(),
 })
 
 export type Transfer = z.infer<typeof transferSchema>
@@ -379,6 +389,7 @@ export const createTransferSchema = z.strictObject({
   childSeatCount: z.number().int().min(CHILD_SEAT_COUNT_MIN).max(CHILD_SEAT_COUNT_MAX),
   note: noteSchema.optional(),
   tabla: tablaSchema,
+  clientReference: clientReferenceSchema.optional(),
 })
 
 export interface CreateTransfer {
@@ -396,6 +407,7 @@ export interface CreateTransfer {
   readonly childSeatCount: number
   readonly note: string | null
   readonly tabla: string
+  readonly clientReference: string | null
 }
 
 /** The body was not a valid Transfer. Nothing is written. The guest name is not in the message. */
@@ -450,6 +462,7 @@ export function parseCreateTransfer(raw: unknown, now: Date = new Date()): Creat
     childSeatCount: parsed.data.childSeatCount,
     note: parsed.data.note === undefined ? null : parsed.data.note,
     tabla: parsed.data.tabla,
+    clientReference: parsed.data.clientReference === undefined ? null : parsed.data.clientReference,
   }
 }
 
@@ -500,6 +513,11 @@ export function guestNameError(value: string): GuestNameError | null {
 
 export function flightNumberError(value: string): LineError | null {
   return value.trim().length > FLIGHT_NUMBER_MAX_LENGTH ? 'too-long' : null
+}
+
+/** A Client reference the form can refuse before a request. Blank is allowed. */
+export function clientReferenceError(value: string): LineError | null {
+  return value.trim().length > CLIENT_REFERENCE_MAX_LENGTH ? 'too-long' : null
 }
 
 export function noteError(value: string): LineError | null {

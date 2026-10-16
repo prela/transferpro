@@ -26,6 +26,8 @@ const transferDraftFieldsSchema = z.object({
   flight: z.string(),
   airportMark: z.boolean(),
   tabla: z.string(),
+  // Missing on a draft written before the column existed. A blank is still a blank.
+  clientReference: z.string().optional().transform(value => value ?? ''),
   luggage: z.string(),
   childSeats: z.string(),
   note: z.string(),
@@ -65,6 +67,7 @@ export function transferDraftIsBlank(fields: TransferDraftFields, openedPickup?:
     && fields.price.trim() === ''
     && fields.flight.trim() === ''
     && fields.tabla.trim() === ''
+    && fields.clientReference.trim() === ''
     && fields.note.trim() === ''
     && !fields.airportMark
     && (fields.passengers.trim() === '' || fields.passengers.trim() === '1')
@@ -77,10 +80,11 @@ export function transferDraftIsBlank(fields: TransferDraftFields, openedPickup?:
  * these. Zero luggage and zero child seats are the blank default, not a value.
  * The airport mark counts only when it was chosen.
  */
-export function transferMoreHasValue(fields: Pick<TransferDraftFields, 'flight' | 'airportMark' | 'tabla' | 'luggage' | 'childSeats' | 'note'>): boolean {
+export function transferMoreHasValue(fields: Pick<TransferDraftFields, 'flight' | 'airportMark' | 'tabla' | 'clientReference' | 'luggage' | 'childSeats' | 'note'>): boolean {
   return fields.flight.trim() !== ''
     || fields.airportMark
     || fields.tabla.trim() !== ''
+    || fields.clientReference.trim() !== ''
     || (fields.luggage.trim() !== '' && fields.luggage.trim() !== '0')
     || (fields.childSeats.trim() !== '' && fields.childSeats.trim() !== '0')
     || fields.note.trim() !== ''

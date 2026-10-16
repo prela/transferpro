@@ -168,7 +168,7 @@ const transferFieldCount = sql.raw(String(TRANSFER_FIELDS.length))
 
 /**
  * `fields` names what was written on the Transfer. Containment refuses a
- * guest name, a flight number, a note, a tabla, or a price sitting in the array.
+ * guest name, a flight number, a note, a tabla, a Client reference, or a price sitting in the array.
  */
 function transferFieldsArray(data: AnyPgColumn) {
   return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${transferFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${transferFieldsJson}`
@@ -179,7 +179,7 @@ const transferCorrectionFieldCount = sql.raw(String(TRANSFER_CORRECTION_FIELDS.l
 
 /**
  * `fields` names what a correction changed. Containment refuses a guest
- * name, a flight number, a note, a tabla, or a price sitting in the array.
+ * name, a flight number, a note, a tabla, a Client reference, or a price sitting in the array.
  */
 function transferCorrectionFieldsArray(data: AnyPgColumn) {
   return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${transferCorrectionFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${transferCorrectionFieldsJson}`

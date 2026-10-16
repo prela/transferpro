@@ -1,7 +1,7 @@
 import type { InjectionKey } from 'vue'
 import type { Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, TransferDayRide } from '../../shared'
 import { z } from 'zod'
-import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedTransferSchema, rememberTransferDraft, sameLocationError, tablaError, wallClockInTimeZone } from '../../shared'
+import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedTransferSchema, rememberTransferDraft, sameLocationError, tablaError, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -67,6 +67,7 @@ export function useTransferForm(options: {
   const passengers = ref('1')
   const guest = ref('')
   const tabla = ref('')
+  const clientReference = ref('')
   const flight = ref('')
   const price = ref('')
   const payment = ref<PaymentMethod | undefined>()
@@ -98,6 +99,7 @@ export function useTransferForm(options: {
   const formErrorKey = ref<TransferFailure | null>(null)
   const guestErrorKey = ref<'transfers.guestEmpty' | 'transfers.guestTooLong' | null>(null)
   const tablaErrorKey = ref<'transfers.tablaTooLong' | null>(null)
+  const clientReferenceErrorKey = ref<'transfers.clientReferenceTooLong' | null>(null)
   const flightErrorKey = ref<'transfers.flightTooLong' | null>(null)
   const noteErrorKey = ref<'transfers.noteTooLong' | null>(null)
   const priceErrorKey = ref<'transfers.priceInvalid' | null>(null)
@@ -259,6 +261,7 @@ export function useTransferForm(options: {
         ? 'transfers.guestTooLong'
         : null
     tablaErrorKey.value = tablaError(tabla.value) ? 'transfers.tablaTooLong' : null
+    clientReferenceErrorKey.value = clientReferenceError(clientReference.value) ? 'transfers.clientReferenceTooLong' : null
     flightErrorKey.value = flightNumberError(flight.value) ? 'transfers.flightTooLong' : null
     noteErrorKey.value = noteError(note.value) ? 'transfers.noteTooLong' : null
     priceErrorKey.value = priceError(price.value) ? 'transfers.priceInvalid' : null
@@ -276,6 +279,7 @@ export function useTransferForm(options: {
     paymentErrorKey.value = payment.value ? null : 'transfers.paymentMissing'
     return !guestErrorKey.value
       && !tablaErrorKey.value
+      && !clientReferenceErrorKey.value
       && !flightErrorKey.value
       && !noteErrorKey.value
       && !priceErrorKey.value
@@ -334,6 +338,7 @@ export function useTransferForm(options: {
       flight: flight.value,
       airportMark: airportMark.value,
       tabla: tabla.value,
+      clientReference: clientReference.value,
       luggage: luggage.value,
       childSeats: childSeats.value,
       note: note.value,
@@ -348,6 +353,7 @@ export function useTransferForm(options: {
     passengers.value = draft.passengers
     guest.value = draft.guest
     tabla.value = draft.tabla
+    clientReference.value = draft.clientReference
     flight.value = draft.flight
     price.value = draft.price
     payment.value = draft.payment ?? undefined
@@ -384,6 +390,7 @@ export function useTransferForm(options: {
   function clearFieldErrors() {
     guestErrorKey.value = null
     tablaErrorKey.value = null
+    clientReferenceErrorKey.value = null
     flightErrorKey.value = null
     noteErrorKey.value = null
     priceErrorKey.value = null
@@ -449,6 +456,7 @@ export function useTransferForm(options: {
     passengers.value = '1'
     guest.value = ''
     tabla.value = ''
+    clientReference.value = ''
     flight.value = ''
     price.value = ''
     payment.value = undefined
@@ -486,6 +494,7 @@ export function useTransferForm(options: {
     passengers.value = String(ride.passengerCount)
     guest.value = ride.guestName
     tabla.value = ride.tabla
+    clientReference.value = ride.clientReference ?? ''
     flight.value = ride.flightNumber ?? ''
     price.value = priceForForm(ride.price)
     payment.value = ride.payment
@@ -508,6 +517,7 @@ export function useTransferForm(options: {
       passengerCount: Number(passengers.value),
       guestName: guest.value,
       tabla: tabla.value,
+      clientReference: clientReference.value,
       flightNumber: flight.value,
       price: priceFromInput(price.value),
       payment: payment.value,
@@ -640,6 +650,7 @@ export function useTransferForm(options: {
     passengers,
     guest,
     tabla,
+    clientReference,
     flight,
     price,
     payment,
@@ -662,6 +673,7 @@ export function useTransferForm(options: {
     formErrorKey,
     guestErrorKey,
     tablaErrorKey,
+    clientReferenceErrorKey,
     flightErrorKey,
     noteErrorKey,
     priceErrorKey,

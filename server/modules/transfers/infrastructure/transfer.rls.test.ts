@@ -270,6 +270,56 @@ it('tenant B cannot read or change Tenant A transfers or rides, and a second Rid
   }])
 })
 
+it('tenant B cannot read a Client reference stored by Tenant A', async () => {
+  const seeded = await withTenant(tenantA, async (client) => {
+    const clientRow = await client.query<{ id: string }>(
+      `insert into app.clients (name, kind) values ('Agencija Referenca', 'agency') returning id`,
+    )
+    const start = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Polazak Referenca', 'address') returning id`,
+    )
+    const end = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Dolazak Referenca', 'hotel') returning id`,
+    )
+    const transfer = await client.query<{ client_reference: string | null }>(
+      `insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, price, payment, airport_mark,
+        luggage_count, child_seat_count, client_reference
+      ) values ($1, '2026-10-06T10:00:00.000Z', $2, $3, 1, 'Ana Anić', 10, 'cash', false, 0, 0, 'V-19')
+      returning client_reference`,
+      [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id],
+    )
+    return transfer.rows[0]?.client_reference
+  })
+  expect(seeded).toBe('V-19')
+
+  const seenByB = await withTenant(tenantB, client => client.query(
+    `select client_reference from app.transfers where client_reference = 'V-19'`,
+  ))
+  expect(seenByB.rows).toEqual([])
+
+  const seenByA = await withTenant(tenantA, client => client.query(
+    `select client_reference from app.transfers where client_reference = 'V-19'`,
+  ))
+  expect(seenByA.rows).toEqual([{ client_reference: 'V-19' }])
+
+  await expect(withTenant(tenantA, async (client) => {
+    const ids = await client.query<{ client_id: string, start_location_id: string, end_location_id: string }>(
+      `select client_id, start_location_id, end_location_id from app.transfers limit 1`,
+    )
+    const row = ids.rows[0]
+    return client.query(
+      `insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, price, payment, airport_mark,
+        luggage_count, child_seat_count, client_reference
+      ) values ($1, '2026-10-06T11:00:00.000Z', $2, $3, 1, 'Ana Anić', 10, 'cash', false, 0, 0, $4)`,
+      [row?.client_id, row?.start_location_id, row?.end_location_id, `  V-19  `],
+    )
+  })).rejects.toMatchObject({ code: '23514' })
+})
+
 it('reserves the Ride states and refuses a bad fare, a bad count, and a Driver on an unassigned Ride', async () => {
   const ids = await withTenant(tenantA, async (client) => {
     const clientRow = await client.query<{ id: string }>(`select id from app.clients limit 1`)

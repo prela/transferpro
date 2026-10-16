@@ -35,6 +35,7 @@ const input = {
   childSeatCount: 0,
   note,
   tabla: '',
+  clientReference: null,
 }
 
 interface FakeLocation {
@@ -87,6 +88,7 @@ function fakeTransaction(options: {
             childSeatCount: params[11],
             note: params[12],
             tabla: params[13],
+            clientReference: params[14],
           }],
         }
       }
@@ -155,6 +157,7 @@ it('records one unassigned Ride and names fields, not the guest, the flight, the
       childSeatCount: 0,
       note,
       tabla: '',
+      clientReference: null,
     },
     ride: {
       id: rideId,
@@ -204,6 +207,29 @@ it('stores a tabla as its own fact, names the field, and keeps the words off the
     }),
   ])
   expect(JSON.stringify(payload)).not.toContain(tabla)
+})
+
+it('stores a Client reference, names the field, and keeps the number off the audit entry', async () => {
+  const reference = 'V-19'
+  const { transaction, queries } = fakeTransaction({
+    clients: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }],
+    locations: places,
+  })
+  await expect(recordTransfer(transaction, actorUserId, { ...input, clientReference: reference })).resolves.toMatchObject({
+    transfer: { clientReference: reference },
+  })
+  const payload = auditPayloads(queries)
+  expect(payload).toEqual([
+    JSON.stringify({
+      transferId,
+      rideId,
+      clientId,
+      startLocationId,
+      endLocationId,
+      fields: ['pickupAt', 'passengerCount', 'guestName', 'flightNumber', 'price', 'payment', 'airportMark', 'luggageCount', 'childSeatCount', 'note', 'clientReference'],
+    }),
+  ])
+  expect(JSON.stringify(payload)).not.toContain(reference)
 })
 
 it('omits a blank flight, note, and tabla from the field list', async () => {
@@ -279,10 +305,11 @@ it('loads the Zagreb operational day as a half-open range of local 05:00 and map
       childSeatCount: 0,
       note: null,
       tabla,
+      clientReference: 'V-19',
     }],
   })
   await expect(loadRidesForDay(transaction, '2026-10-07', 'Europe/Zagreb')).resolves.toMatchObject([
-    { rideId, pickupAt: '2026-10-07T10:30:00.000Z', price: '42.00', airportMark: true, tabla, guestName: guest, note: null },
+    { rideId, pickupAt: '2026-10-07T10:30:00.000Z', price: '42.00', airportMark: true, tabla, guestName: guest, note: null, clientReference: 'V-19' },
   ])
   expect(queries[0]?.sql.toLowerCase()).not.toContain('::date')
   expect(queries[0]?.sql.toLowerCase()).not.toContain('at time zone')
@@ -323,6 +350,7 @@ it('marks a landing alarm on an in-progress Ride 60 minutes after landing plus t
       childSeatCount: 0,
       note: null,
       tabla: '',
+      clientReference: null,
       landingAt,
     }
   }
