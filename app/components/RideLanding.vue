@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { instantFromWallClock, recordedLandingSchema, wallClockInTimeZone } from '../../shared'
+import { commandControlClass, commandControlSize } from '../ride-detail'
 
 const props = defineProps<{
   rideId: string
@@ -7,12 +8,16 @@ const props = defineProps<{
   /** The stored instant, or null when the Transfer has no landing time yet. */
   landingAt: string | null
   timeZone: string
+  /** Phone uses the large targets. Desktop uses the office size. */
+  phone?: boolean
 }>()
 
 const emit = defineEmits<{
   saved: []
   cancel: []
 }>()
+const controlSize = computed(() => commandControlSize(props.phone === true))
+const controlClass = computed(() => commandControlClass(props.phone === true))
 
 const { t } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
@@ -140,7 +145,7 @@ function clearLanding() {
       :label="t('transfers.fields.landingAt')"
       name="landing"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="errorKey === 'ride.landingInvalid' ? t(errorKey) : false"
     >
       <UInput
@@ -171,8 +176,8 @@ function clearLanding() {
         type="button"
         color="neutral"
         variant="outline"
-        size="xl"
-        class="min-h-12"
+        :size="controlSize"
+        :class="controlClass"
         :loading="pending === 'clear'"
         :disabled="pending !== null"
         @click="clearLanding"
@@ -183,8 +188,8 @@ function clearLanding() {
         type="button"
         color="neutral"
         variant="outline"
-        size="xl"
-        class="min-h-12"
+        :size="controlSize"
+        :class="controlClass"
         :disabled="pending !== null"
         @click="emit('cancel')"
       >
@@ -192,8 +197,8 @@ function clearLanding() {
       </UButton>
       <UButton
         type="submit"
-        size="xl"
-        class="min-h-12"
+        :size="controlSize"
+        :class="controlClass"
         :loading="pending === 'save'"
         :disabled="pending !== null"
       >

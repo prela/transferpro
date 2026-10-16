@@ -156,7 +156,10 @@ const primaryLabel = computed(() => {
 
 <template>
   <article
+    id="ride-detail"
     :aria-labelledby="titleId"
+    tabindex="-1"
+    class="outline-none"
     :class="pinActions ? 'flex min-h-full flex-col' : undefined"
   >
     <header class="mb-4 flex items-start justify-between gap-2">
@@ -308,6 +311,7 @@ const primaryLabel = computed(() => {
       :drivers="drivers"
       :vehicles="vehicles"
       :list-drivers="listDrivers"
+      :phone="pinActions"
       :day-rides="dayRides"
       :pickup-at="formRide.pickupAt"
       :landing-at="formRide.landingAt"
@@ -321,6 +325,7 @@ const primaryLabel = computed(() => {
       :vehicle-id="formRide.vehicleId"
       :drivers="drivers"
       :vehicles="vehicles"
+      :phone="pinActions"
       @saved="emit('saved')"
       @cancel="emit('command', null)"
     />
@@ -331,6 +336,7 @@ const primaryLabel = computed(() => {
       :driver-id="formRide.driverId"
       :drivers="drivers"
       :vehicles="vehicles"
+      :phone="pinActions"
       @saved="emit('saved')"
       @cancel="emit('command', null)"
     />
@@ -340,6 +346,7 @@ const primaryLabel = computed(() => {
       :guest-name="formRide.guestName"
       :landing-at="formRide.landingAt"
       :time-zone="timeZone"
+      :phone="pinActions"
       @saved="emit('saved')"
       @cancel="emit('command', null)"
     />
@@ -347,6 +354,7 @@ const primaryLabel = computed(() => {
       v-else-if="command === 'accept'"
       :ride="formRide"
       :load-day="loadDay"
+      :phone="pinActions"
       @done="emit('saved')"
       @cancel="emit('command', null)"
     />
@@ -359,6 +367,7 @@ const primaryLabel = computed(() => {
       v-model:corrected="corrected"
       v-model:locations="locations"
       in-panel
+      :phone="pinActions"
       :correct-ride="formRide"
       :time-zone="timeZone"
       :locale="locale"

@@ -93,6 +93,7 @@ test('assign reports sent and no email, in Croatian, with an English smoke', asy
 
   await assign(page, 'Iva Blank', 'Ana Blank', plate, 'Dodijeli vožnju')
   await expect(page.getByRole('alert').filter({ hasText: 'Dodijeljeno' }).filter({ hasText: 'Vozač Ana Blank nema e-poštu. Radni nalog nije poslan.' })).toBeVisible()
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
 
   await switchLocale(page, 'en')
   await page.getByRole('link', { name: 'Transfers' }).click()

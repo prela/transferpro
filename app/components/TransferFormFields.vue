@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import { transferFormKey } from '../composables/transfer-form'
 
+const props = withDefaults(defineProps<{
+  /** Office controls are small. The phone and the add slideover stay large. */
+  controlSize?: 'sm' | 'xl'
+}>(), {
+  controlSize: 'xl',
+})
 const api = inject(transferFormKey)
 if (!api)
   throw new Error('Transfer form fields are mounted outside the form.')
+
+const controlClass = computed(() => props.controlSize === 'xl' ? 'min-h-12' : 'h-7 min-h-7')
 
 const {
   clientId,
@@ -88,7 +96,7 @@ const { t } = useI18n()
       :label="t('locations.name')"
       name="place-name"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="placeNameErrorKey ? t(placeNameErrorKey) : false"
     >
       <UInput
@@ -107,7 +115,7 @@ const { t } = useI18n()
       :label="t('locations.kind')"
       name="place-kind"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="placeKindErrorKey ? t(placeKindErrorKey) : false"
     >
       <USelect
@@ -126,7 +134,7 @@ const { t } = useI18n()
       :label="t('locations.address')"
       name="place-address"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
     >
       <UInput
         id="place-address"
@@ -139,7 +147,8 @@ const { t } = useI18n()
     </UFormField>
     <UButton
       type="submit"
-      size="xl"
+      :size="controlSize"
+      :class="controlClass"
       :loading="placePending"
     >
       {{ t('transfers.addPlace') }}
@@ -154,7 +163,7 @@ const { t } = useI18n()
       :label="t('transfers.client')"
       name="client"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
     >
       <USelect
         id="transfer-client"
@@ -169,7 +178,7 @@ const { t } = useI18n()
       :label="t('transfers.pickupAt')"
       name="pickup"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="pickupErrorKey ? t(pickupErrorKey) : false"
     >
       <UInput
@@ -187,7 +196,7 @@ const { t } = useI18n()
       :label="t('transfers.start')"
       name="start"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
     >
       <USelect
         id="transfer-start"
@@ -202,8 +211,9 @@ const { t } = useI18n()
       type="button"
       color="neutral"
       variant="outline"
-      size="xl"
+      :size="controlSize"
       class="mb-4"
+      :class="controlClass"
       @click="openPlace('start')"
     >
       {{ t('transfers.placeForStart') }}
@@ -212,7 +222,7 @@ const { t } = useI18n()
       :label="t('transfers.end')"
       name="end"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="endErrorKey ? t(endErrorKey) : false"
     >
       <USelect
@@ -231,8 +241,9 @@ const { t } = useI18n()
       type="button"
       color="neutral"
       variant="outline"
-      size="xl"
+      :size="controlSize"
       class="mb-4"
+      :class="controlClass"
       @click="openPlace('end')"
     >
       {{ t('transfers.placeForEnd') }}
@@ -241,7 +252,7 @@ const { t } = useI18n()
       :label="t('transfers.passengers')"
       name="passengers"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="passengerErrorKey ? t(passengerErrorKey) : false"
     >
       <UInput
@@ -261,7 +272,7 @@ const { t } = useI18n()
       :label="t('transfers.guest')"
       name="guest"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="guestErrorKey ? t(guestErrorKey) : false"
     >
       <UInput
@@ -280,7 +291,7 @@ const { t } = useI18n()
       :label="t('transfers.tabla')"
       name="tabla"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="tablaErrorKey ? t(tablaErrorKey) : false"
     >
       <UInput
@@ -299,7 +310,7 @@ const { t } = useI18n()
       :label="t('transfers.flight')"
       name="flight"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="flightErrorKey ? t(flightErrorKey) : false"
     >
       <UInput
@@ -318,7 +329,7 @@ const { t } = useI18n()
       :label="t('transfers.price')"
       name="price"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="priceErrorKey ? t(priceErrorKey) : false"
     >
       <UInput
@@ -338,7 +349,7 @@ const { t } = useI18n()
       :label="t('transfers.payment')"
       name="payment"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
     >
       <USelect
         id="transfer-payment"
@@ -353,7 +364,7 @@ const { t } = useI18n()
       id="transfer-airport"
       v-model="airportMark"
       name="airport"
-      size="xl"
+      :size="controlSize"
       class="mb-4"
       :label="t('transfers.airport')"
     />
@@ -361,7 +372,7 @@ const { t } = useI18n()
       :label="t('transfers.luggage')"
       name="luggage"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="luggageErrorKey ? t(luggageErrorKey) : false"
     >
       <UInput
@@ -381,7 +392,7 @@ const { t } = useI18n()
       :label="t('transfers.childSeats')"
       name="child-seats"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="seatErrorKey ? t(seatErrorKey) : false"
     >
       <UInput
@@ -401,7 +412,7 @@ const { t } = useI18n()
       :label="t('transfers.note')"
       name="note"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
       :error="noteErrorKey ? t(noteErrorKey) : false"
     >
       <UTextarea
@@ -421,8 +432,9 @@ const { t } = useI18n()
       type="button"
       color="neutral"
       variant="outline"
-      size="xl"
+      :size="controlSize"
       class="w-full justify-center sm:w-auto"
+      :class="controlClass"
       :disabled="pending"
       @click="formOpen = false"
     >
@@ -431,8 +443,9 @@ const { t } = useI18n()
     <UButton
       type="submit"
       form="transfer-form"
-      size="xl"
+      :size="controlSize"
       class="w-full justify-center sm:w-auto"
+      :class="controlClass"
       :loading="pending"
     >
       {{

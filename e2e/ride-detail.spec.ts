@@ -160,6 +160,13 @@ test.describe('@phone', () => {
         await expect(page).toHaveURL(/filter=unassigned/)
         await expect(page).not.toHaveURL(/ride=/)
         await expect.poll(() => listScroll(page)).toBeGreaterThan(saved - 80)
+        // Back must restore the list entry, not an entry that still carries ?ride=.
+        await page.goForward()
+        await expect(page).toHaveURL(new RegExp(`ride=${main.ride.id}`))
+        await page.goBack()
+        await expect(page).not.toHaveURL(/ride=/)
+        await expect(page).toHaveURL(/filter=unassigned/)
+        await expect.poll(() => listScroll(page)).toBeGreaterThan(saved - 80)
         await page.getByRole('button', { name: /^Sve \(/ }).click()
       }
       await page.goto(`/transfers?day=${day}&ride=${main.ride.id}`)
@@ -188,24 +195,26 @@ test.describe('@phone', () => {
       }
       await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
       await expect(page.getByRole('alert').filter({ hasText: 'Vozač Ana Prva nema e-poštu. Radni nalog nije poslan.' })).toBeVisible()
+      await expect(page.getByRole('article').getByRole('heading', { name: 'Iva Detalj' })).toBeVisible()
 
-      const mainRow = phone
-        ? page.getByRole('listitem').filter({ hasText: 'Iva Detalj' })
-        : page.getByRole('row', { name: 'Iva Detalj' })
-      await mainRow.locator('time').first().click()
       await page.getByRole('button', { name: 'Više', exact: true }).click()
       await page.getByRole('menuitem', { name: 'Prebaci', exact: true }).click()
       await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), 'Ana Druga')
       await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), 'DU256BB')
       await page.getByRole('button', { name: 'Prebaci vožnju', exact: true }).click()
       await expect(page.getByRole('alert').filter({ hasText: 'Vozač Ana Druga nema e-poštu. Radni nalog nije poslan.' })).toBeVisible()
+      await expect(page.getByRole('article').getByRole('heading', { name: 'Iva Detalj' })).toBeVisible()
 
-      await mainRow.locator('time').first().click()
       await page.getByRole('button', { name: 'Više', exact: true }).click()
       await page.getByRole('menuitem', { name: 'Ukloni dodjelu', exact: true }).click()
       const clearDialog = page.getByRole('dialog', { name: 'Uklanjanje dodjele' })
       await clearDialog.getByRole('button', { name: 'Ukloni dodjelu', exact: true }).click()
       await expect(page.getByRole('alert').filter({ hasText: 'Dodjela uklonjena' })).toBeVisible()
+      await expect(page.getByRole('article').getByRole('heading', { name: 'Iva Detalj' })).toBeVisible()
+      if (phone)
+        await page.getByRole('button', { name: 'Natrag', exact: true }).click()
+      else
+        await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
 
       const openAccept = phone
         ? page.getByRole('listitem').filter({ hasText: 'Iva Prihvat' })

@@ -228,12 +228,14 @@ test('a pickup correction that overlaps asks, and cancel leaves the slideover op
   await slideover.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
   await expect(overlap).toBeVisible()
   await overlap.getByRole('button', { name: 'Nastavi svejedno', exact: true }).click()
-  // The detail closes. The no-email notice stays on the day until dismissed.
-  await expect(slideover).toBeHidden()
-  const kept = page.getByRole('alert').filter({ hasText: 'Vozač Ana Preklop nema e-poštu. Radni nalog nije poslan.' })
+  // No email keeps the detail open, with the warning inside it.
+  const detail = page.locator('#ride-detail')
+  await expect(detail).toBeVisible()
+  const kept = detail.getByRole('alert').filter({ hasText: 'Vozač Ana Preklop nema e-poštu. Radni nalog nije poslan.' })
   await expect(kept).toBeVisible()
   await kept.getByRole('button', { name: 'Zatvori', exact: true }).click()
   await expect(kept).toHaveCount(0)
+  await expect(detail).toBeVisible()
   await expect(page.getByRole('row', { name: movingGuest })).toContainText('12:30')
 })
 

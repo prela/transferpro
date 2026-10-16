@@ -40,3 +40,12 @@ export function rideFormStamp(ride: TransferDayRide): string {
 }
 
 export type RideDetailCommand = 'assign' | 'vehicle' | 'reassign' | 'landing' | 'accept' | 'correct'
+
+/** Office controls are 28 px. The phone uses 44–48 px. ADR-0038. */
+export function commandControlSize(phone: boolean): 'sm' | 'xl' {
+  return phone ? 'xl' : 'sm'
+}
+
+export function commandControlClass(phone: boolean): string {
+  return phone ? 'min-h-12' : 'h-7 min-h-7'
+}

@@ -2,6 +2,7 @@
 import type { Driver, TransferDayRide, Vehicle } from '../../shared'
 import { assignedRideSchema, judgeSchedule, RELOCATION_GAP_DEFAULT_MINUTES, rosterVehicleSuggestionSchema, tenantSettingsGetSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
+import { commandControlClass, commandControlSize } from '../ride-detail'
 
 const props = defineProps<{
   rideId: string
@@ -17,12 +18,16 @@ const props = defineProps<{
   dayRides?: TransferDayRide[]
   pickupAt?: string
   landingAt?: string | null
+  /** Phone uses the large targets. Desktop uses the office size. */
+  phone?: boolean
 }>()
 
 const emit = defineEmits<{
   assigned: []
   cancel: []
 }>()
+const controlSize = computed(() => commandControlSize(props.phone === true))
+const controlClass = computed(() => commandControlClass(props.phone === true))
 
 const { t } = useI18n()
 const toast = useToast()
@@ -317,7 +322,7 @@ async function assign(confirm = false) {
       :label="t('ride.driver')"
       name="assign-driver"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
     >
       <USelect
         id="assign-driver"
@@ -334,7 +339,7 @@ async function assign(confirm = false) {
       :label="t('ride.vehicle')"
       name="assign-vehicle"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
     >
       <USelect
         id="assign-vehicle"
@@ -355,7 +360,8 @@ async function assign(confirm = false) {
     <div class="flex flex-wrap gap-2">
       <UButton
         type="submit"
-        size="xl"
+        :size="controlSize"
+        :class="controlClass"
         :disabled="pending || !canSubmit"
         :loading="pending"
       >
@@ -365,7 +371,8 @@ async function assign(confirm = false) {
         type="button"
         color="neutral"
         variant="outline"
-        size="xl"
+        :size="controlSize"
+        :class="controlClass"
         :disabled="pending"
         @click="emit('cancel')"
       >

@@ -115,6 +115,7 @@ test('a vehicle change, a reassign, and a clear each name the Driver, in Croatia
   await expect(page.getByRole('alert').filter({ hasText: 'Prebačeno' }).filter({ hasText: blankAna })).toHaveCount(1)
   await expect(notice(page, 'Prebačeno', sentToAna)).toHaveCount(1)
   await expect(page.getByText(sentAddress)).toHaveCount(0)
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
 
   await openRideMenu(page, 'Iva Change')
   await page.getByRole('menuitem', { name: 'Ukloni dodjelu', exact: true }).click()

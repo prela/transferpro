@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import type { TransferDayRide } from '../../shared'
 import { rideSchema } from '../../shared'
+import { commandControlClass, commandControlSize } from '../ride-detail'
 import { httpStatus } from '../transfer-day-http'
 import { canRecordAcceptanceByPhone } from '../transfer-ride-guards'
 
 const props = defineProps<{
   ride: TransferDayRide
   loadDay: () => Promise<void>
+  /** Phone uses the large targets. Desktop uses the office size. */
+  phone?: boolean
 }>()
 
 const emit = defineEmits<{
   done: []
   cancel: []
 }>()
+const controlSize = computed(() => commandControlSize(props.phone === true))
+const controlClass = computed(() => commandControlClass(props.phone === true))
 
 const { t } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
@@ -92,8 +97,8 @@ async function confirm() {
         type="button"
         color="neutral"
         variant="outline"
-        size="xl"
-        class="min-h-12"
+        :size="controlSize"
+        :class="controlClass"
         :disabled="pending"
         @click="emit('cancel')"
       >
@@ -101,8 +106,8 @@ async function confirm() {
       </UButton>
       <UButton
         type="button"
-        size="xl"
-        class="min-h-12"
+        :size="controlSize"
+        :class="controlClass"
         :loading="pending"
         :disabled="pending"
         @click="confirm"

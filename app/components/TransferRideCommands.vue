@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Driver, TransferDayRide } from '../../shared'
+import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 
 const props = defineProps<{
   drivers: Driver[]
@@ -7,13 +8,16 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  /** A confirmation saved. The detail closes so the list is usable again. */
+  /** A clean confirmation. No-email and send-failed leave the detail open. */
   saved: []
 }>()
 
+const { takeHold } = useWorkOrderPresenter()
+
 async function reloadAfterSave() {
   await props.loadDay()
-  emit('saved')
+  if (!takeHold())
+    emit('saved')
 }
 
 const clearDialog = ref<{ open: (ride: TransferDayRide) => void } | null>(null)

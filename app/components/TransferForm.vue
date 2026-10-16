@@ -14,6 +14,8 @@ const props = defineProps<{
   inPanel?: boolean
   /** Set when this instance is the detail's correction form. */
   correctRide?: TransferDayRide | null
+  /** Phone uses the large targets. Desktop correction uses the office size. */
+  phone?: boolean
 }>()
 
 const day = defineModel<string>('day', { required: true })
@@ -71,7 +73,7 @@ watch(() => props.correctRide?.rideId, (rideId) => {
     <h2 class="mb-4 text-lg font-semibold">
       {{ formTitle }}
     </h2>
-    <TransferFormFields />
+    <TransferFormFields :control-size="inPanel && !phone ? 'sm' : 'xl'" />
   </div>
   <USlideover
     v-else-if="!inPanel"
@@ -80,7 +82,7 @@ watch(() => props.correctRide?.rideId, (rideId) => {
     :dismissible="!pending && !placePending"
   >
     <template #body>
-      <TransferFormFields />
+      <TransferFormFields :control-size="inPanel && !phone ? 'sm' : 'xl'" />
     </template>
   </USlideover>
   <RideOverlapDialog

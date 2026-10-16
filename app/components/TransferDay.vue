@@ -2,7 +2,7 @@
 import type { DisplayLocale, LiveRefreshOutcome, TransferDayFilter, TransferDayRide } from '../../shared'
 import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
 import { classifyRideAttention, clockLabel, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
-import { useKeptWorkOrders } from '../composables/kept-work-orders'
+import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
 import { rideDetailLayout } from '../ride-detail'
 import { assignButtonId } from '../transfer-ride-buttons'
@@ -27,6 +27,7 @@ const layout = ref<RideDetailLayout>('overlay')
 const layoutReady = ref(false)
 const { phoneDetailOpen } = useRideDetailChrome()
 const { dismiss, kept } = useKeptWorkOrders()
+const { takeHold } = useWorkOrderPresenter()
 const nowMs = ref(Date.now())
 const announcedCount = ref(0)
 const filter = ref<TransferDayFilter>(parseTransferDayFilter(route.query.filter))
@@ -403,24 +404,22 @@ function showRide(ride: TransferDayRide, next: RideDetailCommand | null) {
   }, 0)
 }
 
+function focusDetail() {
+  void nextTick(() => {
+    document.getElementById('ride-detail')?.focus()
+  })
+}
+
 function onCommand(next: RideDetailCommand | null) {
   const ride = openRide.value
   if (next === 'correct' && ride) {
     showRide(ride, 'correct')
     return
   }
-  if (next === null && command.value === 'accept') {
-    closeDetail()
-    return
-  }
-  if (next === null && command.value === 'assign') {
-    const rideId = openRide.value?.rideId
-    closeDetail()
-    if (rideId) {
-      void nextTick(() => {
-        document.getElementById(assignButtonId(rideId))?.focus()
-      })
-    }
+  // Cancel of assign or accept-by-phone returns to the facts. The detail stays.
+  if (next === null && (command.value === 'accept' || command.value === 'assign')) {
+    command.value = null
+    focusDetail()
     return
   }
   if (command.value === 'correct' && next !== 'correct')
@@ -440,8 +439,14 @@ function onDetailOpen(open: boolean) {
 async function onCommandSaved() {
   const ride = openRide.value
   const wasAssign = command.value === 'assign'
+  // No email and send failed keep the detail, with the warning inside it.
+  const stay = takeHold()
   command.value = null
   await loadDay()
+  if (stay) {
+    focusDetail()
+    return
+  }
   const assignedId = ride?.rideId
   closeDetail()
   if (!wasAssign || !assignedId)
@@ -461,6 +466,10 @@ watch(corrected, (value) => {
   if (!value)
     return
   command.value = null
+  if (takeHold()) {
+    focusDetail()
+    return
+  }
   closeDetail()
 })
 
@@ -472,12 +481,12 @@ watch(openRideId, (id, previous) => {
   rideOwnedLocally = true
   if (!id && previous)
     restorePhoneScroll()
-  // The router push is async. The address bar has to match before a test reads it.
-  const url = new URL(window.location.href)
+  // Opening pushes a new history entry. Writing the Ride onto the current
+  // entry would make Back return to a list address that still has ?ride=.
   if (id)
-    url.searchParams.set('ride', id)
-  else
-    url.searchParams.delete('ride')
+    return
+  const url = new URL(window.location.href)
+  url.searchParams.delete('ride')
   const next = `${url.pathname}${url.search}${url.hash}`
   if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== next)
     history.replaceState(history.state, '', next)
@@ -648,7 +657,7 @@ onUnmounted(() => {
         :ui="{ root: '!min-h-0 !h-auto !w-[420px] !max-w-[420px] !flex-none shrink-0 border-s border-default' }"
       >
         <template #body>
-          <div id="ride-detail">
+          <div>
             <TransferRideDetail
               v-model:day="day"
               v-model:saved="saved"

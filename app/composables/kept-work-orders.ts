@@ -37,6 +37,9 @@ export function useWorkOrderPresenter() {
   const toast = useToast()
   const { t } = useI18n()
   const { push } = useKeptWorkOrders()
+  // A no-email or failed result of the command that just saved. Cleared when
+  // the day decides whether the detail stays open.
+  const holdDetail = useState('work-order-hold-detail', () => false)
 
   function present(
     rideId: string,
@@ -46,6 +49,7 @@ export function useWorkOrderPresenter() {
   ) {
     if (workOrderStaysInDetail(outcome)) {
       push({ rideId, outcome, driverName, actionTitle })
+      holdDetail.value = true
       return
     }
     const shown = workOrderNotice(outcome)
@@ -61,5 +65,11 @@ export function useWorkOrderPresenter() {
     toast.add(sent)
   }
 
-  return { present }
+  function takeHold(): boolean {
+    const held = holdDetail.value
+    holdDetail.value = false
+    return held
+  }
+
+  return { present, takeHold }
 }

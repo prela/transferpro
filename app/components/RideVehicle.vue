@@ -2,6 +2,7 @@
 import type { Driver, Vehicle } from '../../shared'
 import { assignedRideSchema } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
+import { commandControlClass, commandControlSize } from '../ride-detail'
 
 const props = defineProps<{
   rideId: string
@@ -10,12 +11,16 @@ const props = defineProps<{
   vehicleId: string
   drivers: Driver[]
   vehicles: Vehicle[]
+  /** Phone uses the large targets. Desktop uses the office size. */
+  phone?: boolean
 }>()
 
 const emit = defineEmits<{
   saved: []
   cancel: []
 }>()
+const controlSize = computed(() => commandControlSize(props.phone === true))
+const controlClass = computed(() => commandControlClass(props.phone === true))
 
 const { t } = useI18n()
 const toast = useToast()
@@ -152,7 +157,7 @@ async function submit(confirm = false) {
       :label="t('ride.vehicle')"
       name="change-vehicle"
       class="mb-4"
-      size="xl"
+      :size="controlSize"
     >
       <USelect
         id="change-vehicle"
@@ -168,7 +173,8 @@ async function submit(confirm = false) {
     <div class="flex flex-wrap gap-2">
       <UButton
         type="submit"
-        size="xl"
+        :size="controlSize"
+        :class="controlClass"
         :disabled="pending || !canSubmit"
         :loading="pending"
       >
@@ -178,7 +184,8 @@ async function submit(confirm = false) {
         type="button"
         color="neutral"
         variant="outline"
-        size="xl"
+        :size="controlSize"
+        :class="controlClass"
         :disabled="pending"
         @click="emit('cancel')"
       >
