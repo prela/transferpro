@@ -195,18 +195,27 @@ function httpStatus(error: unknown): number | undefined {
         :locale="session.locale"
       />
       <!--
-        Office Home is the three lists, the counts from one read, and the
-        shared live refresh. Locale and theme stay on Profile.
+        Office Home is the balance, Pozornost, and the three lists. The
+        frame owns the office-home read. Documents sit in the right column.
+        Locale and theme stay on Profile.
       -->
       <OfficeHome
         v-else
         :time-zone="session.timeZone"
         :locale="session.locale"
         :refresh-documents="refreshDocuments"
-      />
+      >
+        <template #documents>
+          <ExpiringDocuments
+            ref="documents"
+            :show-refresh="false"
+          />
+        </template>
+      </OfficeHome>
       <ExpiringDocuments
+        v-if="session.role === 'driver'"
         ref="documents"
-        :show-refresh="session.role === 'driver'"
+        :show-refresh="true"
       />
       <!--
         Tenant settings, Members, invitations, and the audit log live on

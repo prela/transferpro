@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DisplayLocale, LiveRefreshOutcome, TransferDayFilter, TransferDayRide, TransferPrefill } from '../../shared'
+import type { DisplayLocale, LiveRefreshOutcome, TransferBoardFilter, TransferDayRide, TransferPrefill } from '../../shared'
 import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
 import { classifyRideAttention, clockLabel, duplicateTransferPrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
@@ -32,7 +32,7 @@ const { dismiss, kept } = useKeptWorkOrders()
 const { takeHold } = useWorkOrderPresenter()
 const nowMs = ref(Date.now())
 const announcedCount = ref(0)
-const filter = ref<TransferDayFilter>(parseTransferDayFilter(route.query.filter))
+const filter = ref<TransferBoardFilter>(parseTransferDayFilter(route.query.filter))
 const search = ref(queryText(route.query.search))
 const clientId = ref<string | null>(queryText(route.query.client) || null)
 const driverId = ref<string | null>(queryText(route.query.driver) || null)

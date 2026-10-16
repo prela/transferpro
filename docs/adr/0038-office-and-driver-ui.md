@@ -1,8 +1,8 @@
 # Office and driver UI: layouts, navigation, and density
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0041
 
-Damir accepted this on 15 October 2026, in the UI/UX round (step 8 of #206). It partially supersedes ADR-0016; the sentence is listed below. ADR-0039 decides the urgent and warning tiers and live refresh. ADR-0040 decides the theme tokens and contrast rules. Steps 9–12 of #206 build on these three records.
+Damir accepted this on 15 October 2026, in the UI/UX round (step 8 of #206). It partially supersedes ADR-0016; the sentence is listed below. ADR-0039 decides the urgent and warning tiers and live refresh. ADR-0040 decides the theme tokens and contrast rules. ADR-0041 amends the pending-invitation revoke. Steps 9–12 of #206 build on these records.
 
 ## Context
 

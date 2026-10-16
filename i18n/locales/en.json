@@ -116,7 +116,8 @@
       "member": {
         "invited": "Member invited",
         "role_changed": "Role changed",
-        "removed": "Member removed"
+        "removed": "Member removed",
+        "invitation_revoked": "Invitation revoked"
       },
       "settings": {
         "airport_wait_changed": "Airport wait changed",
@@ -781,8 +782,21 @@
     "loadFailed": "Home could not be loaded. Try again.",
     "unassigned": "Unassigned",
     "waiting": "Waiting on acceptance",
+    "assignedNotStarted": "Assigned, not started",
     "inProgress": "In progress",
-    "empty": "This list is empty.",
+    "attention": "Attention",
+    "operationalDay": "{date}, from {hour}",
+    "groups": {
+      "unassigned-past-pickup": "Pickup has passed",
+      "unassigned-alarm": "Unassigned < 4 h",
+      "decline-alert": "Declined",
+      "landing-alarm": "Landing alarm",
+      "unclosed-mark": "Not closed"
+    },
+    "emptyAttention": "No urgent rides. The other rides are on the lists below.",
+    "emptyUnassigned": "No unassigned rides. Open a new transfer on Transfers.",
+    "emptyWaiting": "No rides are waiting on acceptance. An assigned ride waits here until the driver accepts it.",
+    "emptyInProgress": "No rides are in progress. A started ride shows up here.",
     "counts": "Counts for the operational day",
     "countRides": "Rides",
     "unassignedAlarm": "Unassigned alarm",

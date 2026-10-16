@@ -279,6 +279,7 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'member.invited' then ${table.subjectUserId} is null and ${rolesOnly(table.data, 'role')}
     when 'member.role_changed' then ${table.subjectUserId} <> '' and ${rolesOnly(table.data, 'from', 'to')}
     when 'member.removed' then ${table.subjectUserId} <> '' and ${rolesOnly(table.data, 'role')}
+    when 'member.invitation_revoked' then ${table.subjectUserId} is null and ${rolesOnly(table.data, 'role')}
     when 'settings.airport_wait_changed' then ${table.subjectUserId} is null and ${minutesFromTo(table.data)}
     when 'settings.elsewhere_wait_changed' then ${table.subjectUserId} is null and ${minutesFromTo(table.data)}
     when 'settings.time_zone_changed' then ${table.subjectUserId} is null and ${zonesFromTo(table.data)}

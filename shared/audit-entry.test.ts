@@ -22,6 +22,9 @@ it('names no member on an invite and names the member on a removal', () => {
   expect(auditFactSchema.safeParse({ action: 'member.invited', subjectUserId: memberId, data: { role: 'driver' } }).success).toBe(false)
   expect(auditFactSchema.safeParse({ action: 'member.removed', subjectUserId: memberId, data: { role: 'admin' } }).success).toBe(true)
   expect(auditFactSchema.safeParse({ action: 'member.removed', subjectUserId: null, data: { role: 'admin' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ action: 'member.invitation_revoked', subjectUserId: null, data: { role: 'driver' } }).success).toBe(true)
+  expect(auditFactSchema.safeParse({ action: 'member.invitation_revoked', subjectUserId: memberId, data: { role: 'driver' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ action: 'member.invitation_revoked', subjectUserId: null, data: { role: 'driver', email: 'ana@example.test' } }).success).toBe(false)
   expect(auditFactSchema.safeParse({ action: 'member.left', subjectUserId: memberId, data: {} }).success).toBe(false)
 })
 

@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { expectNoInvitationCookie, invite, openAudit, signIn } from './fixtures/ui'
 
 test('an admin opens the audit log from the sidebar, newest first, and can refresh', async ({ page }) => {
   const tenant = await seedTenant('audit-admin')
@@ -55,13 +55,30 @@ test('an admin opens the audit log from the sidebar, newest first, and can refre
   }
 })
 
+test('a revoked invitation shows the role on the audit log and not the email', async ({ page }) => {
+  const tenant = await seedTenant('audit-revoke')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const email = `e2e-revoke-${crypto.randomUUID()}@example.test`
+  const link = await invite(page, email, 'Vozač')
+  const invitationId = new URL(link).hash.slice(1)
+  const revoked = await page.request.post(`/api/invitations/${invitationId}/revoke`)
+  expect(revoked.ok()).toBe(true)
+  await expectNoInvitationCookie(page)
+
+  await openAudit(page)
+  const row = page.getByRole('row').filter({ hasText: 'Pozivnica povučena' })
+  await expect(row).toContainText('Vozač')
+  await expect(row).not.toContainText(email)
+  await expect(row).not.toContainText(invitationId)
+})
+
 test('a dispatcher has no audit item in the sidebar', async ({ page }) => {
   const tenant = await seedTenant('audit-disp-nav')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
 
   const nav = page.getByRole('navigation', { name: 'Odjeljci' })
-  await expect(nav.getByRole('link', { name: 'Početna', exact: true })).toBeVisible()
+  await expect(nav.getByRole('link', { name: /^Početna, \d+$/ })).toBeVisible()
   await expect(nav.getByRole('link', { name: 'Postavke tvrtke', exact: true })).toHaveCount(0)
   await expect(nav.getByRole('link', { name: 'Revizija', exact: true })).toHaveCount(0)
 })

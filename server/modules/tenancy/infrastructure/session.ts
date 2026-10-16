@@ -9,7 +9,7 @@ import { operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplay
 import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
-import { acceptInvitation, parseInviteInput, previewInvitation, repairInvitationCookies, sendInvitation } from './invitation'
+import { acceptInvitation, parseInviteInput, previewInvitation, listPendingInvitations as readPendingInvitations, repairInvitationCookies, revokePendingInvitation as revokePendingInvitationImpl, sendInvitation } from './invitation'
 import { mailerForApp } from './mailer'
 import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, removeMember as removeMemberImpl } from './member-management'
 import { changeTenantSettings, loadTenantSettings, TenantSettingsMissingError } from './tenant-settings'
@@ -202,6 +202,32 @@ export async function inviteMember(headers: Headers, raw: unknown) {
       locale: settings.default_locale,
     })
   })
+}
+
+/**
+ * Pending invitations for the session's Tenant. Admin only. A dispatcher
+ * or a driver is 403 before Better Auth is called, because its list is
+ * open to every member. The organization id is the session's, so a query
+ * cannot name another Tenant.
+ */
+export async function listPendingInvitations(headers: Headers) {
+  const { handle } = tenantRuntime()
+  const actor = await actorFromSession(handle, headers)
+  if (actor.role !== 'admin')
+    throw new TenantAccessError(403)
+  return readPendingInvitations(handle, headers, actor.context.tenantId)
+}
+
+/**
+ * Revoke one pending invitation of the session's Tenant. Admin only.
+ * Another Tenant's id is 404, the same as an id that is not there.
+ */
+export async function revokePendingInvitation(headers: Headers, invitationId: string): Promise<void> {
+  const { handle } = tenantRuntime()
+  const actor = await actorFromSession(handle, headers)
+  if (actor.role !== 'admin')
+    throw new TenantAccessError(403)
+  await revokePendingInvitationImpl(handle, headers, actor.context.tenantId, actor.userId, invitationId)
 }
 
 export async function previewMemberInvitation(raw: unknown, headers: Headers) {

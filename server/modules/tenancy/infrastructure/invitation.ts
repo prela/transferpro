@@ -1,8 +1,10 @@
 import type { DisplayLocale, TenantRole } from '../../../../shared'
 import type { AuthHandle } from './auth'
+import { drizzle } from 'drizzle-orm/node-postgres'
 import { z } from 'zod'
-import { invitationAcceptBodySchema, invitationPreviewBodySchema, inviteInputSchema, inviteLink, passwordLengthRule, tenantRoleSchema } from '../../../../shared'
-import { nodeEnv } from '../../../core/index'
+import { invitationAcceptBodySchema, invitationPreviewBodySchema, inviteInputSchema, inviteLink, passwordLengthRule, pendingInvitationListSchema, tenantRoleSchema } from '../../../../shared'
+import { nodeEnv, openTenantSession } from '../../../core/index'
+import { appendAuditEntry } from '../../audit'
 import { acceptAttemptLimit, createAttemptLimiter } from './auth'
 import { inviteSendState } from './invite-send'
 
@@ -15,13 +17,14 @@ const MESSAGE: Record<InvitationStatus, string> = {
   400: 'Invitation is not valid.',
   401: 'Unauthorized',
   403: 'Forbidden',
+  404: 'Invitation was not found.',
   409: 'Account already exists.',
   422: 'Password is not valid.',
   429: 'Too many attempts.',
   500: 'Invitation could not be accepted.',
 }
 
-type InvitationStatus = 400 | 401 | 403 | 409 | 422 | 429 | 500
+type InvitationStatus = 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500
 
 export class InvitationAccessError extends Error {
   readonly statusCode: InvitationStatus
@@ -90,6 +93,142 @@ export async function sendInvitation(
   return {
     inviteUrl: inviteLink(handle.baseURL, invitationId),
     emailSent: state.emailSent,
+  }
+}
+
+const listedInvitationSchema = z.array(z.object({
+  id: z.string(),
+  email: z.string(),
+  role: z.string().nullable().optional(),
+  status: z.string(),
+  expiresAt: z.coerce.date(),
+  organizationId: z.string(),
+}))
+
+/**
+ * Pending invitations for one Tenant. The organization id is the session's
+ * Tenant, passed by the caller, never a query parameter. Better Auth returns
+ * every status; accepted, expired, and canceled rows are dropped here.
+ * A role outside the Tenant roles is dropped rather than shown.
+ */
+export async function listPendingInvitations(
+  handle: AuthHandle,
+  headers: Headers,
+  organizationId: string,
+): Promise<z.infer<typeof pendingInvitationListSchema>> {
+  let listed: unknown
+  try {
+    listed = await handle.auth.api.listInvitations({
+      headers,
+      query: { organizationId },
+    })
+  }
+  catch (error) {
+    throw invitationFailure(error)
+  }
+  const rows = listedInvitationSchema.safeParse(listed)
+  if (!rows.success)
+    throw new InvitationAccessError(500)
+  const now = Date.now()
+  const invitations = rows.data.flatMap((row) => {
+    if (row.organizationId !== organizationId || row.status !== 'pending' || row.expiresAt.getTime() <= now)
+      return []
+    const id = z.uuid().safeParse(row.id)
+    const email = z.email().safeParse(row.email)
+    const role = tenantRoleSchema.safeParse(row.role)
+    if (!id.success || !email.success || !role.success)
+      return []
+    return [{
+      id: id.data,
+      email: email.data,
+      role: role.data,
+      expiresAt: row.expiresAt.toISOString(),
+    }]
+  }).sort((left, right) => left.expiresAt.localeCompare(right.expiresAt) || left.id.localeCompare(right.id))
+  return pendingInvitationListSchema.parse({ invitations })
+}
+
+/**
+ * Cancel one pending invitation of this Tenant. A missing id, another
+ * Tenant's id, and one that is no longer pending all answer 404.
+ * The status change and the audit entry commit together. Better Auth's
+ * cancel runs on its own connection, so the same update (`status = canceled`)
+ * is done here, after listInvitations has limited the id to this Tenant.
+ * The entry stores the role only. Sending again creates a new invitation.
+ */
+export async function revokePendingInvitation(
+  handle: AuthHandle,
+  headers: Headers,
+  organizationId: string,
+  actorUserId: string,
+  invitationId: string,
+): Promise<void> {
+  const pending = await listPendingInvitations(handle, headers, organizationId)
+  if (!pending.invitations.some(row => row.id === invitationId))
+    throw new InvitationAccessError(404)
+  await recordInvitationCanceled(handle, organizationId, actorUserId, invitationId)
+}
+
+/**
+ * One auth-pool transaction. A lost race (accepted, expired, or already
+ * canceled) matches no row, rolls back, and is 404. The role has to be a
+ * Tenant role or the entry cannot be stored, so that row is left pending.
+ */
+async function recordInvitationCanceled(
+  handle: AuthHandle,
+  organizationId: string,
+  actorUserId: string,
+  invitationId: string,
+): Promise<void> {
+  const client = await handle.authPool.connect()
+  try {
+    await client.query('begin')
+    try {
+      const transaction = drizzle(client)
+      await openTenantSession(transaction, { tenantId: organizationId }, async () => {
+        // The session check ran before this transaction. Re-read so an admin
+        // demoted since then cannot cancel.
+        const caller = z.object({ role: z.string() }).safeParse((await client.query(
+          'select role from auth.member where organization_id = $1 and user_id = $2',
+          [organizationId, actorUserId],
+        )).rows[0])
+        if (!caller.success || caller.data.role !== 'admin')
+          throw new InvitationAccessError(403)
+        const updated = await client.query(
+          `update auth.invitation
+           set status = 'canceled'
+           where id = $1
+             and organization_id = $2
+             and status = 'pending'
+             and expires_at > now()
+           returning role`,
+          [invitationId, organizationId],
+        )
+        const parsed = z.object({ role: z.string() }).safeParse(updated.rows[0])
+        const role = tenantRoleSchema.safeParse(parsed.success ? parsed.data.role : undefined)
+        if (!role.success)
+          throw new InvitationAccessError(404)
+        await appendAuditEntry(transaction, {
+          action: 'member.invitation_revoked',
+          actorUserId,
+          subjectUserId: null,
+          data: { role: role.data },
+        })
+      })
+      await client.query('commit')
+    }
+    catch (error) {
+      await client.query('rollback')
+      throw error
+    }
+  }
+  catch (error) {
+    if (error instanceof InvitationAccessError)
+      throw error
+    throw new InvitationAccessError(500)
+  }
+  finally {
+    client.release()
   }
 }
 

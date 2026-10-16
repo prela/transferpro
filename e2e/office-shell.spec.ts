@@ -12,8 +12,9 @@ test('an admin moves through the sidebar, sees the current item, and the office 
 
   const nav = page.getByRole('navigation', { name: 'Odjeljci' })
   await expect(nav).toHaveCount(1)
-  await expect(nav.getByRole('link')).toHaveText([...sections])
-  await expect(nav.getByRole('link', { name: 'Početna', exact: true })).toHaveAttribute('aria-current', 'page')
+  const linkText = (await nav.getByRole('link').allTextContents()).map(text => text.replace(/\d+/g, '').trim())
+  expect(linkText).toEqual([...sections])
+  await expect(nav.getByRole('link', { name: /^Početna, \d+$/ })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
   await expect(page.getByRole('heading', { level: 1, name: 'Početna' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toBeVisible()
@@ -32,7 +33,7 @@ test('an admin moves through the sidebar, sees the current item, and the office 
     await nav.getByRole('link', { name: link, exact: true }).click()
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
     await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
-    await expect(nav.getByRole('link', { name: 'Početna', exact: true })).not.toHaveAttribute('aria-current', 'page')
+    await expect(nav.getByRole('link', { name: /^Početna, \d+$/ })).not.toHaveAttribute('aria-current', 'page')
     await expect(nav.getByRole('link', { name: link, exact: true })).toHaveAttribute('aria-current', 'page')
   }
 
@@ -46,7 +47,7 @@ test('collapse is stored under transferpro-dashboard and the rail stays keyboard
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
 
   const nav = page.getByRole('navigation', { name: 'Odjeljci' })
-  const home = nav.getByRole('link', { name: 'Početna', exact: true })
+  const home = nav.getByRole('link', { name: /^Početna, \d+$/ })
   // Sign-in can leave focus on the page. Blur, then Tab from the top once the rail is up.
   await expect(home).toBeVisible()
   await page.evaluate(() => {
@@ -86,7 +87,7 @@ test('a phone viewport opens the rest of the navigation from Više', async ({ pa
   await page.setViewportSize({ width: 390, height: 844 })
 
   const bar = page.getByRole('navigation', { name: 'Odjeljci' })
-  await expect(bar.getByRole('link', { name: 'Početna', exact: true })).toBeVisible()
+  await expect(bar.getByRole('link', { name: /^Početna, \d+$/ })).toBeVisible()
   await expect(bar.getByRole('link', { name: 'Transferi', exact: true })).toBeVisible()
   await expect(bar.getByRole('link', { name: 'Raspored', exact: true })).toBeVisible()
   await expect(bar.getByRole('link', { name: 'Naručitelji', exact: true })).toHaveCount(0)
@@ -121,7 +122,7 @@ test('the sidebar is usable in light and dark, in Croatian and English', async (
 
   await switchLocale(page, 'en')
   const english = page.getByRole('navigation', { name: 'Sections' })
-  await expect(english.getByRole('link', { name: 'Home', exact: true })).toHaveAttribute('aria-current', 'page')
+  await expect(english.getByRole('link', { name: /^Home, \d+$/ })).toHaveAttribute('aria-current', 'page')
   await expect(english.getByRole('link', { name: 'Clients', exact: true })).toBeVisible()
   await expect(english.getByRole('link', { name: 'Roster', exact: true })).toBeVisible()
   await expect(page.locator('html')).toHaveClass(/dark/)
@@ -229,7 +230,7 @@ test.describe('@phone', () => {
 
       if (phone) {
         const bar = page.getByRole('navigation', { name: 'Odjeljci' })
-        await expect(bar.getByRole('link', { name: 'Početna', exact: true })).toBeVisible()
+        await expect(bar.getByRole('link', { name: /^Početna, \d+$/ })).toBeVisible()
         await expect(bar.getByRole('link', { name: 'Naručitelji', exact: true })).toHaveCount(0)
         const fab = page.getByRole('button', { name: 'Novi transfer', exact: true })
         await expect(fab).toBeVisible()
@@ -253,7 +254,7 @@ test.describe('@phone', () => {
         await switchLocale(page, 'en')
         const nav = page.getByRole('navigation', { name: 'Sections' })
         if (phone)
-          await expect(nav.getByRole('link', { name: 'Home', exact: true })).toBeVisible()
+          await expect(nav.getByRole('link', { name: /^Home, \d+$/ })).toBeVisible()
         else
           await expect(nav.getByRole('link', { name: 'Clients', exact: true })).toBeVisible()
         await expectNoAxeViolations(page)

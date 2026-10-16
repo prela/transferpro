@@ -2,8 +2,9 @@ import type { OfficeHome, OfficeHomeRide } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { buildOfficeHome, localDayBounds, operationalDateInTimeZone, paymentMethodSchema, rideStateSchema } from '../../../../shared'
+import { buildOfficeHome, localDayBounds, operationalDateInTimeZone, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
+import { loadClients } from '../../clients'
 import { loadDrivers } from '../../drivers'
 import { loadLocations } from '../../locations'
 import { loadTenantSettings } from '../../tenancy'
@@ -14,6 +15,8 @@ const sourceRowSchema = z.object({
   rideId: z.uuid(),
   pickupAt: z.unknown(),
   guestName: z.string(),
+  passengerCount: z.number().int().min(PASSENGER_COUNT_MIN).max(PASSENGER_COUNT_MAX),
+  clientId: z.uuid(),
   startLocationId: z.uuid(),
   endLocationId: z.uuid(),
   state: rideStateSchema,
@@ -52,6 +55,8 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
         r.id as "rideId",
         t.pickup_at as "pickupAt",
         t.guest_name as "guestName",
+        t.passenger_count as "passengerCount",
+        t.client_id as "clientId",
         t.start_location_id as "startLocationId",
         t.end_location_id as "endLocationId",
         r.state,
@@ -88,6 +93,7 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
     'Office home read failed',
   ))
 
+  const clients = new Map((await loadClients(transaction)).map(client => [client.id, client.name]))
   const places = new Map((await loadLocations(transaction, true)).map(place => [place.id, place.name]))
   const drivers = new Map((await loadDrivers(transaction)).map(driver => [driver.id, driver.name]))
   const vehicles = new Map((await loadVehicles(transaction, true)).map(vehicle => [vehicle.id, vehicle.registrationPlate]))
@@ -101,6 +107,8 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
       rideId: row.rideId,
       pickupAt: toInstant(row.pickupAt),
       guestName: row.guestName,
+      passengerCount: row.passengerCount,
+      clientName: requiredName(row.clientId, clients),
       start,
       end,
       state: row.state,

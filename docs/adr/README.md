@@ -54,3 +54,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted |
 | ADR-0039 | Urgent and warning tiers, and live refresh | accepted |
 | ADR-0040 | Theme tokens and contrast rules | accepted |
+| ADR-0041 | Revoke a pending invitation | accepted |

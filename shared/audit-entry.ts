@@ -18,6 +18,7 @@ export const auditActions = [
   'member.invited',
   'member.role_changed',
   'member.removed',
+  'member.invitation_revoked',
   'settings.airport_wait_changed',
   'settings.elsewhere_wait_changed',
   'settings.time_zone_changed',
@@ -84,6 +85,16 @@ const memberRoleChanged = z.object({
 const memberRemoved = z.object({
   action: z.literal('member.removed'),
   subjectUserId: userId,
+  data: z.strictObject({ role: tenantRoleSchema }),
+})
+
+/*
+ * The invitee still has no user id. The invitation id is the link, so it
+ * stays off the row (ADR-0014). The role is the only field.
+ */
+const memberInvitationRevoked = z.object({
+  action: z.literal('member.invitation_revoked'),
+  subjectUserId: z.null(),
   data: z.strictObject({ role: tenantRoleSchema }),
 })
 
@@ -569,6 +580,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
   memberRoleChanged,
   memberRemoved,
+  memberInvitationRevoked,
   settingsAirportWaitChanged,
   settingsElsewhereWaitChanged,
   settingsTimeZoneChanged,
@@ -647,6 +659,7 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   memberInvited.extend(listed),
   memberRoleChanged.extend(listed),
   memberRemoved.extend(listed),
+  memberInvitationRevoked.extend(listed),
   settingsAirportWaitChanged.extend(listed),
   settingsElsewhereWaitChanged.extend(listed),
   settingsTimeZoneChanged.extend(listed),

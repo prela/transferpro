@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SevenDayUnassignedPart, TransferDayFilter } from '../../shared'
+import type { SevenDayUnassignedPart, TransferBoardFilter, TransferDayFilter } from '../../shared'
 import { addCalendarDays, isCalendarDate, TRANSFER_DAY_FILTERS } from '../../shared'
 
 defineProps<{
@@ -15,7 +15,7 @@ const emit = defineEmits<{
 }>()
 
 const day = defineModel<string>('day', { required: true })
-const filter = defineModel<TransferDayFilter>('filter', { required: true })
+const filter = defineModel<TransferBoardFilter>('filter', { required: true })
 const search = defineModel<string>('search', { required: true })
 const clientId = defineModel<string | null>('clientId', { required: true })
 const driverId = defineModel<string | null>('driverId', { required: true })

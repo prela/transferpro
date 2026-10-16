@@ -116,7 +116,8 @@
       "member": {
         "invited": "Član pozvan",
         "role_changed": "Uloga promijenjena",
-        "removed": "Član uklonjen"
+        "removed": "Član uklonjen",
+        "invitation_revoked": "Pozivnica povučena"
       },
       "settings": {
         "airport_wait_changed": "Promijenjeno čekanje na aerodromu",
@@ -780,9 +781,22 @@
     "loading": "Učitavanje početne",
     "loadFailed": "Početna se nije mogla učitati. Pokušajte ponovno.",
     "unassigned": "Nedodijeljeno",
-    "waiting": "Čeka na prihvat",
+    "waiting": "Čeka prihvat",
+    "assignedNotStarted": "Dodijeljeno, nije krenulo",
     "inProgress": "U tijeku",
-    "empty": "Ovaj popis je prazan.",
+    "attention": "Pozornost",
+    "operationalDay": "{date}, od {hour}",
+    "groups": {
+      "unassigned-past-pickup": "Prošlo preuzimanje",
+      "unassigned-alarm": "Nedodijeljeno < 4 h",
+      "decline-alert": "Odbio",
+      "landing-alarm": "Alarm slijetanja",
+      "unclosed-mark": "Nije zatvoreno"
+    },
+    "emptyAttention": "Nema hitnih vožnji. Ostale vožnje su na popisima ispod.",
+    "emptyUnassigned": "Nema nedodijeljenih vožnji. Novi transfer otvorite na Transferima.",
+    "emptyWaiting": "Nema vožnji koje čekaju prihvat. Dodijeljena vožnja čeka ovdje dok je vozač ne prihvati.",
+    "emptyInProgress": "Nema vožnji u tijeku. Započeta vožnja pojavit će se ovdje.",
     "counts": "Brojevi za operativni dan",
     "countRides": "Vožnje",
     "unassignedAlarm": "Alarm za nedodijeljenu vožnju",

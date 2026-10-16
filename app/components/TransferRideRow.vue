@@ -6,7 +6,7 @@ import { driverDisplayName } from '../transfer-day-labels'
 import { canCallOff, canChangeAssignment, canNoShow } from '../transfer-ride-guards'
 
 const props = defineProps<{
-  cell: 'phone' | 'time' | 'flight' | 'guest' | 'route' | 'client' | 'crew' | 'state' | 'price' | 'actions' | 'home'
+  cell: 'phone' | 'time' | 'flight' | 'guest' | 'route' | 'client' | 'crew' | 'state' | 'price' | 'actions'
   ride?: TransferDayRide
   locations?: Location[]
   drivers?: Driver[]
@@ -17,25 +17,6 @@ const props = defineProps<{
   locale: DisplayLocale
   day?: string
   nowMs?: number
-  /** Office home card. The compact day row is the other mode. */
-  summary?: {
-    pickupAt: string
-    guestName: string
-    start: string
-    end: string
-    state: TransferDayRide['state']
-    driverName: string | null
-    vehiclePlate: string | null
-    price: string
-    payment: TransferDayRide['payment']
-    flightNumber: string | null
-    landingAt: string | null
-    expectedArrival: string | null
-    tabla: string
-    unassignedAlarm?: boolean
-    unclosedMark?: boolean
-    landingAlarm?: boolean
-  }
 }>()
 
 const emit = defineEmits<{
@@ -167,71 +148,8 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
 </script>
 
 <template>
-  <template v-if="cell === 'home' && summary">
-    <h3 class="text-lg font-semibold">
-      {{ summary.guestName }}
-    </h3>
-    <!--
-      Home still uses its own sentences. The short row texts are the day table.
-      The marks component is the shared one.
-    -->
-    <p
-      v-if="summary.unassignedAlarm"
-      class="mt-1"
-    >
-      {{ t('officeHome.unassignedAlarm') }}
-    </p>
-    <p
-      v-if="summary.unclosedMark"
-      class="mt-1"
-    >
-      {{ t('officeHome.unclosedMark') }}
-    </p>
-    <p
-      v-if="summary.landingAlarm"
-      class="mt-1"
-    >
-      {{ t('officeHome.landingAlarm') }}
-    </p>
-    <time
-      class="mt-1 block"
-      :datetime="summary.pickupAt"
-    >
-      {{ clock(summary.pickupAt) }}
-    </time>
-    <p class="mt-1">
-      {{ summary.start }}
-    </p>
-    <p>{{ summary.end }}</p>
-    <p>{{ t(`transfers.states.${summary.state}`) }}</p>
-    <p>{{ t('ride.driver') }}: {{ summary.driverName ?? '—' }}</p>
-    <p>
-      {{ t('ride.vehicle') }}: <span class="font-mono">{{ summary.vehiclePlate ?? '—' }}</span>
-    </p>
-    <p class="tabular-nums">
-      {{ priceLabel(summary.price) }}
-    </p>
-    <p>{{ t(`transfers.payments.${summary.payment}`) }}</p>
-    <p v-if="summary.flightNumber">
-      {{ t('transfers.fields.flightNumber') }}: <span class="font-mono">{{ summary.flightNumber }}</span>
-    </p>
-    <p v-if="summary.landingAt">
-      <time :datetime="summary.landingAt">
-        {{ t('transfers.fields.landingAt') }}: {{ clock(summary.landingAt) }}
-      </time>
-    </p>
-    <p v-if="summary.expectedArrival">
-      <time :datetime="summary.expectedArrival">
-        {{ t('transfers.fields.expectedArrival') }}: {{ clock(summary.expectedArrival) }}
-      </time>
-    </p>
-    <p v-if="summary.tabla">
-      {{ t('transfers.fields.tabla') }}: {{ summary.tabla }}
-    </p>
-  </template>
-
   <div
-    v-else-if="cell === 'phone' && ride"
+    v-if="cell === 'phone' && ride"
     class="flex min-h-12 flex-col justify-center gap-1 py-1 text-sm"
     :class="mark().muted ? 'text-muted' : ''"
     tabindex="0"
