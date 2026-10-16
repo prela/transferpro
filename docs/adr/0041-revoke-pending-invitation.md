@@ -1,6 +1,6 @@
 # Revoke a pending invitation
 
-Status: proposed
+Status: accepted
 
 This amends one sentence of ADR-0038. The pending list still calls Better Auth. The revoke does not.
 
