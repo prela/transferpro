@@ -2,13 +2,16 @@
 import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
 import type { AddressSuggestion, Location, LocationKind, LocationPlace } from '../../shared'
 import { z } from 'zod'
-import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, LOCATION_SUGGEST_MIN_LENGTH, locationAddressSchema, locationIataError, locationIataSchema, locationListSchema, locationSchema, suggestAddressesResponseSchema } from '../../shared'
+import { catalogSearchMatches, LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, LOCATION_SUGGEST_MIN_LENGTH, locationAddressSchema, locationIataError, locationIataSchema, locationListSchema, locationSchema, suggestAddressesResponseSchema } from '../../shared'
+import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
 const { t } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
 const listTitleId = useId()
+const searchId = useId()
 
 const locations = ref<Location[]>([])
+const query = ref('')
 const includeArchived = ref(false)
 const loading = ref(false)
 const loadErrorKey = ref<LocationFailure | null>(null)
@@ -20,6 +23,8 @@ const archivingId = ref<string | null>(null)
 /** Add and correct share one slideover. Archive stays a separate confirm. */
 const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
+/** The panel title stays the name that was opened, not the half-typed correction. */
+const openedName = ref('')
 const confirming = ref<Location | null>(null)
 const state = reactive<{ name: string, kind?: LocationKind, address: string, iata: string }>({
   name: '',
@@ -56,16 +61,33 @@ const kindItems = computed(() => [
   { label: t('locations.kinds.other'), value: 'other' as const },
 ])
 
+const phoneColumn = { class: { td: 'max-lg:hidden', th: 'max-lg:hidden' } }
 const columns = computed(() => [
   { accessorKey: 'name' as const, header: t('locations.name') },
-  { id: 'kind', header: t('locations.kind') },
-  { accessorKey: 'address' as const, header: t('locations.address') },
+  { id: 'kind', header: t('locations.kind'), meta: phoneColumn },
+  { accessorKey: 'address' as const, header: t('locations.address'), meta: phoneColumn },
   // The labeled field is the airport form. This cell shows a stored code
   // and stays blank for a hotel, an address, or other kind.
-  { id: 'iata', header: '' },
-  { id: 'status', header: '' },
+  { id: 'iata', header: '', meta: phoneColumn },
+  { id: 'status', header: '', meta: phoneColumn },
   { id: 'actions', header: '' },
 ])
+
+const visibleLocations = computed(() => locations.value.filter(location =>
+  catalogSearchMatches(query.value, [
+    location.name,
+    t(`locations.kinds.${location.kind}`),
+    location.address ?? '',
+    location.iata ?? '',
+  ]),
+))
+
+/** An archived row opens for reading. The server refuses a correction. */
+const archivedView = computed(() => {
+  if (formMode.value !== 'edit' || editingId.value === null)
+    return false
+  return locations.value.find(location => location.id === editingId.value)?.archivedAt != null
+})
 
 /** Messages follow the active Locale. A blank airport code is allowed. */
 const schema = computed(() => z.object({
@@ -99,7 +121,7 @@ const archiveOpen = computed({
   },
 })
 
-const formTitle = computed(() => formMode.value === 'edit' ? t('locations.edit') : t('locations.add'))
+const formTitle = computed(() => formMode.value === 'edit' ? openedName.value : t('locations.add'))
 const submitLabel = computed(() => {
   if (saving.value)
     return formMode.value === 'edit' ? t('locations.saving') : t('locations.submitting')
@@ -132,16 +154,17 @@ function locationActions(location: Location): DropdownMenuItem[][] {
     return []
   return [[
     {
-      label: t('locations.edit'),
-      icon: 'i-lucide-pencil',
-      onSelect: () => openEdit(location),
-    },
-    {
       label: t('locations.archive'),
       icon: 'i-lucide-archive',
       onSelect: () => askArchive(location),
     },
   ]]
+}
+
+function locationSecondLine(location: Location): string {
+  const kind = t(`locations.kinds.${location.kind}`)
+  const extra = location.archivedAt ? t('locations.archived') : (location.address ?? '')
+  return extra ? `${kind} · ${extra}` : kind
 }
 
 async function loadLocations() {
@@ -186,12 +209,14 @@ function resetForm() {
 
 function openAdd() {
   editingId.value = null
+  openedName.value = ''
   resetForm()
   formMode.value = 'add'
 }
 
 function openEdit(location: Location) {
   editingId.value = location.id
+  openedName.value = location.name
   state.name = location.name
   state.kind = location.kind
   state.address = location.address ?? ''
@@ -352,110 +377,140 @@ onMounted(loadLocations)
 </script>
 
 <template>
-  <section>
-    <UButton
-      type="button"
-      size="xl"
-      icon="i-lucide-plus"
-      class="mb-4"
-      @click="openAdd"
-    >
-      {{ t('locations.add') }}
-    </UButton>
-
-    <h2
-      :id="listTitleId"
-      class="mb-4 text-xl font-semibold"
-    >
-      {{ t('locations.title') }}
-    </h2>
-    <UCheckbox
-      id="location-show-archived"
-      v-model="includeArchived"
-      name="show-archived"
-      size="xl"
-      class="mb-4"
-      :label="t('locations.showArchived')"
-      @update:model-value="loadLocations()"
-    />
-    <UAlert
-      v-if="loadErrorKey"
-      color="error"
-      variant="subtle"
-      role="alert"
-      :description="t(loadErrorKey)"
-    />
-    <div
-      v-else
-      class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      role="region"
-      :aria-labelledby="listTitleId"
-      tabindex="0"
-    >
-      <UTable
-        :data="locations"
-        :columns="columns"
-        :loading="loading"
-        class="whitespace-nowrap"
-      >
-        <template #kind-cell="{ row }">
-          {{ t(`locations.kinds.${row.original.kind}`) }}
-        </template>
-        <template #address-cell="{ row }">
-          {{ row.original.address ?? '' }}
-        </template>
-        <template #iata-cell="{ row }">
-          {{ row.original.kind === 'airport' ? (row.original.iata ?? '') : '' }}
-        </template>
-        <template #status-cell="{ row }">
-          {{ row.original.archivedAt ? t('locations.archived') : '' }}
-        </template>
-        <template #actions-header>
-          <span class="sr-only">{{ t('locations.actions') }}</span>
-        </template>
-        <template #actions-cell="{ row }">
-          <UDropdownMenu
-            v-if="row.original.archivedAt === null"
-            :items="locationActions(row.original)"
-            size="xl"
-          >
-            <UButton
-              type="button"
-              color="neutral"
-              variant="outline"
-              size="xl"
-              icon="i-lucide-ellipsis-vertical"
-              :aria-label="t('locations.actionsFor', { name: row.original.name })"
-            />
-          </UDropdownMenu>
-        </template>
-        <template #loading>
-          <div
-            role="status"
-            class="space-y-2 py-2"
-          >
-            <p>{{ t('locations.loading') }}</p>
-            <USkeleton class="h-8 w-full" />
-            <USkeleton class="h-8 w-full" />
-          </div>
-        </template>
-        <template #empty>
-          <UEmpty
-            :title="t('locations.empty')"
-            icon="i-lucide-map-pin"
-            variant="naked"
-          />
-        </template>
-      </UTable>
-    </div>
-
-    <USlideover
+  <div>
+    <CatalogPanel
       v-model:open="formOpen"
       :title="formTitle"
       :dismissible="!saving"
-      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
     >
-      <template #body>
+      <template #toolbar>
+        <div class="mb-4 flex flex-wrap items-end gap-3">
+          <div class="min-w-48 flex-1">
+            <!-- UFormField outside a UForm does not label the input. Axe and the searchbox name need for/id. -->
+            <label
+              :for="searchId"
+              class="mb-1 block text-sm font-medium max-lg:text-base"
+            >{{ t('catalog.search') }}</label>
+            <UInput
+              :id="searchId"
+              v-model="query"
+              type="search"
+              autocomplete="off"
+              class="w-full"
+              :class="commandInputClass"
+            />
+          </div>
+          <UCheckbox
+            id="location-show-archived"
+            v-model="includeArchived"
+            name="show-archived"
+            class="mb-1 max-lg:min-h-11"
+            :label="t('locations.showArchived')"
+            :ui="{ label: 'max-lg:text-base' }"
+            @update:model-value="loadLocations()"
+          />
+          <UButton
+            type="button"
+            class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
+            @click="openAdd"
+          >
+            {{ t('catalog.add') }}
+          </UButton>
+        </div>
+      </template>
+      <template #list>
+        <h2
+          :id="listTitleId"
+          class="mb-4 text-xl font-semibold"
+        >
+          {{ t('locations.title') }}
+        </h2>
+        <UAlert
+          v-if="loadErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          :description="t(loadErrorKey)"
+        />
+        <div
+          v-else
+          class="focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary lg:overflow-x-auto"
+          role="region"
+          :aria-labelledby="listTitleId"
+          tabindex="0"
+        >
+          <UTable
+            :data="visibleLocations"
+            :columns="columns"
+            :loading="loading"
+            class="lg:whitespace-nowrap"
+            @select="(_event: Event, row: { original: Location }) => openEdit(row.original)"
+          >
+            <template #name-cell="{ row }">
+              <button
+                type="button"
+                class="block min-h-7 w-full text-left font-medium max-lg:min-h-11 max-lg:text-base"
+                @click="openEdit(row.original)"
+              >
+                {{ row.original.name }}
+              </button>
+              <p class="mt-0.5 text-sm text-muted lg:hidden">
+                {{ locationSecondLine(row.original) }}
+              </p>
+            </template>
+            <template #kind-cell="{ row }">
+              {{ t(`locations.kinds.${row.original.kind}`) }}
+            </template>
+            <template #address-cell="{ row }">
+              {{ row.original.address ?? '' }}
+            </template>
+            <template #iata-cell="{ row }">
+              {{ row.original.kind === 'airport' ? (row.original.iata ?? '') : '' }}
+            </template>
+            <template #status-cell="{ row }">
+              {{ row.original.archivedAt ? t('locations.archived') : '' }}
+            </template>
+            <template #actions-header>
+              <span class="sr-only">{{ t('locations.actions') }}</span>
+            </template>
+            <template #actions-cell="{ row }">
+              <UDropdownMenu
+                v-if="row.original.archivedAt === null"
+                :items="locationActions(row.original)"
+                size="sm"
+              >
+                <UButton
+                  type="button"
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-ellipsis-vertical"
+                  class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11"
+                  :aria-label="t('locations.actionsFor', { name: row.original.name })"
+                />
+              </UDropdownMenu>
+            </template>
+            <template #loading>
+              <div
+                role="status"
+                class="space-y-2 py-2"
+              >
+                <p>{{ t('locations.loading') }}</p>
+                <USkeleton class="h-8 w-full" />
+                <USkeleton class="h-8 w-full" />
+              </div>
+            </template>
+            <template #empty>
+              <UEmpty
+                :title="query.trim() ? t('catalog.searchEmpty') : t('locations.empty')"
+                icon="i-lucide-map-pin"
+                variant="naked"
+              />
+            </template>
+          </UTable>
+        </div>
+      </template>
+
+      <template #body="{ phone }">
         <UAlert
           v-if="formErrorKey"
           color="error"
@@ -464,19 +519,26 @@ onMounted(loadLocations)
           class="mb-4"
           :description="t(formErrorKey)"
         />
+        <p
+          v-if="archivedView"
+          class="mb-4 text-sm text-muted"
+        >
+          {{ t('locations.archived') }}
+        </p>
         <UForm
           id="location-form"
           :schema="schema"
           :state="state"
           :validate-on="[]"
           class="space-y-4"
+          :class="commandInputClass"
           @submit="onSubmit"
           @error="formErrorKey = null"
         >
           <UFormField
             :label="t('locations.name')"
             name="name"
-            size="xl"
+            :size="phone ? 'xl' : 'sm'"
           >
             <UInput
               v-model="state.name"
@@ -484,6 +546,7 @@ onMounted(loadLocations)
               type="text"
               autocomplete="off"
               class="w-full"
+              :disabled="archivedView"
             />
             <template #error="{ error }">
               <span
@@ -495,7 +558,7 @@ onMounted(loadLocations)
           <UFormField
             :label="t('locations.kind')"
             name="kind"
-            size="xl"
+            :size="phone ? 'xl' : 'sm'"
           >
             <USelect
               v-model="state.kind"
@@ -503,6 +566,7 @@ onMounted(loadLocations)
               :items="kindItems"
               :placeholder="t('locations.chooseKind')"
               class="w-full"
+              :disabled="archivedView"
             />
             <template #error="{ error }">
               <span
@@ -514,15 +578,16 @@ onMounted(loadLocations)
           <UFormField
             :label="t('locations.address')"
             name="address"
-            size="xl"
+            :size="phone ? 'xl' : 'sm'"
           >
             <UInputMenu
               v-model="state.address"
               mode="autocomplete"
               name="address"
               autocomplete="off"
-              size="xl"
+              :size="phone ? 'xl' : 'sm'"
               class="w-full"
+              :disabled="archivedView"
               :items="suggestionItems"
               :ignore-filter="true"
               :trailing-icon="false"
@@ -557,7 +622,7 @@ onMounted(loadLocations)
             v-if="state.kind === 'airport'"
             :label="t('locations.iata')"
             name="iata"
-            size="xl"
+            :size="phone ? 'xl' : 'sm'"
           >
             <UInput
               v-model="state.iata"
@@ -565,6 +630,7 @@ onMounted(loadLocations)
               type="text"
               autocomplete="off"
               class="w-full"
+              :disabled="archivedView"
             />
             <template #error="{ error }">
               <span
@@ -575,29 +641,32 @@ onMounted(loadLocations)
           </UFormField>
         </UForm>
       </template>
-      <template #footer>
+      <template #footer="{ phone }">
         <UButton
           type="button"
           color="neutral"
           variant="outline"
-          size="xl"
+          :size="commandControlSize(phone)"
           class="w-full justify-center sm:w-auto"
+          :class="commandControlClass(phone)"
           :disabled="saving"
           @click="formOpen = false"
         >
           {{ t('locations.cancel') }}
         </UButton>
         <UButton
+          v-if="!archivedView"
           type="submit"
           form="location-form"
-          size="xl"
+          :size="commandControlSize(phone)"
           class="w-full justify-center sm:w-auto"
+          :class="commandControlClass(phone)"
           :loading="saving"
         >
           {{ submitLabel }}
         </UButton>
       </template>
-    </USlideover>
+    </CatalogPanel>
 
     <UModal
       v-model:open="archiveOpen"
@@ -645,5 +714,5 @@ onMounted(loadLocations)
         </UButton>
       </template>
     </UModal>
-  </section>
+  </div>
 </template>

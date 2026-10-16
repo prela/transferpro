@@ -61,14 +61,14 @@ test.describe('@phone', () => {
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       await openOfficeLink(page, 'Lokacije')
       await expect(page.getByRole('heading', { level: 1, name: 'Lokacije' })).toBeVisible()
-      await expect(page.getByText('Još nema lokacija.')).toBeVisible()
-      await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+      await expect(page.getByText('Još nema lokacija. Dodajte prvu.')).toBeVisible()
+      await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
       await expect(page.getByRole('dialog').getByLabel('Ime')).toBeVisible()
 
       await expectNoAxeViolations(page)
       await switchLocale(page, 'en')
       await expect(page.getByRole('heading', { level: 1, name: 'Locations' })).toBeVisible()
-      await expect(page.getByRole('button', { name: 'Add a location', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: '+ Add', exact: true })).toBeVisible()
       await expectNoAxeViolations(page)
     })
 

@@ -12,14 +12,14 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.getByRole('link', { name: 'Lokacije' }).click()
   await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
-  await expect(page.getByText('Još nema lokacija.')).toBeVisible()
+  await expect(page.getByText('Još nema lokacija. Dodajte prvu.')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   let dialog = page.getByRole('dialog')
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
   await expect(dialog).toBeHidden()
 
-  await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Ime').fill(place)
   await dialog.getByLabel('Adresa').fill(address)
@@ -32,7 +32,7 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   await expect(dialog.getByRole('alert')).toContainText('Unesite ime.')
 
   await switchLocale(page, 'en')
-  await page.getByRole('button', { name: 'Add a location', exact: true }).click()
+  await page.getByRole('button', { name: '+ Add', exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Name').fill(' ')
   await dialog.getByLabel('Address').fill(address)
@@ -41,7 +41,7 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   await expect(dialog.getByRole('alert')).toContainText('Enter a name.')
 
   await switchLocale(page, 'hr')
-  await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Ime').fill(place)
   await dialog.getByLabel('Adresa').fill(address)
@@ -52,8 +52,7 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   await expect(page.getByRole('cell', { name: 'Aerodrom' })).toBeVisible()
   await expect(page.getByRole('cell', { name: address })).toBeVisible()
 
-  await page.getByRole('button', { name: `Radnje: ${place}` }).click()
-  await page.getByRole('menuitem', { name: 'Ispravi lokaciju', exact: true }).click()
+  await page.getByRole('button', { name: place, exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Ime').fill(nextPlace)
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
@@ -63,6 +62,11 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   await expect(page.getByRole('button', { name: `Radnje: ${nextPlace}` })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Hotel', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: nextAddress })).toBeVisible()
+  await page.getByRole('searchbox', { name: 'Traži' }).fill('Supila')
+  await expect(page.getByRole('button', { name: nextPlace, exact: true })).toBeVisible()
+  await page.getByRole('searchbox', { name: 'Traži' }).fill('nema-ovog')
+  await expect(page.getByText('Nema zapisa za ovu pretragu. Promijenite tekst ili dodajte novi.')).toBeVisible()
+  await page.getByRole('searchbox', { name: 'Traži' }).fill('')
 
   await page.getByRole('button', { name: `Radnje: ${nextPlace}` }).click()
   await page.getByRole('menuitem', { name: 'Arhiviraj', exact: true }).click()
@@ -77,9 +81,9 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   await dialog.getByRole('button', { name: 'Arhiviraj', exact: true }).click()
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('button', { name: `Radnje: ${nextPlace}` })).toHaveCount(0)
-  await expect(page.getByText('Još nema lokacija.')).toBeVisible()
+  await expect(page.getByText('Još nema lokacija. Dodajte prvu.')).toBeVisible()
 
-  await page.getByLabel('Prikaži arhivirane').check()
+  await page.getByLabel('Prikaži arhivirano').check()
   await expect(page.getByRole('button', { name: `Radnje: ${nextPlace}` })).toHaveCount(0)
   await expect(page.getByRole('cell', { name: 'Arhivirano' })).toBeVisible()
   await expect(page.getByRole('cell', { name: nextPlace, exact: true })).toBeVisible()
@@ -96,7 +100,7 @@ test('admin adds a location, corrects it, archives it, and the audit log does no
   await page.getByRole('link', { name: 'Lokacije' }).click()
   await expect(page).toHaveURL(/\/locations$/)
   await page.reload()
-  await expect(page.getByText('Još nema lokacija.')).toBeVisible()
+  await expect(page.getByText('Još nema lokacija. Dodajte prvu.')).toBeVisible()
 })
 
 test('an airport code is stored, and a hotel has no code field, in both languages and both themes', async ({ page }) => {
@@ -105,7 +109,7 @@ test('an airport code is stored, and a hotel has no code field, in both language
   await page.getByRole('link', { name: 'Lokacije' }).click()
   await expect(page.getByLabel('IATA oznaka')).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   let dialog = page.getByRole('dialog')
   await expect(dialog.getByLabel('IATA oznaka')).toHaveCount(0)
   await dialog.getByLabel('Ime').fill(place)
@@ -116,7 +120,7 @@ test('an airport code is stored, and a hotel has no code field, in both language
   await expect(dialog.getByRole('alert')).toContainText('Unesite troslovnu oznaku aerodroma.')
 
   await switchLocale(page, 'en')
-  await page.getByRole('button', { name: 'Add a location', exact: true }).click()
+  await page.getByRole('button', { name: '+ Add', exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Name').fill(place)
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Kind' }), 'Airport')
@@ -127,7 +131,7 @@ test('an airport code is stored, and a hotel has no code field, in both language
 
   await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
-  await page.getByRole('button', { name: 'Add a location', exact: true }).click()
+  await page.getByRole('button', { name: '+ Add', exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Name').fill(place)
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Kind' }), 'Airport')
@@ -141,7 +145,7 @@ test('an airport code is stored, and a hotel has no code field, in both language
   await expect(page.getByRole('cell', { name: 'DBV', exact: true })).toBeVisible()
 
   await switchLocale(page, 'hr')
-  await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Ime').fill(nextPlace)
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
@@ -150,8 +154,7 @@ test('an airport code is stored, and a hotel has no code field, in both language
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('button', { name: `Radnje: ${nextPlace}` })).toBeVisible()
 
-  await page.getByRole('button', { name: `Radnje: ${place}` }).click()
-  await page.getByRole('menuitem', { name: 'Ispravi lokaciju', exact: true }).click()
+  await page.getByRole('button', { name: place, exact: true }).click()
   dialog = page.getByRole('dialog')
   await expect(dialog.getByLabel('IATA oznaka')).toBeVisible()
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
@@ -168,7 +171,7 @@ test('dispatcher adds a location and the screen shows the tenant name', async ({
   await page.getByRole('link', { name: 'Lokacije' }).click()
   await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Ime').fill('Hotel Park')
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
@@ -183,7 +186,7 @@ test('the office picks a suggestion, a hand edit drops it, and a typed address s
   await page.request.post('/api/locations/suggestions-mode', { data: { unavailable: false } })
   try {
     await page.getByRole('link', { name: 'Lokacije' }).click()
-    await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+    await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
     let dialog = page.getByRole('dialog')
     await dialog.getByLabel('Ime').fill('Villa Rosa')
     await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Adresa')
@@ -202,8 +205,7 @@ test('the office picks a suggestion, a hand edit drops it, and a typed address s
     expect(row?.address).toBe('Obala 12, Dubrovnik')
     expect(row?.place?.placeRef).toBe('ChIJfakeDubrovnik')
 
-    await page.getByRole('button', { name: 'Radnje: Villa Rosa' }).click()
-    await page.getByRole('menuitem', { name: 'Ispravi lokaciju', exact: true }).click()
+    await page.getByRole('button', { name: 'Villa Rosa', exact: true }).click()
     dialog = page.getByRole('dialog')
     await dialog.getByLabel('Adresa').fill('Obala 12, kat 2')
     await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
@@ -215,7 +217,7 @@ test('the office picks a suggestion, a hand edit drops it, and a typed address s
     expect(corrected?.address).toBe('Obala 12, kat 2')
     expect(corrected?.place).toBeNull()
 
-    await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+    await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
     dialog = page.getByRole('dialog')
     await dialog.getByLabel('Ime').fill('Tipkano')
     await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Adresa')
@@ -230,7 +232,7 @@ test('the office picks a suggestion, a hand edit drops it, and a typed address s
     expect(typedRow?.place).toBeNull()
 
     await page.request.post('/api/locations/suggestions-mode', { data: { unavailable: true } })
-    await page.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+    await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
     dialog = page.getByRole('dialog')
     await dialog.getByLabel('Ime').fill('Kuća Mira')
     await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Adresa')
