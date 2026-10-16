@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { isCalendarDate } from './date'
+import { addCalendarDays, isCalendarDate } from './date'
 
 /**
  * A roster day is a calendar date, `YYYY-MM-DD`, with no time and no zone.
@@ -68,4 +68,72 @@ export function parseSetRoster(raw: unknown): SetRoster {
   if (!parsed.success)
     throw new RosterInputError()
   return parsed.data
+}
+
+export type RosterCopySkipReason = 'archivedVehicle' | 'vehicleGiven'
+
+export interface RosterCopyCell {
+  readonly driverId: string
+  readonly rosterDate: string
+  readonly vehicleId: string
+}
+
+export interface RosterCopySkip extends RosterCopyCell {
+  readonly reason: RosterCopySkipReason
+}
+
+export interface RosterCopyPlan {
+  readonly writes: readonly RosterCopyCell[]
+  readonly skipped: readonly RosterCopySkip[]
+}
+
+/**
+ * Fills empty cells from the same weekday last week. A filled cell stays.
+ * An archived Vehicle, or one already given that day, is skipped.
+ */
+export function planRosterCopy(input: {
+  readonly driverIds: readonly string[]
+  readonly thisWeekDates: readonly string[]
+  readonly lastWeek: readonly RosterCopyCell[]
+  readonly thisWeek: readonly RosterCopyCell[]
+  readonly archivedVehicleIds: readonly string[]
+}): RosterCopyPlan {
+  const filled = new Set(input.thisWeek.map(cell => `${cell.driverId}:${cell.rosterDate}`))
+  const givenByDay = new Map<string, Set<string>>()
+  for (const cell of input.thisWeek) {
+    const given = givenByDay.get(cell.rosterDate) ?? new Set<string>()
+    given.add(cell.vehicleId)
+    givenByDay.set(cell.rosterDate, given)
+  }
+  const lastByCell = new Map<string, string>()
+  for (const cell of input.lastWeek)
+    lastByCell.set(`${cell.driverId}:${cell.rosterDate}`, cell.vehicleId)
+  const archived = new Set(input.archivedVehicleIds)
+
+  const writes: RosterCopyCell[] = []
+  const skipped: RosterCopySkip[] = []
+
+  for (const driverId of input.driverIds) {
+    for (const rosterDate of input.thisWeekDates) {
+      if (filled.has(`${driverId}:${rosterDate}`))
+        continue
+      const vehicleId = lastByCell.get(`${driverId}:${addCalendarDays(rosterDate, -7)}`)
+      if (!vehicleId)
+        continue
+      if (archived.has(vehicleId)) {
+        skipped.push({ driverId, rosterDate, vehicleId, reason: 'archivedVehicle' })
+        continue
+      }
+      const given = givenByDay.get(rosterDate) ?? new Set<string>()
+      if (given.has(vehicleId)) {
+        skipped.push({ driverId, rosterDate, vehicleId, reason: 'vehicleGiven' })
+        continue
+      }
+      writes.push({ driverId, rosterDate, vehicleId })
+      given.add(vehicleId)
+      givenByDay.set(rosterDate, given)
+    }
+  }
+
+  return { writes, skipped }
 }

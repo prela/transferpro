@@ -96,12 +96,19 @@ test.describe('@phone', () => {
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       await openOfficeLink(page, 'Raspored')
       await expect(page.getByRole('heading', { level: 1, name: 'Raspored vozila' })).toBeVisible()
-      await expect(page.getByLabel('Datum')).toBeVisible()
+      const phone = (page.viewportSize()?.width ?? 1280) < 1024
+      if (phone)
+        await expect(page.getByText('Danas', { exact: true })).toBeVisible()
+      else
+        await expect(page.getByText('Ovaj tjedan', { exact: true })).toBeVisible()
 
       await expectNoAxeViolations(page)
       await switchLocale(page, 'en')
       await expect(page.getByRole('heading', { level: 1, name: 'Vehicle roster' })).toBeVisible()
-      await expect(page.getByLabel('Date')).toBeVisible()
+      if (phone)
+        await expect(page.getByText('Today', { exact: true })).toBeVisible()
+      else
+        await expect(page.getByText('This week', { exact: true })).toBeVisible()
       await expectNoAxeViolations(page)
     })
   }
