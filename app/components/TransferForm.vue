@@ -7,40 +7,55 @@ const props = defineProps<{
   locale: DisplayLocale
   operationalDayStartHour: number
   tenantId: string
+  userId: string
   clients: Client[]
   drivers: Driver[]
   loadDay: () => Promise<void>
-  /** Correction renders in the Ride detail. A new Transfer stays a slideover. */
+  /** The new-Transfer panel stores a browser draft. A correction does not. */
+  persistDraft?: boolean
+  /** Correction renders in the Ride detail. A new Transfer uses the same panel. */
   inPanel?: boolean
   /** Set when this instance is the detail's correction form. */
   correctRide?: TransferDayRide | null
-  /** Phone uses the large targets. Desktop correction uses the office size. */
+  /** Phone uses the large targets. The office desktop uses the small size. */
   phone?: boolean
+}>()
+
+const emit = defineEmits<{
+  recorded: [rideId: string]
+  close: []
 }>()
 
 const day = defineModel<string>('day', { required: true })
 const saved = defineModel<boolean>('saved', { required: true })
 const corrected = defineModel<boolean>('corrected', { required: true })
 const locations = defineModel<Location[]>('locations', { required: true })
+const clients = defineModel<Client[]>('clients', { required: true })
 
 const api = useTransferForm({
   timeZone: () => props.timeZone,
   locale: () => props.locale,
   operationalDayStartHour: () => props.operationalDayStartHour,
   tenantId: () => props.tenantId,
-  clients: () => props.clients,
+  userId: () => props.userId,
+  persistDraft: props.persistDraft === true,
+  clients: () => clients.value,
   drivers: () => props.drivers,
   locations,
   day,
   loadDay: () => props.loadDay(),
   saved,
   corrected,
+  onClient: (client) => {
+    clients.value = [...clients.value, client].sort((left, right) => left.name.localeCompare(right.name))
+  },
+  onRecorded: rideId => emit('recorded', rideId),
+  onClose: () => emit('close'),
 })
 provide(transferFormKey, api)
 
 const {
   pending,
-  placePending,
   overlapOpen,
   formMode,
   formOpen,
@@ -50,7 +65,7 @@ const {
   saveCorrection,
 } = api
 
-defineExpose({ openAdd, openCorrect, formTitle, formMode, formOpen })
+defineExpose({ openAdd, openCorrect, formTitle, formMode, formOpen, pending })
 
 watch(() => props.correctRide?.rideId, (rideId) => {
   const ride = props.correctRide
@@ -61,30 +76,16 @@ watch(() => props.correctRide?.rideId, (rideId) => {
 </script>
 
 <template>
-  <!--
-    A correction is a child of the Ride detail. A new Transfer keeps the
-    slideover, including when a restored draft has no panel to land in.
-  -->
   <div
-    v-if="inPanel && formMode === 'edit'"
+    v-if="formMode"
     role="region"
     :aria-label="formTitle"
   >
     <h2 class="mb-4 text-lg font-semibold">
       {{ formTitle }}
     </h2>
-    <TransferFormFields :control-size="inPanel && !phone ? 'sm' : 'xl'" />
+    <TransferFormFields :control-size="phone ? 'xl' : 'sm'" />
   </div>
-  <USlideover
-    v-else-if="!inPanel"
-    v-model:open="formOpen"
-    :title="formTitle"
-    :dismissible="!pending && !placePending"
-  >
-    <template #body>
-      <TransferFormFields :control-size="inPanel && !phone ? 'sm' : 'xl'" />
-    </template>
-  </USlideover>
   <RideOverlapDialog
     v-model:open="overlapOpen"
     :pending="pending"

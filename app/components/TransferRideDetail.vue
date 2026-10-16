@@ -14,7 +14,6 @@ const props = defineProps<{
   command: RideDetailCommand | null
   drivers: Driver[]
   vehicles: Vehicle[]
-  clients: Client[]
   declines: { driverName: string }[]
   timeZone: string
   locale: DisplayLocale
@@ -27,6 +26,7 @@ const props = defineProps<{
   loadDay: () => Promise<void>
   operationalDayStartHour: number
   tenantId: string
+  userId: string
 }>()
 
 const emit = defineEmits<{
@@ -43,6 +43,7 @@ const day = defineModel<string>('day', { required: true })
 const saved = defineModel<boolean>('saved', { required: true })
 const corrected = defineModel<boolean>('corrected', { required: true })
 const locations = defineModel<Location[]>('locations', { required: true })
+const clients = defineModel<Client[]>('clients', { required: true })
 
 const { t } = useI18n()
 const { dismiss, kept } = useKeptWorkOrders()
@@ -366,6 +367,7 @@ const primaryLabel = computed(() => {
       v-model:saved="saved"
       v-model:corrected="corrected"
       v-model:locations="locations"
+      v-model:clients="clients"
       in-panel
       :phone="pinActions"
       :correct-ride="formRide"
@@ -373,7 +375,7 @@ const primaryLabel = computed(() => {
       :locale="locale"
       :operational-day-start-hour="operationalDayStartHour"
       :tenant-id="tenantId"
-      :clients="clients"
+      :user-id="userId"
       :drivers="drivers"
       :load-day="loadDay"
     />

@@ -1,5 +1,5 @@
 import type { SessionShell } from '../../shared'
-import { platformShellSchema, sessionShellSchema } from '../../shared'
+import { applyTransferDraftEvent, platformShellSchema, sessionShellSchema } from '../../shared'
 
 /**
  * Payload key for the signed-in Tenant shell.
@@ -171,8 +171,9 @@ type ShellError = 'shell.saveFailed' | 'shell.signOutFailed' | null
  * the failure, which is what a fresh page ref used to do. The device theme
  * is not touched.
  *
- * The Transfer draft is cleared here, before the session cookie is dropped,
- * when that ticket lands. Do not add a second member sign-out.
+ * The new-Transfer draft is cleared here, before the session cookie is
+ * dropped, so the next person on this browser does not see it. Do not add
+ * a second member sign-out.
  */
 export function useShellSignOut() {
   const { setLocale } = useI18n()
@@ -193,6 +194,9 @@ export function useShellSignOut() {
       // gives that POST a body stream, and Better Auth answers 415. An empty
       // object is application/json, which sign-out accepts.
       await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
+      const current = session.value
+      if (import.meta.client && current)
+        applyTransferDraftEvent(localStorage, current.userId, current.tenantId, 'sign-out')
       // The cookie is gone. Drop the shared shell before the next paint so
       // this page and the next one cannot render the previous Tenant. A
       // refetch would leave that Tenant up until the response arrived.

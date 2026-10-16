@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DisplayLocale, LiveRefreshOutcome, TransferDayFilter, TransferDayRide } from '../../shared'
 import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
-import { classifyRideAttention, clockLabel, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
+import { classifyRideAttention, clockLabel, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
 import { rideDetailLayout } from '../ride-detail'
@@ -13,6 +13,7 @@ const props = defineProps<{
   locale: DisplayLocale
   operationalDayStartHour: number
   tenantId: string
+  userId: string
 }>()
 
 const { t } = useI18n()
@@ -22,6 +23,7 @@ const router = useRouter()
 const saved = ref(false)
 const corrected = ref(false)
 const openRideId = ref<string | null>(queryText(route.query.ride) || null)
+const adding = ref(false)
 const command = ref<RideDetailCommand | null>(null)
 const layout = ref<RideDetailLayout>('overlay')
 const layoutReady = ref(false)
@@ -72,6 +74,7 @@ const form = ref<{
   formMode: 'add' | 'edit' | null
   formOpen: boolean
   formTitle: string
+  pending: boolean
 } | null>(null)
 
 let catalogsReady = false
@@ -339,6 +342,35 @@ function closeForm() {
     form.value.formOpen = false
 }
 
+function startAdd() {
+  openRideId.value = null
+  command.value = null
+  adding.value = true
+  void nextTick(() => {
+    form.value?.openAdd()
+  })
+}
+
+function onRecorded(rideId: string) {
+  adding.value = false
+  command.value = null
+  openRideId.value = rideId
+}
+
+const { nonce: newTransferNonce } = useNewTransferRequest()
+watch(newTransferNonce, (value) => {
+  if (value === 0)
+    return
+  startAdd()
+}, { immediate: true })
+
+onMounted(() => {
+  if (adding.value)
+    return
+  if (recallTransferDraft(localStorage, props.userId, props.tenantId, new Date()))
+    adding.value = true
+})
+
 /** Where the phone list was scrolled before the full-screen detail covered it. */
 let phoneListScroll: { element: HTMLElement | null, top: number } = { element: null, top: 0 }
 
@@ -428,7 +460,13 @@ function onCommand(next: RideDetailCommand | null) {
 }
 
 function onDetailOpen(open: boolean) {
-  if (open || openRideId.value === null)
+  if (open)
+    return
+  if (adding.value) {
+    adding.value = false
+    return
+  }
+  if (openRideId.value === null)
     return
   if (layout.value === 'phone')
     backFromDetail()
@@ -529,7 +567,7 @@ onUnmounted(() => {
       :drivers="drivers"
       :note="unassignedNote"
       @today="goToday"
-      @add="form?.openAdd()"
+      @add="startAdd()"
     />
     <div
       class="mb-3 flex flex-wrap items-center gap-3"
@@ -649,25 +687,47 @@ onUnmounted(() => {
           @reassign="showRide($event, 'reassign')"
           @clear="ride => commands?.openClear(ride)"
           @correct="showRide($event, 'correct')"
-          @add="form?.openAdd()"
+          @add="startAdd()"
         />
       </div>
       <UDashboardPanel
-        v-if="layoutReady && layout === 'beside' && openRide"
+        v-if="layoutReady && layout === 'beside' && (openRide || adding)"
         :ui="{ root: '!min-h-0 !h-auto !w-[420px] !max-w-[420px] !flex-none shrink-0 border-s border-default' }"
       >
         <template #body>
           <div>
-            <TransferRideDetail
+            <TransferForm
+              v-if="adding"
+              ref="form"
               v-model:day="day"
               v-model:saved="saved"
               v-model:corrected="corrected"
               v-model:locations="locations"
+              v-model:clients="clients"
+              persist-draft
+              in-panel
+              :phone="false"
+              :time-zone="timeZone"
+              :locale="locale"
+              :operational-day-start-hour="operationalDayStartHour"
+              :tenant-id="tenantId"
+              :user-id="userId"
+              :drivers="drivers"
+              :load-day="async () => { await loadDay() }"
+              @recorded="onRecorded"
+              @close="adding = false"
+            />
+            <TransferRideDetail
+              v-else-if="openRide"
+              v-model:day="day"
+              v-model:saved="saved"
+              v-model:corrected="corrected"
+              v-model:locations="locations"
+              v-model:clients="clients"
               :ride="openRide"
               :command="command"
               :drivers="drivers"
               :vehicles="vehicles"
-              :clients="clients"
               :declines="declinesFor(openRide.rideId)"
               :time-zone="timeZone"
               :locale="locale"
@@ -677,6 +737,7 @@ onUnmounted(() => {
               :pin-actions="false"
               :operational-day-start-hour="operationalDayStartHour"
               :tenant-id="tenantId"
+              :user-id="userId"
               :load-day="async () => { await loadDay() }"
               @command="onCommand"
               @close="closeDetail"
@@ -693,10 +754,10 @@ onUnmounted(() => {
     </div>
 
     <USlideover
-      v-if="layoutReady && layout !== 'beside' && openRide"
+      v-if="layoutReady && layout !== 'beside' && (openRide || adding)"
       :open="true"
-      :title="command === 'correct' ? t('transfers.correctTitle') : openRide.guestName"
-      :dismissible="false"
+      :title="adding ? t('transfers.add') : (command === 'correct' ? t('transfers.correctTitle') : openRide?.guestName)"
+      :dismissible="adding && !form?.pending"
       :overlay="false"
       :modal="layout === 'phone'"
       :ui="layout === 'phone'
@@ -705,16 +766,38 @@ onUnmounted(() => {
       @update:open="onDetailOpen"
     >
       <template #body>
-        <TransferRideDetail
+        <TransferForm
+          v-if="adding"
+          ref="form"
           v-model:day="day"
           v-model:saved="saved"
           v-model:corrected="corrected"
           v-model:locations="locations"
+          v-model:clients="clients"
+          persist-draft
+          in-panel
+          :phone="layout === 'phone'"
+          :time-zone="timeZone"
+          :locale="locale"
+          :operational-day-start-hour="operationalDayStartHour"
+          :tenant-id="tenantId"
+          :user-id="userId"
+          :drivers="drivers"
+          :load-day="async () => { await loadDay() }"
+          @recorded="onRecorded"
+          @close="adding = false"
+        />
+        <TransferRideDetail
+          v-else-if="openRide"
+          v-model:day="day"
+          v-model:saved="saved"
+          v-model:corrected="corrected"
+          v-model:locations="locations"
+          v-model:clients="clients"
           :ride="openRide"
           :command="command"
           :drivers="drivers"
           :vehicles="vehicles"
-          :clients="clients"
           :declines="declinesFor(openRide.rideId)"
           :time-zone="timeZone"
           :locale="locale"
@@ -724,6 +807,7 @@ onUnmounted(() => {
           :pin-actions="layout === 'phone'"
           :operational-day-start-hour="operationalDayStartHour"
           :tenant-id="tenantId"
+          :user-id="userId"
           :load-day="async () => { await loadDay() }"
           @command="onCommand"
           @close="closeDetail"
@@ -742,21 +826,6 @@ onUnmounted(() => {
       :drivers="drivers"
       :load-day="async () => { await loadDay() }"
       @saved="closeDetail"
-    />
-
-    <TransferForm
-      ref="form"
-      v-model:day="day"
-      v-model:saved="saved"
-      v-model:corrected="corrected"
-      v-model:locations="locations"
-      :time-zone="timeZone"
-      :locale="locale"
-      :operational-day-start-hour="operationalDayStartHour"
-      :tenant-id="tenantId"
-      :clients="clients"
-      :drivers="drivers"
-      :load-day="async () => { await loadDay() }"
     />
   </section>
 </template>
