@@ -1,7 +1,7 @@
 import type { InjectionKey } from 'vue'
-import type { Client, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide } from '../../shared'
+import type { Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, TransferDayRide } from '../../shared'
 import { z } from 'zod'
-import { calendarDateInTimeZone, childSeatCountError, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationKindSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, paymentMethodSchema, pickupAtError, priceError, priceFromInput, recordedTransferSchema, sameLocationError, tablaError, wallClockInTimeZone } from '../../shared'
+import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedTransferSchema, rememberTransferDraft, sameLocationError, tablaError, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -15,44 +15,21 @@ type TransferFailure
     | 'transfers.locationArchived'
     | 'transfers.closed'
     | 'locations.saveFailed'
+    | 'clients.saveFailed'
 
 /**
- * Locale switch leaves this page and comes back. The open slideover and the
- * typed booking stay in sessionStorage for this Tenant so that return can
- * open them again. Another Tenant's draft is dropped. This is the form on
- * this browser, not an audit entry and not a log. Restore runs in onMounted,
- * after hydration. Values stay strings until the record or correct route parses them.
+ * An unfinished new Transfer stays in localStorage, keyed by user and Tenant
+ * (ADR-0038). A locale switch leaves this page and comes back; the draft is
+ * how the typed booking returns. It is never sent to the server. A correction
+ * is not a draft. The previous sessionStorage key is retired on restore.
+ * Values stay strings until the record or correct route parses them.
  */
-const DRAFT_KEY = 'transferpro-transfer-form'
-
-const transferFormDraftSchema = z.object({
-  tenantId: z.uuid(),
-  transferId: z.uuid().nullable(),
-  clientId: z.uuid().nullable(),
-  pickupWall: z.string(),
-  startLocationId: z.uuid().nullable(),
-  endLocationId: z.uuid().nullable(),
-  passengers: z.string(),
-  guest: z.string(),
-  tabla: z.string(),
-  flight: z.string(),
-  price: z.string(),
-  payment: paymentMethodSchema.nullable(),
-  airportMark: z.boolean(),
-  luggage: z.string(),
-  childSeats: z.string(),
-  note: z.string(),
-  placeTarget: z.enum(['start', 'end']).nullable(),
-  placeName: z.string(),
-  placeKind: locationKindSchema.nullable(),
-  placeAddress: z.string(),
-})
-
-type TransferFormDraft = z.infer<typeof transferFormDraftSchema>
+const LEGACY_DRAFT_KEY = 'transferpro-transfer-form'
 
 /**
- * Add and correct share one slideover. The day board only opens it.
- * Catalogs and the day ref stay with the board so a save reloads the same list.
+ * Add and correct share the field state. The day board opens a new Transfer
+ * in the same panel as the Ride detail. Catalogs and the day ref stay with
+ * the board so a save reloads the same list.
  */
 export const transferFormKey: InjectionKey<ReturnType<typeof useTransferForm>> = Symbol('transferForm')
 
@@ -61,6 +38,9 @@ export function useTransferForm(options: {
   locale: () => DisplayLocale
   operationalDayStartHour: () => number
   tenantId: () => string
+  userId: () => string
+  /** The new-Transfer panel keeps a browser draft. A correction does not. */
+  persistDraft: boolean
   clients: () => readonly Client[]
   drivers: () => readonly Driver[]
   locations: Ref<Location[]>
@@ -68,6 +48,9 @@ export function useTransferForm(options: {
   loadDay: () => Promise<void>
   saved: Ref<boolean>
   corrected: Ref<boolean>
+  onClient?: (client: Client) => void
+  onRecorded?: (rideId: string) => void
+  onClose?: () => void
 }) {
   const { t } = useI18n()
   const toast = useToast()
@@ -96,6 +79,10 @@ export function useTransferForm(options: {
   const placeName = ref('')
   const placeKind = ref<LocationKind | undefined>()
   const placeAddress = ref('')
+  const heldPlace = ref<LocationPlace | null>(null)
+  const clientTarget = ref(false)
+  const clientName = ref('')
+  const clientKind = ref<ClientKind | undefined>()
 
   const pending = ref(false)
   const placePending = ref(false)
@@ -118,9 +105,17 @@ export function useTransferForm(options: {
   const luggageErrorKey = ref<'transfers.countInvalid' | null>(null)
   const seatErrorKey = ref<'transfers.countInvalid' | null>(null)
   const pickupErrorKey = ref<'transfers.pickupInvalid' | 'transfers.pickupTooEarly' | 'transfers.pickupTooLate' | null>(null)
-  const endErrorKey = ref<'transfers.samePlace' | null>(null)
+  const endErrorKey = ref<'transfers.samePlace' | 'transfers.endMissing' | null>(null)
+  const clientErrorKey = ref<'transfers.clientMissing' | null>(null)
+  const startErrorKey = ref<'transfers.startMissing' | null>(null)
+  const paymentErrorKey = ref<'transfers.paymentMissing' | null>(null)
   const placeNameErrorKey = ref<'locations.nameEmpty' | 'locations.nameTooLong' | null>(null)
   const placeKindErrorKey = ref<'locations.kindInvalid' | null>(null)
+  const clientNameErrorKey = ref<'clients.nameEmpty' | 'clients.nameTooLong' | null>(null)
+  const clientKindErrorKey = ref<'clients.kindInvalid' | null>(null)
+  /** Bumped when a submit fails so the summary can take focus. */
+  const validationNonce = ref(0)
+  const restored = ref(false)
 
   let ignoreDraft = false
 
@@ -146,6 +141,12 @@ export function useTransferForm(options: {
     { label: t('locations.kinds.other'), value: 'other' as const },
   ])
 
+  const clientKindItems = computed(() => [
+    { label: t('clients.kinds.agency'), value: 'agency' as const },
+    { label: t('clients.kinds.hotel'), value: 'hotel' as const },
+    { label: t('clients.kinds.individual'), value: 'individual' as const },
+  ])
+
   function failureKey(error: unknown): TransferFailure {
     if (errorCode(error) === 'location_archived')
       return 'transfers.locationArchived'
@@ -164,13 +165,25 @@ export function useTransferForm(options: {
     return driverDisplayName(options.drivers(), id, t('ride.unknownDriver'))
   }
 
-  function openPlace(target: 'start' | 'end') {
+  function openPlace(target: 'start' | 'end', name = '') {
+    clientTarget.value = false
     placeTarget.value = target
-    placeName.value = ''
+    placeName.value = name
     placeKind.value = undefined
     placeAddress.value = ''
+    heldPlace.value = null
     placeNameErrorKey.value = null
     placeKindErrorKey.value = null
+    formErrorKey.value = null
+  }
+
+  function openClient(name = '') {
+    placeTarget.value = null
+    clientTarget.value = true
+    clientName.value = name
+    clientKind.value = undefined
+    clientNameErrorKey.value = null
+    clientKindErrorKey.value = null
     formErrorKey.value = null
   }
 
@@ -192,6 +205,8 @@ export function useTransferForm(options: {
           name: placeName.value,
           kind: placeKind.value,
           address: placeAddress.value,
+          // A picked suggestion keeps its place reference. Typed text does not.
+          place: heldPlace.value,
         },
       }))
       options.locations.value = [...options.locations.value, created].sort((left, right) => left.name.localeCompare(right.name))
@@ -203,6 +218,34 @@ export function useTransferForm(options: {
     }
     catch (error) {
       formErrorKey.value = failureKey(error) === 'transfers.saveFailed' ? 'locations.saveFailed' : failureKey(error)
+    }
+    finally {
+      placePending.value = false
+    }
+  }
+
+  async function addClient() {
+    clientNameErrorKey.value = clientNameError(clientName.value) === 'empty'
+      ? 'clients.nameEmpty'
+      : clientNameError(clientName.value) === 'too-long'
+        ? 'clients.nameTooLong'
+        : null
+    clientKindErrorKey.value = clientKindError(clientKind.value ?? '') ? 'clients.kindInvalid' : null
+    if (clientNameErrorKey.value || clientKindErrorKey.value || !clientKind.value)
+      return
+    placePending.value = true
+    formErrorKey.value = null
+    try {
+      const created = clientSchema.parse(await $fetch('/api/clients', {
+        method: 'POST',
+        body: { name: clientName.value, kind: clientKind.value },
+      }))
+      options.onClient?.(created)
+      clientId.value = created.id
+      clientTarget.value = false
+    }
+    catch (error) {
+      formErrorKey.value = failureKey(error) === 'transfers.saveFailed' ? 'clients.saveFailed' : failureKey(error)
     }
     finally {
       placePending.value = false
@@ -223,9 +266,14 @@ export function useTransferForm(options: {
     luggageErrorKey.value = luggageCountError(luggage.value) ? 'transfers.countInvalid' : null
     seatErrorKey.value = childSeatCountError(childSeats.value) ? 'transfers.countInvalid' : null
     pickupErrorKey.value = pickupFieldError()
-    endErrorKey.value = startLocationId.value && endLocationId.value && sameLocationError(startLocationId.value, endLocationId.value)
-      ? 'transfers.samePlace'
-      : null
+    clientErrorKey.value = clientId.value ? null : 'transfers.clientMissing'
+    startErrorKey.value = startLocationId.value ? null : 'transfers.startMissing'
+    endErrorKey.value = !endLocationId.value
+      ? 'transfers.endMissing'
+      : startLocationId.value && sameLocationError(startLocationId.value, endLocationId.value)
+        ? 'transfers.samePlace'
+        : null
+    paymentErrorKey.value = payment.value ? null : 'transfers.paymentMissing'
     return !guestErrorKey.value
       && !tablaErrorKey.value
       && !flightErrorKey.value
@@ -236,10 +284,13 @@ export function useTransferForm(options: {
       && !seatErrorKey.value
       && !pickupErrorKey.value
       && !endErrorKey.value
-      && !!clientId.value
-      && !!startLocationId.value
-      && !!endLocationId.value
-      && !!payment.value
+      && !clientErrorKey.value
+      && !startErrorKey.value
+      && !paymentErrorKey.value
+  }
+
+  function markInvalid() {
+    validationNonce.value += 1
   }
 
   function pickupFieldError(): 'transfers.pickupInvalid' | 'transfers.pickupTooEarly' | 'transfers.pickupTooLate' | null {
@@ -266,33 +317,30 @@ export function useTransferForm(options: {
     return options.locale() === 'hr' ? amount.replace('.', ',') : amount
   }
 
-  function currentDraft(): TransferFormDraft {
+  function idOrNull(value: string | undefined): string | null {
+    return value !== undefined && z.uuid().safeParse(value).success ? value : null
+  }
+
+  function currentDraft() {
     return {
-      tenantId: options.tenantId(),
-      transferId: editingTransferId.value,
-      clientId: clientId.value ?? null,
+      clientId: idOrNull(clientId.value),
       pickupWall: pickupWall.value,
-      startLocationId: startLocationId.value ?? null,
-      endLocationId: endLocationId.value ?? null,
+      startLocationId: idOrNull(startLocationId.value),
+      endLocationId: idOrNull(endLocationId.value),
       passengers: passengers.value,
       guest: guest.value,
-      tabla: tabla.value,
-      flight: flight.value,
       price: price.value,
       payment: payment.value ?? null,
+      flight: flight.value,
       airportMark: airportMark.value,
+      tabla: tabla.value,
       luggage: luggage.value,
       childSeats: childSeats.value,
       note: note.value,
-      placeTarget: placeTarget.value,
-      placeName: placeName.value,
-      placeKind: placeKind.value ?? null,
-      placeAddress: placeAddress.value,
     }
   }
 
-  function applyDraft(draft: TransferFormDraft) {
-    editingTransferId.value = draft.transferId
+  function applyDraft(draft: ReturnType<typeof currentDraft> & { pickupWall: string }) {
     clientId.value = draft.clientId ?? undefined
     pickupWall.value = draft.pickupWall
     startLocationId.value = draft.startLocationId ?? undefined
@@ -307,32 +355,19 @@ export function useTransferForm(options: {
     luggage.value = draft.luggage
     childSeats.value = draft.childSeats
     note.value = draft.note
-    placeTarget.value = draft.placeTarget
-    placeName.value = draft.placeName
-    placeKind.value = draft.placeKind ?? undefined
-    placeAddress.value = draft.placeAddress
-    formMode.value = draft.transferId === null ? 'add' : 'edit'
+    formMode.value = 'add'
   }
 
   function restoreDraft() {
-    const raw = sessionStorage.getItem(DRAFT_KEY)
-    if (raw === null)
+    if (!import.meta.client || !options.persistDraft)
       return
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    }
-    catch {
-      sessionStorage.removeItem(DRAFT_KEY)
+    sessionStorage.removeItem(LEGACY_DRAFT_KEY)
+    const draft = recallTransferDraft(localStorage, options.userId(), options.tenantId(), new Date())
+    if (!draft)
       return
-    }
-    const draft = transferFormDraftSchema.safeParse(parsed)
-    if (!draft.success || draft.data.tenantId !== options.tenantId()) {
-      sessionStorage.removeItem(DRAFT_KEY)
-      return
-    }
     ignoreDraft = true
-    applyDraft(draft.data)
+    applyDraft(draft)
+    restored.value = true
     ignoreDraft = false
   }
 
@@ -357,27 +392,55 @@ export function useTransferForm(options: {
     seatErrorKey.value = null
     pickupErrorKey.value = null
     endErrorKey.value = null
+    clientErrorKey.value = null
+    startErrorKey.value = null
+    paymentErrorKey.value = null
     placeNameErrorKey.value = null
     placeKindErrorKey.value = null
+    clientNameErrorKey.value = null
+    clientKindErrorKey.value = null
   }
 
-  /** Cancel and dismiss close the slideover and do not save. */
-  function closeForm() {
+  /**
+   * Cancel closes the panel and keeps an unfinished new Transfer.
+   * Discard removes it. A correction has nothing stored to remove.
+   */
+  function closeForm(event: 'edit' | 'discard' = 'edit') {
     ignoreDraft = true
+    if (options.persistDraft && import.meta.client)
+      applyTransferDraftEvent(localStorage, options.userId(), options.tenantId(), event)
     formMode.value = null
     editingTransferId.value = null
     editingRideId.value = null
     placeTarget.value = null
+    clientTarget.value = false
     formErrorKey.value = null
     overlapOpen.value = false
+    restored.value = false
     clearFieldErrors()
-    sessionStorage.removeItem(DRAFT_KEY)
     ignoreDraft = false
+    options.onClose?.()
+  }
+
+  function discardDraft() {
+    closeForm('discard')
   }
 
   function openAdd() {
     clearFieldErrors()
     formErrorKey.value = null
+    // Recall before the fields are cleared. A blank write would drop the draft.
+    if (options.persistDraft && import.meta.client) {
+      const draft = recallTransferDraft(localStorage, options.userId(), options.tenantId(), new Date())
+      if (draft) {
+        ignoreDraft = true
+        applyDraft(draft)
+        restored.value = true
+        ignoreDraft = false
+        return
+      }
+    }
+    ignoreDraft = true
     editingTransferId.value = null
     clientId.value = undefined
     pickupWall.value = `${pickupDay}T12:00`
@@ -397,18 +460,14 @@ export function useTransferForm(options: {
     placeName.value = ''
     placeAddress.value = ''
     placeKind.value = undefined
+    heldPlace.value = null
+    clientTarget.value = false
+    clientName.value = ''
+    clientKind.value = undefined
+    restored.value = false
     formMode.value = 'add'
+    ignoreDraft = false
   }
-
-  // The frame's Novi transfer button increments this. Opening Transfers
-  // from another screen still finds the request, because the watch is immediate.
-  const { nonce: newTransferNonce } = useNewTransferRequest()
-  watch(newTransferNonce, (value) => {
-    if (value === 0)
-      return
-    newTransferNonce.value = 0
-    openAdd()
-  }, { immediate: true })
 
   /**
    * Fills the booking form from the row. The landing time stays on the board.
@@ -435,6 +494,8 @@ export function useTransferForm(options: {
     childSeats.value = String(ride.childSeatCount)
     note.value = ride.note ?? ''
     placeTarget.value = null
+    clientTarget.value = false
+    restored.value = false
     formMode.value = 'edit'
   }
 
@@ -463,8 +524,7 @@ export function useTransferForm(options: {
     options.corrected.value = false
     formErrorKey.value = null
     if (!transferId || !formReady() || !clientId.value || !startLocationId.value || !endLocationId.value || !payment.value) {
-      if (!clientId.value || !startLocationId.value || !endLocationId.value || !payment.value)
-        formErrorKey.value = 'transfers.rejected'
+      markInvalid()
       return
     }
     pending.value = true
@@ -500,6 +560,7 @@ export function useTransferForm(options: {
       }
       overlapOpen.value = false
       formErrorKey.value = failureKey(error)
+      markInvalid()
     }
     finally {
       pending.value = false
@@ -511,8 +572,7 @@ export function useTransferForm(options: {
     options.corrected.value = false
     formErrorKey.value = null
     if (!formReady() || !clientId.value || !startLocationId.value || !endLocationId.value || !payment.value) {
-      if (!clientId.value || !startLocationId.value || !endLocationId.value || !payment.value)
-        formErrorKey.value = 'transfers.rejected'
+      markInvalid()
       return
     }
     pending.value = true
@@ -522,12 +582,22 @@ export function useTransferForm(options: {
         body: bookingBody(),
       }))
       options.saved.value = true
-      closeForm()
+      toast.add({ title: t('transfers.recorded') })
+      const rideId = recorded.ride.id
+      ignoreDraft = true
+      if (options.persistDraft && import.meta.client)
+        applyTransferDraftEvent(localStorage, options.userId(), options.tenantId(), 'save')
+      formMode.value = null
+      restored.value = false
+      ignoreDraft = false
       options.day.value = operationalDateInTimeZone(options.timeZone(), new Date(recorded.transfer.pickupAt), options.operationalDayStartHour())
       await options.loadDay()
+      options.onRecorded?.(rideId)
+      options.onClose?.()
     }
     catch (error) {
       formErrorKey.value = failureKey(error)
+      markInvalid()
     }
     finally {
       pending.value = false
@@ -535,20 +605,32 @@ export function useTransferForm(options: {
   }
 
   watch(
-    () => formMode.value === null ? null : currentDraft(),
+    () => options.persistDraft && formMode.value === 'add' ? currentDraft() : null,
     (draft) => {
-      if (!import.meta.client || ignoreDraft)
+      if (!import.meta.client || ignoreDraft || !options.persistDraft || draft === null)
         return
-      if (draft === null)
-        sessionStorage.removeItem(DRAFT_KEY)
-      else
-        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+      rememberTransferDraft(localStorage, options.userId(), options.tenantId(), draft, new Date(), `${pickupDay}T12:00`)
     },
   )
 
-  onMounted(() => {
-    restoreDraft()
-  })
+  // Only the new-Transfer panel listens. A correction must not open a blank form.
+  if (options.persistDraft) {
+    const { nonce: newTransferNonce } = useNewTransferRequest()
+    watch(newTransferNonce, (value) => {
+      if (value === 0)
+        return
+      newTransferNonce.value = 0
+      openAdd()
+    }, { immediate: true })
+
+    onMounted(() => {
+      restoreDraft()
+      // The panel mounts this after the day is ready. A click that landed
+      // earlier still has to open a blank form when there is no draft.
+      if (formMode.value === null)
+        openAdd()
+    })
+  }
 
   return {
     clientId,
@@ -569,6 +651,10 @@ export function useTransferForm(options: {
     placeName,
     placeKind,
     placeAddress,
+    heldPlace,
+    clientTarget,
+    clientName,
+    clientKind,
     pending,
     placePending,
     overlapOpen,
@@ -584,16 +670,27 @@ export function useTransferForm(options: {
     seatErrorKey,
     pickupErrorKey,
     endErrorKey,
+    clientErrorKey,
+    startErrorKey,
+    paymentErrorKey,
     placeNameErrorKey,
     placeKindErrorKey,
+    clientNameErrorKey,
+    clientKindErrorKey,
+    validationNonce,
+    restored,
     clientItems,
     locationItems,
     paymentItems,
     kindItems,
+    clientKindItems,
     formOpen,
     formTitle,
     openPlace,
     addPlace,
+    openClient,
+    addClient,
+    discardDraft,
     openAdd,
     openCorrect,
     saveCorrection,
