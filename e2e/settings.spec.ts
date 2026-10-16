@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedTenant } from './fixtures/seed'
-import { chooseOption, signIn, switchLocale, switchTheme } from './fixtures/ui'
+import { chooseOption, openListbox, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
 test('admin changes the waits and the time zone, and the audit log updates', async ({ page }) => {
   const tenant = await seedTenant('settings')
@@ -11,14 +11,12 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
 
   await settings.getByLabel('Čekanje na aerodromu (minute)').fill('45')
   await settings.getByLabel('Čekanje izvan aerodroma (minute)').fill('30')
-  const zone = settings.getByLabel('Vremenska zona')
-  await zone.click()
-  const zoneInput = page.getByRole('combobox', { name: 'Vremenska zona' })
-  await expect(zoneInput).toHaveAttribute('aria-expanded', 'true')
-  await zoneInput.fill('Europe/London')
-  const london = page.locator('[role="listbox"][data-state="open"]').getByRole('option', { name: 'Europe/London', exact: true })
+  const listbox = await openListbox(page, settings.getByLabel('Vremenska zona'))
+  await listbox.locator('input').fill('Europe/London')
+  const london = listbox.getByRole('option', { name: 'Europe/London', exact: true })
   await expect(london).toBeVisible()
   await london.click()
+  await expect(listbox).toBeHidden()
   await settings.getByRole('button', { name: 'Spremi', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Spremljeno.' })).toBeVisible()
 
