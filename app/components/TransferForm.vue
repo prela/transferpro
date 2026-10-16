@@ -61,11 +61,12 @@ const {
   formOpen,
   formTitle,
   openAdd,
+  openPrefill,
   openCorrect,
   saveCorrection,
 } = api
 
-defineExpose({ openAdd, openCorrect, formTitle, formMode, formOpen, pending })
+defineExpose({ openAdd, openPrefill, openCorrect, formTitle, formMode, formOpen, pending })
 
 watch(() => props.correctRide?.rideId, (rideId) => {
   const ride = props.correctRide

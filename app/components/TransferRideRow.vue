@@ -49,6 +49,8 @@ const emit = defineEmits<{
   reassign: [ride: TransferDayRide]
   clear: [ride: TransferDayRide]
   correct: [ride: TransferDayRide]
+  duplicate: [ride: TransferDayRide]
+  returnJourney: [ride: TransferDayRide]
   open: [ride: TransferDayRide]
 }>()
 
@@ -157,7 +159,10 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     items.push({ label: t('ride.reassign'), icon: 'i-lucide-arrow-left-right', onSelect: () => emit('reassign', ride) })
     items.push({ label: t('ride.clear'), icon: 'i-lucide-user-minus', onSelect: () => emit('clear', ride) })
   }
-  return items.length > 0 ? [items] : []
+  // Both only open a new form. They stay available after the Ride is closed.
+  items.push({ label: t('transfers.duplicate'), icon: 'i-lucide-copy', onSelect: () => emit('duplicate', ride) })
+  items.push({ label: t('transfers.returnJourney'), icon: 'i-lucide-undo-2', onSelect: () => emit('returnJourney', ride) })
+  return [items]
 })
 </script>
 

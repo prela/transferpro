@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { DisplayLocale, LiveRefreshOutcome, TransferDayFilter, TransferDayRide } from '../../shared'
+import type { DisplayLocale, LiveRefreshOutcome, TransferDayFilter, TransferDayRide, TransferPrefill } from '../../shared'
 import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
-import { classifyRideAttention, clockLabel, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
+import { classifyRideAttention, clockLabel, duplicateTransferPrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
 import { rideDetailLayout } from '../ride-detail'
@@ -71,6 +71,7 @@ const commands = ref<{
 const form = ref<{
   openAdd: () => void
   openCorrect: (ride: TransferDayRide) => void
+  openPrefill: (fields: TransferPrefill) => void
   formMode: 'add' | 'edit' | null
   formOpen: boolean
   formTitle: string
@@ -350,6 +351,27 @@ function startAdd() {
   })
 }
 
+/**
+ * Duplicate and return only prefill a new Transfer. The form mounts first
+ * (and may restore a draft); the prefill then replaces those fields.
+ * Saving is what creates the Transfer.
+ */
+function startPrefill(ride: TransferDayRide, kind: 'duplicate' | 'return') {
+  const fields = kind === 'duplicate'
+    ? duplicateTransferPrefill(ride, props.timeZone, props.locale)
+    : returnTransferPrefill(ride, props.locale)
+  openRideId.value = null
+  command.value = null
+  adding.value = true
+  void nextTick(() => {
+    form.value?.openPrefill(fields)
+  })
+}
+
+function printDay() {
+  window.print()
+}
+
 function onRecorded(rideId: string) {
   adding.value = false
   command.value = null
@@ -582,6 +604,17 @@ onUnmounted(() => {
       >
         {{ t('liveRefresh.refresh') }}
       </UButton>
+      <UButton
+        type="button"
+        color="neutral"
+        variant="outline"
+        size="sm"
+        icon="i-lucide-printer"
+        class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
+        @click="printDay"
+      >
+        {{ t('transfers.printDay') }}
+      </UButton>
       <p
         v-if="updatedAt"
         class="text-sm text-muted"
@@ -700,6 +733,8 @@ onUnmounted(() => {
           @reassign="showRide($event, 'reassign')"
           @clear="ride => commands?.openClear(ride)"
           @correct="showRide($event, 'correct')"
+          @duplicate="startPrefill($event, 'duplicate')"
+          @return-journey="startPrefill($event, 'return')"
           @add="startAdd()"
         />
       </div>
@@ -759,6 +794,8 @@ onUnmounted(() => {
               @no-show="commands?.openMarkNoShow(openRide)"
               @cancel-ride="commands?.openCancelRide(openRide)"
               @clear="commands?.openClear(openRide)"
+              @duplicate="openRide && startPrefill(openRide, 'duplicate')"
+              @return-journey="openRide && startPrefill(openRide, 'return')"
               @saved="onCommandSaved"
             />
           </div>
@@ -829,10 +866,22 @@ onUnmounted(() => {
           @no-show="commands?.openMarkNoShow(openRide)"
           @clear="commands?.openClear(openRide)"
           @cancel-ride="commands?.openCancelRide(openRide)"
+          @duplicate="openRide && startPrefill(openRide, 'duplicate')"
+          @return-journey="openRide && startPrefill(openRide, 'return')"
           @saved="onCommandSaved"
         />
       </template>
     </USlideover>
+
+    <!-- The whole loaded day, not the filtered rows. Paper is the fallback when the system is down. -->
+    <TransferDayPrint
+      :day="day"
+      :rides="rides"
+      :locations="locations"
+      :vehicles="vehicles"
+      :time-zone="timeZone"
+      :locale="locale"
+    />
 
     <TransferRideCommands
       ref="commands"

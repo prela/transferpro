@@ -84,3 +84,57 @@
 html {
   background: var(--tp-frame);
 }
+
+/*
+ * "Ispiši dan" (ADR-0038). The sheet is light in both themes. Theme tokens
+ * flip with the dark class, so these colours are written out. On screen the
+ * sheet is not shown. In print the rest of the page is removed so a tall
+ * board does not add blank pages.
+ */
+.transfer-day-print {
+  display: none;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  body * {
+    display: none !important;
+  }
+
+  .transfer-day-print,
+  .transfer-day-print * {
+    display: revert !important;
+    visibility: visible !important;
+    color: #111 !important;
+    background: #fff !important;
+    color-scheme: light;
+    print-color-adjust: exact;
+  }
+
+  .transfer-day-print {
+    display: block !important;
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    margin: 0;
+    padding: 12px;
+  }
+
+  .transfer-day-print table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .transfer-day-print th,
+  .transfer-day-print td {
+    border-bottom: 1px solid #cbd5e1;
+    padding: 4px 8px;
+    text-align: start;
+    vertical-align: top;
+  }
+}

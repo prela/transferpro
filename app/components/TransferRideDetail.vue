@@ -37,6 +37,8 @@ const emit = defineEmits<{
   noShow: []
   cancelRide: []
   clear: []
+  duplicate: []
+  returnJourney: []
   saved: []
 }>()
 const day = defineModel<string>('day', { required: true })
@@ -132,7 +134,10 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
   }
   if (primary.value === null && canFinish(ride))
     items.push({ label: t('ride.markDone'), onSelect: () => emit('done') })
-  return items.length > 0 ? [items] : []
+  // Both only open a new form. They stay available after the Ride is closed.
+  items.push({ label: t('transfers.duplicate'), icon: 'i-lucide-copy', onSelect: () => emit('duplicate') })
+  items.push({ label: t('transfers.returnJourney'), icon: 'i-lucide-undo-2', onSelect: () => emit('returnJourney') })
+  return [items]
 })
 
 function runPrimary() {
