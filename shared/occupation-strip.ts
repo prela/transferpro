@@ -1,4 +1,5 @@
 import type { ScheduleRide } from './ride-schedule'
+import type { RosterAssignment } from './roster'
 import type { RideState } from './transfer'
 import { isCalendarDate, localDayBounds, wallClockInTimeZone } from './date'
 import { judgeSchedule, occupiedEnd } from './ride-schedule'
@@ -48,8 +49,6 @@ export interface OccupationStripTick {
 }
 
 export interface OccupationStrip {
-  readonly startMs: number
-  readonly endMs: number
   /** Null when now is outside the half-open operational day. */
   readonly now: number | null
   readonly ticks: readonly OccupationStripTick[]
@@ -64,7 +63,7 @@ export function placeOccupationStrip(input: {
   readonly gapMinutes: number
   readonly now: Date
   readonly rides: readonly OccupationStripRide[]
-  readonly roster: readonly { readonly driverId: string, readonly vehicleId: string }[]
+  readonly roster: readonly RosterAssignment[]
 }): OccupationStrip {
   if (!isCalendarDate(input.day))
     throw new RangeError('Day is not a calendar date.')
@@ -90,8 +89,6 @@ export function placeOccupationStrip(input: {
   }))
 
   return {
-    startMs: axisStart,
-    endMs: axisEnd,
     now: nowFraction(input.now.getTime(), axisStart, axisEnd, span),
     ticks: hourTicks(bounds.start, bounds.end, input.timeZone, axisStart, span),
     rows,
@@ -145,7 +142,7 @@ function occupy(ride: OccupationStripRide, durationMinutes: number): ScheduleRid
 }
 
 function vehicleIds(
-  roster: readonly { readonly vehicleId: string }[],
+  roster: readonly RosterAssignment[],
   occupying: readonly ScheduleRide[],
 ): string[] {
   const ids = new Set<string>()
@@ -157,7 +154,7 @@ function vehicleIds(
 }
 
 function rosterDrivers(
-  roster: readonly { readonly driverId: string, readonly vehicleId: string }[],
+  roster: readonly RosterAssignment[],
   vehicleId: string,
 ): string[] {
   const ids: string[] = []

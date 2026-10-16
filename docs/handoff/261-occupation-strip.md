@@ -5,7 +5,7 @@ Desktop strip above the Transfers table. No server change and no migration.
 ## Decisions
 
 - A block is the ADR-0029 window: it opens at the pickup and ends at the stored landing plus the transfer duration, or at the pickup plus that duration. A landing shifts the end. The start stays the pickup. An empty window (the duration finishes before the pickup) is omitted.
-- The relocation gap is not drawn. A true overlap and a short gap both use the short row word (Preklapanje / Overlap) plus a warning outline. A gap equal to the relocation gap is quiet.
+- The relocation gap is not drawn. A true overlap and a short gap both use the short row word (Preklapanje / Overlap) plus a warning outline. A gap equal to the relocation gap is quiet. The button is the occupation window; the caption sits under it and does not widen the click target.
 - Rows are roster Vehicles for that day, plus any Vehicle that has an assigned or accepted Ride. The label is the roster Driver. Unassigned, done, no-show, and cancelled Rides are absent.
 - Placement uses the Tenant's transfer duration and relocation gap from the existing settings read, and the day's roster from the existing roster read. The filtered table does not hide blocks.
 - Collapsed state is `localStorage` per Tenant and user (`transferpro-occupation-strip:<tenant>:<user>`). Absent means open.

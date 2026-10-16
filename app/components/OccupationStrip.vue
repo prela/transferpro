@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DisplayLocale, Driver, Location, OccupationStripBlock, TransferDayRide, Vehicle } from '../../shared'
+import type { DisplayLocale, Driver, Location, OccupationStripBlock, RosterAssignment, TransferDayRide, Vehicle } from '../../shared'
 import { clockLabel, formatInstant, occupationStripStorageKey, pickupNeedsCalendarDate, placeOccupationStrip, readOccupationStripCollapsed, rosterDaySchema, tenantSettingsGetSchema, writeOccupationStripCollapsed } from '../../shared'
 import { driverDisplayName } from '../transfer-day-labels'
 
@@ -30,9 +30,9 @@ const loaded = ref(false)
 const failed = ref(false)
 const durationMinutes = ref(60)
 const gapMinutes = ref(15)
-const assignments = ref<{ driverId: string, vehicleId: string }[]>([])
+const assignments = ref<RosterAssignment[]>([])
 
-let ticket = 0
+let loadGeneration = 0
 
 const placed = computed(() => {
   if (!loaded.value)
@@ -123,14 +123,14 @@ function hourLabel(hour: number): string {
 }
 
 async function load(): Promise<void> {
-  const current = ++ticket
+  const current = ++loadGeneration
   const day = props.day
   try {
     const [settings, roster] = await Promise.all([
       $fetch('/api/tenant-settings').then(data => tenantSettingsGetSchema.parse(data)),
       $fetch('/api/roster', { query: { date: day }, cache: 'no-store' }).then(data => rosterDaySchema.parse(data)),
     ])
-    if (current !== ticket || day !== props.day)
+    if (current !== loadGeneration || day !== props.day)
       return
     durationMinutes.value = settings.transferDurationMinutes
     gapMinutes.value = settings.relocationGapMinutes
@@ -139,7 +139,7 @@ async function load(): Promise<void> {
     loaded.value = true
   }
   catch {
-    if (current !== ticket)
+    if (current !== loadGeneration)
       return
     failed.value = true
     loaded.value = false
@@ -152,12 +152,7 @@ watch(collapsed, (value) => {
   writeOccupationStripCollapsed(localStorage, storageKey(), value)
 })
 
-watch(() => props.day, () => {
-  if (ready.value)
-    void load()
-})
-
-watch(() => props.rides, () => {
+watch(() => [props.day, props.rides] as const, () => {
   if (ready.value)
     void load()
 })
@@ -221,30 +216,30 @@ onMounted(() => {
             :key="row.vehicleId"
           >
             <div
-              class="truncate border-t border-default px-2 py-1 text-xs text-default"
+              class="flex items-center truncate border-t border-default px-2 text-xs text-default"
               :title="row.label"
             >
               {{ row.label }}
             </div>
-            <div class="relative h-9 overflow-hidden border-t border-default">
-              <button
+            <div class="relative h-14 overflow-hidden border-t border-default">
+              <div
                 v-for="block in row.blocks"
                 :key="block.rideId"
-                type="button"
-                class="absolute top-1 flex h-7 items-center gap-1 rounded-sm border bg-elevated px-1 text-xs text-default"
-                :class="block.warning
-                  ? 'z-10 min-w-28 overflow-visible border-warning ring-1 ring-warning'
-                  : 'min-w-7 overflow-hidden border-default'"
+                class="absolute top-1 h-7"
                 :style="{ left: `${block.left * 100}%`, width: `${block.width * 100}%` }"
-                :aria-label="block.name"
-                @click="emit('open', block.ride)"
               >
-                <span class="truncate">{{ block.time }}</span>
-                <span
-                  v-if="block.warning"
-                  class="shrink-0"
-                >{{ t('transfers.attention.overlap') }}</span>
-              </button>
+                <!-- Width is the occupation window. The caption sits under it and does not take clicks. -->
+                <button
+                  type="button"
+                  class="size-full rounded-sm border bg-elevated"
+                  :class="block.warning ? 'border-warning ring-1 ring-warning' : 'border-default'"
+                  :aria-label="block.name"
+                  @click="emit('open', block.ride)"
+                />
+                <span class="pointer-events-none absolute top-8 left-0 whitespace-nowrap text-xs text-default">
+                  {{ block.time }}<template v-if="block.warning"> {{ t('transfers.attention.overlap') }}</template>
+                </span>
+              </div>
               <div
                 v-if="now !== null"
                 class="pointer-events-none absolute inset-y-0 z-20 w-px bg-primary"
