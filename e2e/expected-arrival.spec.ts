@@ -108,10 +108,10 @@ test('the office Ride and the Driver Ride show an expected arrival in both langu
   await expect(page.getByText(`Expected arrival: ${arrivalEn}`)).toBeVisible()
 
   await page.goto('/transfers')
-  await expect(page.getByRole('columnheader', { name: 'Expected arrival' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Flight' })).toBeVisible()
   await expect(page.getByText(arrivalEn)).toBeVisible()
   await switchLocale(page, 'hr')
-  await expect(page.getByRole('columnheader', { name: 'Očekivani dolazak' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Let' })).toBeVisible()
   await expect(page.getByText(arrivalHr)).toBeVisible()
 
   const assigned = await page.request.post(`/api/rides/${body.ride.id}/assign`, {

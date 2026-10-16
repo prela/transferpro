@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedTenant } from './fixtures/seed'
-import { chooseOption, signIn, switchLocale } from './fixtures/ui'
+import { chooseOption, openRideMenu, signIn, switchLocale } from './fixtures/ui'
 
 const phone = '+385911112255'
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
@@ -94,18 +94,20 @@ test('a vehicle change, a reassign, and a clear each name the Driver, in Croatia
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), 'Ana Sent')
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), firstPlate)
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
-  await expect(row(page, 'Iva Change').getByRole('cell', { name: 'Dodijeljeno', exact: true })).toBeVisible()
+  await expect(row(page, 'Iva Change').getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
 
-  await row(page, 'Iva Change').getByRole('button', { name: 'Promijeni vozilo: Iva Change' }).click()
+  await openRideMenu(page, 'Iva Change')
+  await page.getByRole('menuitem', { name: 'Promijeni vozilo', exact: true }).click()
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), secondPlate)
   await page.getByRole('button', { name: 'Promijeni vozilo', exact: true }).click()
   const sentToAna = 'Radni nalog je poslan vozaču Ana Sent.'
   const blankAna = 'Vozač Ana Blank nema e-poštu. Radni nalog nije poslan.'
   await expect(notice(page, 'Vozilo promijenjeno', sentToAna)).toHaveCount(1)
   await expect(page.getByText(sentAddress)).toHaveCount(0)
-  await expect(row(page, 'Iva Change').getByRole('cell', { name: secondPlate, exact: true })).toBeVisible()
+  await expect(row(page, 'Iva Change')).toContainText(secondPlate)
 
-  await row(page, 'Iva Change').getByRole('button', { name: 'Prebaci: Iva Change' }).click()
+  await openRideMenu(page, 'Iva Change')
+  await page.getByRole('menuitem', { name: 'Prebaci', exact: true }).click()
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), 'Ana Blank')
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), firstPlate)
   await page.getByRole('button', { name: 'Prebaci vožnju', exact: true }).click()
@@ -114,10 +116,11 @@ test('a vehicle change, a reassign, and a clear each name the Driver, in Croatia
   await expect(notice(page, 'Prebačeno', sentToAna)).toHaveCount(1)
   await expect(page.getByText(sentAddress)).toHaveCount(0)
 
-  await row(page, 'Iva Change').getByRole('button', { name: 'Ukloni dodjelu: Iva Change' }).click()
+  await openRideMenu(page, 'Iva Change')
+  await page.getByRole('menuitem', { name: 'Ukloni dodjelu', exact: true }).click()
   await page.getByRole('dialog', { name: 'Uklanjanje dodjele' }).getByRole('button', { name: 'Ukloni dodjelu', exact: true }).click()
   await expect(notice(page, 'Dodjela uklonjena', blankAna)).toHaveCount(1)
-  await expect(row(page, 'Iva Change').getByRole('cell', { name: 'Nedodijeljeno', exact: true })).toBeVisible()
+  await expect(row(page, 'Iva Change').getByRole('cell', { name: /^Nedodijeljeno/ })).toBeVisible()
 
   await switchLocale(page, 'en')
   await page.getByRole('link', { name: 'Transfers' }).click()
@@ -125,7 +128,8 @@ test('a vehicle change, a reassign, and a clear each name the Driver, in Croatia
   await chooseOption(page, page.getByRole('combobox', { name: 'Driver' }), 'Ana Sent')
   await chooseOption(page, page.getByRole('combobox', { name: 'Vehicle' }), firstPlate)
   await page.getByRole('button', { name: 'Assign ride', exact: true }).click()
-  await row(page, 'Iva English').getByRole('button', { name: 'Change vehicle: Iva English' }).click()
+  await openRideMenu(page, 'Iva English')
+  await page.getByRole('menuitem', { name: 'Change vehicle', exact: true }).click()
   await chooseOption(page, page.getByRole('combobox', { name: 'Vehicle' }), secondPlate)
   await page.getByRole('button', { name: 'Change vehicle', exact: true }).click()
   await expect(page.getByRole('listitem').filter({ hasText: 'Vehicle changed' }).filter({ hasText: 'Work order sent to Ana Sent.' })).toBeVisible()
