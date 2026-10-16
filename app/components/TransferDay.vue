@@ -271,6 +271,10 @@ watch([filter, search, clientId, driverId], () => {
 })
 
 watch(() => route.query, () => {
+  // A push we just sent is not Back. Applying it would put a stale search
+  // back into the field while the next filter change is still queued.
+  if (syncing)
+    return
   applyRouteQuery()
 })
 
