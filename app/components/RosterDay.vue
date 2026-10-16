@@ -67,6 +67,7 @@ type RosterFailure
   = 'roster.loadFailed'
     | 'roster.vehicleTaken'
     | 'roster.vehicleArchived'
+    | 'roster.driverArchived'
     | 'roster.driverTaken'
     | 'roster.notFound'
     | 'roster.forbidden'
@@ -334,6 +335,8 @@ function failureKey(error: unknown): RosterFailure {
     return 'roster.vehicleTaken'
   if (code === 'roster_vehicle_archived')
     return 'roster.vehicleArchived'
+  if (code === 'roster_driver_archived')
+    return 'roster.driverArchived'
   if (code === 'roster_driver_taken')
     return 'roster.driverTaken'
   switch (httpStatus(error)) {

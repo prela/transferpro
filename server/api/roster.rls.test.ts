@@ -4,7 +4,7 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { createDriver } from '../modules/drivers'
+import { archiveDriver, createDriver } from '../modules/drivers'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
 import { archiveVehicle, createVehicle } from '../modules/vehicles'
 import getRoster from './roster.get'
@@ -374,6 +374,90 @@ it('keeps an archived vehicle readable and does not give it to someone else', as
   const after = await auditRows(created.tenantId)
   expect(after.map(entry => entry.action)).toEqual(['roster.assigned', 'roster.changed'])
   expect(JSON.stringify(after)).not.toContain(plate)
+})
+
+it('refuses a new day for an archived Driver, keeps the same pair, and still clears', async () => {
+  const created = await tenant('hro-drvarch', 'Iva Admin')
+  const admin = await signIn('hro-drvarch-admin@example.test')
+  const archived = await createDriver(admin, driverBody(driverName))
+  const parked = await createDriver(admin, driverBody('Ivo Parkiran'))
+  const other = await createDriver(admin, driverBody('Marko Roster'))
+  const vehicle = await createVehicle(admin, vehicleBody(plate))
+  const replacement = await createVehicle(admin, vehicleBody(otherPlate))
+  await archiveDriver(admin, parked.id)
+
+  const refused = await call('PUT', '/api/roster', admin, {
+    rosterDate: day,
+    driverId: parked.id,
+    vehicleId: vehicle.id,
+  })
+  const refusedText = await refused.text()
+  expect(refused.status).toBe(409)
+  expect(refusedText).toContain('roster_driver_archived')
+  expect(refusedText).not.toContain('Ivo Parkiran')
+  expect(refusedText).not.toContain(phone)
+  expect(await (await call('GET', `/api/roster?date=${day}`, admin)).json()).toEqual({
+    rosterDate: day,
+    assignments: [],
+  })
+
+  expect((await call('PUT', '/api/roster', admin, {
+    rosterDate: day,
+    driverId: archived.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  await archiveDriver(admin, archived.id)
+
+  const listed = await call('GET', `/api/roster?date=${day}`, admin)
+  expect(await listed.json()).toEqual({
+    rosterDate: day,
+    assignments: [{ driverId: archived.id, vehicleId: vehicle.id }],
+  })
+
+  const same = await call('PUT', '/api/roster', admin, {
+    rosterDate: day,
+    driverId: archived.id,
+    vehicleId: vehicle.id,
+  })
+  expect(same.status).toBe(200)
+  expect((await auditRows(created.tenantId)).map(entry => entry.action)).toEqual(['roster.assigned'])
+
+  const changed = await call('PUT', '/api/roster', admin, {
+    rosterDate: day,
+    driverId: archived.id,
+    vehicleId: replacement.id,
+  })
+  const changedText = await changed.text()
+  expect(changed.status).toBe(409)
+  expect(changedText).toContain('roster_driver_archived')
+  expect(changedText).not.toContain(driverName)
+  expect(changedText).not.toContain(plate)
+  expect(await (await call('GET', `/api/roster?date=${day}`, admin)).json()).toEqual({
+    rosterDate: day,
+    assignments: [{ driverId: archived.id, vehicleId: vehicle.id }],
+  })
+
+  expect((await call('PUT', '/api/roster', admin, {
+    rosterDate: day,
+    driverId: other.id,
+    vehicleId: replacement.id,
+  })).status).toBe(200)
+
+  const cleared = await call('PUT', '/api/roster', admin, {
+    rosterDate: day,
+    driverId: archived.id,
+    vehicleId: null,
+  })
+  expect(cleared.status).toBe(200)
+  expect(await cleared.json()).toEqual({ assignment: null })
+  expect(await (await call('GET', `/api/roster?date=${day}`, admin)).json()).toEqual({
+    rosterDate: day,
+    assignments: [{ driverId: other.id, vehicleId: replacement.id }],
+  })
+  const rows = await auditRows(created.tenantId)
+  expect(rows.map(entry => entry.action)).toEqual(['roster.assigned', 'roster.assigned', 'roster.cleared'])
+  expect(JSON.stringify(rows)).not.toContain(driverName)
+  expect(JSON.stringify(rows)).not.toContain(phone)
 })
 
 it('another tenant cannot read or change the roster', async () => {

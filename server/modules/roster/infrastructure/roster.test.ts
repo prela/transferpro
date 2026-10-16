@@ -5,7 +5,7 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
 import { RosterInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
-import { loadRosterDay, RosterDriverTakenError, RosterNotFoundError, RosterVehicleArchivedError, RosterVehicleTakenError, setRosterVehicle, vehicleIdForDriverOnDate } from './roster'
+import { loadRosterDay, RosterDriverArchivedError, RosterDriverTakenError, RosterNotFoundError, RosterVehicleArchivedError, RosterVehicleTakenError, setRosterVehicle, vehicleIdForDriverOnDate } from './roster'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
@@ -34,6 +34,7 @@ function row(partial: Partial<RosterRow> & Pick<RosterRow, 'driverId' | 'vehicle
 function fakeTransaction(
   world: {
     drivers: string[]
+    archivedDriverIds?: string[]
     vehicles: Array<{ id: string, archived: boolean }>
     rows: RosterRow[]
   },
@@ -57,7 +58,10 @@ function fakeTransaction(
         return { rows: [] }
       if (text.includes('app.drivers')) {
         const id = compiled.params[0]
-        return { rows: world.drivers.filter(driver => driver === id).map(id => ({ id })) }
+        if (typeof id !== 'string' || !world.drivers.includes(id))
+          return { rows: [] }
+        const archived = world.archivedDriverIds?.includes(String(id)) === true
+        return { rows: [{ id, archivedAt: archived ? new Date('2026-10-01T00:00:00.000Z') : null }] }
       }
       if (text.includes('app.vehicles')) {
         const id = compiled.params[0]
@@ -244,6 +248,63 @@ it('refuses an unknown Driver and an unknown or archived Vehicle before writing'
     vehicleId,
   })).rejects.toBeInstanceOf(RosterVehicleArchivedError)
   expect(archived.queries.some(query => query.sql.includes('insert into app.roster'))).toBe(false)
+})
+
+it('refuses a new or changed day for an archived Driver, keeps the same pair, and still clears', async () => {
+  const vehicles = active.vehicles.map(item => ({ ...item }))
+  const refused = fakeTransaction({
+    drivers: [driverId],
+    archivedDriverIds: [driverId],
+    vehicles,
+    rows: [],
+  })
+  await expect(setRosterVehicle(refused.transaction, actorUserId, {
+    rosterDate: day,
+    driverId,
+    vehicleId,
+  })).rejects.toBeInstanceOf(RosterDriverArchivedError)
+  expect(refused.queries.some(query => query.sql.includes('insert into app.roster'))).toBe(false)
+
+  const same = fakeTransaction({
+    drivers: [driverId],
+    archivedDriverIds: [driverId],
+    vehicles,
+    rows: [row({ driverId, vehicleId })],
+  })
+  await expect(setRosterVehicle(same.transaction, actorUserId, {
+    rosterDate: day,
+    driverId,
+    vehicleId,
+  })).resolves.toEqual({ driverId, vehicleId })
+  expect(same.queries.some(query => query.sql.includes('insert into app.roster') || query.sql.includes('update app.roster'))).toBe(false)
+
+  const changedWorld = {
+    drivers: [driverId],
+    archivedDriverIds: [driverId],
+    vehicles,
+    rows: [row({ driverId, vehicleId })],
+  }
+  const changed = fakeTransaction(changedWorld)
+  await expect(setRosterVehicle(changed.transaction, actorUserId, {
+    rosterDate: day,
+    driverId,
+    vehicleId: otherVehicleId,
+  })).rejects.toBeInstanceOf(RosterDriverArchivedError)
+  expect(changedWorld.rows).toEqual([row({ driverId, vehicleId })])
+
+  const clearedWorld = {
+    drivers: [driverId],
+    archivedDriverIds: [driverId],
+    vehicles,
+    rows: [row({ driverId, vehicleId })],
+  }
+  const cleared = fakeTransaction(clearedWorld)
+  await expect(setRosterVehicle(cleared.transaction, actorUserId, {
+    rosterDate: day,
+    driverId,
+    vehicleId: null,
+  })).resolves.toBeNull()
+  expect(clearedWorld.rows).toEqual([])
 })
 
 it('refuses a Vehicle already given to another Driver that day, and writes nothing', async () => {

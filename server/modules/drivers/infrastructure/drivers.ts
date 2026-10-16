@@ -69,7 +69,7 @@ const driverColumns = sql`
 /**
  * Whether this Tenant has that Driver.
  * Another Tenant's id is absent: the select runs under the session's row security.
- * The roster module calls this through the Drivers index, by id.
+ * Assignment uses this when it does not need the lock. The roster uses `driverPresence`.
  */
 export async function driverIsInTenant(transaction: TenantTransaction, driverId: string): Promise<boolean> {
   const selected = z.object({
@@ -83,21 +83,49 @@ export async function driverIsInTenant(transaction: TenantTransaction, driverId:
 }
 
 /**
- * The must-accept flag of this Tenant's Driver, or null when the id is absent,
- * and a `for share` lock on that row.
- * Assignment copies this boolean onto the Ride. A correction of must-accept
- * takes `for update`, so it cannot commit a different value before the Ride
- * update on this transaction. The phone and the licence dates stay unread.
- * `archived` is true when the row is hidden from new assignments. The share
- * lock waits behind archive's `for update`, so the flag and the archive
- * cannot commit a different pair before the Ride update.
+ * Whether this Tenant's Driver can be given a new roster day.
+ * `archived` stays readable on a day already stored; a new day still refuses
+ * it. A missing id and another Tenant's id are the same result.
+ * The roster module calls this through the Drivers index, by id.
+ * This read does not lock.
+ */
+export type DriverPresence = 'active' | 'archived' | 'missing'
+
+export async function driverPresence(transaction: TenantTransaction, driverId: string): Promise<DriverPresence> {
+  const selected = z.object({
+    rows: z.array(z.object({
+      archivedAt: z.unknown().nullable(),
+    })),
+  }).parse(await transaction.execute(sql`
+    select archived_at as "archivedAt"
+    from app.drivers
+    where id = ${driverId}
+  `))
+  const row = selected.rows[0]
+  if (!row)
+    return 'missing'
+  return toArchivedAt(row.archivedAt) === null ? 'active' : 'archived'
+}
+
+/**
+ * Must-accept and archive for this Tenant's Driver, or null when the id is
+ * absent, and a `for share` lock on that row.
+ * Assignment copies `mustAccept` onto the Ride and refuses `archived`.
+ * A correction of must-accept takes `for update`, and archive does too, so
+ * neither can commit a different pair before the Ride update on this
+ * transaction. The phone and the licence dates stay unread.
  * Another Tenant's id is null: the select runs under the session's row security.
  * `loadDrivers` does not lock. This read is only for the assign transaction.
  */
-export async function driverMustAcceptForAssign(
+export interface DriverAssignState {
+  readonly mustAccept: boolean
+  readonly archived: boolean
+}
+
+export async function driverAssignState(
   transaction: TenantTransaction,
   driverId: string,
-): Promise<{ mustAccept: boolean, archived: boolean } | null> {
+): Promise<DriverAssignState | null> {
   const selected = z.object({
     rows: z.array(z.object({
       mustAccept: z.boolean(),

@@ -7,7 +7,7 @@ import { expect, it, vi } from 'vitest'
 import { DriverInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
 import { TenantAccessError } from '../../tenancy'
-import { addDriver, archiveStoredDriver, correctDriver, DriverArchivedError, driverMustAcceptForAssign, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers, unarchiveStoredDriver } from './drivers'
+import { addDriver, archiveStoredDriver, correctDriver, DriverArchivedError, driverAssignState, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers, unarchiveStoredDriver } from './drivers'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const driverId = '9e4b3f6d-5555-4555-8555-555555555555'
@@ -388,7 +388,7 @@ it('replaces an assign read failure so the log line does not keep the driver id'
     message: `cancel ${driverId}`,
     sql: 'for share',
   })
-  const error = await driverMustAcceptForAssign(transaction, driverId).catch(caught => caught)
+  const error = await driverAssignState(transaction, driverId).catch(caught => caught)
   expect(error).toMatchObject({ message: 'Driver read failed' })
   expect(String(error)).not.toContain(driverId)
   expect(logLine(error)).not.toContain(driverId)

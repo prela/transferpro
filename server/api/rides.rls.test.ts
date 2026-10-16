@@ -3098,6 +3098,11 @@ it('declines an assigned Ride, with the copied flag off or on, and the board nam
     },
   ])
 
+  await archiveDriver(world.dispatcher, linked.driver.id)
+  await archiveDriver(world.dispatcher, must.driver.id)
+  const afterArchive = await listTransferDay(world.dispatcher, day)
+  expect(afterArchive.declineAlerts.map(alert => alert.driverName)).toEqual(['Drago Driver', 'Nika Vozač'])
+
   const audits = await declineAudits(world.tenantId)
   expect(audits).toEqual([
     {

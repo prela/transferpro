@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { assignTransitionAllowed, calendarDateInTimeZone, RIDE_ASSIGNMENT_FIELDS, rideStateSchema, RosterInputError } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
-import { driverIsInTenant, driverMustAcceptForAssign } from '../../drivers'
+import { driverAssignState, driverIsInTenant } from '../../drivers'
 import { vehicleIdForDriverOnDate } from '../../roster'
 import { loadTenantSettings, TenantSettingsMissingError } from '../../tenancy'
 import { vehiclePresence, vehiclePresenceForAssign } from '../../vehicles'
@@ -111,10 +111,10 @@ export async function assignUnassignedRide(
   if (!assignTransitionAllowed(current.state))
     throw new RideNotUnassignedError()
 
-  const driverFlag = await driverMustAcceptForAssign(transaction, input.driverId)
-  if (driverFlag === null)
+  const driver = await driverAssignState(transaction, input.driverId)
+  if (driver === null)
     throw new RideNotFoundError()
-  if (driverFlag.archived)
+  if (driver.archived)
     throw new RideDriverArchivedError()
 
   const presence = await vehiclePresenceForAssign(transaction, input.vehicleId)
@@ -130,8 +130,8 @@ export async function assignUnassignedRide(
     confirm: input.confirm === true,
   })
 
-  // The share lock held this boolean. The update does not read the Driver again.
-  const mustAccept = driverFlag.mustAccept
+  // The share lock held both fields. The update does not read the Driver again.
+  const mustAccept = driver.mustAccept
   const updated = assignedRows.parse(await runRideStep(transaction, sql`
     update app.rides
     set state = 'assigned',
