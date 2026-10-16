@@ -59,6 +59,7 @@ function catalogWithoutOneDriver(): { transaction: TenantTransaction, sql: strin
             transportLicenceExpiresOn: '2030-06-01',
             memberUserId: null,
             mustAccept: false,
+            archivedAt: null,
           }],
         }
       }
