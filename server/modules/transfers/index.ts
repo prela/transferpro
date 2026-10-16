@@ -28,6 +28,10 @@
  * Each of those mails a work order after the Ride is saved.
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
  * their index files, by id. Those modules do not import this one (ADR-0018).
+ * Search reads Transfers on every day by guest, Client reference, or flight
+ * number. Today and later come first, earliest pickup first. Past
+ * operational days follow, newest first. It is office-only. The query
+ * text is not logged and not audited.
  */
 export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableError } from './infrastructure/accept'
 export { RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
@@ -45,3 +49,4 @@ export { readOfficeHome } from './infrastructure/office-home-access'
 export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './infrastructure/ride-change'
 export { RideOverlapError } from './infrastructure/ride-schedule'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'
+export { searchTransfers } from './infrastructure/transfer-search'

@@ -69,6 +69,8 @@ export { applyTransferDraftEvent, recallTransferDraft, rememberTransferDraft, TR
 export type { TransferDraft, TransferDraftEvent, TransferDraftFields, TransferDraftStore } from './transfer-draft'
 export { duplicateTransferPrefill, returnTransferPrefill } from './transfer-prefill'
 export type { TransferPrefill, TransferPrefillSource } from './transfer-prefill'
+export { parseTransferSearchQuery, TRANSFER_SEARCH_LIMIT, TRANSFER_SEARCH_MAX_LENGTH, transferSearchHitSchema, transferSearchSchema } from './transfer-search'
+export type { TransferSearch, TransferSearchHit } from './transfer-search'
 export { parseCreateVehicle, parseVehiclePatch, VEHICLE_DESCRIPTION_MAX_LENGTH, VEHICLE_FIELDS, VEHICLE_KINDS, VEHICLE_PLATE_MAX_LENGTH, vehicleDateError, vehicleDateSchema, vehicleDescriptionError, vehicleDescriptionSchema, vehicleFieldSchema, VehicleInputError, vehicleKindError, vehicleKindSchema, vehicleListSchema, vehiclePlateError, vehiclePlateSchema, vehicleSchema } from './vehicle'
 export type { CreateVehicle, Vehicle, VehicleDateError, VehicleDescriptionError, VehicleField, VehicleKind, VehicleKindError, VehicleList, VehiclePatch, VehiclePlateError } from './vehicle'
 export { assignedRideSchema, cancelledRideResultSchema, composeAssignedWorkOrder, composeWorkOrder, correctedTransferResultSchema, relocationWarningSchema, WORK_ORDER_OUTCOMES, WORK_ORDER_STATUSES, workOrderNoticeSchema } from './work-order'
