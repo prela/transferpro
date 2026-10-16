@@ -53,8 +53,8 @@ function toItem(link: FrameLink): NavigationMenuItem {
     'icon': link.icon,
     'to': link.to,
     'exact': link.exact,
-    'aria-label': link.label,
-    // The count is not rendered while it is null. The field is the slot.
+    // The count is part of the name once the read has arrived, including zero.
+    'aria-label': typeof link.urgentCount === 'number' ? `${link.label}, ${link.urgentCount}` : link.label,
     'badge': link.urgentCount ?? undefined,
   }
 }
@@ -135,6 +135,7 @@ function onPhoneNavigate() {
       :to="link.to"
       :exact="link.exact"
       :icon="link.icon"
+      :aria-label="typeof link.urgentCount === 'number' ? `${link.label}, ${link.urgentCount}` : link.label"
       color="neutral"
       variant="ghost"
       size="xl"

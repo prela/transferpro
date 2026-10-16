@@ -776,7 +776,17 @@
     "loadFailed": "Home could not be loaded. Try again.",
     "unassigned": "Unassigned",
     "waiting": "Waiting on acceptance",
+    "assignedNotStarted": "Assigned, not started",
     "inProgress": "In progress",
+    "attention": "Attention",
+    "operationalDay": "{date}, from {hour}",
+    "groups": {
+      "unassigned-past-pickup": "Pickup has passed",
+      "unassigned-alarm": "Unassigned < 4 h",
+      "decline-alert": "Declined",
+      "landing-alarm": "Landing alarm",
+      "unclosed-mark": "Not closed"
+    },
     "empty": "This list is empty.",
     "counts": "Counts for the operational day",
     "countRides": "Rides",

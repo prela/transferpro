@@ -1,8 +1,9 @@
 import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
+import { expectNoAxeViolations } from './fixtures/axe'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn, switchLocale, switchTheme } from './fixtures/ui'
+import { signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
 
@@ -42,10 +43,13 @@ test('office home loads both reads, refreshes after 60 seconds while visible, an
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
   await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toBeVisible()
+  const attention = page.getByRole('region', { name: 'Pozornost' })
   const unassigned = page.getByRole('region', { name: 'Nedodijeljeno' })
-  const waiting = page.getByRole('region', { name: 'Čeka na prihvat' })
+  const waiting = page.getByRole('region', { name: 'Čeka prihvat' })
   const progress = page.getByRole('region', { name: 'U tijeku' })
+  await expect(attention).toContainText('Ovaj popis je prazan.')
   await expect(unassigned).toContainText('Ovaj popis je prazan.')
+  await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Početna, 0', exact: true })).toBeVisible()
   await expect(waiting).toContainText('Ovaj popis je prazan.')
   await expect(progress).toContainText('Ovaj popis je prazan.')
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
@@ -68,7 +72,7 @@ test('office home loads both reads, refreshes after 60 seconds while visible, an
   expect(reads.documents).toBe(documentsAfterOpen)
 
   await page.clock.fastForward(1_000)
-  await expect.poll(() => reads.office).toBeGreaterThan(officeAfterOpen)
+  await expect.poll(() => reads.office).toBe(officeAfterOpen + 1)
   await expect.poll(() => reads.documents).toBeGreaterThan(documentsAfterOpen)
   await expect(page.getByText('Ažurirano u 12:01')).toBeVisible()
 
@@ -77,7 +81,7 @@ test('office home loads both reads, refreshes after 60 seconds while visible, an
   const refresh = page.getByRole('button', { name: 'Osvježi', exact: true })
   await refresh.focus()
   await page.keyboard.press('Enter')
-  await expect.poll(() => reads.office).toBeGreaterThan(officeAfterTick)
+  await expect.poll(() => reads.office).toBe(officeAfterTick + 1)
   await expect.poll(() => reads.documents).toBeGreaterThan(documentsAfterTick)
 })
 
@@ -172,32 +176,30 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
 
   await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
 
-  const unassigned = page.getByRole('region', { name: 'Nedodijeljeno' })
-  const alarm = unassigned.getByRole('listitem').filter({ hasText: 'Alarm Ana' })
-  await expect(alarm).toContainText('Alarm za nedodijeljenu vožnju')
-  await expect(alarm).toContainText('42,50 EUR')
-  await expect(alarm).toContainText('Gotovina')
-  await expect(alarm).toContainText('OU 384')
-  await expect(alarm).toContainText('Tabla: GOSPOĐA HORVAT')
-  await expect(unassigned.getByRole('listitem').filter({ hasText: 'Card Ivo' })).not.toContainText('Tabla:')
+  // Price, payment, flight, and the tabla moved off the Home row. The row
+  // keeps the route, the Client, the short urgent text, and one action.
+  const attention = page.getByRole('region', { name: 'Pozornost' })
+  const alarm = attention.getByRole('listitem').filter({ hasText: 'Alarm Ana' })
+  await expect(alarm).toContainText('Nedodijeljeno < 4 h')
+  await expect(alarm).toContainText('Agencija Mora')
+  await expect(alarm).toContainText('1 putnika')
   await expect(alarm).toContainText('Zračna luka Dubrovnik')
   await expect(alarm).toContainText('Hotel Excelsior')
-  await expect(alarm.getByRole('link')).toHaveCount(0)
-  await expect(unassigned.getByRole('listitem').filter({ hasText: 'Card Ivo' })).toContainText('18,00 EUR')
-  await expect(unassigned.getByRole('listitem').filter({ hasText: 'Card Ivo' })).toContainText('Kartica')
-  await expect(unassigned.getByRole('listitem').filter({ hasText: 'Agency Eva' })).toContainText('0,00 EUR')
-  await expect(unassigned.getByRole('listitem').filter({ hasText: 'Agency Eva' })).toContainText('Račun agenciji')
-  await expect(unassigned).toContainText('Old Luka')
+  await expect(alarm.getByRole('link', { name: /Dodijeli/ })).toHaveAttribute('href', /ride=/)
+  await expect(attention.getByRole('listitem').filter({ hasText: 'Old Luka' })).toContainText('Prošlo preuzimanje')
+  await expect(page.getByRole('region', { name: 'Nedodijeljeno' })).toContainText('Ovaj popis je prazan.')
 
-  const waitingList = page.getByRole('region', { name: 'Čeka na prihvat' })
+  const waitingList = page.getByRole('region', { name: 'Čeka prihvat' })
   const waitingRow = waitingList.getByRole('listitem').filter({ hasText: 'Waiting Nika' })
   await expect(waitingRow).toContainText('Marko Vozač')
   await expect(waitingRow).toContainText('DU146AA')
-  await expect(waitingRow).not.toContainText('Alarm za nedodijeljenu vožnju')
+  await expect(waitingRow).not.toContainText('Nedodijeljeno < 4 h')
   await expect(waitingRow).not.toContainText('Nije zatvoreno')
+  await expect(waitingRow.getByRole('link', { name: /Potvrdi telefonom/ })).toBeVisible()
 
   const progress = page.getByRole('region', { name: 'U tijeku' })
-  const openRow = progress.getByRole('listitem').filter({ hasText: 'Open Lara' })
+  await expect(progress.getByRole('listitem').filter({ hasText: 'Open Lara' })).toHaveCount(0)
+  const openRow = attention.getByRole('listitem').filter({ hasText: 'Open Lara' })
   const freshRow = progress.getByRole('listitem').filter({ hasText: 'Fresh Ivo' })
   await expect(openRow).toContainText('Nije zatvoreno')
   await expect(openRow).toContainText('Ana Slobodna')
@@ -206,30 +208,32 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
 
   const counts = page.getByRole('region', { name: 'Brojevi za operativni dan' })
   await expect(counts).toContainText('Vožnje')
+  await expect(counts).toContainText('Dodijeljeno, nije krenulo')
   await expect(counts).toContainText('Obavljeno')
   await expect(counts).toContainText('Nedolazak')
   await expect(counts).toContainText('Otkazano')
   await expect(counts).not.toContainText('EUR')
+  const urgentRows = await attention.getByRole('listitem').count()
+  await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: `Početna, ${urgentRows}`, exact: true })).toBeVisible()
 
   await switchLocale(page, 'en')
   await expect(page.getByRole('heading', { name: 'Counts for the operational day' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Attention' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible()
   await expect(page.getByRole('switch', { name: 'Automatic refresh' })).toBeChecked()
   await expect(page.getByText(/Updated at \d{2}:\d{2}/)).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Meet sign: GOSPOĐA HORVAT')
-  await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Unassigned alarm')
-  await expect(page.getByRole('region', { name: 'In progress' }).getByRole('listitem').filter({ hasText: 'Open Lara' })).toContainText('Unclosed mark')
-  await expect(page.getByRole('region', { name: 'In progress' }).getByRole('listitem').filter({ hasText: 'Fresh Ivo' })).not.toContainText('Unclosed mark')
-  await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('42.50 EUR')
+  await expect(page.getByRole('region', { name: 'Attention' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Unassigned < 4 h')
+  await expect(page.getByRole('region', { name: 'Attention' }).getByRole('listitem').filter({ hasText: 'Open Lara' })).toContainText('Not closed')
+  await expect(page.getByRole('region', { name: 'In progress' }).getByRole('listitem').filter({ hasText: 'Fresh Ivo' })).not.toContainText('Not closed')
   await expect(page.getByRole('button', { name: 'English' })).toHaveCount(0)
 
   await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
-  await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Unassigned alarm')
-  await expect(page.getByRole('region', { name: 'In progress' }).getByRole('listitem').filter({ hasText: 'Open Lara' })).toContainText('Unclosed mark')
+  await expect(page.getByRole('region', { name: 'Attention' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toContainText('Unassigned < 4 h')
+  await expect(page.getByRole('region', { name: 'Attention' }).getByRole('listitem').filter({ hasText: 'Open Lara' })).toContainText('Not closed')
   await switchTheme(page, 'light')
   await expect(page.locator('html')).not.toHaveClass(/dark/)
-  await expect(page.getByRole('region', { name: 'Unassigned' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Attention' }).getByRole('listitem').filter({ hasText: 'Alarm Ana' })).toBeVisible()
 })
 
 test('a hidden tab sends no request and a visible tab reloads at once', async ({ page }) => {
@@ -286,7 +290,7 @@ test('a failed refresh keeps the rows and shows the last time', async ({ page })
   })
   await page.getByRole('switch', { name: 'Automatsko osvježavanje' }).click()
   await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
-  const row = page.getByRole('region', { name: 'Nedodijeljeno' }).getByRole('listitem').filter({ hasText: 'Stalna Ana' })
+  const row = page.getByRole('region', { name: 'Pozornost' }).getByRole('listitem').filter({ hasText: 'Stalna Ana' })
   await expect(row).toBeVisible()
   const status = page.getByText(/Ažurirano u \d{2}:\d{2}/)
   const time = (await status.textContent())?.match(/\d{2}:\d{2}/)?.[0]
@@ -332,12 +336,12 @@ test('a new urgent item is announced once and an unchanged refresh says nothing'
     payment: 'cash',
   })
   await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
-  await expect(page.getByRole('region', { name: 'Nedodijeljeno' }).getByRole('listitem').filter({ hasText: 'Hitna Mia' })).toContainText('Alarm za nedodijeljenu vožnju')
+  await expect(page.getByRole('region', { name: 'Pozornost' }).getByRole('listitem').filter({ hasText: 'Hitna Mia' })).toContainText('Nedodijeljeno < 4 h')
   await expect(live).toHaveText('Nova hitna stavka')
 
   await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
   await expect(live).toHaveText('')
-  await expect(page.getByRole('region', { name: 'Nedodijeljeno' }).getByRole('listitem').filter({ hasText: 'Hitna Mia' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Pozornost' }).getByRole('listitem').filter({ hasText: 'Hitna Mia' })).toBeVisible()
 })
 
 test('expiring documents still show when the office read fails', async ({ page }) => {
@@ -354,6 +358,7 @@ test('the office lists still show when the document read fails', async ({ page }
   await page.route('**/api/expiring-documents', route => route.abort())
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Pozornost' })).toContainText('Ovaj popis je prazan.')
   await expect(page.getByRole('region', { name: 'Nedodijeljeno' })).toContainText('Ovaj popis je prazan.')
   await expect(page.getByText('Dokumente nije bilo moguće učitati. Pokušajte ponovno.')).toBeVisible()
 })
@@ -371,6 +376,54 @@ test('a driver does not see the lists or counts and the office read is not reque
   await expect(page.getByRole('button', { name: 'Osvježi dokumente' })).toBeVisible()
   expect(reads.office).toBe(0)
   await expect.poll(() => reads.documents).toBeGreaterThan(0)
+})
+
+// @phone: the phone project runs this block as well as the desktop project.
+test.describe('@phone', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`home follows ${theme} and passes axe`, async ({ page }) => {
+      const tenant = await seedTenant(`home-axe-${theme}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      await expect(page.getByRole('heading', { name: 'Pozornost' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toBeVisible()
+      await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: /^Početna, \d+$/ })).toBeVisible()
+      await expectNoAxeViolations(page)
+      if (theme === 'light') {
+        await switchLocale(page, 'en')
+        await expect(page.getByRole('heading', { name: 'Attention' })).toBeVisible()
+        await expectNoAxeViolations(page)
+      }
+    })
+  }
+
+  test('each balance count opens Transfers for today with that filter', async ({ page }) => {
+    const tenant = await seedTenant('home-count-links')
+    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+    const counts = page.getByRole('region', { name: 'Brojevi za operativni dan' })
+    await expect(counts).toBeVisible()
+    const parts = [
+      ['Vožnje', null],
+      ['Nedodijeljeno', 'unassigned'],
+      ['Čeka prihvat', 'waiting'],
+      ['Dodijeljeno, nije krenulo', 'assignedNotStarted'],
+      ['U tijeku', 'inProgress'],
+      ['Obavljeno', 'done'],
+      ['Nedolazak', 'noShow'],
+      ['Otkazano', 'cancelled'],
+    ] as const
+    for (const [label, filter] of parts) {
+      await counts.getByRole('link', { name: new RegExp(`^${label} \\d+$`) }).click()
+      await expect(page).toHaveURL(/\/transfers\?/)
+      await expect(page).toHaveURL(/day=\d{4}-\d{2}-\d{2}/)
+      if (filter)
+        await expect(page).toHaveURL(new RegExp(`filter=${filter}`))
+      else
+        expect(new URL(page.url()).searchParams.get('filter')).toBeNull()
+      await page.goto('/')
+      await expect(counts).toBeVisible()
+    }
+  })
 })
 
 async function installOfficeClock(page: Page) {

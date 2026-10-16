@@ -1,7 +1,7 @@
 import type { OfficeHomeRide } from './office-home'
 import { expect, it } from 'vitest'
 import { instantFromWallClock } from './date'
-import { buildOfficeHome, officeHomeUrgentKeys } from './office-home'
+import { buildOfficeHome, officeHomeBlocks, officeHomeCountPath, officeHomeUrgentKeys, officeHomeUrgentRideCount } from './office-home'
 
 /**
  * The office home snapshot. Lists keep every matching Ride. Counts keep
@@ -13,6 +13,8 @@ const zone = 'Europe/Zagreb'
 
 function ride(overrides: Partial<OfficeHomeRide> & Pick<OfficeHomeRide, 'rideId' | 'pickupAt' | 'state' | 'guestName'>): OfficeHomeRide {
   return {
+    passengerCount: 2,
+    clientName: 'Agencija Mora',
     start: 'Zračna luka Dubrovnik',
     end: 'Hotel Excelsior',
     driverId: null,
@@ -29,7 +31,7 @@ function ride(overrides: Partial<OfficeHomeRide> & Pick<OfficeHomeRide, 'rideId'
   }
 }
 
-function guests(rows: { guestName: string }[]): string[] {
+function guests(rows: readonly { guestName: string }[]): string[] {
   return rows.map(row => row.guestName)
 }
 
@@ -391,7 +393,7 @@ it('counts the stored hour, so a 05:30 pickup stays off today when the hour is 0
   expect(snapshot.counts.done).toBe(1)
 })
 
-it('counts the operational day only, so a list can be larger than its count, and a future assigned Ride is only in the Rides count', () => {
+it('counts the operational day only, so a list can be larger than its count, and the seven parts add up to the total', () => {
   // 04:30 on 15 January is still the operational day that started at 05:00 on the 14th.
   const now = instantFromWallClock('2026-01-15T04:30', zone)
   const snapshot = buildOfficeHome([
@@ -456,28 +458,23 @@ it('counts the operational day only, so a list can be larger than its count, and
     rides: 5,
     unassigned: 1,
     waitingOnAcceptance: 0,
+    assignedNotStarted: 1,
     inProgress: 0,
     done: 1,
     noShow: 1,
     cancelled: 1,
   })
-  expect(snapshot.counts.rides).not.toBe(
+  expect(snapshot.operationalDate).toBe('2026-01-14')
+  expect(snapshot.operationalDayStartHour).toBe(5)
+  expect(
     snapshot.counts.unassigned
     + snapshot.counts.waitingOnAcceptance
+    + snapshot.counts.assignedNotStarted
     + snapshot.counts.inProgress
     + snapshot.counts.done
     + snapshot.counts.noShow
     + snapshot.counts.cancelled,
-  )
-  expect(Object.keys(snapshot.counts).sort()).toEqual([
-    'cancelled',
-    'done',
-    'inProgress',
-    'noShow',
-    'rides',
-    'unassigned',
-    'waitingOnAcceptance',
-  ])
+  ).toBe(snapshot.counts.rides)
   expect(snapshot).not.toHaveProperty('week')
   expect(snapshot).not.toHaveProperty('month')
   expect(snapshot).not.toHaveProperty('total')
@@ -559,8 +556,8 @@ it('names the urgent marks already on the office home read', () => {
 
   expect(officeHomeUrgentKeys(snapshot)).toEqual([
     'unassigned-alarm:00000000-0000-4000-8000-000000000051',
-    'unclosed-mark:00000000-0000-4000-8000-000000000053',
     'landing-alarm:00000000-0000-4000-8000-000000000053',
+    'unclosed-mark:00000000-0000-4000-8000-000000000053',
   ])
 })
 
@@ -638,9 +635,162 @@ it('returns empty lists and zero counts when nothing matches', () => {
     rides: 0,
     unassigned: 0,
     waitingOnAcceptance: 0,
+    assignedNotStarted: 0,
     inProgress: 0,
     done: 0,
     noShow: 0,
     cancelled: 0,
   })
+  expect(snapshot.operationalDate).toBe('2026-06-15')
+  expect(snapshot.operationalDayStartHour).toBe(5)
+})
+
+it('puts each listed Ride in one Home block, and past pickup and a decline in Pozornost', () => {
+  const now = new Date('2026-06-15T10:00:00.000Z')
+  const driver = {
+    driverId: '00000000-0000-4000-8000-0000000000aa',
+    driverName: 'Marko',
+    vehiclePlate: 'DU100AA',
+  }
+  const snapshot = buildOfficeHome([
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000071',
+      guestName: 'Past',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      state: 'unassigned',
+      declineAlerts: [{ driverName: 'Ivo Vozač' }],
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000072',
+      guestName: 'Soon',
+      pickupAt: '2026-06-15T12:00:00.000Z',
+      state: 'unassigned',
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000073',
+      guestName: 'Declined',
+      pickupAt: '2026-06-15T18:00:00.000Z',
+      state: 'unassigned',
+      declineAlerts: [{ driverName: 'Ana Vozač' }],
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000074',
+      guestName: 'Plain',
+      pickupAt: '2026-06-15T20:00:00.000Z',
+      state: 'unassigned',
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000075',
+      guestName: 'Tomorrow',
+      pickupAt: '2026-06-16T08:00:00.000Z',
+      state: 'unassigned',
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000076',
+      guestName: 'Waiting',
+      pickupAt: '2026-06-15T13:00:00.000Z',
+      state: 'assigned',
+      mustAccept: true,
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000077',
+      guestName: 'Landed',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      state: 'accepted',
+      mustAccept: true,
+      landingAt: '2026-06-15T07:00:00.000Z',
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000078',
+      guestName: 'Fresh',
+      pickupAt: '2026-06-15T09:40:00.000Z',
+      state: 'accepted',
+      mustAccept: true,
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000079',
+      guestName: 'Ahead',
+      pickupAt: '2026-06-15T15:00:00.000Z',
+      state: 'assigned',
+      mustAccept: false,
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-00000000007a',
+      guestName: 'Done',
+      pickupAt: '2026-06-15T09:00:00.000Z',
+      state: 'done',
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-00000000007b',
+      guestName: 'Missed',
+      pickupAt: '2026-06-15T09:10:00.000Z',
+      state: 'no-show',
+      ...driver,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-00000000007c',
+      guestName: 'Called off',
+      pickupAt: '2026-06-15T09:20:00.000Z',
+      state: 'cancelled',
+    }),
+  ], now, zone, 5, 90)
+
+  expect(snapshot.counts).toEqual({
+    rides: 11,
+    unassigned: 4,
+    waitingOnAcceptance: 1,
+    assignedNotStarted: 1,
+    inProgress: 2,
+    done: 1,
+    noShow: 1,
+    cancelled: 1,
+  })
+  expect(
+    snapshot.counts.unassigned
+    + snapshot.counts.waitingOnAcceptance
+    + snapshot.counts.assignedNotStarted
+    + snapshot.counts.inProgress
+    + snapshot.counts.done
+    + snapshot.counts.noShow
+    + snapshot.counts.cancelled,
+  ).toBe(11)
+
+  const blocks = officeHomeBlocks(snapshot)
+  expect(blocks.attention.map(group => [group.kind, group.rides.map(row => row.guestName)])).toEqual([
+    ['unassigned-past-pickup', ['Past']],
+    ['unassigned-alarm', ['Soon']],
+    ['decline-alert', ['Declined']],
+    ['landing-alarm', ['Landed']],
+  ])
+  expect(blocks.attention[0]?.rides[0]?.marks).toEqual([
+    { kind: 'unassigned-past-pickup' },
+    { kind: 'decline-alert', driverName: 'Ivo Vozač' },
+  ])
+  expect(blocks.attention[3]?.rides[0]?.marks.map(mark => mark.kind)).toEqual(['landing-alarm', 'unclosed-mark'])
+  expect(guests(blocks.unassigned)).toEqual(['Plain', 'Tomorrow'])
+  expect(guests(blocks.waitingOnAcceptance)).toEqual(['Waiting'])
+  expect(guests(blocks.inProgress)).toEqual(['Fresh'])
+  expect(officeHomeUrgentRideCount(snapshot)).toBe(4)
+
+  const placed = [
+    ...blocks.attention.flatMap(group => group.rides),
+    ...blocks.unassigned,
+    ...blocks.waitingOnAcceptance,
+    ...blocks.inProgress,
+  ].map(row => row.rideId)
+  const listed = [
+    ...snapshot.unassigned,
+    ...snapshot.waitingOnAcceptance,
+    ...snapshot.inProgress,
+  ].map(row => row.rideId)
+  expect(placed.sort()).toEqual(listed.sort())
+  expect(new Set(placed).size).toBe(placed.length)
+  expect(officeHomeCountPath(snapshot.operationalDate, 'rides')).toBe('/transfers?day=2026-06-15')
+  expect(officeHomeCountPath(snapshot.operationalDate, 'assignedNotStarted')).toBe('/transfers?day=2026-06-15&filter=assignedNotStarted')
+  expect(officeHomeCountPath(snapshot.operationalDate, 'done')).toBe('/transfers?day=2026-06-15&filter=done')
 })

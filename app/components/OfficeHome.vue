@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { DisplayLocale, LiveRefreshOutcome, OfficeHome } from '../../shared'
-import { clockLabel, officeHomeSchema, officeHomeUrgentKeys } from '../../shared'
+import type { DisplayLocale, OfficeHomeCountKey } from '../../shared'
+import { clockLabel, formatOperationalDayStart, OFFICE_HOME_COUNT_KEYS, officeHomeBlocks, officeHomeCountPath } from '../../shared'
+import { refreshSharedOfficeHome, useOfficeHomeFeed } from '../composables/office-home-feed'
 
 const props = defineProps<{
   timeZone: string
@@ -9,83 +10,80 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const {
+  snapshot,
+  loading,
+  loadError,
+  automatic,
+  refreshing,
+  updatedAtMs,
+  failed,
+  announcedCount,
+  generation,
+} = useOfficeHomeFeed()
 const countsTitleId = useId()
+const attentionTitleId = useId()
 const unassignedTitleId = useId()
 const waitingTitleId = useId()
 const progressTitleId = useId()
 
-const snapshot = ref<OfficeHome | null>(null)
-// Start true so the empty copy does not flash before the first read.
-const loading = ref(true)
-const loadError = ref(false)
-// A slower reload must not replace the rows from a newer one.
-let loadTicket = 0
-// The first read may show the loading copy. A later one keeps the lists.
-let attempted = false
-const announcedCount = ref(0)
+const countLabel: Record<OfficeHomeCountKey, string> = {
+  rides: 'officeHome.countRides',
+  unassigned: 'officeHome.unassigned',
+  waitingOnAcceptance: 'officeHome.waiting',
+  assignedNotStarted: 'officeHome.assignedNotStarted',
+  inProgress: 'officeHome.inProgress',
+  done: 'transfers.states.done',
+  noShow: 'transfers.states.no-show',
+  cancelled: 'transfers.states.cancelled',
+}
 
 const announcement = computed(() =>
   announcedCount.value > 0 ? t('liveRefresh.newUrgent') : '',
 )
 
-/**
- * Lists and counts fail together. A refresh that fails keeps the last
- * snapshot; the failure line is the refresher's, not an emptied list.
- */
-async function loadSnapshot(isRefresh: boolean): Promise<LiveRefreshOutcome> {
-  const ticket = ++loadTicket
-  if (!isRefresh)
-    loading.value = true
-  try {
-    const next = officeHomeSchema.parse(await $fetch('/api/office-home'))
-    if (ticket !== loadTicket)
-      return 'stale'
-    snapshot.value = next
-    loadError.value = false
-    return 'ok'
-  }
-  catch {
-    if (ticket !== loadTicket)
-      return 'stale'
-    if (!isRefresh) {
-      snapshot.value = null
-      loadError.value = true
-    }
-    return 'fail'
-  }
-  finally {
-    if (ticket === loadTicket)
-      loading.value = false
-  }
-}
+const shownTime = computed(() =>
+  updatedAtMs.value === null ? '' : clockLabel(new Date(updatedAtMs.value), props.timeZone, props.locale),
+)
 
-const { automatic, refreshing, updatedAt, failed, refresh } = useLiveRefresh({
-  async reload() {
-    const isRefresh = attempted
-    attempted = true
-    const [outcome] = await Promise.all([
-      loadSnapshot(isRefresh),
-      props.refreshDocuments(),
-    ])
-    return outcome
-  },
-  urgentKeys: () => snapshot.value ? officeHomeUrgentKeys(snapshot.value) : [],
-  async onAnnounce(count) {
-    // A polite region repeats only when the text changes. Clear first so a
-    // second new urgent item is announced, not only the first.
-    if (count === 0) {
-      announcedCount.value = 0
-      return
-    }
-    announcedCount.value = 0
-    await nextTick()
-    announcedCount.value = count
-  },
+const blocks = computed(() => snapshot.value ? officeHomeBlocks(snapshot.value) : null)
+
+const countLinks = computed(() => {
+  const home = snapshot.value
+  if (!home)
+    return []
+  return OFFICE_HOME_COUNT_KEYS.map(key => ({
+    key,
+    label: countLabel[key],
+    value: home.counts[key],
+    to: officeHomeCountPath(home.operationalDate, key),
+  }))
 })
 
-const shownTime = computed(() =>
-  updatedAt.value === null ? '' : clockLabel(updatedAt.value, props.timeZone, props.locale),
-)
+const dayLine = computed(() => {
+  const home = snapshot.value
+  if (!home)
+    return ''
+  return t('officeHome.operationalDay', {
+    date: formatOperationalDate(home.operationalDate, props.locale),
+    hour: formatOperationalDayStart(home.operationalDayStartHour),
+  })
+})
+
+watch(generation, (next) => {
+  if (next === 0)
+    return
+  void props.refreshDocuments()
+})
+
+function formatOperationalDate(iso: string, locale: DisplayLocale): string {
+  const [year, month, day] = iso.split('-')
+  if (!year || !month || !day)
+    return iso
+  if (locale === 'hr')
+    return `${Number(day)}. ${Number(month)}. ${year}.`
+  return `${day}/${month}/${year}`
+}
 </script>
 
 <template>
@@ -93,6 +91,7 @@ const shownTime = computed(() =>
     <!--
       The time is not a live region. Only a new urgent item is announced
       (ADR-0039). The button stays enabled so a refresh does not drop focus.
+      The request itself belongs to the frame's loop.
     -->
     <div
       class="flex flex-wrap items-center gap-3"
@@ -104,12 +103,12 @@ const shownTime = computed(() =>
         variant="outline"
         size="sm"
         class="max-lg:min-h-11 max-lg:text-base"
-        @click="refresh"
+        @click="refreshSharedOfficeHome()"
       >
         {{ t('liveRefresh.refresh') }}
       </UButton>
       <p
-        v-if="updatedAt"
+        v-if="updatedAtMs !== null"
         class="text-sm text-muted"
       >
         {{ failed ? t('liveRefresh.failed', { time: shownTime }) : t('liveRefresh.updatedAt', { time: shownTime }) }}
@@ -152,175 +151,194 @@ const shownTime = computed(() =>
       {{ t('officeHome.loading') }}
     </p>
 
-    <template v-else-if="snapshot">
+    <template v-else-if="snapshot && blocks">
       <section
         class="mt-6"
         :aria-labelledby="countsTitleId"
       >
         <h2
           :id="countsTitleId"
-          class="mb-3 text-xl font-semibold"
+          class="mb-1 text-sm font-semibold"
         >
           {{ t('officeHome.counts') }}
         </h2>
-        <dl class="grid grid-cols-2 gap-3 tabular-nums sm:grid-cols-4">
-          <div>
-            <dt class="text-sm text-muted">
-              {{ t('officeHome.countRides') }}
+        <p class="mb-2 text-xs text-muted">
+          {{ dayLine }}
+        </p>
+        <dl class="grid grid-cols-4 gap-2 tabular-nums">
+          <div
+            v-for="item in countLinks"
+            :key="item.key"
+          >
+            <dt class="text-xs text-muted">
+              {{ t(item.label) }}
             </dt>
-            <dd class="text-2xl font-semibold">
-              {{ snapshot.counts.rides }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-sm text-muted">
-              {{ t('officeHome.unassigned') }}
-            </dt>
-            <dd class="text-2xl font-semibold">
-              {{ snapshot.counts.unassigned }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-sm text-muted">
-              {{ t('officeHome.waiting') }}
-            </dt>
-            <dd class="text-2xl font-semibold">
-              {{ snapshot.counts.waitingOnAcceptance }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-sm text-muted">
-              {{ t('officeHome.inProgress') }}
-            </dt>
-            <dd class="text-2xl font-semibold">
-              {{ snapshot.counts.inProgress }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-sm text-muted">
-              {{ t('transfers.states.done') }}
-            </dt>
-            <dd class="text-2xl font-semibold">
-              {{ snapshot.counts.done }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-sm text-muted">
-              {{ t('transfers.states.no-show') }}
-            </dt>
-            <dd class="text-2xl font-semibold">
-              {{ snapshot.counts.noShow }}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-sm text-muted">
-              {{ t('transfers.states.cancelled') }}
-            </dt>
-            <dd class="text-2xl font-semibold">
-              {{ snapshot.counts.cancelled }}
+            <dd>
+              <NuxtLink
+                :to="item.to"
+                class="inline-flex min-h-11 items-center text-lg font-semibold underline-offset-2 hover:underline lg:min-h-7"
+                :aria-label="`${t(item.label)} ${item.value}`"
+              >
+                {{ item.value }}
+              </NuxtLink>
             </dd>
           </div>
         </dl>
       </section>
 
-      <section
-        class="mt-6"
-        :aria-labelledby="unassignedTitleId"
-      >
-        <h2
-          :id="unassignedTitleId"
-          class="mb-3 text-xl font-semibold"
-        >
-          {{ t('officeHome.unassigned') }}
-        </h2>
-        <p v-if="snapshot.unassigned.length === 0">
-          {{ t('officeHome.empty') }}
-        </p>
-        <ul
-          v-else
-          class="flex flex-col gap-3"
-        >
-          <li
-            v-for="ride in snapshot.unassigned"
-            :key="ride.rideId"
-          >
-            <article class="rounded-lg border border-default bg-default p-4 text-base">
-              <TransferRideRow
-                cell="home"
-                :summary="ride"
-                :time-zone="timeZone"
-                :locale="locale"
-              />
-            </article>
-          </li>
-        </ul>
-      </section>
+      <div class="mt-6 lg:grid lg:grid-cols-5 lg:gap-6">
+        <div class="lg:col-span-3">
+          <section :aria-labelledby="attentionTitleId">
+            <h2
+              :id="attentionTitleId"
+              class="mb-3 text-sm font-semibold"
+            >
+              {{ t('officeHome.attention') }}
+            </h2>
+            <p v-if="blocks.attention.length === 0">
+              {{ t('officeHome.empty') }}
+            </p>
+            <section
+              v-for="group in blocks.attention"
+              :key="group.kind"
+              class="mb-4"
+            >
+              <h3 class="mb-1 text-xs font-medium text-muted">
+                {{ t(`officeHome.groups.${group.kind}`) }} ({{ group.rides.length }})
+              </h3>
+              <ul class="flex flex-col gap-2">
+                <li
+                  v-for="ride in group.rides"
+                  :key="ride.rideId"
+                  class="rounded-md border border-default px-2"
+                >
+                  <OfficeHomeRow
+                    :ride="ride"
+                    :time-zone="timeZone"
+                    :locale="locale"
+                    :operational-date="snapshot.operationalDate"
+                    :operational-day-start-hour="snapshot.operationalDayStartHour"
+                  />
+                </li>
+              </ul>
+            </section>
+          </section>
 
-      <section
-        class="mt-6"
-        :aria-labelledby="waitingTitleId"
-      >
-        <h2
-          :id="waitingTitleId"
-          class="mb-3 text-xl font-semibold"
-        >
-          {{ t('officeHome.waiting') }}
-        </h2>
-        <p v-if="snapshot.waitingOnAcceptance.length === 0">
-          {{ t('officeHome.empty') }}
-        </p>
-        <ul
-          v-else
-          class="flex flex-col gap-3"
-        >
-          <li
-            v-for="ride in snapshot.waitingOnAcceptance"
-            :key="ride.rideId"
+          <section
+            class="mt-6"
+            :aria-labelledby="unassignedTitleId"
           >
-            <article class="rounded-lg border border-default bg-default p-4 text-base">
-              <TransferRideRow
-                cell="home"
-                :summary="ride"
-                :time-zone="timeZone"
-                :locale="locale"
-              />
-            </article>
-          </li>
-        </ul>
-      </section>
+            <h2
+              :id="unassignedTitleId"
+              class="mb-3 text-sm font-semibold"
+            >
+              {{ t('officeHome.unassigned') }}
+            </h2>
+            <p v-if="blocks.unassigned.length === 0">
+              {{ t('officeHome.empty') }}
+            </p>
+            <ul
+              v-else
+              class="flex flex-col gap-2"
+            >
+              <li
+                v-for="ride in blocks.unassigned"
+                :key="ride.rideId"
+                class="rounded-md border border-default px-2"
+              >
+                <OfficeHomeRow
+                  :ride="ride"
+                  :time-zone="timeZone"
+                  :locale="locale"
+                  :operational-date="snapshot.operationalDate"
+                  :operational-day-start-hour="snapshot.operationalDayStartHour"
+                />
+              </li>
+            </ul>
+          </section>
 
-      <section
-        class="mt-6"
-        :aria-labelledby="progressTitleId"
-      >
-        <h2
-          :id="progressTitleId"
-          class="mb-3 text-xl font-semibold"
-        >
-          {{ t('officeHome.inProgress') }}
-        </h2>
-        <p v-if="snapshot.inProgress.length === 0">
-          {{ t('officeHome.empty') }}
-        </p>
-        <ul
-          v-else
-          class="flex flex-col gap-3"
-        >
-          <li
-            v-for="ride in snapshot.inProgress"
-            :key="ride.rideId"
+          <section
+            class="mt-6"
+            :aria-labelledby="waitingTitleId"
           >
-            <article class="rounded-lg border border-default bg-default p-4 text-base">
-              <TransferRideRow
-                cell="home"
-                :summary="ride"
-                :time-zone="timeZone"
-                :locale="locale"
-              />
-            </article>
-          </li>
-        </ul>
-      </section>
+            <h2
+              :id="waitingTitleId"
+              class="mb-3 text-sm font-semibold"
+            >
+              {{ t('officeHome.waiting') }}
+            </h2>
+            <p v-if="blocks.waitingOnAcceptance.length === 0">
+              {{ t('officeHome.empty') }}
+            </p>
+            <ul
+              v-else
+              class="flex flex-col gap-2"
+            >
+              <li
+                v-for="ride in blocks.waitingOnAcceptance"
+                :key="ride.rideId"
+                class="rounded-md border border-default px-2"
+              >
+                <OfficeHomeRow
+                  :ride="ride"
+                  :time-zone="timeZone"
+                  :locale="locale"
+                  :operational-date="snapshot.operationalDate"
+                  :operational-day-start-hour="snapshot.operationalDayStartHour"
+                />
+              </li>
+            </ul>
+          </section>
+        </div>
+
+        <div class="lg:col-span-2">
+          <section
+            class="mt-6 lg:mt-0"
+            :aria-labelledby="progressTitleId"
+          >
+            <h2
+              :id="progressTitleId"
+              class="mb-3 text-sm font-semibold"
+            >
+              {{ t('officeHome.inProgress') }}
+            </h2>
+            <p v-if="blocks.inProgress.length === 0">
+              {{ t('officeHome.empty') }}
+            </p>
+            <ul
+              v-else
+              class="flex flex-col gap-2"
+            >
+              <li
+                v-for="ride in blocks.inProgress"
+                :key="ride.rideId"
+                class="rounded-md border border-default px-2"
+              >
+                <OfficeHomeRow
+                  :ride="ride"
+                  :time-zone="timeZone"
+                  :locale="locale"
+                  :operational-date="snapshot.operationalDate"
+                  :operational-day-start-hour="snapshot.operationalDayStartHour"
+                />
+              </li>
+            </ul>
+          </section>
+          <slot name="documents" />
+        </div>
+      </div>
     </template>
+    <!--
+      The same slot while the snapshot is missing, so a failed office read
+      still shows expiring documents (ADR-0024).
+    -->
+    <div
+      v-if="!snapshot"
+      class="lg:grid lg:grid-cols-5 lg:gap-6"
+    >
+      <div class="lg:col-span-2 lg:col-start-4">
+        <slot name="documents" />
+      </div>
+    </div>
   </div>
 </template>

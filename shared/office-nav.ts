@@ -1,7 +1,8 @@
 /**
  * The office frame's navigation (ADR-0038).
  * Podizvođači, Cjenik, and Računi stay out until those modules exist.
- * The urgent count on Home is a slot: this ticket leaves it null (ADR-0039).
+ * The urgent count on Home is the number of Rides in Pozornost (ADR-0039).
+ * Null until that read arrives. Other items never carry it.
  */
 
 export type OfficeNavRole = 'admin' | 'dispatcher'
@@ -26,7 +27,7 @@ export interface OfficeNavLink {
   readonly label: string
   readonly to: string
   readonly exact: boolean
-  /** Only Home carries this. Null until the Home ticket fills the count. */
+  /** Only Home carries this. Null until the office home read arrives. */
   readonly urgentCount: number | null
 }
 
@@ -36,12 +37,16 @@ export interface OfficeNavGroup {
   readonly links: readonly OfficeNavLink[]
 }
 
-export function officeNav(role: OfficeNavRole, labels: OfficeNavLabels): readonly OfficeNavGroup[] {
+export function officeNav(
+  role: OfficeNavRole,
+  labels: OfficeNavLabels,
+  urgentCount: number | null = null,
+): readonly OfficeNavGroup[] {
   const operations: OfficeNavGroup = {
     id: 'operations',
     label: labels.operations,
     links: [
-      link('home', labels.home, '/', true),
+      link('home', labels.home, '/', true, urgentCount),
       link('transfers', labels.transfers, '/transfers', false),
       link('roster', labels.roster, '/roster', false),
     ],
@@ -83,13 +88,14 @@ function link(
   label: string,
   to: string,
   exact: boolean,
+  urgentCount: number | null = null,
 ): OfficeNavLink {
   return {
     id,
     label,
     to,
     exact,
-    urgentCount: null,
+    urgentCount,
   }
 }
 

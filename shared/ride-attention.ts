@@ -134,9 +134,19 @@ export const TRANSFER_DAY_FILTERS = [
 
 export type TransferDayFilter = (typeof TRANSFER_DAY_FILTERS)[number]
 
+/**
+ * Toolbar chips stay the seven in ADR-0038. Home's balance also links to
+ * the part that has no chip: assigned and not started, and each finished state.
+ */
+export type TransferBoardFilter = TransferDayFilter | 'assignedNotStarted' | 'done' | 'noShow' | 'cancelled'
+
 const CLOSED = new Set<RideState>(['done', 'no-show', 'cancelled'])
 
-export function parseTransferDayFilter(value: unknown): TransferDayFilter {
+const HOME_PART_FILTERS = ['assignedNotStarted', 'done', 'noShow', 'cancelled'] as const
+
+export function parseTransferDayFilter(value: unknown): TransferBoardFilter {
+  if (typeof value === 'string' && (HOME_PART_FILTERS as readonly string[]).includes(value))
+    return value as TransferBoardFilter
   if (typeof value === 'string' && (TRANSFER_DAY_FILTERS as readonly string[]).includes(value))
     return value as TransferDayFilter
   return 'all'
@@ -147,7 +157,7 @@ function waitingOnAcceptance(ride: RideAttentionSource): boolean {
 }
 
 export function transferDayFilterMatches(
-  filter: TransferDayFilter,
+  filter: TransferBoardFilter,
   ride: RideAttentionSource,
   declines: readonly RideDecline[],
   nowMs: number,
@@ -165,7 +175,22 @@ export function transferDayFilterMatches(
     return waitingOnAcceptance(ride)
   if (filter === 'inProgress')
     return rideIsInProgress(ride.state, ride.mustAccept, ride.driverId, pickupMillis(ride.pickupAt), nowMs)
+  if (filter === 'assignedNotStarted')
+    return assignedNotStarted(ride, nowMs)
+  if (filter === 'done')
+    return ride.state === 'done'
+  if (filter === 'noShow')
+    return ride.state === 'no-show'
+  if (filter === 'cancelled')
+    return ride.state === 'cancelled'
   return CLOSED.has(ride.state)
+}
+
+/** The Home count of the same name. Pickup at `now` has not started yet. */
+function assignedNotStarted(ride: RideAttentionSource, nowMs: number): boolean {
+  if (ride.state === 'unassigned' || ride.driverId === null || waitingOnAcceptance(ride) || CLOSED.has(ride.state))
+    return false
+  return pickupMillis(ride.pickupAt) >= nowMs
 }
 
 export interface TransferDayFilterRide {

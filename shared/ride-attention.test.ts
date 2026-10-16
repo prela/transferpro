@@ -135,6 +135,27 @@ it('counts quick filters from the same classification', () => {
   expect(parseTransferDayFilter('nope')).toBe('all')
 })
 
+it('opens the Home balance parts that are not toolbar chips', () => {
+  const ahead = source({
+    state: 'accepted',
+    mustAccept: true,
+    driverId: '00000000-0000-4000-8000-000000000010',
+    pickupAt: new Date(NOW + HOUR).toISOString(),
+  })
+  const done = source({
+    state: 'done',
+    driverId: '00000000-0000-4000-8000-000000000010',
+  })
+  expect(parseTransferDayFilter('assignedNotStarted')).toBe('assignedNotStarted')
+  expect(parseTransferDayFilter('done')).toBe('done')
+  expect(transferDayFilterMatches('assignedNotStarted', ahead, [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('assignedNotStarted', source(), [], NOW)).toBe(false)
+  expect(transferDayFilterMatches('done', done, [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('noShow', source({ state: 'no-show' }), [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('cancelled', source({ state: 'cancelled' }), [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('closed', done, [], NOW)).toBe(true)
+})
+
 it('shows the calendar date when the pickup falls on the next calendar day', () => {
   const zone = 'Europe/Zagreb'
   const pickupAt = '2026-06-15T23:30:00.000Z'

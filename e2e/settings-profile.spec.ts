@@ -63,7 +63,7 @@ test('profile saves hr and en through POST /api/locale and the next screen uses 
   await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
 
   await page.goto('/')
-  await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Početna', exact: true })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: /^Početna, \d+$/ })).toBeVisible()
   await page.getByRole('link', { name: 'Naručitelji', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toBeVisible()
 })
