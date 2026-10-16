@@ -631,6 +631,77 @@ it('carries a decline alert and the Driver name for any day, drops it when the R
   expect(await auditText(foreign.tenantId)).not.toContain('Strana Gošća')
 })
 
+it('returns the office home snapshot after the declining Driver is removed', async () => {
+  const created = await tenant('ohm-gone', 'Hana Admin')
+  const driverUserId = await addMember(created.tenantId, 'ohm-gone-driver@example.test', 'Lara Otišla', 'driver')
+  const admin = await signIn('ohm-gone-admin@example.test')
+  const driverSession = await signIn('ohm-gone-driver@example.test')
+  const calendar = calendarDateInTimeZone(zone, new Date())
+  const now = instantFromWallClock(`${calendar}T12:00`, zone)
+  const client = await createClient(admin, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(admin, { name: 'Hotel Excelsior', kind: 'hotel' })
+  const driver = await createDriver(admin, {
+    name: 'Lara Otišla',
+    kind: 'own',
+    phone: '+385911112860',
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+    memberUserId: driverUserId,
+  })
+  const vehicle = await createVehicle(admin, {
+    registrationPlate: 'DU286AA',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const recorded = await createTransfer(admin, {
+    clientId: client.id,
+    pickupAt: instantFromWallClock(`${calendar}T14:00`, zone).toISOString(),
+    startLocationId: start.id,
+    endLocationId: end.id,
+    passengerCount: 1,
+    guestName: 'Gost Klara',
+    price: 10,
+    payment: 'cash',
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 0,
+  })
+  await assignRide(admin, { rideId: recorded.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  const declined = await declineRide(driverSession, recorded.ride.id, {})
+  expect(declined.state).toBe('unassigned')
+
+  const audits = await auditCount(created.tenantId)
+  // The catalog no longer has this Driver. The decline row stays.
+  await ownerPool.query('delete from app.drivers where id = $1', [driver.id])
+
+  const snapshot = officeHomeSchema.parse(await readOfficeHome(admin, now))
+  expect(snapshot.unassigned.map(row => ({
+    rideId: row.rideId,
+    guestName: row.guestName,
+    declineAlerts: row.declineAlerts,
+  }))).toEqual([
+    { rideId: recorded.ride.id, guestName: 'Gost Klara', declineAlerts: [{ driverName: '—' }] },
+  ])
+  expect(JSON.stringify(snapshot)).not.toContain('Lara Otišla')
+  expect(await auditCount(created.tenantId)).toBe(audits)
+  expect(await auditText(created.tenantId)).not.toContain('Lara Otišla')
+  expect(await auditText(created.tenantId)).not.toContain('Gost Klara')
+
+  const http = await call(admin)
+  expect(http.status).toBe(200)
+  const httpBody = await http.text()
+  expect(httpBody).not.toContain('Lara Otišla')
+  expect(officeHomeSchema.parse(JSON.parse(httpBody)).unassigned.map(row => ({
+    rideId: row.rideId,
+    declineAlerts: row.declineAlerts,
+  }))).toEqual([
+    { rideId: recorded.ride.id, declineAlerts: [{ driverName: '—' }] },
+  ])
+})
+
 async function auditText(tenantId: string): Promise<string> {
   const result = await ownerPool.query<{ data: unknown }>(
     `select data from app.audit_entry where tenant_id = $1`,

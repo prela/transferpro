@@ -29,9 +29,15 @@ const sourceRowSchema = z.object({
   landingAt: z.unknown().nullish(),
   expectedArrival: z.unknown().nullish(),
   tabla: z.string(),
-  // Driver ids, not names. The name is resolved with the other catalog names.
-  declinedBy: z.array(z.uuid()),
+  // Driver ids, not names. Null when that Driver row was removed.
+  declinedBy: z.array(z.uuid().nullable()),
 })
+
+/**
+ * Shown when the declining Driver is no longer in the catalog.
+ * It is not a person's name, in either locale.
+ */
+const MISSING_DECLINE_DRIVER = '—'
 
 /**
  * Rides the snapshot can list or count, in one query so the lists and the
@@ -122,7 +128,7 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
       expectedArrival: row.expectedArrival == null ? null : toInstant(row.expectedArrival),
       tabla: row.tabla,
       mustAccept: row.mustAccept,
-      declineAlerts: row.declinedBy.map(driverId => ({ driverName: requiredName(driverId, drivers) })),
+      declineAlerts: row.declinedBy.map(driverId => ({ driverName: declineDriverName(driverId, drivers) })),
     }
   })
 
@@ -142,4 +148,17 @@ function requiredName(id: string, names: Map<string, string>): string {
   if (name === undefined)
     throw new Error('Office home read failed')
   return name
+}
+
+/**
+ * The declining Driver's display name.
+ * `loadDrivers` returns every Driver row. There is no deactivated Driver.
+ * A null id is a removed Driver: the alert stayed and the foreign key
+ * cleared the id. An id missing from that list uses the same mark, so
+ * one absent name does not fail the snapshot. The mark is not logged.
+ */
+function declineDriverName(id: string | null, names: Map<string, string>): string {
+  if (id === null)
+    return MISSING_DECLINE_DRIVER
+  return names.get(id) ?? MISSING_DECLINE_DRIVER
 }
