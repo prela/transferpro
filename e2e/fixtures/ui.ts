@@ -138,8 +138,13 @@ export async function openListbox(page: Page, trigger: Locator): Promise<Locator
   await hydrated(page)
   await expect(trigger).toBeVisible()
   await expect(trigger).toBeEnabled()
+  const opened = await trigger.elementHandle()
   if (await trigger.getAttribute('aria-expanded') !== 'true') {
-    const opened = await trigger.elementHandle()
+    // A suggestion list left open by the previous field stays open when this
+    // trigger is opened from the keyboard. Escape closes that list. It is
+    // sent only while one is open, so it does not dismiss the dialog.
+    if (await page.locator('[role="listbox"][data-state="open"]').count() > 0)
+      await page.keyboard.press('Escape')
     if (await trigger.getAttribute('role') === 'combobox')
       await trigger.press('ArrowDown')
     else
@@ -148,7 +153,10 @@ export async function openListbox(page: Page, trigger: Locator): Promise<Locator
     // the trigger. The same node still carries aria-expanded.
     await expect.poll(() => opened?.getAttribute('aria-expanded') ?? null).toBe('true')
   }
-  const listbox = page.locator('[role="listbox"][data-state="open"]')
+  const listboxId = await opened?.getAttribute('aria-controls')
+  const listbox = listboxId
+    ? page.locator(`[id="${listboxId}"]`)
+    : page.locator('[role="listbox"][data-state="open"]')
   await expect(listbox).toBeVisible()
   return listbox
 }
