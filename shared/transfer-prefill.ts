@@ -80,10 +80,9 @@ export function duplicateTransferPrefill(source: TransferPrefillSource, timeZone
 
 /**
  * A return journey. From and to swap. Client, Client reference, guest,
- * passengers, luggage, child seats, payment, price, note, and the airport
- * mark stay. Time, flight number, and tabla are empty so the office fills
- * the new leg. ADR-0038 names the kept and emptied fields; price, note, and
- * the airport mark are not in the emptied list, so they are copied.
+ * passengers, luggage, child seats, and payment stay. Time, flight number,
+ * and tabla are empty. Price, note, and the airport mark are not in that
+ * keep list, so they start blank and the office fills the new Transfer.
  */
 export function returnTransferPrefill(source: TransferPrefillSource, locale: DisplayLocale): TransferPrefill {
   return {
@@ -91,7 +90,10 @@ export function returnTransferPrefill(source: TransferPrefillSource, locale: Dis
     pickupWall: '',
     startLocationId: source.endLocationId,
     endLocationId: source.startLocationId,
+    price: '',
     flight: '',
+    airportMark: false,
     tabla: '',
+    note: '',
   }
 }

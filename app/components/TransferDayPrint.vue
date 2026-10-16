@@ -41,42 +41,48 @@ function clock(instant: string): string {
 </script>
 
 <template>
-  <section
-    class="transfer-day-print"
-    :aria-label="t('transfers.printHeading', { day })"
-  >
-    <h1>{{ t('transfers.printHeading', { day }) }}</h1>
-    <p v-if="groups.length === 0">
-      {{ t('transfers.empty') }}
-    </p>
+  <!--
+    A direct child of body. Hiding an ancestor with display:none would hide
+    this sheet too, even if the sheet itself is set to display:block.
+  -->
+  <Teleport to="body">
     <section
-      v-for="group in groups"
-      :key="group.vehicleId ?? 'unassigned'"
+      class="transfer-day-print"
+      :aria-label="t('transfers.printHeading', { day })"
     >
-      <h2>{{ vehicleLabel(group.vehicleId) }}</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>{{ t('transfers.columns.time') }}</th>
-            <th>{{ t('transfers.columns.guest') }}</th>
-            <th>{{ t('transfers.columns.route') }}</th>
-            <th>{{ t('transfers.tabla') }}</th>
-            <th>{{ t('transfers.note') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="ride in group.rides"
-            :key="ride.rideId"
-          >
-            <td>{{ clock(ride.pickupAt) }}</td>
-            <td>{{ ride.guestName }}</td>
-            <td>{{ place(ride.startLocationId) }} → {{ place(ride.endLocationId) }}</td>
-            <td>{{ ride.tabla }}</td>
-            <td>{{ ride.note }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <h1>{{ t('transfers.printHeading', { day }) }}</h1>
+      <p v-if="groups.length === 0">
+        {{ t('transfers.empty') }}
+      </p>
+      <section
+        v-for="group in groups"
+        :key="group.vehicleId ?? 'unassigned'"
+      >
+        <h2>{{ vehicleLabel(group.vehicleId) }}</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>{{ t('transfers.columns.time') }}</th>
+              <th>{{ t('transfers.columns.guest') }}</th>
+              <th>{{ t('transfers.columns.route') }}</th>
+              <th>{{ t('transfers.tabla') }}</th>
+              <th>{{ t('transfers.note') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="ride in group.rides"
+              :key="ride.rideId"
+            >
+              <td>{{ clock(ride.pickupAt) }}</td>
+              <td>{{ ride.guestName }}</td>
+              <td>{{ place(ride.startLocationId) }} → {{ place(ride.endLocationId) }}</td>
+              <td>{{ ride.tabla }}</td>
+              <td>{{ ride.note }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
     </section>
-  </section>
+  </Teleport>
 </template>

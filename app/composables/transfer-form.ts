@@ -118,10 +118,10 @@ export function useTransferForm(options: {
   /** Bumped when a submit fails so the summary can take focus. */
   const validationNonce = ref(0)
   /**
-   * Bumped when a duplicate or a return fills the form. Više reads it,
-   * because the mode is already `add` and would not change again.
+   * Bumped when a duplicate or a return fills the form. Više opens from
+   * this, because the mode is already `add` and would not change again.
    */
-  const moreSync = ref(0)
+  const moreOpenNonce = ref(0)
   const restored = ref(false)
 
   let ignoreDraft = false
@@ -514,7 +514,7 @@ export function useTransferForm(options: {
     placeTarget.value = null
     clientTarget.value = false
     restored.value = false
-    moreSync.value += 1
+    moreOpenNonce.value += 1
     ignoreDraft = false
     // The field watch already ran while updates were ignored. Write the
     // prefill so a reload does not bring back an older draft instead.
@@ -743,7 +743,7 @@ export function useTransferForm(options: {
     clientNameErrorKey,
     clientKindErrorKey,
     validationNonce,
-    moreSync,
+    moreOpenNonce,
     restored,
     clientItems,
     locationItems,

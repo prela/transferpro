@@ -76,15 +76,15 @@ it('swaps the route for a return and empties the time, the flight, and the tabla
     endLocationId: START,
     passengers: '3',
     guest: 'Ana Anić',
-    price: '42,50',
+    price: '',
     payment: 'invoice_to_agency',
     flight: '',
-    airportMark: true,
+    airportMark: false,
     tabla: '',
     clientReference: 'V-19',
     luggage: '2',
     childSeats: '1',
-    note: 'Nazovi recepciju',
+    note: '',
   })
   expect(prefill).not.toHaveProperty('transferId')
   expect(prefill).not.toHaveProperty('rideId')

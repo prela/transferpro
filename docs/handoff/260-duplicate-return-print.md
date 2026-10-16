@@ -5,9 +5,9 @@ No server change and no migration. Duplicate and return only prefill the Transfe
 ## Decisions
 
 - A duplicate copies the booking, including the pickup in the Tenant time zone, and drops the Transfer id and the Ride id.
-- A return swaps from and to. It keeps the Client, Client reference, guest, passengers, luggage, child seats, payment, price, note, and airport mark. Time, flight number, and tabla are empty. Price, note, and the airport mark are copied because ADR-0038 does not list them among the emptied fields.
+- A return swaps from and to. It keeps the Client, Client reference, guest, passengers, luggage, child seats, and payment. Time, flight number, tabla, price, note, and the airport mark start empty.
 - The prefill replaces any browser draft and is stored as that same draft, so a reload does not bring the previous unfinished entry back. The server still sees nothing until save.
-- "Ispiši dan" prints every Ride of the loaded day, not the filtered rows. Groups are Vehicles ordered by earliest pickup. Unassigned Rides are last. The sheet uses written light colours so the dark theme does not print light text.
+- "Ispiši dan" prints every Ride of the loaded day, not the filtered rows. Groups are Vehicles ordered by earliest pickup. Unassigned Rides are last. The sheet is teleported to `body` and uses written light colours. The print rule only hides the page when that sheet is present.
 
 ## Changed specs
 
