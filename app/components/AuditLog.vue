@@ -87,6 +87,7 @@ function detailText(entry: AuditEntry): string {
       return `${roleLabel(entry.data.from)} → ${roleLabel(entry.data.to)}`
     case 'member.invited':
     case 'member.removed':
+    case 'member.invitation_revoked':
       return roleLabel(entry.data.role)
     case 'settings.time_zone_changed':
       return `${entry.data.from} → ${entry.data.to}`

@@ -51,6 +51,27 @@ export const inviteInputSchema = z.object({
   role: tenantRoleSchema,
 })
 
+/**
+ * GET /api/invitations. One pending, unexpired invitation.
+ * The id is how the Admin revokes it. The email is shown on Članovi.
+ * Accepted, expired, and revoked rows are not in this list.
+ */
+export const pendingInvitationSchema = z.object({
+  id: z.uuid(),
+  email: z.email(),
+  role: tenantRoleSchema,
+  expiresAt: z.iso.datetime(),
+})
+
+export const pendingInvitationListSchema = z.object({
+  invitations: z.array(pendingInvitationSchema),
+})
+
+export type PendingInvitationList = z.infer<typeof pendingInvitationListSchema>
+
+/** POST /api/invitations/:invitationId/revoke. A uuid; anything else is 400. */
+export const invitationIdSchema = z.uuid()
+
 /** POST /api/invitations/preview. A bad id is a 400, not a preview state. */
 export const invitationPreviewBodySchema = z.object({
   invitationId: z.uuid(),

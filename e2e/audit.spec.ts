@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { expectNoInvitationCookie, invite, openAudit, signIn } from './fixtures/ui'
 
 test('an admin opens the audit log from the sidebar, newest first, and can refresh', async ({ page }) => {
   const tenant = await seedTenant('audit-admin')
@@ -53,6 +53,23 @@ test('an admin opens the audit log from the sidebar, newest first, and can refre
   finally {
     page.off('request', onRequest)
   }
+})
+
+test('a revoked invitation shows the role on the audit log and not the email', async ({ page }) => {
+  const tenant = await seedTenant('audit-revoke')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const email = `e2e-revoke-${crypto.randomUUID()}@example.test`
+  const link = await invite(page, email, 'Vozač')
+  const invitationId = new URL(link).hash.slice(1)
+  const revoked = await page.request.post(`/api/invitations/${invitationId}/revoke`)
+  expect(revoked.ok()).toBe(true)
+  await expectNoInvitationCookie(page)
+
+  await openAudit(page)
+  const row = page.getByRole('row').filter({ hasText: 'Pozivnica povučena' })
+  await expect(row).toContainText('Vozač')
+  await expect(row).not.toContainText(email)
+  await expect(row).not.toContainText(invitationId)
 })
 
 test('a dispatcher has no audit item in the sidebar', async ({ page }) => {
