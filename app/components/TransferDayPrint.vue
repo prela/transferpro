@@ -14,6 +14,35 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
+/**
+ * Absent on screen. A hidden copy still matches locators, so the day list
+ * and the paper would both contain the same guest. Print media, including
+ * a browser print and a test that emulates it, mounts the sheet.
+ */
+const printing = ref(false)
+
+onMounted(() => {
+  const query = window.matchMedia('print')
+  const apply = () => {
+    printing.value = query.matches
+  }
+  const show = () => {
+    printing.value = true
+  }
+  const hide = () => {
+    printing.value = query.matches
+  }
+  apply()
+  query.addEventListener('change', apply)
+  window.addEventListener('beforeprint', show)
+  window.addEventListener('afterprint', hide)
+  onScopeDispose(() => {
+    query.removeEventListener('change', apply)
+    window.removeEventListener('beforeprint', show)
+    window.removeEventListener('afterprint', hide)
+  })
+})
+
 const groups = computed(() => {
   const byId = new Map(props.rides.map(ride => [ride.rideId, ride]))
   return groupDayPrint(props.rides).flatMap((group) => {
@@ -45,7 +74,10 @@ function clock(instant: string): string {
     A direct child of body. Hiding an ancestor with display:none would hide
     this sheet too, even if the sheet itself is set to display:block.
   -->
-  <Teleport to="body">
+  <Teleport
+    v-if="printing"
+    to="body"
+  >
     <section
       class="transfer-day-print"
       :aria-label="t('transfers.printHeading', { day })"
