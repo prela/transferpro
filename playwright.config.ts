@@ -43,7 +43,12 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   timeout: 60_000,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  // CI shards the suite. Each shard writes blob-report/report-<n>.zip (the
+  // shard index is part of the file name) and a later job merges those zips.
+  // A local run keeps the html reporter and still runs every project.
+  reporter: process.env.CI
+    ? [['list'], ['blob']]
+    : [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
     trace: 'retain-on-failure',
