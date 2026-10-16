@@ -16,12 +16,12 @@ const loadError = ref(false)
 // A slower reload must not replace the rows from a newer one.
 let loadTicket = 0
 
+const phoneColumn = { class: { td: 'max-lg:hidden', th: 'max-lg:hidden' } }
 const columns = computed(() => [
   { accessorKey: 'occurredAt' as const, header: t('audit.when') },
-  { id: 'actor', header: t('audit.who') },
-  { accessorKey: 'action' as const, header: t('audit.action') },
-  { id: 'subject', header: t('audit.member') },
-  { id: 'detail', header: t('audit.detail') },
+  { id: 'actor', header: t('audit.who'), meta: phoneColumn },
+  { accessorKey: 'action' as const, header: t('audit.action'), meta: phoneColumn },
+  { id: 'detail', header: t('audit.detail'), meta: phoneColumn },
 ])
 
 async function loadEntries() {
@@ -61,6 +61,23 @@ function actorLabel(entry: AuditEntry): string {
   if (isPlatformAuditAction(entry.action))
     return ''
   return entry.actorName ?? t('audit.formerMember')
+}
+
+function subjectLabel(entry: AuditEntry): string {
+  if (entry.subjectUserId === null)
+    return ''
+  return entry.subjectName ?? t('audit.formerMember')
+}
+
+/** The member the action named, then the field change. Who stays the actor. */
+function displayDetail(entry: AuditEntry): string {
+  return [subjectLabel(entry), detailText(entry)].filter(part => part !== '').join(' · ')
+}
+
+function auditSecondLine(entry: AuditEntry): string {
+  return [actorLabel(entry), t(`audit.actions.${entry.action}`), displayDetail(entry)]
+    .filter(part => part !== '')
+    .join(' · ')
 }
 
 /** The role the entry kept, or the wait, time zone, or operational-day start it changed from and to. */
@@ -173,19 +190,9 @@ watch(generation, () => {
       role="alert"
       :description="t('audit.loadFailed')"
     />
-    <p
-      v-else-if="loading"
-      role="status"
-    >
-      {{ t('audit.loading') }}
-    </p>
-    <p v-else-if="entries.length === 0">
-      {{ t('audit.empty') }}
-    </p>
-    <!-- Focusable, so a keyboard can scroll the columns a phone cannot fit. -->
     <div
       v-else
-      class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      class="focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary lg:overflow-x-auto"
       role="region"
       :aria-label="t('audit.title')"
       tabindex="0"
@@ -193,12 +200,16 @@ watch(generation, () => {
       <UTable
         :data="entries"
         :columns="columns"
-        class="whitespace-nowrap"
+        :loading="loading"
+        class="lg:whitespace-nowrap"
       >
         <template #occurredAt-cell="{ row }">
           <time :datetime="row.original.occurredAt">
             {{ formatInstant(new Date(row.original.occurredAt), timeZone, locale) }}
           </time>
+          <p class="mt-0.5 text-sm text-muted lg:hidden">
+            {{ auditSecondLine(row.original) }}
+          </p>
         </template>
         <template #actor-cell="{ row }">
           {{ actorLabel(row.original) }}
@@ -206,12 +217,25 @@ watch(generation, () => {
         <template #action-cell="{ row }">
           {{ t(`audit.actions.${row.original.action}`) }}
         </template>
-        <!-- An invite names no member: the invitee has no account yet. -->
-        <template #subject-cell="{ row }">
-          {{ row.original.subjectUserId === null ? '' : row.original.subjectName ?? t('audit.formerMember') }}
-        </template>
         <template #detail-cell="{ row }">
-          {{ detailText(row.original) }}
+          {{ displayDetail(row.original) }}
+        </template>
+        <template #loading>
+          <div
+            role="status"
+            class="space-y-2 py-2"
+          >
+            <p>{{ t('audit.loading') }}</p>
+            <USkeleton class="h-8 w-full" />
+            <USkeleton class="h-8 w-full" />
+          </div>
+        </template>
+        <template #empty>
+          <UEmpty
+            :title="t('audit.empty')"
+            icon="i-lucide-scroll-text"
+            variant="naked"
+          />
         </template>
       </UTable>
     </div>
@@ -219,8 +243,7 @@ watch(generation, () => {
       type="button"
       color="neutral"
       variant="outline"
-      size="xl"
-      class="mt-4"
+      class="mt-4 h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
       :disabled="loading"
       @click="loadEntries"
     >

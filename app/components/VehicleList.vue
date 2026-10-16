@@ -2,11 +2,14 @@
 import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
 import type { Vehicle, VehicleKind } from '../../shared'
 import { z } from 'zod'
-import { VEHICLE_KINDS, vehicleDateError, vehicleDescriptionError, vehicleDescriptionSchema, vehicleListSchema, vehiclePlateError, vehicleSchema } from '../../shared'
+import { catalogSearchMatches, VEHICLE_KINDS, vehicleDateError, vehicleDescriptionError, vehicleDescriptionSchema, vehicleListSchema, vehiclePlateError, vehicleSchema } from '../../shared'
+import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
 const { t, locale } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
 const listTitleId = useId()
+const searchId = useId()
+const query = ref('')
 
 const vehicles = ref<Vehicle[]>([])
 const includeArchived = ref(false)
@@ -18,11 +21,13 @@ const saving = ref(false)
 const archivingId = ref<string | null>(null)
 
 /**
- * Add and correct share one slideover. Archive stays a separate confirm:
+ * Add and correct share one panel. Archive stays a separate confirm:
  * POST /api/vehicles/:id/archive already exists.
  */
 const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
+/** The panel title stays the plate that was opened, not the half-typed correction. */
+const openedName = ref('')
 const archiveTarget = ref<Vehicle | null>(null)
 const state = reactive<{
   registrationPlate: string
@@ -54,16 +59,36 @@ const kindItems = computed(() => [
   { label: t('vehicles.kinds.occasional'), value: 'occasional' as const },
 ])
 
+const phoneColumn = { class: { td: 'max-lg:hidden', th: 'max-lg:hidden' } }
 const columns = computed(() => [
   { accessorKey: 'registrationPlate' as const, header: t('vehicles.registrationPlate') },
-  { accessorKey: 'description' as const, header: t('vehicles.description') },
-  { id: 'kind', header: t('vehicles.kind') },
-  { id: 'registration', header: t('vehicles.registrationExpiresOn') },
-  { id: 'technical', header: t('vehicles.technicalInspectionExpiresOn') },
-  { id: 'insurance', header: t('vehicles.insuranceExpiresOn') },
-  { id: 'status', header: '' },
+  { accessorKey: 'description' as const, header: t('vehicles.description'), meta: phoneColumn },
+  { id: 'kind', header: t('vehicles.kind'), meta: phoneColumn },
+  { id: 'registration', header: t('vehicles.registrationExpiresOn'), meta: phoneColumn },
+  { id: 'technical', header: t('vehicles.technicalInspectionExpiresOn'), meta: phoneColumn },
+  { id: 'insurance', header: t('vehicles.insuranceExpiresOn'), meta: phoneColumn },
+  { id: 'status', header: '', meta: phoneColumn },
   { id: 'actions', header: '' },
 ])
+
+const visibleVehicles = computed(() => vehicles.value.filter(vehicle =>
+  catalogSearchMatches(query.value, [
+    vehicle.registrationPlate,
+    vehicle.description ?? '',
+    t(`vehicles.kinds.${vehicle.kind}`),
+    formatDay(vehicle.registrationExpiresOn),
+    formatDay(vehicle.technicalInspectionExpiresOn),
+    formatDay(vehicle.insuranceExpiresOn),
+    vehicle.archivedAt ? t('vehicles.archived') : '',
+  ]),
+))
+
+/** An archived row opens for reading. The server refuses a correction. */
+const archivedView = computed(() => {
+  if (formMode.value !== 'edit' || editingId.value === null)
+    return false
+  return vehicles.value.find(vehicle => vehicle.id === editingId.value)?.archivedAt != null
+})
 
 /** Messages follow the active Locale. Bounds stay in the shared plate, date, and description checks. */
 const schema = computed(() => z.object({
@@ -109,7 +134,7 @@ const archiveOpen = computed({
   },
 })
 
-const formTitle = computed(() => formMode.value === 'edit' ? t('vehicles.edit') : t('vehicles.add'))
+const formTitle = computed(() => formMode.value === 'edit' ? openedName.value : t('vehicles.add'))
 const submitLabel = computed(() => {
   if (saving.value)
     return formMode.value === 'edit' ? t('vehicles.saving') : t('vehicles.submitting')
@@ -152,18 +177,21 @@ function formatDay(iso: string): string {
 }
 
 function vehicleActions(vehicle: Vehicle): DropdownMenuItem[][] {
+  if (vehicle.archivedAt !== null)
+    return []
   return [[
-    {
-      label: t('vehicles.edit'),
-      icon: 'i-lucide-pencil',
-      onSelect: () => openEdit(vehicle),
-    },
     {
       label: t('vehicles.archive'),
       icon: 'i-lucide-archive',
       onSelect: () => askArchive(vehicle),
     },
   ]]
+}
+
+function vehicleSecondLine(vehicle: Vehicle): string {
+  const kind = t(`vehicles.kinds.${vehicle.kind}`)
+  const extra = vehicle.archivedAt ? t('vehicles.archived') : formatDay(vehicle.registrationExpiresOn)
+  return `${kind} · ${extra}`
 }
 
 async function loadVehicles() {
@@ -189,6 +217,7 @@ function resetForm() {
   state.technicalInspectionExpiresOn = ''
   state.insuranceExpiresOn = ''
   state.description = ''
+  openedName.value = ''
   formErrorKey.value = null
 }
 
@@ -200,6 +229,7 @@ function openAdd() {
 
 function openEdit(vehicle: Vehicle) {
   editingId.value = vehicle.id
+  openedName.value = vehicle.registrationPlate
   state.registrationPlate = vehicle.registrationPlate
   state.kind = vehicle.kind
   state.registrationExpiresOn = vehicle.registrationExpiresOn
@@ -228,6 +258,8 @@ async function onSubmit(event: FormSubmitEvent<VehicleForm>) {
   try {
     const body = vehicleBody(event.data)
     if (formMode.value === 'edit') {
+      if (archivedView.value)
+        return
       const id = editingId.value
       if (!id)
         return
@@ -295,116 +327,143 @@ onMounted(() => {
 </script>
 
 <template>
-  <section>
-    <UButton
-      type="button"
-      size="xl"
-      icon="i-lucide-plus"
-      class="mb-4"
-      @click="openAdd"
-    >
-      {{ t('vehicles.add') }}
-    </UButton>
-
-    <h2
-      :id="listTitleId"
-      class="mb-4 text-xl font-semibold"
-    >
-      {{ t('vehicles.title') }}
-    </h2>
-    <UCheckbox
-      id="vehicle-show-archived"
-      v-model="includeArchived"
-      name="show-archived"
-      size="xl"
-      class="mb-4"
-      :label="t('vehicles.showArchived')"
-      @update:model-value="loadVehicles()"
-    />
-    <UAlert
-      v-if="loadErrorKey"
-      color="error"
-      variant="subtle"
-      role="alert"
-      :description="t(loadErrorKey)"
-    />
-    <div
-      v-else
-      class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      role="region"
-      :aria-labelledby="listTitleId"
-      tabindex="0"
-    >
-      <UTable
-        :data="vehicles"
-        :columns="columns"
-        :loading="loading"
-        class="whitespace-nowrap"
-      >
-        <template #kind-cell="{ row }">
-          {{ t(`vehicles.kinds.${row.original.kind}`) }}
-        </template>
-        <template #registration-cell="{ row }">
-          {{ formatDay(row.original.registrationExpiresOn) }}
-        </template>
-        <template #registrationPlate-cell="{ row }">
-          <span class="font-mono">{{ row.original.registrationPlate }}</span>
-        </template>
-        <template #technical-cell="{ row }">
-          {{ formatDay(row.original.technicalInspectionExpiresOn) }}
-        </template>
-        <template #insurance-cell="{ row }">
-          {{ formatDay(row.original.insuranceExpiresOn) }}
-        </template>
-        <template #status-cell="{ row }">
-          {{ row.original.archivedAt ? t('vehicles.archived') : '' }}
-        </template>
-        <template #actions-header>
-          <span class="sr-only">{{ t('vehicles.actions') }}</span>
-        </template>
-        <template #actions-cell="{ row }">
-          <UDropdownMenu
-            v-if="row.original.archivedAt === null"
-            :items="vehicleActions(row.original)"
-            size="xl"
-          >
-            <UButton
-              type="button"
-              color="neutral"
-              variant="outline"
-              size="xl"
-              icon="i-lucide-ellipsis-vertical"
-              :aria-label="t('vehicles.actionsFor', { name: row.original.registrationPlate })"
-            />
-          </UDropdownMenu>
-        </template>
-        <template #loading>
-          <div
-            role="status"
-            class="space-y-2 py-2"
-          >
-            <p>{{ t('vehicles.loading') }}</p>
-            <USkeleton class="h-8 w-full" />
-            <USkeleton class="h-8 w-full" />
-          </div>
-        </template>
-        <template #empty>
-          <UEmpty
-            :title="t('vehicles.empty')"
-            icon="i-lucide-car"
-            variant="naked"
-          />
-        </template>
-      </UTable>
-    </div>
-
-    <USlideover
+  <div>
+    <CatalogPanel
       v-model:open="formOpen"
       :title="formTitle"
       :dismissible="!saving"
-      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
     >
-      <template #body>
+      <template #toolbar>
+        <div class="mb-4 flex flex-wrap items-end gap-3">
+          <div class="min-w-48 flex-1">
+            <!-- UFormField outside a UForm does not label the input. Axe and the searchbox name need for/id. -->
+            <label
+              :for="searchId"
+              class="mb-1 block text-sm font-medium max-lg:text-base"
+            >{{ t('catalog.search') }}</label>
+            <UInput
+              :id="searchId"
+              v-model="query"
+              type="search"
+              autocomplete="off"
+              class="w-full"
+              :class="commandInputClass"
+            />
+          </div>
+          <UCheckbox
+            id="vehicle-show-archived"
+            v-model="includeArchived"
+            name="show-archived"
+            class="mb-1 max-lg:min-h-11"
+            :label="t('vehicles.showArchived')"
+            :ui="{ label: 'max-lg:text-base' }"
+            @update:model-value="loadVehicles()"
+          />
+          <UButton
+            type="button"
+            class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
+            @click="openAdd"
+          >
+            {{ t('catalog.add') }}
+          </UButton>
+        </div>
+      </template>
+      <template #list>
+        <h2
+          :id="listTitleId"
+          class="mb-4 text-xl font-semibold"
+        >
+          {{ t('vehicles.title') }}
+        </h2>
+        <UAlert
+          v-if="loadErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          :description="t(loadErrorKey)"
+        />
+        <div
+          v-else
+          class="focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary lg:overflow-x-auto"
+          role="region"
+          :aria-labelledby="listTitleId"
+          tabindex="0"
+        >
+          <UTable
+            :data="visibleVehicles"
+            :columns="columns"
+            :loading="loading"
+            class="lg:whitespace-nowrap"
+            @select="(_event: Event, row: { original: Vehicle }) => openEdit(row.original)"
+          >
+            <template #registrationPlate-cell="{ row }">
+              <button
+                type="button"
+                class="block min-h-7 w-full text-left font-mono font-medium max-lg:min-h-11 max-lg:text-base"
+                @click="openEdit(row.original)"
+              >
+                {{ row.original.registrationPlate }}
+              </button>
+              <p class="mt-0.5 text-sm text-muted lg:hidden">
+                {{ vehicleSecondLine(row.original) }}
+              </p>
+            </template>
+            <template #kind-cell="{ row }">
+              {{ t(`vehicles.kinds.${row.original.kind}`) }}
+            </template>
+            <template #registration-cell="{ row }">
+              {{ formatDay(row.original.registrationExpiresOn) }}
+            </template>
+            <template #technical-cell="{ row }">
+              {{ formatDay(row.original.technicalInspectionExpiresOn) }}
+            </template>
+            <template #insurance-cell="{ row }">
+              {{ formatDay(row.original.insuranceExpiresOn) }}
+            </template>
+            <template #status-cell="{ row }">
+              {{ row.original.archivedAt ? t('vehicles.archived') : '' }}
+            </template>
+            <template #actions-header>
+              <span class="sr-only">{{ t('vehicles.actions') }}</span>
+            </template>
+            <template #actions-cell="{ row }">
+              <UDropdownMenu
+                v-if="row.original.archivedAt === null"
+                :items="vehicleActions(row.original)"
+                size="sm"
+              >
+                <UButton
+                  type="button"
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-ellipsis-vertical"
+                  class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11"
+                  :aria-label="t('vehicles.actionsFor', { name: row.original.registrationPlate })"
+                />
+              </UDropdownMenu>
+            </template>
+            <template #loading>
+              <div
+                role="status"
+                class="space-y-2 py-2"
+              >
+                <p>{{ t('vehicles.loading') }}</p>
+                <USkeleton class="h-8 w-full" />
+                <USkeleton class="h-8 w-full" />
+              </div>
+            </template>
+            <template #empty>
+              <UEmpty
+                :title="query.trim() ? t('catalog.searchEmpty') : t('vehicles.empty')"
+                icon="i-lucide-car"
+                variant="naked"
+              />
+            </template>
+          </UTable>
+        </div>
+      </template>
+
+      <template #body="{ phone }">
         <UAlert
           v-if="formErrorKey"
           color="error"
@@ -413,19 +472,26 @@ onMounted(() => {
           class="mb-4"
           :description="t(formErrorKey)"
         />
+        <p
+          v-if="archivedView"
+          class="mb-4 text-sm text-muted"
+        >
+          {{ t('vehicles.archived') }}
+        </p>
         <UForm
           id="vehicle-form"
           :schema="schema"
           :state="state"
           :validate-on="[]"
           class="space-y-4"
+          :class="commandInputClass"
           @submit="onSubmit"
           @error="formErrorKey = null"
         >
           <UFormField
             :label="t('vehicles.registrationPlate')"
             name="registrationPlate"
-            size="xl"
+            :size="phone ? 'xl' : 'sm'"
           >
             <UInput
               v-model="state.registrationPlate"
@@ -433,6 +499,7 @@ onMounted(() => {
               type="text"
               autocomplete="off"
               class="w-full font-mono"
+              :disabled="archivedView"
             />
             <template #error="{ error }">
               <span
@@ -444,7 +511,7 @@ onMounted(() => {
           <UFormField
             :label="t('vehicles.kind')"
             name="kind"
-            size="xl"
+            :size="phone ? 'xl' : 'sm'"
           >
             <USelect
               v-model="state.kind"
@@ -452,6 +519,7 @@ onMounted(() => {
               :items="kindItems"
               :placeholder="t('vehicles.chooseKind')"
               class="w-full"
+              :disabled="archivedView"
             />
             <template #error="{ error }">
               <span
@@ -463,7 +531,7 @@ onMounted(() => {
           <UFormField
             :label="t('vehicles.registrationExpiresOn')"
             name="registrationExpiresOn"
-            size="xl"
+            :size="phone ? 'xl' : 'sm'"
           >
             <UInput
               v-model="state.registrationExpiresOn"
@@ -471,6 +539,7 @@ onMounted(() => {
               type="date"
               autocomplete="off"
               class="w-full"
+              :disabled="archivedView"
             />
             <template #error="{ error }">
               <span
@@ -482,7 +551,7 @@ onMounted(() => {
           <UFormField
             :label="t('vehicles.technicalInspectionExpiresOn')"
             name="technicalInspectionExpiresOn"
-            size="xl"
+            :size="phone ? 'xl' : 'sm'"
           >
             <UInput
               v-model="state.technicalInspectionExpiresOn"
@@ -490,6 +559,7 @@ onMounted(() => {
               type="date"
               autocomplete="off"
               class="w-full"
+              :disabled="archivedView"
             />
             <template #error="{ error }">
               <span
@@ -501,7 +571,7 @@ onMounted(() => {
           <UFormField
             :label="t('vehicles.insuranceExpiresOn')"
             name="insuranceExpiresOn"
-            size="xl"
+            :size="phone ? 'xl' : 'sm'"
           >
             <UInput
               v-model="state.insuranceExpiresOn"
@@ -509,6 +579,7 @@ onMounted(() => {
               type="date"
               autocomplete="off"
               class="w-full"
+              :disabled="archivedView"
             />
             <template #error="{ error }">
               <span
@@ -520,7 +591,7 @@ onMounted(() => {
           <UFormField
             :label="t('vehicles.description')"
             name="description"
-            size="xl"
+            :size="phone ? 'xl' : 'sm'"
           >
             <UInput
               v-model="state.description"
@@ -528,6 +599,7 @@ onMounted(() => {
               type="text"
               autocomplete="off"
               class="w-full"
+              :disabled="archivedView"
             />
             <template #error="{ error }">
               <span
@@ -538,29 +610,32 @@ onMounted(() => {
           </UFormField>
         </UForm>
       </template>
-      <template #footer>
+      <template #footer="{ phone }">
         <UButton
           type="button"
           color="neutral"
           variant="outline"
-          size="xl"
+          :size="commandControlSize(phone)"
           class="w-full justify-center sm:w-auto"
+          :class="commandControlClass(phone)"
           :disabled="saving"
           @click="formOpen = false"
         >
           {{ t('vehicles.cancel') }}
         </UButton>
         <UButton
+          v-if="!archivedView"
           type="submit"
           form="vehicle-form"
-          size="xl"
+          :size="commandControlSize(phone)"
           class="w-full justify-center sm:w-auto"
+          :class="commandControlClass(phone)"
           :loading="saving"
         >
           {{ submitLabel }}
         </UButton>
       </template>
-    </USlideover>
+    </CatalogPanel>
 
     <UModal
       v-model:open="archiveOpen"
@@ -608,5 +683,5 @@ onMounted(() => {
         </UButton>
       </template>
     </UModal>
-  </section>
+  </div>
 </template>

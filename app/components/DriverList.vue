@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
+import type { FormSubmitEvent } from '@nuxt/ui'
 import type { Driver, DriverKind } from '../../shared'
 import { z } from 'zod'
-import { DRIVER_KINDS, driverDateError, driverEmailError, driverListSchema, driverNameError, driverPhoneError, driverSchema, memberListSchema } from '../../shared'
+import { catalogSearchMatches, DRIVER_KINDS, driverDateError, driverEmailError, driverListSchema, driverNameError, driverPhoneError, driverSchema, memberListSchema } from '../../shared'
+import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
 const props = defineProps<{
   isAdmin: boolean
@@ -11,6 +12,8 @@ const props = defineProps<{
 const { t, locale } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
 const listTitleId = useId()
+const searchId = useId()
+const query = ref('')
 
 /**
  * Reka UI refuses a SelectItem whose value is `''`: that string is reserved
@@ -27,11 +30,13 @@ const formErrorKey = ref<DriverFailure | null>(null)
 const saving = ref(false)
 
 /**
- * Add and correct share one slideover. A Driver has no archive:
- * there is no archive route, so the row menu is correct only.
+ * Add and correct share one panel. A Driver has no archive:
+ * there is no archive route, so the row has no ⋮.
  */
 const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
+/** The panel title stays the name that was opened, not the half-typed correction. */
+const openedName = ref('')
 const linkedOnOpen = ref(noAccount)
 const emailOnOpen = ref('')
 const state = reactive<{
@@ -75,17 +80,29 @@ const memberItems = computed(() => [
   ...members.value.map(member => ({ label: member.name, value: member.userId })),
 ])
 
+const phoneColumn = { class: { td: 'max-lg:hidden', th: 'max-lg:hidden' } }
 const columns = computed(() => [
   { accessorKey: 'name' as const, header: t('drivers.name') },
-  { id: 'kind', header: t('drivers.kind') },
-  { accessorKey: 'phone' as const, header: t('drivers.phone') },
-  { accessorKey: 'email' as const, header: t('drivers.email') },
-  { id: 'driving', header: t('drivers.drivingLicenceExpiresOn') },
-  { id: 'transport', header: t('drivers.transportLicenceExpiresOn') },
-  { id: 'member', header: t('drivers.member') },
-  { id: 'mustAccept', header: t('drivers.mustAccept') },
-  { id: 'actions', header: '' },
+  { id: 'kind', header: t('drivers.kind'), meta: phoneColumn },
+  { accessorKey: 'phone' as const, header: t('drivers.phone'), meta: phoneColumn },
+  { accessorKey: 'email' as const, header: t('drivers.email'), meta: phoneColumn },
+  { id: 'driving', header: t('drivers.drivingLicenceExpiresOn'), meta: phoneColumn },
+  { id: 'transport', header: t('drivers.transportLicenceExpiresOn'), meta: phoneColumn },
+  { id: 'member', header: t('drivers.member'), meta: phoneColumn },
+  { id: 'mustAccept', header: t('drivers.mustAccept'), meta: phoneColumn },
 ])
+
+const visibleDrivers = computed(() => drivers.value.filter(driver =>
+  catalogSearchMatches(query.value, [
+    driver.name,
+    t(`drivers.kinds.${driver.kind}`),
+    driver.phone,
+    driver.email ?? '',
+    formatDay(driver.drivingLicenceExpiresOn),
+    formatDay(driver.transportLicenceExpiresOn),
+    memberLabel(driver.memberUserId),
+  ]),
+))
 
 /** Messages follow the active Locale. A linked Driver does not type an address. */
 const schema = computed(() => z.object({
@@ -135,7 +152,7 @@ const formOpen = computed({
   },
 })
 
-const formTitle = computed(() => formMode.value === 'edit' ? t('drivers.edit') : t('drivers.add'))
+const formTitle = computed(() => formMode.value === 'edit' ? openedName.value : t('drivers.add'))
 const submitLabel = computed(() => {
   if (saving.value)
     return formMode.value === 'edit' ? t('drivers.saving') : t('drivers.submitting')
@@ -169,14 +186,8 @@ function memberLabel(userId: string | null): string {
   return members.value.find(member => member.userId === userId)?.name ?? t('drivers.memberGone')
 }
 
-function driverActions(driver: Driver): DropdownMenuItem[][] {
-  return [[
-    {
-      label: t('drivers.edit'),
-      icon: 'i-lucide-pencil',
-      onSelect: () => openEdit(driver),
-    },
-  ]]
+function driverSecondLine(driver: Driver): string {
+  return `${t(`drivers.kinds.${driver.kind}`)} · ${formatDay(driver.drivingLicenceExpiresOn)}`
 }
 
 async function loadMembers() {
@@ -227,6 +238,7 @@ function resetForm() {
   state.mustAccept = false
   linkedOnOpen.value = noAccount
   emailOnOpen.value = ''
+  openedName.value = ''
   formErrorKey.value = null
 }
 
@@ -238,6 +250,7 @@ function openAdd() {
 
 function openEdit(driver: Driver) {
   editingId.value = driver.id
+  openedName.value = driver.name
   state.name = driver.name
   state.kind = driver.kind
   state.phone = driver.phone
@@ -326,286 +339,300 @@ onMounted(() => {
 </script>
 
 <template>
-  <section>
-    <UButton
-      type="button"
-      size="xl"
-      icon="i-lucide-plus"
-      class="mb-4"
-      @click="openAdd"
-    >
-      {{ t('drivers.add') }}
-    </UButton>
-
-    <h2
-      :id="listTitleId"
-      class="mb-4 text-xl font-semibold"
-    >
-      {{ t('drivers.title') }}
-    </h2>
-    <UAlert
-      v-if="loadErrorKey"
-      color="error"
-      variant="subtle"
-      role="alert"
-      :description="t(loadErrorKey)"
-    />
-    <div
-      v-else
-      class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      role="region"
-      :aria-labelledby="listTitleId"
-      tabindex="0"
-    >
-      <UTable
-        :data="drivers"
-        :columns="columns"
-        :loading="loading"
-        class="whitespace-nowrap"
-      >
-        <template #kind-cell="{ row }">
-          {{ t(`drivers.kinds.${row.original.kind}`) }}
-        </template>
-        <template #driving-cell="{ row }">
-          {{ formatDay(row.original.drivingLicenceExpiresOn) }}
-        </template>
-        <template #transport-cell="{ row }">
-          {{ formatDay(row.original.transportLicenceExpiresOn) }}
-        </template>
-        <template #member-cell="{ row }">
-          {{ memberLabel(row.original.memberUserId) }}
-        </template>
-        <template #mustAccept-cell="{ row }">
-          {{ row.original.mustAccept ? t('drivers.yes') : t('drivers.no') }}
-        </template>
-        <template #actions-header>
-          <span class="sr-only">{{ t('drivers.actions') }}</span>
-        </template>
-        <template #actions-cell="{ row }">
-          <UDropdownMenu
-            :items="driverActions(row.original)"
-            size="xl"
-          >
-            <UButton
-              type="button"
-              color="neutral"
-              variant="outline"
-              size="xl"
-              icon="i-lucide-ellipsis-vertical"
-              :aria-label="t('drivers.actionsFor', { name: row.original.name })"
-            />
-          </UDropdownMenu>
-        </template>
-        <template #loading>
-          <div
-            role="status"
-            class="space-y-2 py-2"
-          >
-            <p>{{ t('drivers.loading') }}</p>
-            <USkeleton class="h-8 w-full" />
-            <USkeleton class="h-8 w-full" />
-          </div>
-        </template>
-        <template #empty>
-          <UEmpty
-            :title="t('drivers.empty')"
-            icon="i-lucide-user"
-            variant="naked"
+  <CatalogPanel
+    v-model:open="formOpen"
+    :title="formTitle"
+    :dismissible="!saving"
+  >
+    <template #toolbar>
+      <div class="mb-4 flex flex-wrap items-end gap-3">
+        <div class="min-w-48 flex-1">
+          <!-- UFormField outside a UForm does not label the input. Axe and the searchbox name need for/id. -->
+          <label
+            :for="searchId"
+            class="mb-1 block text-sm font-medium max-lg:text-base"
+          >{{ t('catalog.search') }}</label>
+          <UInput
+            :id="searchId"
+            v-model="query"
+            type="search"
+            autocomplete="off"
+            class="w-full"
+            :class="commandInputClass"
           />
-        </template>
-      </UTable>
-    </div>
-
-    <USlideover
-      v-model:open="formOpen"
-      :title="formTitle"
-      :dismissible="!saving"
-      :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
-    >
-      <template #body>
-        <UAlert
-          v-if="formErrorKey"
-          color="error"
-          variant="subtle"
-          role="alert"
-          class="mb-4"
-          :description="t(formErrorKey)"
-        />
-        <UForm
-          id="driver-form"
-          novalidate
-          :schema="schema"
-          :state="state"
-          :validate-on="[]"
-          class="space-y-4"
-          @submit="onSubmit"
-          @error="formErrorKey = null"
-        >
-          <UFormField
-            :label="t('drivers.name')"
-            name="name"
-            size="xl"
-          >
-            <UInput
-              v-model="state.name"
-              name="name"
-              type="text"
-              autocomplete="off"
-              class="w-full"
-            />
-            <template #error="{ error }">
-              <span
-                v-if="error"
-                role="alert"
-              >{{ error }}</span>
-            </template>
-          </UFormField>
-          <UFormField
-            :label="t('drivers.kind')"
-            name="kind"
-            size="xl"
-          >
-            <USelect
-              v-model="state.kind"
-              name="kind"
-              :items="kindItems"
-              :placeholder="t('drivers.chooseKind')"
-              class="w-full"
-            />
-            <template #error="{ error }">
-              <span
-                v-if="error"
-                role="alert"
-              >{{ error }}</span>
-            </template>
-          </UFormField>
-          <UFormField
-            :label="t('drivers.phone')"
-            name="phone"
-            size="xl"
-          >
-            <UInput
-              v-model="state.phone"
-              name="phone"
-              type="tel"
-              autocomplete="off"
-              class="w-full"
-            />
-            <template #error="{ error }">
-              <span
-                v-if="error"
-                role="alert"
-              >{{ error }}</span>
-            </template>
-          </UFormField>
-          <UFormField
-            v-if="formMode === 'edit' || !emailLocked"
-            :label="t('drivers.email')"
-            name="email"
-            size="xl"
-          >
-            <UInput
-              v-model="state.email"
-              name="email"
-              type="email"
-              autocomplete="off"
-              class="w-full"
-              :disabled="emailLocked"
-            />
-            <p
-              v-if="emailLocked"
-              class="mt-1 text-sm text-muted"
-            >
-              {{ t('drivers.emailFromAccount') }}
-            </p>
-            <template #error="{ error }">
-              <span
-                v-if="error"
-                role="alert"
-              >{{ error }}</span>
-            </template>
-          </UFormField>
-          <UFormField
-            :label="t('drivers.drivingLicenceExpiresOn')"
-            name="drivingLicenceExpiresOn"
-            size="xl"
-          >
-            <UInput
-              v-model="state.drivingLicenceExpiresOn"
-              name="drivingLicenceExpiresOn"
-              type="date"
-              autocomplete="off"
-              class="w-full"
-            />
-            <template #error="{ error }">
-              <span
-                v-if="error"
-                role="alert"
-              >{{ error }}</span>
-            </template>
-          </UFormField>
-          <UFormField
-            :label="t('drivers.transportLicenceExpiresOn')"
-            name="transportLicenceExpiresOn"
-            size="xl"
-          >
-            <UInput
-              v-model="state.transportLicenceExpiresOn"
-              name="transportLicenceExpiresOn"
-              type="date"
-              autocomplete="off"
-              class="w-full"
-            />
-            <template #error="{ error }">
-              <span
-                v-if="error"
-                role="alert"
-              >{{ error }}</span>
-            </template>
-          </UFormField>
-          <UFormField
-            :label="t('drivers.member')"
-            name="memberUserId"
-            size="xl"
-          >
-            <USelect
-              v-model="state.memberUserId"
-              name="memberUserId"
-              :items="memberItems"
-              class="w-full"
-            />
-          </UFormField>
-          <UCheckbox
-            v-if="formMode === 'edit' && isAdmin"
-            v-model="state.mustAccept"
-            name="must-accept"
-            size="xl"
-            :label="t('drivers.mustAccept')"
-          />
-        </UForm>
-      </template>
-      <template #footer>
+        </div>
         <UButton
           type="button"
-          color="neutral"
-          variant="outline"
-          size="xl"
-          class="w-full justify-center sm:w-auto"
-          :disabled="saving"
-          @click="formOpen = false"
+          class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
+          @click="openAdd"
         >
-          {{ t('drivers.cancel') }}
+          {{ t('catalog.add') }}
         </UButton>
-        <UButton
-          type="submit"
-          form="driver-form"
-          size="xl"
-          class="w-full justify-center sm:w-auto"
-          :loading="saving"
+      </div>
+    </template>
+
+    <template #list>
+      <h2
+        :id="listTitleId"
+        class="mb-4 text-xl font-semibold"
+      >
+        {{ t('drivers.title') }}
+      </h2>
+      <UAlert
+        v-if="loadErrorKey"
+        color="error"
+        variant="subtle"
+        role="alert"
+        :description="t(loadErrorKey)"
+      />
+      <div
+        v-else
+        class="focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary lg:overflow-x-auto"
+        role="region"
+        :aria-labelledby="listTitleId"
+        tabindex="0"
+      >
+        <UTable
+          :data="visibleDrivers"
+          :columns="columns"
+          :loading="loading"
+          class="lg:whitespace-nowrap"
+          @select="(_event: Event, row: { original: Driver }) => openEdit(row.original)"
         >
-          {{ submitLabel }}
-        </UButton>
-      </template>
-    </USlideover>
-  </section>
+          <template #name-cell="{ row }">
+            <button
+              type="button"
+              class="block min-h-7 w-full text-left font-medium max-lg:min-h-11 max-lg:text-base"
+              @click="openEdit(row.original)"
+            >
+              {{ row.original.name }}
+            </button>
+            <p class="mt-0.5 text-sm text-muted lg:hidden">
+              {{ driverSecondLine(row.original) }}
+            </p>
+          </template>
+          <template #kind-cell="{ row }">
+            {{ t(`drivers.kinds.${row.original.kind}`) }}
+          </template>
+          <template #driving-cell="{ row }">
+            {{ formatDay(row.original.drivingLicenceExpiresOn) }}
+          </template>
+          <template #transport-cell="{ row }">
+            {{ formatDay(row.original.transportLicenceExpiresOn) }}
+          </template>
+          <template #member-cell="{ row }">
+            {{ memberLabel(row.original.memberUserId) }}
+          </template>
+          <template #mustAccept-cell="{ row }">
+            {{ row.original.mustAccept ? t('drivers.yes') : t('drivers.no') }}
+          </template>
+          <template #loading>
+            <div
+              role="status"
+              class="space-y-2 py-2"
+            >
+              <p>{{ t('drivers.loading') }}</p>
+              <USkeleton class="h-8 w-full" />
+              <USkeleton class="h-8 w-full" />
+            </div>
+          </template>
+          <template #empty>
+            <UEmpty
+              :title="query.trim() ? t('catalog.searchEmpty') : t('drivers.empty')"
+              icon="i-lucide-user"
+              variant="naked"
+            />
+          </template>
+        </UTable>
+      </div>
+    </template>
+
+    <template #body="{ phone }">
+      <UAlert
+        v-if="formErrorKey"
+        color="error"
+        variant="subtle"
+        role="alert"
+        class="mb-4"
+        :description="t(formErrorKey)"
+      />
+      <UForm
+        id="driver-form"
+        novalidate
+        :schema="schema"
+        :state="state"
+        :validate-on="[]"
+        class="space-y-4"
+        :class="commandInputClass"
+        @submit="onSubmit"
+        @error="formErrorKey = null"
+      >
+        <UFormField
+          :label="t('drivers.name')"
+          name="name"
+          :size="phone ? 'xl' : 'sm'"
+        >
+          <UInput
+            v-model="state.name"
+            name="name"
+            type="text"
+            autocomplete="off"
+            class="w-full"
+          />
+          <template #error="{ error }">
+            <span
+              v-if="error"
+              role="alert"
+            >{{ error }}</span>
+          </template>
+        </UFormField>
+        <UFormField
+          :label="t('drivers.kind')"
+          name="kind"
+          :size="phone ? 'xl' : 'sm'"
+        >
+          <USelect
+            v-model="state.kind"
+            name="kind"
+            :items="kindItems"
+            :placeholder="t('drivers.chooseKind')"
+            class="w-full"
+          />
+          <template #error="{ error }">
+            <span
+              v-if="error"
+              role="alert"
+            >{{ error }}</span>
+          </template>
+        </UFormField>
+        <UFormField
+          :label="t('drivers.phone')"
+          name="phone"
+          :size="phone ? 'xl' : 'sm'"
+        >
+          <UInput
+            v-model="state.phone"
+            name="phone"
+            type="tel"
+            autocomplete="off"
+            class="w-full"
+          />
+          <template #error="{ error }">
+            <span
+              v-if="error"
+              role="alert"
+            >{{ error }}</span>
+          </template>
+        </UFormField>
+        <UFormField
+          v-if="formMode === 'edit' || !emailLocked"
+          :label="t('drivers.email')"
+          name="email"
+          :size="phone ? 'xl' : 'sm'"
+        >
+          <UInput
+            v-model="state.email"
+            name="email"
+            type="email"
+            autocomplete="off"
+            class="w-full"
+            :disabled="emailLocked"
+          />
+          <p
+            v-if="emailLocked"
+            class="mt-1 text-sm text-muted"
+          >
+            {{ t('drivers.emailFromAccount') }}
+          </p>
+          <template #error="{ error }">
+            <span
+              v-if="error"
+              role="alert"
+            >{{ error }}</span>
+          </template>
+        </UFormField>
+        <UFormField
+          :label="t('drivers.drivingLicenceExpiresOn')"
+          name="drivingLicenceExpiresOn"
+          :size="phone ? 'xl' : 'sm'"
+        >
+          <UInput
+            v-model="state.drivingLicenceExpiresOn"
+            name="drivingLicenceExpiresOn"
+            type="date"
+            autocomplete="off"
+            class="w-full"
+          />
+          <template #error="{ error }">
+            <span
+              v-if="error"
+              role="alert"
+            >{{ error }}</span>
+          </template>
+        </UFormField>
+        <UFormField
+          :label="t('drivers.transportLicenceExpiresOn')"
+          name="transportLicenceExpiresOn"
+          :size="phone ? 'xl' : 'sm'"
+        >
+          <UInput
+            v-model="state.transportLicenceExpiresOn"
+            name="transportLicenceExpiresOn"
+            type="date"
+            autocomplete="off"
+            class="w-full"
+          />
+          <template #error="{ error }">
+            <span
+              v-if="error"
+              role="alert"
+            >{{ error }}</span>
+          </template>
+        </UFormField>
+        <UFormField
+          :label="t('drivers.member')"
+          name="memberUserId"
+          :size="phone ? 'xl' : 'sm'"
+        >
+          <USelect
+            v-model="state.memberUserId"
+            name="memberUserId"
+            :items="memberItems"
+            class="w-full"
+          />
+        </UFormField>
+        <UCheckbox
+          v-if="formMode === 'edit' && isAdmin"
+          v-model="state.mustAccept"
+          name="must-accept"
+          :size="phone ? 'xl' : 'sm'"
+          :label="t('drivers.mustAccept')"
+        />
+      </UForm>
+    </template>
+    <template #footer="{ phone }">
+      <UButton
+        type="button"
+        color="neutral"
+        variant="outline"
+        :size="commandControlSize(phone)"
+        class="w-full justify-center sm:w-auto"
+        :class="commandControlClass(phone)"
+        :disabled="saving"
+        @click="formOpen = false"
+      >
+        {{ t('drivers.cancel') }}
+      </UButton>
+      <UButton
+        type="submit"
+        form="driver-form"
+        :size="commandControlSize(phone)"
+        class="w-full justify-center sm:w-auto"
+        :class="commandControlClass(phone)"
+        :loading="saving"
+      >
+        {{ submitLabel }}
+      </UButton>
+    </template>
+  </CatalogPanel>
 </template>

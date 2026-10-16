@@ -7,7 +7,7 @@ const archivedPlate = 'ARC81AA'
 const livePlate = 'LIV81BB'
 
 async function addVehicle(page: Page, plate: string, kind: 'Stalno' | 'Povremeno') {
-  await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Registarska oznaka', { exact: true }).fill(plate)
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), kind)
@@ -31,11 +31,10 @@ test('correcting a plate to an archived plate shows the archived-conflict messag
   let dialog = page.getByRole('dialog')
   await dialog.getByRole('button', { name: 'Arhiviraj', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await expect(page.getByText('Još nema vozila.')).toBeVisible()
+  await expect(page.getByText('Još nema vozila. Dodajte prvo.')).toBeVisible()
 
   await addVehicle(page, livePlate, 'Povremeno')
-  await page.getByRole('button', { name: `Radnje: ${livePlate}` }).click()
-  await page.getByRole('menuitem', { name: 'Ispravi vozilo', exact: true }).click()
+  await page.getByRole('button', { name: livePlate, exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Registarska oznaka', { exact: true }).fill(archivedPlate)
   await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
@@ -49,8 +48,7 @@ test('correcting a plate to an archived plate shows the archived-conflict messag
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
   await expect(dialog).toBeHidden()
   await switchLocale(page, 'en')
-  await page.getByRole('button', { name: `Actions: ${livePlate}` }).click()
-  await page.getByRole('menuitem', { name: 'Correct vehicle', exact: true }).click()
+  await page.getByRole('button', { name: livePlate, exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Registration plate', { exact: true }).fill(archivedPlate)
   await dialog.getByRole('button', { name: 'Save', exact: true }).click()

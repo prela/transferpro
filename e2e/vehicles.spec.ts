@@ -10,20 +10,20 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.getByRole('link', { name: 'Vozila' }).click()
   await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
-  await expect(page.getByText('Još nema vozila.')).toBeVisible()
+  await expect(page.getByText('Još nema vozila. Dodajte prvo.')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   let dialog = page.getByRole('dialog')
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
   await expect(dialog).toBeHidden()
 
-  await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByRole('button', { name: 'Zatvori', exact: true }).click()
   await expect(dialog).toBeHidden()
 
   // Other required fields are filled so the empty plate is the only alert.
-  await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   dialog = page.getByRole('dialog')
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Stalno')
   await dialog.getByLabel('Registracija vrijedi do').fill('2027-06-01')
@@ -34,7 +34,7 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await expect(dialog.getByRole('alert')).toContainText('Unesite registarsku oznaku.')
 
   await switchLocale(page, 'en')
-  await page.getByRole('button', { name: 'Add a vehicle', exact: true }).click()
+  await page.getByRole('button', { name: '+ Add', exact: true }).click()
   dialog = page.getByRole('dialog')
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Kind' }), 'Fixed')
   await dialog.getByLabel('Registration valid until').fill('2027-06-01')
@@ -45,7 +45,7 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await expect(dialog.getByRole('alert')).toContainText('Enter a registration plate.')
 
   await switchLocale(page, 'hr')
-  await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   dialog = page.getByRole('dialog')
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Stalno')
   await dialog.getByLabel('Registracija vrijedi do').fill('2027-06-01')
@@ -59,8 +59,7 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await expect(page.getByRole('cell', { name: 'Stalno' })).toBeVisible()
   await expect(page.getByRole('cell', { name: '1.6.2027.' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Radnje: DU123AB' }).click()
-  await page.getByRole('menuitem', { name: 'Ispravi vozilo', exact: true }).click()
+  await page.getByRole('button', { name: plate, exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Registarska oznaka', { exact: true }).fill(nextPlate)
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Povremeno')
@@ -71,6 +70,12 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await expect(page.getByRole('cell', { name: nextPlate, exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Povremeno' })).toBeVisible()
   await expect(page.getByRole('cell', { name: '4.4.2030.' })).toBeVisible()
+
+  await page.getByRole('searchbox', { name: 'Traži' }).fill('ZG111')
+  await expect(page.getByRole('button', { name: nextPlate, exact: true })).toBeVisible()
+  await page.getByRole('searchbox', { name: 'Traži' }).fill('nema-ovog')
+  await expect(page.getByText('Nema zapisa za ovu pretragu. Promijenite tekst ili dodajte novi.')).toBeVisible()
+  await page.getByRole('searchbox', { name: 'Traži' }).fill('')
 
   await page.getByRole('button', { name: 'Radnje: ZG111AA' }).click()
   await page.getByRole('menuitem', { name: 'Arhiviraj', exact: true }).click()
@@ -85,11 +90,17 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await dialog.getByRole('button', { name: 'Arhiviraj', exact: true }).click()
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('button', { name: 'Radnje: ZG111AA' })).toHaveCount(0)
-  await expect(page.getByText('Još nema vozila.')).toBeVisible()
+  await expect(page.getByText('Još nema vozila. Dodajte prvo.')).toBeVisible()
 
-  await page.getByLabel('Prikaži arhivirana').check()
+  await page.getByLabel('Prikaži arhivirano').check()
   await expect(page.getByRole('button', { name: 'Radnje: ZG111AA' })).toHaveCount(0)
   await expect(page.getByRole('cell', { name: 'Arhivirano' })).toBeVisible()
+  await page.getByRole('button', { name: nextPlate, exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await expect(dialog.getByLabel('Registarska oznaka', { exact: true })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: 'Spremi', exact: true })).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await expect(dialog).toBeHidden()
 
   await openAudit(page)
   await expect(page.getByRole('cell', { name: 'Vozilo dodano', exact: true })).toBeVisible()
@@ -103,7 +114,7 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await page.getByRole('link', { name: 'Vozila' }).click()
   await expect(page).toHaveURL(/\/vehicles$/)
   await page.reload()
-  await expect(page.getByText('Još nema vozila.')).toBeVisible()
+  await expect(page.getByText('Još nema vozila. Dodajte prvo.')).toBeVisible()
 })
 
 test('dispatcher adds a vehicle and lists it', async ({ page }) => {
@@ -113,7 +124,7 @@ test('dispatcher adds a vehicle and lists it', async ({ page }) => {
   await page.getByRole('link', { name: 'Vozila' }).click()
   await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   let dialog = page.getByRole('dialog')
   await dialog.getByLabel('Registarska oznaka', { exact: true }).fill('ST222CC')
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Povremeno')
@@ -125,7 +136,7 @@ test('dispatcher adds a vehicle and lists it', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Radnje: ST222CC' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Povremeno' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Registarska oznaka', { exact: true }).fill('st 222 cc')
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Stalno')
