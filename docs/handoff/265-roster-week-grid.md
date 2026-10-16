@@ -9,6 +9,7 @@ Out of scope: a batch roster write, occupation strip, and any server or migratio
 - A Vehicle already given that day is labelled in the picker and stays selectable; a refused save reverts the picker so the same Vehicle can be chosen again.
 - Weekday headings use `Intl` on a calendar date, not `formatInstant` (no instant).
 - After review, `roster.missingVehicle` was restored to `odaberite`.
+- Conclude: `pnpm exec nuxi build`, then `pnpm lint`, `pnpm typecheck`, `pnpm test` (530), then `E2E_PORT=30180 pnpm test:e2e` (187 passed). Port 3000 was already in use.
 - No migration.
 
 Changed specs, rewritten rather than deleted:
