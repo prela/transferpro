@@ -105,7 +105,7 @@ test('a true overlap asks before it saves, and a tight gap warns without asking'
   await expect.poll(() => page.locator('tr').filter({ hasText: 'Nika Preklop' }).textContent()).toContain('Nedodijeljeno')
   await dialog.getByRole('button', { name: 'Nastavi svejedno', exact: true }).click()
   await expect(dialog).toHaveCount(0)
-  await expect(page.getByRole('listitem').filter({ hasText: 'Dodijeljeno' })).toBeVisible()
+  await expect(page.getByRole('listitem').filter({ hasText: /^Dodijeljeno/ })).toBeVisible()
   await expect(page.getByRole('row', { name: 'Nika Preklop' }).getByRole('button', { name: 'Dodijeli: Nika Preklop' })).toHaveCount(0)
 
   await recordRide(page, 'Tea Usko', '13:40')
@@ -118,7 +118,7 @@ test('a true overlap asks before it saves, and a tight gap warns without asking'
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('listitem').filter({ hasText: 'Razmak prije ili poslije druge vožnje je uzak.' })).toBeVisible()
   // The status cell also names the overlap warning, so the accessible name is longer than the state.
-  await expect(page.getByRole('row', { name: 'Tea Usko' }).getByRole('cell', { name: 'Dodijeljeno' })).toContainText('Preklapanje')
+  await expect(page.getByRole('row', { name: 'Tea Usko' }).getByRole('cell', { name: /Dodijeljeno/ })).toContainText('Preklapanje')
 })
 
 test('the overlap question is in English in the dark theme', async ({ page }) => {

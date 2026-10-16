@@ -1,5 +1,5 @@
 import type { Client, DeclineAlert, Driver, LiveRefreshOutcome, Location, TransferDayRide, Vehicle } from '../../shared'
-import { claimDayLoad, claimFullLoad, clientListSchema, driverListSchema, isCalendarDate, locationListSchema, operationalDateInTimeZone, transferDaySchema, vehicleListSchema } from '../../shared'
+import { claimDayLoad, claimFullLoad, clientListSchema, driverListSchema, isCalendarDate, locationListSchema, officeHomeSchema, operationalDateInTimeZone, transferDaySchema, vehicleListSchema } from '../../shared'
 
 /**
  * Day list and the catalogs the row and the forms read.
@@ -14,6 +14,10 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
   const locations = ref<Location[]>([])
   const drivers = ref<Driver[]>([])
   const vehicles = ref<Vehicle[]>([])
+  // Pickup instants of unfinished unassigned Rides, any day. The seven-day
+  // note is derived from the office home read. A failed note read keeps the
+  // previous list and does not fail the day.
+  const unassignedPickups = ref<{ pickupAt: string }[]>([])
   const loading = ref(true)
   const loadError = ref(false)
 
@@ -47,6 +51,16 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
     locations.value = catalogs.locations
     drivers.value = catalogs.drivers
     vehicles.value = catalogs.vehicles
+  }
+
+  async function fetchUnassignedPickups(): Promise<{ pickupAt: string }[] | null> {
+    try {
+      const home = officeHomeSchema.parse(await $fetch('/api/office-home'))
+      return home.unassigned.map(row => ({ pickupAt: row.pickupAt }))
+    }
+    catch {
+      return null
+    }
   }
 
   async function fetchTransferDay(date: string) {
@@ -102,10 +116,16 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
       const dayPromise = isCalendarDate(day.value)
         ? fetchTransferDay(day.value)
         : Promise.resolve(null)
-      const [catalogs, listed] = await Promise.all([fetchCatalogs(), dayPromise])
+      const [catalogs, listed, unassigned] = await Promise.all([
+        fetchCatalogs(),
+        dayPromise,
+        fetchUnassignedPickups(),
+      ])
       // A day change during this load must not drop the catalogs. The newer
       // day read already replaced the rows.
       applyCatalogs(catalogs)
+      if (unassigned)
+        unassignedPickups.value = unassigned
       if (ticket !== loadCounter)
         return 'stale'
       if (listed) {
@@ -137,6 +157,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
     locations,
     drivers,
     vehicles,
+    unassignedPickups,
     loading,
     loadError,
     loadDay,
