@@ -5,6 +5,7 @@ export type { BoardWarningDocuments, BoardWarningRide, BoardWarnings } from './b
 export { catalogSearchMatches } from './catalog-query'
 export { CLIENT_KINDS, CLIENT_NAME_MAX_LENGTH, ClientInputError, clientKindError, clientKindSchema, clientListSchema, clientNameError, clientNameSchema, clientPatchSchema, clientSchema, createClientSchema, parseClientPatch, parseCreateClient } from './client'
 export type { Client, ClientKind, ClientKindError, ClientList, ClientNameError, ClientPatch, CreateClient } from './client'
+export { formatCommandDay, parseCommandDay } from './command-day'
 export { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, isCalendarDate, localDayBounds, mondayOfWeek, operationalDateInTimeZone, wallClockInTimeZone, weekDates } from './date'
 export { groupDayPrint } from './day-print'
 export type { DayPrintGroup, DayPrintRide } from './day-print'

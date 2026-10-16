@@ -55,15 +55,24 @@ const urgentRideCount = computed(() =>
   officeHome.snapshot.value ? officeHomeUrgentRideCount(officeHome.snapshot.value) : null,
 )
 
-const groups = computed(() => {
-  if (!officeRole.value)
-    return []
-  return officeNav(officeRole.value, labels(), urgentRideCount.value).map(toFrameGroup)
-})
-
-const phoneLinks = computed(() =>
-  officePhoneBar(officeRole.value ? officeNav(officeRole.value, labels(), urgentRideCount.value) : []).map(toFrameLink),
+const nav = computed(() =>
+  officeRole.value ? officeNav(officeRole.value, labels(), urgentRideCount.value) : [],
 )
+
+const groups = computed(() => nav.value.map(toFrameGroup))
+
+/** The palette lists the same screens the sidebar does, without the urgent count. */
+const paletteLinks = computed(() =>
+  nav.value.flatMap(group => group.links).map(link => ({
+    label: link.label,
+    to: link.to,
+    icon: icons[link.id],
+  })),
+)
+
+const paletteOpen = ref(false)
+
+const phoneLinks = computed(() => officePhoneBar(nav.value).map(toFrameLink))
 
 function labels(): OfficeNavLabels {
   return {
@@ -103,16 +112,32 @@ function toFrameLink(link: OfficeNavLink) {
 <template>
   <!--
     Panel body is only the page. The navbar title is the screen's h1.
-    Search stays out of this frame.
+    Ctrl/Cmd+K is the desktop palette. The phone opens it from the magnifier.
   -->
   <AppFrame
     :groups="groups"
     :phone-links="phoneLinks"
     show-new-transfer
   >
+    <template #actions>
+      <UButton
+        type="button"
+        size="xl"
+        color="neutral"
+        variant="ghost"
+        icon="i-lucide-search"
+        class="min-h-11 min-w-11 lg:hidden"
+        :aria-label="t('palette.open')"
+        @click="paletteOpen = true"
+      />
+    </template>
     <template #menu>
       <OfficeUserMenu />
     </template>
     <slot />
   </AppFrame>
+  <OfficeCommandPalette
+    v-model:open="paletteOpen"
+    :links="paletteLinks"
+  />
 </template>

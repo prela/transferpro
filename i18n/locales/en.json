@@ -31,6 +31,20 @@
     "more": "More",
     "newTransfer": "New transfer"
   },
+  "palette": {
+    "open": "Search",
+    "title": "Search",
+    "description": "Screens, commands, and transfers",
+    "placeholder": "Screen, command, or transfer",
+    "screens": "Screens",
+    "commands": "Commands",
+    "transfers": "Transfers",
+    "goToDay": "Go to day…",
+    "goToDayOn": "Go to day {date}",
+    "goToDayHint": "Type a date, for example 20/10/2026",
+    "result": "{day} · {start} → {end} · {client}",
+    "searchFailed": "The search failed. Try again."
+  },
   "locale": {
     "hr": "Hrvatski",
     "en": "English",
