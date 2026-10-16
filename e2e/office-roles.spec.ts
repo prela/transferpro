@@ -28,8 +28,8 @@ test('a dispatcher sees office screens, and Home has no member list or settings 
 
   await nav.getByRole('link', { name: 'Naručitelji' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Naručitelji' })).toBeVisible()
-  await expect(page.getByText('Još nema klijenata.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Dodaj klijenta', exact: true })).toBeVisible()
+  await expect(page.getByText('Još nema naručitelja. Dodajte prvog.')).toBeVisible()
+  await expect(page.getByRole('button', { name: '+ Dodaj', exact: true })).toBeVisible()
 
   await nav.getByRole('link', { name: 'Početna' }).click()
   await nav.getByRole('link', { name: 'Raspored' }).click()
