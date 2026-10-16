@@ -29,3 +29,15 @@ Not measured here. e2e was not run locally, and this branch was not pushed, so t
 No spec added, removed, or weakened. `pnpm lint`, `pnpm typecheck`, and `pnpm test` (537) passed. `pnpm test:e2e` was not run.
 
 No migration.
+
+## Code review
+
+Fixed point `origin/develop` (`9cf384b`). Reviewed `a01606e`.
+
+### Standards
+
+Hard violations: none. Judgement: the Postgres service block is copied onto `e2e`, and the shard count `3` is both the matrix and `--shard=N/3`. A comment in each place says they must stay the same.
+
+### Spec
+
+Sharding, the shared `.output`, and the pnpm store cache match the ticket. The after wall-clock is not measured: this branch was not pushed, and e2e was not run locally. The before figure is the 206-test run above, not the issue's 195 specs. Moving role setup into `.github/actions/ci-database` is the same `slow` work, called from the shards too.
