@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import type { DisplayLocale, LiveRefreshOutcome, TransferDayFilter, TransferDayRide } from '../../shared'
+import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
 import { classifyRideAttention, clockLabel, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
+import { useKeptWorkOrders } from '../composables/kept-work-orders'
+import { useRideDetailChrome } from '../composables/ride-detail-chrome'
+import { rideDetailLayout } from '../ride-detail'
+import { assignButtonId } from '../transfer-ride-buttons'
+import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
   timeZone: string
@@ -15,6 +21,12 @@ const router = useRouter()
 
 const saved = ref(false)
 const corrected = ref(false)
+const openRideId = ref<string | null>(queryText(route.query.ride) || null)
+const command = ref<RideDetailCommand | null>(null)
+const layout = ref<RideDetailLayout>('overlay')
+const layoutReady = ref(false)
+const { phoneDetailOpen } = useRideDetailChrome()
+const { dismiss, kept } = useKeptWorkOrders()
 const nowMs = ref(Date.now())
 const announcedCount = ref(0)
 const filter = ref<TransferDayFilter>(parseTransferDayFilter(route.query.filter))
@@ -46,28 +58,25 @@ function queryText(value: unknown): string {
 }
 
 const table = ref<{ focusList: () => void } | null>(null)
+const listPane = ref<HTMLElement | null>(null)
 const commands = ref<{
-  openAssign: (ride: TransferDayRide) => void
-  openLanding: (ride: TransferDayRide) => void
-  openVehicleChange: (ride: TransferDayRide) => void
-  openReassign: (ride: TransferDayRide) => void
   openClear: (ride: TransferDayRide) => void
-  openAcceptByPhone: (ride: TransferDayRide) => void
   openMarkDone: (ride: TransferDayRide) => void
   openMarkNoShow: (ride: TransferDayRide) => void
   openCancelRide: (ride: TransferDayRide) => void
-  onDayChanged: () => void
 } | null>(null)
-const form = ref<{ openAdd: () => void, openCorrect: (ride: TransferDayRide) => void } | null>(null)
+const form = ref<{
+  openAdd: () => void
+  openCorrect: (ride: TransferDayRide) => void
+  formMode: 'add' | 'edit' | null
+  formOpen: boolean
+  formTitle: string
+} | null>(null)
 
 let catalogsReady = false
 
 function focusList() {
   table.value?.focusList()
-}
-
-function loadFailed() {
-  return loadError.value
 }
 
 function declinesFor(rideId: string): { driverName: string }[] {
@@ -159,7 +168,7 @@ const shownTime = computed(() =>
   updatedAt.value === null ? '' : clockLabel(updatedAt.value, props.timeZone, props.locale),
 )
 
-const ownedQuery = ['day', 'filter', 'search', 'client', 'driver']
+const ownedQuery = ['day', 'filter', 'search', 'client', 'driver', 'ride']
 
 function buildQuery(): Record<string, string | string[]> {
   const query: Record<string, string | string[]> = {}
@@ -184,6 +193,8 @@ function buildQuery(): Record<string, string | string[]> {
     query.client = clientId.value
   if (driverId.value)
     query.driver = driverId.value
+  if (openRideId.value)
+    query.ride = openRideId.value
   return query
 }
 
@@ -258,29 +269,242 @@ function applyRouteQuery() {
     driverId.value = nextDriver
   if (isCalendarDate(nextDay) && day.value !== nextDay)
     day.value = nextDay
+  const nextRide = queryText(route.query.ride) || null
+  if (openRideId.value !== nextRide) {
+    openRideId.value = nextRide
+    if (!nextRide)
+      command.value = null
+  }
 }
 
 watch(day, () => {
-  commands.value?.onDayChanged()
+  command.value = null
   void syncQuery()
   void loadDay()
 })
 
-watch([filter, search, clientId, driverId], () => {
+watch([filter, search, clientId, driverId, openRideId], () => {
   void syncQuery()
 })
+
+watch(rides, () => {
+  if (loading.value || !openRideId.value)
+    return
+  if (!rides.value.some(ride => ride.rideId === openRideId.value)) {
+    openRideId.value = null
+    command.value = null
+  }
+})
+
+/**
+ * True after this screen sets the open Ride. A query push from the previous
+ * close can arrive late and must not clear the Ride the user just opened.
+ * Back clears the flag, so that navigation still applies.
+ */
+let rideOwnedLocally = false
+
+function onHistoryBack() {
+  rideOwnedLocally = false
+  applyRouteQuery()
+}
 
 watch(() => route.query, () => {
   // A push we just sent is not Back. Applying it would put a stale search
   // back into the field while the next filter change is still queued.
   if (syncing)
     return
+  const nextRide = queryText(route.query.ride) || null
+  if (rideOwnedLocally && nextRide !== openRideId.value) {
+    void syncQuery()
+    return
+  }
   applyRouteQuery()
 })
 
 function goToday() {
   day.value = operationalDateInTimeZone(props.timeZone, new Date(), props.operationalDayStartHour)
 }
+
+const openRide = computed(() => rides.value.find(ride => ride.rideId === openRideId.value) ?? null)
+
+const pageNotices = computed(() => {
+  if (openRide.value)
+    return []
+  return kept.value
+})
+
+function closeForm() {
+  if (form.value?.formMode === 'edit')
+    form.value.formOpen = false
+}
+
+/** Where the phone list was scrolled before the full-screen detail covered it. */
+let phoneListScroll: { element: HTMLElement | null, top: number } = { element: null, top: 0 }
+
+function scrollParent(start: HTMLElement | null): HTMLElement | null {
+  let node = start?.parentElement ?? null
+  while (node) {
+    const overflow = getComputedStyle(node).overflowY
+    if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight + 1)
+      return node
+    node = node.parentElement
+  }
+  return null
+}
+
+function rememberPhoneScroll() {
+  if (layout.value !== 'phone')
+    return
+  const element = scrollParent(listPane.value)
+  phoneListScroll = {
+    element,
+    top: element ? element.scrollTop : window.scrollY,
+  }
+}
+
+function restorePhoneScroll() {
+  if (layout.value !== 'phone')
+    return
+  const { element, top } = phoneListScroll
+  // The slideover locks scroll while it is open. Restore after it releases.
+  void nextTick(() => {
+    requestAnimationFrame(() => {
+      if (element)
+        element.scrollTop = top
+      else
+        window.scrollTo(0, top)
+    })
+  })
+}
+
+function closeDetail() {
+  closeForm()
+  command.value = null
+  openRideId.value = null
+}
+
+function backFromDetail() {
+  closeForm()
+  command.value = null
+  void router.back()
+}
+
+let openTimer = 0
+
+function showRide(ride: TransferDayRide, next: RideDetailCommand | null) {
+  rememberPhoneScroll()
+  closeForm()
+  window.clearTimeout(openTimer)
+  // The row menu closes on the next tick and returns focus. A detail opened
+  // in that same turn is an outside press and dismisses itself.
+  openTimer = window.setTimeout(() => {
+    command.value = next
+    openRideId.value = ride.rideId
+  }, 0)
+}
+
+function onCommand(next: RideDetailCommand | null) {
+  const ride = openRide.value
+  if (next === 'correct' && ride) {
+    showRide(ride, 'correct')
+    return
+  }
+  if (next === null && command.value === 'accept') {
+    closeDetail()
+    return
+  }
+  if (next === null && command.value === 'assign') {
+    const rideId = openRide.value?.rideId
+    closeDetail()
+    if (rideId) {
+      void nextTick(() => {
+        document.getElementById(assignButtonId(rideId))?.focus()
+      })
+    }
+    return
+  }
+  if (command.value === 'correct' && next !== 'correct')
+    closeForm()
+  command.value = next
+}
+
+function onDetailOpen(open: boolean) {
+  if (open || openRideId.value === null)
+    return
+  if (layout.value === 'phone')
+    backFromDetail()
+  else
+    closeDetail()
+}
+
+async function onCommandSaved() {
+  const ride = openRide.value
+  const wasAssign = command.value === 'assign'
+  command.value = null
+  await loadDay()
+  const assignedId = ride?.rideId
+  closeDetail()
+  if (!wasAssign || !assignedId)
+    return
+  await nextTick()
+  const start = rides.value.findIndex(item => item.rideId === assignedId)
+  const from = start === -1 ? 0 : start + 1
+  const wrapped = [...rides.value.slice(from), ...rides.value.slice(0, from)]
+  const nextId = wrapped.find(item => item.state === 'unassigned')?.rideId
+  if (nextId)
+    document.getElementById(assignButtonId(nextId))?.focus()
+  else
+    focusList()
+}
+
+watch(corrected, (value) => {
+  if (!value)
+    return
+  command.value = null
+  closeDetail()
+})
+
+watch([layout, openRideId], () => {
+  phoneDetailOpen.value = layout.value === 'phone' && openRideId.value !== null
+})
+
+watch(openRideId, (id, previous) => {
+  rideOwnedLocally = true
+  if (!id && previous)
+    restorePhoneScroll()
+  // The router push is async. The address bar has to match before a test reads it.
+  const url = new URL(window.location.href)
+  if (id)
+    url.searchParams.set('ride', id)
+  else
+    url.searchParams.delete('ride')
+  const next = `${url.pathname}${url.search}${url.hash}`
+  if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== next)
+    history.replaceState(history.state, '', next)
+})
+
+onMounted(() => {
+  const phoneQuery = window.matchMedia('(max-width: 1023px)')
+  const besideQuery = window.matchMedia('(min-width: 1440px)')
+  const apply = () => {
+    layout.value = rideDetailLayout(window.innerWidth)
+  }
+  apply()
+  layoutReady.value = true
+  window.addEventListener('popstate', onHistoryBack)
+  phoneQuery.addEventListener('change', apply)
+  besideQuery.addEventListener('change', apply)
+  onScopeDispose(() => {
+    window.removeEventListener('popstate', onHistoryBack)
+    phoneQuery.removeEventListener('change', apply)
+    besideQuery.removeEventListener('change', apply)
+  })
+})
+
+onUnmounted(() => {
+  window.clearTimeout(openTimer)
+  phoneDetailOpen.value = false
+})
 </script>
 
 <template>
@@ -371,43 +595,144 @@ function goToday() {
       class="mb-4"
       :description="t('transfers.loadFailed')"
     />
-    <TransferRideTable
-      ref="table"
-      :rides="visibleRides"
-      :loading="loading"
-      :load-error="loadError"
-      :locations="locations"
-      :drivers="drivers"
-      :vehicles="vehicles"
-      :clients="clients"
-      :declines-for="declinesFor"
-      :time-zone="timeZone"
-      :locale="locale"
-      :day="day"
-      :now-ms="nowMs"
-      :filtered-empty="filteredEmpty"
-      @assign="ride => commands?.openAssign(ride)"
-      @landing="ride => commands?.openLanding(ride)"
-      @accept-by-phone="ride => commands?.openAcceptByPhone(ride)"
-      @cancel-ride="ride => commands?.openCancelRide(ride)"
-      @mark-done="ride => commands?.openMarkDone(ride)"
-      @mark-no-show="ride => commands?.openMarkNoShow(ride)"
-      @change-vehicle="ride => commands?.openVehicleChange(ride)"
-      @reassign="ride => commands?.openReassign(ride)"
-      @clear="ride => commands?.openClear(ride)"
-      @correct="ride => form?.openCorrect(ride)"
-      @add="form?.openAdd()"
+    <UAlert
+      v-for="notice in pageNotices"
+      :key="notice.id"
+      role="alert"
+      :color="notice.outcome === 'failed' ? 'error' : 'warning'"
+      variant="subtle"
+      class="mb-3"
+      :title="notice.actionTitle"
+      :close="true"
+      :description="t(workOrderNotice(notice.outcome).key, { name: notice.driverName })"
+      :ui="{ title: '!text-default !opacity-100', description: '!text-default !opacity-100' }"
+      @update:open="(open: boolean) => { if (!open) dismiss(notice.id) }"
     />
+    <div class="flex items-start gap-4">
+      <div
+        id="transfer-day-list"
+        ref="listPane"
+        class="min-w-0 flex-1"
+      >
+        <TransferRideTable
+          ref="table"
+          :rides="visibleRides"
+          :loading="loading"
+          :load-error="loadError"
+          :locations="locations"
+          :drivers="drivers"
+          :vehicles="vehicles"
+          :clients="clients"
+          :declines-for="declinesFor"
+          :time-zone="timeZone"
+          :locale="locale"
+          :day="day"
+          :now-ms="nowMs"
+          :filtered-empty="filteredEmpty"
+          @open="showRide($event, null)"
+          @assign="showRide($event, 'assign')"
+          @landing="showRide($event, 'landing')"
+          @accept-by-phone="showRide($event, 'accept')"
+          @cancel-ride="ride => commands?.openCancelRide(ride)"
+          @mark-done="ride => commands?.openMarkDone(ride)"
+          @mark-no-show="ride => commands?.openMarkNoShow(ride)"
+          @change-vehicle="showRide($event, 'vehicle')"
+          @reassign="showRide($event, 'reassign')"
+          @clear="ride => commands?.openClear(ride)"
+          @correct="showRide($event, 'correct')"
+          @add="form?.openAdd()"
+        />
+      </div>
+      <UDashboardPanel
+        v-if="layoutReady && layout === 'beside' && openRide"
+        :ui="{ root: '!min-h-0 !h-auto !w-[420px] !max-w-[420px] !flex-none shrink-0 border-s border-default' }"
+      >
+        <template #body>
+          <div id="ride-detail">
+            <TransferRideDetail
+              v-model:day="day"
+              v-model:saved="saved"
+              v-model:corrected="corrected"
+              v-model:locations="locations"
+              :ride="openRide"
+              :command="command"
+              :drivers="drivers"
+              :vehicles="vehicles"
+              :clients="clients"
+              :declines="declinesFor(openRide.rideId)"
+              :time-zone="timeZone"
+              :locale="locale"
+              :now-ms="nowMs"
+              :day-rides="rides"
+              :list-drivers="false"
+              :pin-actions="false"
+              :operational-day-start-hour="operationalDayStartHour"
+              :tenant-id="tenantId"
+              :load-day="async () => { await loadDay() }"
+              @command="onCommand"
+              @close="closeDetail"
+              @back="backFromDetail"
+              @done="commands?.openMarkDone(openRide)"
+              @no-show="commands?.openMarkNoShow(openRide)"
+              @cancel-ride="commands?.openCancelRide(openRide)"
+              @clear="commands?.openClear(openRide)"
+              @saved="onCommandSaved"
+            />
+          </div>
+        </template>
+      </UDashboardPanel>
+    </div>
+
+    <USlideover
+      v-if="layoutReady && layout !== 'beside' && openRide"
+      :open="true"
+      :title="command === 'correct' ? t('transfers.correctTitle') : openRide.guestName"
+      :dismissible="false"
+      :overlay="false"
+      :modal="layout === 'phone'"
+      :ui="layout === 'phone'
+        ? { content: 'pointer-events-auto z-[60] w-screen max-w-none', body: 'flex flex-col', footer: 'p-3' }
+        : { content: 'pointer-events-auto z-[60] w-[420px] max-w-[420px]' }"
+      @update:open="onDetailOpen"
+    >
+      <template #body>
+        <TransferRideDetail
+          v-model:day="day"
+          v-model:saved="saved"
+          v-model:corrected="corrected"
+          v-model:locations="locations"
+          :ride="openRide"
+          :command="command"
+          :drivers="drivers"
+          :vehicles="vehicles"
+          :clients="clients"
+          :declines="declinesFor(openRide.rideId)"
+          :time-zone="timeZone"
+          :locale="locale"
+          :now-ms="nowMs"
+          :day-rides="rides"
+          :list-drivers="layout === 'phone'"
+          :pin-actions="layout === 'phone'"
+          :operational-day-start-hour="operationalDayStartHour"
+          :tenant-id="tenantId"
+          :load-day="async () => { await loadDay() }"
+          @command="onCommand"
+          @close="closeDetail"
+          @back="backFromDetail"
+          @done="commands?.openMarkDone(openRide)"
+          @no-show="commands?.openMarkNoShow(openRide)"
+          @clear="commands?.openClear(openRide)"
+          @cancel-ride="commands?.openCancelRide(openRide)"
+          @saved="onCommandSaved"
+        />
+      </template>
+    </USlideover>
 
     <TransferRideCommands
       ref="commands"
-      :rides="rides"
       :drivers="drivers"
-      :vehicles="vehicles"
-      :time-zone="timeZone"
-      :load-failed="loadFailed"
       :load-day="async () => { await loadDay() }"
-      :focus-list="focusList"
+      @saved="closeDetail"
     />
 
     <TransferForm

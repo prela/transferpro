@@ -1,9 +1,10 @@
+import type { InjectionKey } from 'vue'
 import type { Client, DisplayLocale, Driver, Location, LocationKind, PaymentMethod, TransferDayRide } from '../../shared'
 import { z } from 'zod'
 import { calendarDateInTimeZone, childSeatCountError, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationKindSchema, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, paymentMethodSchema, pickupAtError, priceError, priceFromInput, recordedTransferSchema, sameLocationError, tablaError, wallClockInTimeZone } from '../../shared'
+import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
-import { workOrderNotice } from '../work-order-notice'
 
 type TransferFailure
   = 'transfers.rejected'
@@ -53,6 +54,8 @@ type TransferFormDraft = z.infer<typeof transferFormDraftSchema>
  * Add and correct share one slideover. The day board only opens it.
  * Catalogs and the day ref stay with the board so a save reloads the same list.
  */
+export const transferFormKey: InjectionKey<ReturnType<typeof useTransferForm>> = Symbol('transferForm')
+
 export function useTransferForm(options: {
   timeZone: () => string
   locale: () => DisplayLocale
@@ -68,6 +71,7 @@ export function useTransferForm(options: {
 }) {
   const { t } = useI18n()
   const toast = useToast()
+  const { present } = useWorkOrderPresenter()
   const { notifyAuditChanged } = useAuditRefresh()
 
   // A pickup form still defaults to noon on the calendar date: recording a pickup did not move.
@@ -103,6 +107,7 @@ export function useTransferForm(options: {
    */
   const formMode = ref<'add' | 'edit' | null>(null)
   const editingTransferId = ref<string | null>(null)
+  const editingRideId = ref<string | null>(null)
   const formErrorKey = ref<TransferFailure | null>(null)
   const guestErrorKey = ref<'transfers.guestEmpty' | 'transfers.guestTooLong' | null>(null)
   const tablaErrorKey = ref<'transfers.tablaTooLong' | null>(null)
@@ -361,6 +366,7 @@ export function useTransferForm(options: {
     ignoreDraft = true
     formMode.value = null
     editingTransferId.value = null
+    editingRideId.value = null
     placeTarget.value = null
     formErrorKey.value = null
     overlapOpen.value = false
@@ -413,6 +419,7 @@ export function useTransferForm(options: {
     formErrorKey.value = null
     overlapOpen.value = false
     editingTransferId.value = ride.transferId
+    editingRideId.value = ride.rideId
     clientId.value = ride.clientId
     pickupWall.value = wallClockInTimeZone(options.timeZone(), new Date(ride.pickupAt))
     startLocationId.value = ride.startLocationId
@@ -481,12 +488,7 @@ export function useTransferForm(options: {
       // The notice names the Driver by id. The name is already on the day list.
       // A Ride with no Driver has no notice. The response has no address.
       for (const notice of correction.workOrders) {
-        const shown = workOrderNotice(notice.outcome)
-        toast.add({
-          title: t('transfers.corrected'),
-          description: t(shown.key, { name: driverLabel(notice.driverId) }),
-          color: shown.color,
-        })
+        present(editingRideId.value ?? transferId, notice.outcome, driverLabel(notice.driverId), t('transfers.corrected'))
       }
       closeForm()
       await options.loadDay()

@@ -81,7 +81,7 @@ function row(page: Page, guest: string) {
 }
 
 function notice(page: Page, title: string, sentence?: string) {
-  const item = page.getByRole('listitem').filter({ hasText: title })
+  const item = page.getByRole('status').filter({ hasText: title })
   return sentence === undefined ? item : item.filter({ hasText: sentence })
 }
 
@@ -104,8 +104,8 @@ test('cancel reports sent and no email, in Croatian, with an English smoke', asy
   await openRideMenu(page, 'Iva Quiet')
   await page.getByRole('menuitem', { name: 'Otkaži vožnju', exact: true }).click()
   await page.getByRole('dialog', { name: 'Otkaži vožnju' }).getByRole('button', { name: 'Otkaži vožnju', exact: true }).click()
-  await expect(notice(page, 'Vožnja otkazana')).toHaveCount(1)
-  await expect(notice(page, 'Vožnja otkazana')).not.toContainText('Radni nalog')
+  await expect(page.getByRole('status').filter({ hasText: 'Vožnja otkazana' })).toHaveCount(1)
+  await expect(page.getByRole('status').filter({ hasText: 'Vožnja otkazana' })).not.toContainText('Radni nalog')
   await expect(row(page, 'Iva Quiet').getByRole('cell', { name: 'Otkazano', exact: true })).toBeVisible()
 
   const sentToAna = 'Radni nalog je poslan vozaču Ana Sent.'
@@ -120,7 +120,7 @@ test('cancel reports sent and no email, in Croatian, with an English smoke', asy
   await openRideMenu(page, 'Iva Blank')
   await page.getByRole('menuitem', { name: 'Otkaži vožnju', exact: true }).click()
   await page.getByRole('dialog', { name: 'Otkaži vožnju' }).getByRole('button', { name: 'Otkaži vožnju', exact: true }).click()
-  await expect(notice(page, 'Vožnja otkazana', blankAna)).toHaveCount(1)
+  await expect(page.getByRole('alert').filter({ hasText: 'Vožnja otkazana' }).filter({ hasText: blankAna })).toHaveCount(1)
   await expect(page.getByText(sentAddress)).toHaveCount(0)
 
   await switchLocale(page, 'en')

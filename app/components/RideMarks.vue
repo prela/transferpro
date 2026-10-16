@@ -5,6 +5,8 @@ const props = defineProps<{
   items: RideAttentionItem[]
   /** Phone row keeps marks on the second line instead of stacking a third. */
   inline?: boolean
+  /** The Ride detail uses the full sentence. A row keeps the short text. */
+  full?: boolean
 }>()
 
 const { t } = useI18n()
@@ -21,16 +23,19 @@ const iconFor: Record<RideAttentionItem['kind'], string> = {
 }
 
 function label(item: RideAttentionItem): string {
-  if (item.kind === 'decline-alert')
-    return t('transfers.attention.declined', { driver: item.driverName ?? '' })
+  if (item.kind === 'decline-alert') {
+    const group = props.full ? 'transfers.attentionDetail' : 'transfers.attention'
+    return t(`${group}.declined`, { driver: item.driverName ?? '' })
+  }
+  const group = props.full ? 'transfers.attentionDetail' : 'transfers.attention'
   const key = {
-    'unassigned-past-pickup': 'transfers.attention.pastPickup',
-    'unassigned-alarm': 'transfers.attention.unassignedAlarm',
-    'landing-alarm': 'transfers.attention.landingAlarm',
-    'unclosed-mark': 'transfers.attention.unclosed',
-    'overlap': 'transfers.attention.overlap',
-    'roster-mismatch': 'transfers.attention.rosterMismatch',
-    'expired-document': 'transfers.attention.expiredDocument',
+    'unassigned-past-pickup': `${group}.pastPickup`,
+    'unassigned-alarm': `${group}.unassignedAlarm`,
+    'landing-alarm': `${group}.landingAlarm`,
+    'unclosed-mark': `${group}.unclosed`,
+    'overlap': `${group}.overlap`,
+    'roster-mismatch': `${group}.rosterMismatch`,
+    'expired-document': `${group}.expiredDocument`,
   }[item.kind]
   return t(key)
 }
@@ -48,7 +53,8 @@ function label(item: RideAttentionItem): string {
     <li
       v-for="(item, index) in props.items"
       :key="`${item.kind}-${item.driverName ?? index}`"
-      class="flex items-center gap-1 text-xs leading-4"
+      class="flex items-center gap-1 leading-4"
+      :class="props.full ? 'text-sm' : 'text-xs'"
     >
       <UIcon
         :name="iconFor[item.kind]"

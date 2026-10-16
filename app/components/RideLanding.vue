@@ -16,8 +16,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
+const titleId = useId()
 
-const open = ref(true)
 const wall = ref(props.landingAt === null ? '' : wallClockInTimeZone(props.timeZone, new Date(props.landingAt)))
 const pending = ref<'save' | 'clear' | null>(null)
 const errorKey = ref<LandingFailure | null>(null)
@@ -62,14 +62,6 @@ function failureKey(error: unknown): LandingFailure {
     case 404: return 'ride.notFound'
     default: return 'ride.landingFailed'
   }
-}
-
-function onOpen(next: boolean) {
-  // Dismiss writes nothing. A save in flight keeps the dialog up.
-  if (!next && !pending.value)
-    emit('cancel')
-  else
-    open.value = true
 }
 
 /**
@@ -124,58 +116,63 @@ function clearLanding() {
 </script>
 
 <template>
-  <UModal
-    v-model:open="open"
-    :title="t('ride.recordLandingTitle')"
-    :description="t('ride.recordLandingBody')"
-    :dismissible="!pending"
-    :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
-    @update:open="onOpen"
+  <!--
+    The landing form lives in the Ride detail. A separate modal was one of
+    the command surfaces ADR-0038 folds into that panel.
+  -->
+  <form
+    :aria-labelledby="titleId"
+    @submit.prevent="save"
   >
-    <template #body>
-      <p class="mb-4">
-        {{ guestName }}
-      </p>
-      <form @submit.prevent="save">
-        <UFormField
-          :label="t('transfers.fields.landingAt')"
-          name="landing"
-          class="mb-4"
-          size="xl"
-          :error="errorKey === 'ride.landingInvalid' ? t(errorKey) : false"
-        >
-          <UInput
-            id="landing-time"
-            v-model="wall"
-            name="landing"
-            type="datetime-local"
-            class="w-full"
-            :disabled="pending !== null"
-            autofocus
-            @keydown.enter.prevent="save"
-          />
-          <template #error="{ error }">
-            <span role="alert">{{ error }}</span>
-          </template>
-        </UFormField>
-        <UAlert
-          v-if="errorKey && errorKey !== 'ride.landingInvalid'"
-          color="error"
-          variant="subtle"
-          role="alert"
-          class="mb-4"
-          :description="t(errorKey)"
-        />
-      </form>
-    </template>
-    <template #footer>
+    <h2
+      :id="titleId"
+      class="mb-2 text-lg font-semibold"
+    >
+      {{ t('ride.recordLandingTitle') }}
+    </h2>
+    <p class="mb-4">
+      {{ t('ride.recordLandingBody') }}
+    </p>
+    <p class="mb-4">
+      {{ guestName }}
+    </p>
+    <UFormField
+      :label="t('transfers.fields.landingAt')"
+      name="landing"
+      class="mb-4"
+      size="xl"
+      :error="errorKey === 'ride.landingInvalid' ? t(errorKey) : false"
+    >
+      <UInput
+        id="landing-time"
+        v-model="wall"
+        name="landing"
+        type="datetime-local"
+        class="w-full"
+        :disabled="pending !== null"
+        autofocus
+        @keydown.enter.prevent="save"
+      />
+      <template #error="{ error }">
+        <span role="alert">{{ error }}</span>
+      </template>
+    </UFormField>
+    <UAlert
+      v-if="errorKey && errorKey !== 'ride.landingInvalid'"
+      color="error"
+      variant="subtle"
+      role="alert"
+      class="mb-4"
+      :description="t(errorKey)"
+    />
+    <div class="flex flex-wrap gap-2">
       <UButton
         v-if="landingAt"
         type="button"
         color="neutral"
         variant="outline"
         size="xl"
-        class="w-full justify-center sm:w-auto"
+        class="min-h-12"
         :loading="pending === 'clear'"
         :disabled="pending !== null"
         @click="clearLanding"
@@ -187,22 +184,21 @@ function clearLanding() {
         color="neutral"
         variant="outline"
         size="xl"
-        class="w-full justify-center sm:w-auto"
+        class="min-h-12"
         :disabled="pending !== null"
         @click="emit('cancel')"
       >
         {{ t('ride.cancel') }}
       </UButton>
       <UButton
-        type="button"
+        type="submit"
         size="xl"
-        class="w-full justify-center sm:w-auto"
+        class="min-h-12"
         :loading="pending === 'save'"
         :disabled="pending !== null"
-        @click="save"
       >
         {{ pending === 'save' ? t('ride.recordLandingSaving') : t('ride.recordLandingSave') }}
       </UButton>
-    </template>
-  </UModal>
+    </div>
+  </form>
 </template>

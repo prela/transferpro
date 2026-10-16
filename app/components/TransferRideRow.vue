@@ -49,6 +49,7 @@ const emit = defineEmits<{
   reassign: [ride: TransferDayRide]
   clear: [ride: TransferDayRide]
   correct: [ride: TransferDayRide]
+  open: [ride: TransferDayRide]
 }>()
 
 const { t } = useI18n()
@@ -228,6 +229,9 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     v-else-if="cell === 'phone' && ride"
     class="flex min-h-12 flex-col justify-center gap-1 py-1 text-sm"
     :class="mark().muted ? 'text-muted' : ''"
+    tabindex="0"
+    @click="emit('open', ride)"
+    @keydown.enter.self.prevent="emit('open', ride)"
   >
     <div class="flex items-center gap-2">
       <time

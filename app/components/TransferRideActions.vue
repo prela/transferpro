@@ -20,7 +20,10 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div class="flex flex-nowrap items-center gap-1">
+  <div
+    class="flex flex-nowrap items-center gap-1"
+    @click.stop
+  >
     <UButton
       v-if="ride.state === 'unassigned'"
       :id="assignButtonId(ride.rideId)"

@@ -1,13 +1,22 @@
 <script setup lang="ts">
-import type { Driver, Vehicle } from '../../shared'
-import { assignedRideSchema, rosterVehicleSuggestionSchema } from '../../shared'
-import { workOrderNotice } from '../work-order-notice'
+import type { Driver, TransferDayRide, Vehicle } from '../../shared'
+import { assignedRideSchema, judgeSchedule, RELOCATION_GAP_DEFAULT_MINUTES, rosterVehicleSuggestionSchema, tenantSettingsGetSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../shared'
+import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 
 const props = defineProps<{
   rideId: string
   guestName: string
   drivers: Driver[]
   vehicles: Vehicle[]
+  /**
+   * Phone assignment is a list of Drivers, each with that day's roster
+   * Vehicle and an overlap hint. Desktop keeps the two selects.
+   */
+  listDrivers?: boolean
+  /** The day's Rides. The hint judges only this day; the server still confirms. */
+  dayRides?: TransferDayRide[]
+  pickupAt?: string
+  landingAt?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -17,6 +26,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const toast = useToast()
+const { present } = useWorkOrderPresenter()
 const { notifyAuditChanged } = useAuditRefresh()
 const titleId = useId()
 
@@ -55,6 +65,73 @@ const vehicleItems = computed(() => props.vehicles
   })))
 
 const canSubmit = computed(() => Boolean(driverId.value) && Boolean(vehicleId.value))
+
+const rosterByDriver = ref<Record<string, string | null>>({})
+const durationMinutes = ref(TRANSFER_DURATION_DEFAULT_MINUTES)
+const gapMinutes = ref(RELOCATION_GAP_DEFAULT_MINUTES)
+
+const occupying = computed(() => (props.dayRides ?? []).flatMap((ride) => {
+  if ((ride.state !== 'assigned' && ride.state !== 'accepted') || ride.driverId === null || ride.vehicleId === null)
+    return []
+  return [{
+    rideId: ride.rideId,
+    pickupAt: new Date(ride.pickupAt),
+    landingAt: ride.landingAt === null ? null : new Date(ride.landingAt),
+    driverId: ride.driverId,
+    vehicleId: ride.vehicleId,
+  }]
+}))
+
+function plateFor(vehicleId: string | null): string {
+  if (vehicleId === null)
+    return ''
+  return props.vehicles.find(vehicle => vehicle.id === vehicleId)?.registrationPlate ?? ''
+}
+
+function overlaps(driver: string, vehicle: string | null): boolean {
+  if (vehicle === null || props.pickupAt === undefined)
+    return false
+  const verdict = judgeSchedule({
+    rideId: props.rideId,
+    pickupAt: new Date(props.pickupAt),
+    landingAt: props.landingAt ? new Date(props.landingAt) : null,
+    driverId: driver,
+    vehicleId: vehicle,
+  }, occupying.value, durationMinutes.value, gapMinutes.value)
+  return verdict.overlaps.length > 0
+}
+
+function pickDriver(nextDriverId: string) {
+  driverId.value = nextDriverId
+}
+
+onMounted(() => {
+  if (!props.listDrivers)
+    return
+  void loadRosterHints()
+})
+
+async function loadRosterHints() {
+  try {
+    const settings = tenantSettingsGetSchema.parse(await $fetch('/api/tenant-settings'))
+    durationMinutes.value = settings.transferDurationMinutes
+    gapMinutes.value = settings.relocationGapMinutes
+  }
+  catch {
+    // The hint uses the Tenant defaults when settings cannot be read.
+  }
+  await Promise.all(props.drivers.map(async (driver) => {
+    try {
+      const suggestion = rosterVehicleSuggestionSchema.parse(await $fetch(`/api/rides/${props.rideId}/roster-vehicle`, {
+        query: { driverId: driver.id },
+      }))
+      rosterByDriver.value = { ...rosterByDriver.value, [driver.id]: suggestion.vehicleId }
+    }
+    catch {
+      rosterByDriver.value = { ...rosterByDriver.value, [driver.id]: null }
+    }
+  }))
+}
 
 /**
  * The copy comes from `error.data.code`, the same way VehicleList reads a conflict.
@@ -157,13 +234,14 @@ async function assign(confirm = false) {
     // The notice names the Driver by id. The name is the one already on
     // this form. The response has no address, so the toast cannot show one.
     const notice = assigned.workOrders[0]
-    const driverName = props.drivers.find(driver => driver.id === notice?.driverId)?.name ?? t('ride.unknownDriver')
-    const shown = notice === undefined ? undefined : workOrderNotice(notice.outcome)
-    toast.add({
-      title: t('ride.assigned'),
-      description: shown === undefined ? undefined : t(shown.key, { name: driverName }),
-      color: shown?.color ?? 'success',
-    })
+    if (notice === undefined) {
+      const savedNotice = { title: t('ride.assigned'), color: 'success' as const, role: 'status' }
+      toast.add(savedNotice)
+    }
+    else {
+      const driverName = props.drivers.find(driver => driver.id === notice.driverId)?.name ?? t('ride.unknownDriver')
+      present(props.rideId, notice.outcome, driverName, t('ride.assigned'))
+    }
     emit('assigned')
   }
   catch (error) {
@@ -203,7 +281,39 @@ async function assign(confirm = false) {
       class="mb-4"
       :description="t(formErrorKey)"
     />
+    <ul
+      v-if="listDrivers"
+      class="mb-4 flex flex-col gap-2"
+      :aria-label="t('ride.driver')"
+    >
+      <li
+        v-for="driver in drivers"
+        :key="driver.id"
+      >
+        <UButton
+          type="button"
+          color="neutral"
+          :variant="driverId === driver.id ? 'solid' : 'outline'"
+          size="xl"
+          class="min-h-12 w-full justify-start"
+          :disabled="pending"
+          :aria-pressed="driverId === driver.id"
+          @click="pickDriver(driver.id)"
+        >
+          <span class="flex min-w-0 flex-col items-start">
+            <span>{{ driver.name }}</span>
+            <span class="text-sm font-normal">
+              <span class="font-mono">{{ plateFor(rosterByDriver[driver.id] ?? null) || t('ride.noRosterVehicle') }}</span>
+              <span v-if="overlaps(driver.id, rosterByDriver[driver.id] ?? null)">
+                · {{ t('ride.overlapHint') }}
+              </span>
+            </span>
+          </span>
+        </UButton>
+      </li>
+    </ul>
     <UFormField
+      v-else
       :label="t('ride.driver')"
       name="assign-driver"
       class="mb-4"

@@ -320,6 +320,16 @@
       "rosterMismatch": "Roster mismatch",
       "expiredDocument": "Expired document"
     },
+    "attentionDetail": {
+      "unassignedAlarm": "The ride is unassigned and the pickup is within four hours.",
+      "pastPickup": "The pickup has passed and the ride is still unassigned.",
+      "declined": "{driver} declined this ride.",
+      "landingAlarm": "The expected time after landing has passed and the ride is not closed.",
+      "unclosed": "More than an hour has passed since pickup and the ride is not closed.",
+      "overlap": "The time overlaps another ride, or the gap to it is too short.",
+      "rosterMismatch": "The vehicle is not the one the roster gives this driver for that day.",
+      "expiredDocument": "A document for the driver or the vehicle has expired."
+    },
     "rowAccept": "Confirm by phone",
     "rowAcceptFor": "Confirm by phone: {guest}",
     "rowDone": "Done",
@@ -377,7 +387,7 @@
     "signedOut": "You are signed out. Sign in and try again.",
     "saveFailed": "The transfer was not recorded. Try again.",
     "actionsFor": "Actions: {guest}",
-    "correct": "Correct",
+    "correct": "Correct transfer",
     "correctFor": "Correct: {guest}",
     "correctTitle": "Correct this transfer",
     "saveCorrection": "Save correction",
@@ -698,6 +708,13 @@
     "signedOut": "You are signed out. Sign in and try again.",
     "saveFailed": "The ride was not assigned. Try again.",
     "unknownDriver": "Unknown driver",
+    "changed": "The ride has changed",
+    "overlapHint": "Overlaps another ride",
+    "noRosterVehicle": "No roster vehicle",
+    "detailBack": "Back",
+    "detailClose": "Close",
+    "detailMore": "More",
+    "detailFacts": "Ride facts",
     "unknownVehicle": "Unknown vehicle"
   },
   "liveRefresh": {

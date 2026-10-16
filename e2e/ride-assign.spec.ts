@@ -102,7 +102,7 @@ test('an admin assigns a ride and the audit log names the actor', async ({ page 
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
-  await expect(page.getByRole('listitem').filter({ hasText: /^Dodijeljeno/ })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: /^Dodijeljeno/ })).toBeVisible()
   await expect(page.getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
   await expect(page.getByRole('row', { name: guest })).toContainText(driverName)
   await expect(page.getByRole('row', { name: guest })).toContainText(plate)
@@ -142,7 +142,7 @@ test('the roster pre-fill picks the rostered vehicle, and an override is saved',
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
-  await expect(page.getByRole('listitem').filter({ hasText: /^Dodijeljeno/ })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: /^Dodijeljeno/ })).toBeVisible()
   await expect(page.getByRole('cell', { name: /^Dodijeljeno/ })).toBeVisible()
   await expect(page.getByRole('row', { name: guest })).toContainText(driverName)
   await expect(page.getByRole('row', { name: guest })).toContainText(otherPlate)

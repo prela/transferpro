@@ -74,7 +74,7 @@ function row(page: Page, guest: string) {
 // may or may not still be on screen. Match each toast by the title of the action
 // that raised it, not by a running count across actions.
 function notice(page: Page, title: string, sentence: string) {
-  return page.getByRole('listitem').filter({ hasText: title }).filter({ hasText: sentence })
+  return page.getByRole('status').filter({ hasText: title }).filter({ hasText: sentence })
 }
 
 test('a vehicle change, a reassign, and a clear each name the Driver, in Croatian, with an English smoke', async ({ page }) => {
@@ -111,15 +111,15 @@ test('a vehicle change, a reassign, and a clear each name the Driver, in Croatia
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), 'Ana Blank')
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), firstPlate)
   await page.getByRole('button', { name: 'Prebaci vožnju', exact: true }).click()
-  // A reassign raises one toast per Driver: the new Driver (no email), then the previous one (sent).
-  await expect(notice(page, 'Prebačeno', blankAna)).toHaveCount(1)
+  // A reassign names both Drivers: the new one stays in the detail (no email), the previous one is a toast (sent).
+  await expect(page.getByRole('alert').filter({ hasText: 'Prebačeno' }).filter({ hasText: blankAna })).toHaveCount(1)
   await expect(notice(page, 'Prebačeno', sentToAna)).toHaveCount(1)
   await expect(page.getByText(sentAddress)).toHaveCount(0)
 
   await openRideMenu(page, 'Iva Change')
   await page.getByRole('menuitem', { name: 'Ukloni dodjelu', exact: true }).click()
   await page.getByRole('dialog', { name: 'Uklanjanje dodjele' }).getByRole('button', { name: 'Ukloni dodjelu', exact: true }).click()
-  await expect(notice(page, 'Dodjela uklonjena', blankAna)).toHaveCount(1)
+  await expect(page.getByRole('alert').filter({ hasText: 'Dodjela uklonjena' }).filter({ hasText: blankAna })).toHaveCount(1)
   await expect(row(page, 'Iva Change').getByRole('cell', { name: /^Nedodijeljeno/ })).toBeVisible()
 
   await switchLocale(page, 'en')
@@ -132,6 +132,6 @@ test('a vehicle change, a reassign, and a clear each name the Driver, in Croatia
   await page.getByRole('menuitem', { name: 'Change vehicle', exact: true }).click()
   await chooseOption(page, page.getByRole('combobox', { name: 'Vehicle' }), secondPlate)
   await page.getByRole('button', { name: 'Change vehicle', exact: true }).click()
-  await expect(page.getByRole('listitem').filter({ hasText: 'Vehicle changed' }).filter({ hasText: 'Work order sent to Ana Sent.' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Vehicle changed' }).filter({ hasText: 'Work order sent to Ana Sent.' })).toBeVisible()
   await expect(page.getByText(sentAddress)).toHaveCount(0)
 })

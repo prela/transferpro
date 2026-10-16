@@ -13,3 +13,11 @@ const NOTICE = {
 export function workOrderNotice(outcome: WorkOrderNotice['outcome']) {
   return NOTICE[outcome]
 }
+
+/**
+ * "Sent" is a toast. "No email" and "send failed" stay in the Ride detail
+ * until the user closes them (ADR-0038). The sentence still names the Driver.
+ */
+export function workOrderStaysInDetail(outcome: WorkOrderNotice['outcome']): outcome is 'no_email' | 'failed' {
+  return outcome !== 'sent'
+}

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { Driver, TransferDayRide } from '../../shared'
 import { cancelledRideResultSchema } from '../../shared'
+import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
 import { cancelRideButtonId } from '../transfer-ride-buttons'
 import { canCallOff } from '../transfer-ride-guards'
-import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
   drivers: Driver[]
@@ -14,6 +14,7 @@ const props = defineProps<{
 
 const { t } = useI18n()
 const toast = useToast()
+const { present } = useWorkOrderPresenter()
 const { notifyAuditChanged } = useAuditRefresh()
 
 type CancelRideFailure
@@ -84,12 +85,13 @@ async function confirmCancelRide() {
     }))
     notifyAuditChanged()
     const notice = cancelled.workOrders[0]
-    const shown = notice === undefined ? undefined : workOrderNotice(notice.outcome)
-    toast.add({
-      title: t('ride.cancelled'),
-      description: shown === undefined || notice === undefined ? undefined : t(shown.key, { name: driverLabel(notice.driverId) }),
-      color: shown?.color ?? 'success',
-    })
+    if (notice === undefined) {
+      const savedNotice = { title: t('ride.cancelled'), color: 'success' as const, role: 'status' }
+      toast.add(savedNotice)
+    }
+    else {
+      present(target.rideId, notice.outcome, driverLabel(notice.driverId), t('ride.cancelled'))
+    }
     cancelling.value = null
     await props.loadDay()
   }
