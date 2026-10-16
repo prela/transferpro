@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { chooseOption, signIn } from './fixtures/ui'
 
 test('empty catalog lists and remaining field messages appear on the screens', async ({ page }) => {
   const tenant = await seedTenant('catalog-empty')
@@ -22,8 +22,7 @@ test('empty catalog lists and remaining field messages appear on the screens', a
   await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   let dialog = page.getByRole('dialog')
   await dialog.getByLabel('Ime').fill('Ivo Ivić')
-  await dialog.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Vlastiti', exact: true }).click()
+  await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Vlastiti')
   await dialog.getByLabel('Vozačka dozvola vrijedi do').fill('2030-01-01')
   await dialog.getByLabel('Dozvola za prijevoz vrijedi do').fill('2030-02-02')
   await dialog.getByRole('button', { name: 'Dodaj vozača', exact: true }).click()
@@ -38,8 +37,7 @@ test('empty catalog lists and remaining field messages appear on the screens', a
   await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Registarska oznaka', { exact: true }).fill('ST333DD')
-  await dialog.getByRole('combobox', { name: 'Vrsta' }).click()
-  await page.getByRole('option', { name: 'Stalno', exact: true }).click()
+  await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Stalno')
   await dialog.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
   await expect(dialog.getByRole('alert').filter({ hasText: 'Unesite datum.' })).toHaveCount(3)
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()

@@ -125,18 +125,70 @@ export async function signOut(page: Page) {
 export type InviteRole = 'Administrator' | 'Dispečer' | 'Vozač'
 
 /**
- * Open a combobox and confirm the named option with the keyboard. A pointer
- * click on the option misses when the list is clipped (the option is attached
- * but outside the viewport).
+ * Open a Nuxt UI select or select menu and return the open listbox.
+ *
+ * USelect opens on pointerdown. Reka closes that list on pointerup when the
+ * pointer has moved, and Nuxt UI's click handler can send a second
+ * pointerdown at the origin while the trigger still renders closed, so a
+ * later pointerup looks like a drag and closes the list. ArrowDown opens a
+ * combobox once. A select menu is a button and toggles on click. The list
+ * is ready when the trigger is expanded and the open listbox is on screen.
  */
-export async function chooseOption(page: Page, combobox: Locator, name: string) {
-  await combobox.click()
-  const listbox = page.getByRole('listbox')
+export async function openListbox(page: Page, trigger: Locator): Promise<Locator> {
+  await hydrated(page)
+  await expect(trigger).toBeVisible()
+  await expect(trigger).toBeEnabled()
+  const opened = await trigger.elementHandle()
+  if (await trigger.getAttribute('aria-expanded') !== 'true') {
+    // A suggestion list left open by the previous field stays open when this
+    // trigger is opened from the keyboard. Escape closes that list. It is
+    // sent only while one is open, so it does not dismiss the dialog.
+    if (await page.locator('[role="listbox"][data-state="open"]').count() > 0)
+      await page.keyboard.press('Escape')
+    if (await trigger.getAttribute('role') === 'combobox')
+      await trigger.press('ArrowDown')
+    else
+      await trigger.click()
+    // The open list hides the rest of the page, so a role locator cannot see
+    // the trigger. The same node still carries aria-expanded.
+    await expect.poll(() => opened?.getAttribute('aria-expanded') ?? null).toBe('true')
+  }
+  const listboxId = await opened?.getAttribute('aria-controls')
+  const listbox = listboxId
+    ? page.locator(`[id="${listboxId}"]`)
+    : page.locator('[role="listbox"][data-state="open"]')
   await expect(listbox).toBeVisible()
-  const option = listbox.getByRole('option', { name, exact: true })
-  await expect(option).toBeAttached()
+  return listbox
+}
+
+/**
+ * Open the list and confirm the named option.
+ * A pointer click on a combobox option misses when the list is clipped (the
+ * option is attached but outside the viewport), so that control confirms
+ * with Enter. A select menu option confirms on click, after it is visible.
+ * The trigger's text is the caller's check when a rejected choice must not
+ * stay on the control.
+ */
+export async function selectOption(page: Page, trigger: Locator, name: string, exact = true) {
+  // Read the role while the trigger is still in the accessibility tree.
+  // An open list hides it, and a later role lookup waits until the test times out.
+  const combobox = await trigger.getAttribute('role') === 'combobox'
+  const listbox = await openListbox(page, trigger)
+  // Roster marks a plate already given that day, so the option name is longer
+  // than the plate. Callers that need that mark pass exact false.
+  const option = listbox.getByRole('option', { name, exact })
+  await expect(option).toBeVisible()
   await option.scrollIntoViewIfNeeded()
-  await option.press('Enter')
+  if (combobox)
+    await option.press('Enter')
+  else
+    await option.click()
+  await expect(listbox).toBeHidden()
+}
+
+/** Pick `name` and leave it showing on the trigger. */
+export async function chooseOption(page: Page, combobox: Locator, name: string) {
+  await selectOption(page, combobox, name)
   await expect(combobox).toContainText(name)
 }
 

@@ -2,25 +2,19 @@ import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, operationalDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, signIn, switchLocale, switchTheme } from './fixtures/ui'
+import { chooseOption, openListbox, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
 async function chooseMenu(page: Page, dialog: Locator, field: string, option: string) {
-  const trigger = dialog.getByRole('button', { name: field, exact: true })
-  await trigger.click()
-  const listbox = page.locator('[role="listbox"][data-state="open"]')
-  await expect(listbox).toBeVisible()
-  const item = listbox.getByRole('option', { name: option, exact: true })
-  await item.click()
-  await expect(trigger).toContainText(option)
+  await chooseOption(page, dialog.getByRole('button', { name: field, exact: true }), option)
 }
 
 async function addPlace(page: Page, dialog: Locator, field: string, name: string, kind: string) {
   const trigger = dialog.getByRole('button', { name: field, exact: true })
-  await trigger.click()
-  const listbox = page.locator('[role="listbox"][data-state="open"]')
-  await expect(listbox).toBeVisible()
+  const listbox = await openListbox(page, trigger)
   await listbox.locator('input').fill(name)
-  await listbox.getByRole('option', { name: `+ Dodaj ‘${name}’` }).click()
+  const created = listbox.getByRole('option', { name: `+ Dodaj ‘${name}’` })
+  await expect(created).toBeVisible()
+  await created.click()
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), kind)
   await dialog.getByRole('button', { name: 'Dodaj mjesto', exact: true }).click()
   await expect(trigger).toContainText(name)

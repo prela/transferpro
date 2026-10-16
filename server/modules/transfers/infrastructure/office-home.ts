@@ -34,6 +34,12 @@ const sourceRowSchema = z.object({
 })
 
 /**
+ * Shown when the declining Driver is no longer in the catalog.
+ * It is not a person's name, in either locale.
+ */
+const MISSING_DECLINE_DRIVER = '—'
+
+/**
  * Rides the snapshot can list or count, in one query so the lists and the
  * counts are the same moment. Decline alerts for an unassigned Ride are
  * read in that same statement: assignment does not delete the stored row,
@@ -123,7 +129,7 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
       expectedArrival: row.expectedArrival == null ? null : toInstant(row.expectedArrival),
       tabla: row.tabla,
       mustAccept: row.mustAccept,
-      declineAlerts: row.declinedBy.map(driverId => ({ driverName: requiredName(driverId, drivers) })),
+      declineAlerts: row.declinedBy.map(driverId => ({ driverName: declineDriverName(driverId, drivers) })),
     }
   })
 
@@ -143,4 +149,14 @@ function requiredName(id: string, names: Map<string, string>): string {
   if (name === undefined)
     throw new Error('Office home read failed')
   return name
+}
+
+/**
+ * The declining Driver's display name.
+ * `loadDrivers` returns every Driver row. There is no deactivated Driver.
+ * An id missing from that list uses a neutral mark, so one absent name
+ * does not fail the snapshot. The mark is not logged.
+ */
+function declineDriverName(id: string, names: Map<string, string>): string {
+  return names.get(id) ?? MISSING_DECLINE_DRIVER
 }

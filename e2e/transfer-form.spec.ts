@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 import { operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, hydrated, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
+import { chooseOption, hydrated, openListbox, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
 
 /**
  * Transfer form in the Ride panel (issue #259): Više, quick add, and the
@@ -17,12 +17,7 @@ async function createdId(page: Page, path: string, data: unknown): Promise<void>
 }
 
 async function chooseMenu(page: Page, dialog: Locator, field: string, option: string) {
-  const trigger = dialog.getByRole('button', { name: field, exact: true })
-  await trigger.click()
-  const listbox = page.locator('[role="listbox"][data-state="open"]')
-  await expect(listbox).toBeVisible()
-  await listbox.getByRole('option', { name: option, exact: true }).click()
-  await expect(trigger).toContainText(option)
+  await chooseOption(page, dialog.getByRole('button', { name: field, exact: true }), option)
 }
 
 async function openForm(page: Page): Promise<Locator> {
@@ -36,11 +31,11 @@ async function openForm(page: Page): Promise<Locator> {
 
 async function createFromSelect(page: Page, dialog: Locator, field: string, name: string) {
   const trigger = dialog.getByRole('button', { name: field, exact: true })
-  await trigger.click()
-  const listbox = page.locator('[role="listbox"][data-state="open"]')
-  await expect(listbox).toBeVisible()
+  const listbox = await openListbox(page, trigger)
   await listbox.locator('input').fill(name)
-  await listbox.getByRole('option', { name: `+ Dodaj ‘${name}’` }).click()
+  const created = listbox.getByRole('option', { name: `+ Dodaj ‘${name}’` })
+  await expect(created).toBeVisible()
+  await created.click()
   return trigger
 }
 
