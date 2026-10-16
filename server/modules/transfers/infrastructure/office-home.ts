@@ -26,14 +26,19 @@ const sourceRowSchema = z.object({
   landingAt: z.unknown().nullish(),
   expectedArrival: z.unknown().nullish(),
   tabla: z.string(),
+  // Driver ids, not names. The name is resolved with the other catalog names.
+  declinedBy: z.array(z.uuid()),
 })
 
 /**
  * Rides the snapshot can list or count, in one query so the lists and the
- * counts are the same moment. A Ride outside this filter is on no list and
- * not on the operational day, so leaving it out does not change the result.
- * Names are resolved afterwards, through each catalog module, on this same
- * transaction (ADR-0018).
+ * counts are the same moment. Decline alerts for an unassigned Ride are
+ * read in that same statement: assignment does not delete the stored row,
+ * and a decline committed later must not appear on this snapshot.
+ * A Ride outside this filter is on no list and not on the operational day,
+ * so leaving it out does not change the result. Names are resolved
+ * afterwards, through each catalog module, on this same transaction
+ * (ADR-0018).
  */
 export async function loadOfficeHome(transaction: TenantTransaction, now: Date): Promise<OfficeHome> {
   const settings = await loadTenantSettings(transaction)
@@ -58,7 +63,15 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
         t.flight_number as "flightNumber",
         t.landing_at as "landingAt",
         t.expected_arrival_at as "expectedArrival",
-        t.tabla
+        t.tabla,
+        coalesce((
+          select jsonb_agg(a.driver_id order by a.created_at, a.id)
+          from app.ride_alert as a
+          where a.ride_id = r.id
+            and a.tenant_id = r.tenant_id
+            and a.kind = 'declined'
+            and r.state = 'unassigned'
+        ), '[]'::jsonb) as "declinedBy"
       from app.rides as r
       join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
       where
@@ -101,6 +114,7 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
       expectedArrival: row.expectedArrival == null ? null : toInstant(row.expectedArrival),
       tabla: row.tabla,
       mustAccept: row.mustAccept,
+      declineAlerts: row.declinedBy.map(driverId => ({ driverName: requiredName(driverId, drivers) })),
     }
   })
 
@@ -111,6 +125,11 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
 function named(id: string | null, names: Map<string, string>): string | null {
   if (id === null)
     return null
+  return requiredName(id, names)
+}
+
+/** A set id with no catalog row fails the whole read. The name is not logged. */
+function requiredName(id: string, names: Map<string, string>): string {
   const name = names.get(id)
   if (name === undefined)
     throw new Error('Office home read failed')

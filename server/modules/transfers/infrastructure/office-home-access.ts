@@ -12,8 +12,10 @@ function officeOnly(role: string): void {
 
 /**
  * The three lists and the seven operational-day counts, taken at `now`.
- * A driver is 403. No session is 401. Nothing is written: no audit entry
- * and no mail. The alarm is a mark on the unassigned list, not a message.
+ * An unassigned row carries a decline alert and the declining Driver's
+ * name, for any pickup day. A driver is 403. No session is 401. Nothing
+ * is written: no audit entry and no mail. The alarm is a mark on the
+ * unassigned list, not a message. The name is on the response only.
  */
 export async function readOfficeHome(headers: Headers, now: Date = new Date()): Promise<OfficeHome> {
   return withTenantFromSession(headers, async ({ actor, transaction }) => {

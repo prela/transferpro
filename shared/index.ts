@@ -30,7 +30,7 @@ export type { ChangeMemberRoleBody, Member, MemberErrorKey, MemberList } from '.
 export { canMarkNoShow, noShowWaitElapsed } from './no-show'
 export type { NoShowClock } from './no-show'
 export { buildOfficeHome, officeHomeSchema, officeHomeUrgentKeys } from './office-home'
-export type { OfficeHome, OfficeHomeRide } from './office-home'
+export type { OfficeHome, OfficeHomeDecline, OfficeHomeRide } from './office-home'
 export { accountInitials, officeNav, officePhoneBar } from './office-nav'
 export type { OfficeNavGroup, OfficeNavLabels, OfficeNavLink, OfficeNavRole } from './office-nav'
 export { companyAccountListSchema, companyAccountSchema, parseRenameTenantAccount, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './platform-account'
