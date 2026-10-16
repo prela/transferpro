@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayLocale, LiveRefreshOutcome, TransferDayFilter, TransferDayRide } from '../../shared'
-import { classifyRideAttention, clockLabel, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, rideUrgentKeys, transferDayFilterCounts, transferDayFilterMatches } from '../../shared'
+import { classifyRideAttention, clockLabel, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -18,6 +18,9 @@ const corrected = ref(false)
 const nowMs = ref(Date.now())
 const announcedCount = ref(0)
 const filter = ref<TransferDayFilter>(parseTransferDayFilter(route.query.filter))
+const search = ref(queryText(route.query.search))
+const clientId = ref<string | null>(queryText(route.query.client) || null)
+const driverId = ref<string | null>(queryText(route.query.driver) || null)
 
 const {
   day,
@@ -27,15 +30,20 @@ const {
   locations,
   drivers,
   vehicles,
+  unassignedPickups,
   loading,
   loadError,
   loadDay,
   loadAll,
 } = useTransferDayLoad(() => props.timeZone, () => props.operationalDayStartHour)
 
-const queryDay = typeof route.query.day === 'string' ? route.query.day : ''
+const queryDay = queryText(route.query.day)
 if (isCalendarDate(queryDay))
   day.value = queryDay
+
+function queryText(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
 
 const table = ref<{ focusList: () => void } | null>(null)
 const commands = ref<{
@@ -68,8 +76,32 @@ function declinesFor(rideId: string): { driverName: string }[] {
     .map(alert => ({ driverName: alert.driverName }))
 }
 
+const operationalDay = computed(() =>
+  operationalDateInTimeZone(props.timeZone, new Date(nowMs.value), props.operationalDayStartHour),
+)
+
+const unassignedNote = computed(() => sevenDayUnassignedNote(
+  unassignedPickups.value,
+  operationalDay.value,
+  props.timeZone,
+  props.operationalDayStartHour,
+  props.locale,
+))
+
+const narrowedRides = computed(() => rides.value.filter(ride =>
+  // The day row has no Client reference column. The predicate still matches one.
+  transferDaySearchMatches(search.value, {
+    guestName: ride.guestName,
+    flightNumber: ride.flightNumber,
+    clientReference: '',
+    tabla: ride.tabla,
+    clientId: ride.clientId,
+    driverId: ride.driverId,
+  }) && transferDayPartyMatches(clientId.value ?? '', driverId.value ?? '', ride),
+))
+
 const counts = computed(() => transferDayFilterCounts(
-  rides.value.map(ride => ({
+  narrowedRides.value.map(ride => ({
     rideId: ride.rideId,
     ride,
     declines: declinesFor(ride.rideId),
@@ -77,7 +109,7 @@ const counts = computed(() => transferDayFilterCounts(
   nowMs.value,
 ))
 
-const visibleRides = computed(() => rides.value.filter(ride =>
+const visibleRides = computed(() => narrowedRides.value.filter(ride =>
   transferDayFilterMatches(filter.value, ride, declinesFor(ride.rideId), nowMs.value),
 ))
 
@@ -127,7 +159,75 @@ const shownTime = computed(() =>
   updatedAt.value === null ? '' : clockLabel(updatedAt.value, props.timeZone, props.locale),
 )
 
+const ownedQuery = ['day', 'filter', 'search', 'client', 'driver']
+
+function buildQuery(): Record<string, string | string[]> {
+  const query: Record<string, string | string[]> = {}
+  for (const [key, value] of Object.entries(route.query)) {
+    if (ownedQuery.includes(key))
+      continue
+    if (typeof value === 'string') {
+      query[key] = value
+    }
+    else if (Array.isArray(value)) {
+      const strings = value.filter((item): item is string => typeof item === 'string')
+      if (strings.length > 0)
+        query[key] = strings
+    }
+  }
+  query.day = day.value
+  if (filter.value !== 'all')
+    query.filter = filter.value
+  if (search.value.trim() !== '')
+    query.search = search.value
+  if (clientId.value)
+    query.client = clientId.value
+  if (driverId.value)
+    query.driver = driverId.value
+  return query
+}
+
+function queryValue(value: string | string[] | undefined): string {
+  if (value === undefined)
+    return ''
+  return Array.isArray(value) ? value.join('\0') : value
+}
+
+function queryMatches(routeQuery: Record<string, string | string[]>): boolean {
+  const current = buildQuery()
+  const keys = new Set([...Object.keys(current), ...Object.keys(routeQuery)])
+  for (const key of keys) {
+    if (queryValue(current[key]) !== queryValue(routeQuery[key]))
+      return false
+  }
+  return true
+}
+
+let syncing = false
+let syncAgain = false
+
 async function syncQuery() {
+  if (syncing) {
+    syncAgain = true
+    return
+  }
+  syncing = true
+  try {
+    do {
+      syncAgain = false
+      const query = buildQuery()
+      if (queryMatches(routeQueryRecord()))
+        continue
+      // Push, so Back returns the previous filters. Replace would drop them.
+      await router.push({ query })
+    } while (syncAgain)
+  }
+  finally {
+    syncing = false
+  }
+}
+
+function routeQueryRecord(): Record<string, string | string[]> {
   const query: Record<string, string | string[]> = {}
   for (const [key, value] of Object.entries(route.query)) {
     if (typeof value === 'string') {
@@ -139,14 +239,25 @@ async function syncQuery() {
         query[key] = strings
     }
   }
-  query.day = day.value
-  if (filter.value === 'all')
-    delete query.filter
-  else
-    query.filter = filter.value
-  if (route.query.day === query.day && (route.query.filter ?? undefined) === query.filter)
-    return
-  await router.replace({ query })
+  return query
+}
+
+function applyRouteQuery() {
+  const nextFilter = parseTransferDayFilter(route.query.filter)
+  const nextSearch = queryText(route.query.search)
+  const nextClient = queryText(route.query.client) || null
+  const nextDriver = queryText(route.query.driver) || null
+  const nextDay = queryText(route.query.day)
+  if (filter.value !== nextFilter)
+    filter.value = nextFilter
+  if (search.value !== nextSearch)
+    search.value = nextSearch
+  if (clientId.value !== nextClient)
+    clientId.value = nextClient
+  if (driverId.value !== nextDriver)
+    driverId.value = nextDriver
+  if (isCalendarDate(nextDay) && day.value !== nextDay)
+    day.value = nextDay
 }
 
 watch(day, () => {
@@ -155,8 +266,12 @@ watch(day, () => {
   void loadDay()
 })
 
-watch(filter, () => {
+watch([filter, search, clientId, driverId], () => {
   void syncQuery()
+})
+
+watch(() => route.query, () => {
+  applyRouteQuery()
 })
 
 function goToday() {
@@ -169,7 +284,13 @@ function goToday() {
     <TransferDayToolbar
       v-model:day="day"
       v-model:filter="filter"
+      v-model:search="search"
+      v-model:client-id="clientId"
+      v-model:driver-id="driverId"
       :counts="counts"
+      :clients="clients"
+      :drivers="drivers"
+      :note="unassignedNote"
       @today="goToday"
       @add="form?.openAdd()"
     />

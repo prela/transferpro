@@ -294,6 +294,12 @@
       "price": "Cijena"
     },
     "filtersLabel": "Filtri dana",
+    "daySearch": "Traži u danu",
+    "daySearchPlaceholder": "Gost, let, referenca, tabla",
+    "allClients": "Svi naručitelji",
+    "driver": "Vozač",
+    "allDrivers": "Svi vozači",
+    "unassignedAhead": "Nedodijeljeno u idućih sedam dana",
     "filterEmpty": "Nema vožnji za ovaj filtar.",
     "filters": {
       "all": "Sve",

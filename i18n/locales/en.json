@@ -294,6 +294,12 @@
       "price": "Price"
     },
     "filtersLabel": "Day filters",
+    "daySearch": "Search this day",
+    "daySearchPlaceholder": "Guest, flight, reference, meet sign",
+    "allClients": "All clients",
+    "driver": "Driver",
+    "allDrivers": "All drivers",
+    "unassignedAhead": "Unassigned over the next seven days",
     "filterEmpty": "No rides match this filter.",
     "filters": {
       "all": "All",
