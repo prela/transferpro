@@ -166,7 +166,7 @@ export async function revokePendingInvitation(
   const pending = await listPendingInvitations(handle, headers, organizationId)
   if (!pending.invitations.some(row => row.id === invitationId))
     throw new InvitationAccessError(404)
-  await cancelPendingInvitation(handle, organizationId, actorUserId, invitationId)
+  await recordInvitationCanceled(handle, organizationId, actorUserId, invitationId)
 }
 
 /**
@@ -174,7 +174,7 @@ export async function revokePendingInvitation(
  * canceled) matches no row, rolls back, and is 404. The role has to be a
  * Tenant role or the entry cannot be stored, so that row is left pending.
  */
-async function cancelPendingInvitation(
+async function recordInvitationCanceled(
   handle: AuthHandle,
   organizationId: string,
   actorUserId: string,

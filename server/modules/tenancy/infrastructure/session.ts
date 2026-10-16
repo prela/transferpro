@@ -9,7 +9,7 @@ import { operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplay
 import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
-import { acceptInvitation, revokePendingInvitation as cancelPendingInvitation, parseInviteInput, previewInvitation, listPendingInvitations as readPendingInvitations, repairInvitationCookies, sendInvitation } from './invitation'
+import { acceptInvitation, parseInviteInput, previewInvitation, listPendingInvitations as readPendingInvitations, repairInvitationCookies, revokePendingInvitation as revokePendingInvitationImpl, sendInvitation } from './invitation'
 import { mailerForApp } from './mailer'
 import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, removeMember as removeMemberImpl } from './member-management'
 import { changeTenantSettings, loadTenantSettings, TenantSettingsMissingError } from './tenant-settings'
@@ -227,7 +227,7 @@ export async function revokePendingInvitation(headers: Headers, invitationId: st
   const actor = await actorFromSession(handle, headers)
   if (actor.role !== 'admin')
     throw new TenantAccessError(403)
-  await cancelPendingInvitation(handle, headers, actor.context.tenantId, actor.userId, invitationId)
+  await revokePendingInvitationImpl(handle, headers, actor.context.tenantId, actor.userId, invitationId)
 }
 
 export async function previewMemberInvitation(raw: unknown, headers: Headers) {
