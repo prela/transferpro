@@ -16,8 +16,9 @@ export const TRANSFER_SEARCH_MAX_LENGTH = Math.max(
 )
 
 /**
- * How many rows the palette gets. The earliest pickups fill the list,
- * and a Ride id breaks a tie. There is no next page.
+ * How many rows the palette gets. Today and later fill it first, earliest
+ * pickup first. Past operational days follow, newest first. A Ride id
+ * breaks a tie in that same direction. There is no next page.
  */
 export const TRANSFER_SEARCH_LIMIT = 20
 

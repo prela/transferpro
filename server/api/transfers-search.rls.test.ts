@@ -184,8 +184,11 @@ it('finds a guest, a Client reference, and a flight on past, current, and future
   const end = await createLocation(admin, { name: 'Hotel Excelsior', kind: 'hotel' })
 
   const calendar = calendarDateInTimeZone(zone, new Date())
+  const earlier = addCalendarDays(calendar, -2)
   const previous = addCalendarDays(calendar, -1)
   const next = addCalendarDays(calendar, 1)
+  // Noon, so the operational day is this calendar date even before 05:00.
+  const now = instantFromWallClock(`${calendar}T12:00`, zone)
 
   async function record(input: {
     guestName: string
@@ -214,6 +217,7 @@ it('finds a guest, a Client reference, and a flight on past, current, and future
     return { rideId: recorded.ride.id, pickupAt }
   }
 
+  const guestEarlier = await record({ guestName: 'Anić Xsr', wall: `${earlier}T12:00` })
   const guestYesterday = await record({ guestName: 'Anić Xsr', wall: `${previous}T12:00` })
   const guestToday = await record({ guestName: 'Anić Xsr', wall: `${calendar}T12:00` })
   // Before the 05:00 start, so the board day is the previous calendar date.
@@ -230,6 +234,7 @@ it('finds a guest, a Client reference, and a flight on past, current, and future
 
   await record({ guestName: 'Tabla Samo', wall: `${calendar}T18:00`, tabla: 'TABLA-ONLY' })
 
+  const boundPast = await record({ guestName: 'Bound Xsr', wall: `${previous}T18:00` })
   const boundIds: string[] = []
   for (let index = 0; index <= TRANSFER_SEARCH_LIMIT; index++) {
     const total = 6 * 60 + index
@@ -259,22 +264,24 @@ it('finds a guest, a Client reference, and a flight on past, current, and future
   })
 
   const audits = await auditText(created.tenantId)
-  const found = transferSearchSchema.parse(await searchTransfers(admin, '  anić xsr  '))
-  expect(transferSearchSchema.parse(await searchTransfers(dispatcher, 'anić xsr'))).toEqual(found)
+  const found = transferSearchSchema.parse(await searchTransfers(admin, '  anić xsr  ', now))
+  expect(transferSearchSchema.parse(await searchTransfers(dispatcher, 'anić xsr', now))).toEqual(found)
   expect(await auditText(created.tenantId)).toBe(audits)
   expect(audits).not.toContain('Anić Xsr')
   expect(audits).not.toContain('REF-XSR-19')
   expect(audits).not.toContain('OU919')
 
+  // Today and later, earliest pickup first. Past days follow, newest first.
   expect(found.results.map(row => row.rideId)).toEqual([
-    guestYesterday.rideId,
     guestToday.rideId,
     guestEarly.rideId,
     guestTomorrow.rideId,
+    guestYesterday.rideId,
+    guestEarlier.rideId,
   ])
-  expect(found.results.map(row => row.operationalDay)).toEqual([previous, calendar, calendar, next])
+  expect(found.results.map(row => row.operationalDay)).toEqual([calendar, calendar, next, previous, earlier])
   expect(found.results[0]).toMatchObject({
-    pickupAt: guestYesterday.pickupAt,
+    pickupAt: guestToday.pickupAt,
     guestName: 'Anić Xsr',
     start: 'Zračna luka Dubrovnik',
     end: 'Hotel Excelsior',
@@ -283,19 +290,19 @@ it('finds a guest, a Client reference, and a flight on past, current, and future
   })
   expect(JSON.stringify(found)).not.toContain(foreignRide.ride.id)
 
-  const byReference = transferSearchSchema.parse(await searchTransfers(dispatcher, 'ref-xsr-19'))
+  const byReference = transferSearchSchema.parse(await searchTransfers(dispatcher, 'ref-xsr-19', now))
   expect(byReference.results.map(row => row.rideId)).toEqual([
-    referenceYesterday.rideId,
     referenceToday.rideId,
     referenceTomorrow.rideId,
+    referenceYesterday.rideId,
   ])
-  expect(byReference.results.map(row => row.operationalDay)).toEqual([previous, calendar, next])
+  expect(byReference.results.map(row => row.operationalDay)).toEqual([calendar, next, previous])
 
-  const byFlight = transferSearchSchema.parse(await searchTransfers(admin, 'ou919'))
+  const byFlight = transferSearchSchema.parse(await searchTransfers(admin, 'ou919', now))
   expect(byFlight.results.map(row => row.rideId)).toEqual([
-    flightYesterday.rideId,
     flightToday.rideId,
     flightTomorrow.rideId,
+    flightYesterday.rideId,
   ])
 
   expect(transferSearchSchema.parse(await searchTransfers(admin, 'tabla-only')).results).toEqual([])
@@ -303,8 +310,9 @@ it('finds a guest, a Client reference, and a flight on past, current, and future
   expect(transferSearchSchema.parse(await searchTransfers(admin, '%')).results).toEqual([])
   expect(transferSearchSchema.parse(await searchTransfers(admin, '_')).results).toEqual([])
 
-  const bounded = transferSearchSchema.parse(await searchTransfers(admin, 'bound xsr'))
+  const bounded = transferSearchSchema.parse(await searchTransfers(admin, 'bound xsr', now))
   expect(bounded.results.map(row => row.rideId)).toEqual(boundIds.slice(0, TRANSFER_SEARCH_LIMIT))
+  expect(bounded.results.map(row => row.rideId)).not.toContain(boundPast.rideId)
 
   const foreignFound = transferSearchSchema.parse(await searchTransfers(outsider, 'anić xsr'))
   expect(foreignFound.results.map(row => row.rideId)).toEqual([foreignRide.ride.id])
@@ -312,7 +320,10 @@ it('finds a guest, a Client reference, and a flight on past, current, and future
 
   const http = await call(admin, 'anić xsr')
   expect(http.status).toBe(200)
-  expect(transferSearchSchema.parse(await http.json())).toEqual(found)
+  // The route uses the real clock. The pinned noon above is only for the order.
+  expect(transferSearchSchema.parse(await http.json())).toEqual(
+    transferSearchSchema.parse(await searchTransfers(admin, 'anić xsr')),
+  )
 
   const logged: string[] = []
   const write = process.stdout.write.bind(process.stdout)

@@ -29,7 +29,9 @@
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
  * their index files, by id. Those modules do not import this one (ADR-0018).
  * Search reads Transfers on every day by guest, Client reference, or flight
- * number. It is office-only. The query text is not logged and not audited.
+ * number. Today and later come first, earliest pickup first. Past
+ * operational days follow, newest first. It is office-only. The query
+ * text is not logged and not audited.
  */
 export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableError } from './infrastructure/accept'
 export { RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'

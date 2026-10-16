@@ -2,7 +2,7 @@ import type { TransferSearch } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { operationalDateInTimeZone, parseTransferSearchQuery, rideStateSchema, TRANSFER_SEARCH_LIMIT, transferSearchSchema } from '../../../../shared'
+import { localDayBounds, operationalDateInTimeZone, parseTransferSearchQuery, rideStateSchema, TRANSFER_SEARCH_LIMIT, transferSearchSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { loadClients } from '../../clients'
 import { loadLocations } from '../../locations'
@@ -38,15 +38,19 @@ function likePattern(query: string): string {
 /**
  * Transfers whose guest, Client reference, or flight number contains the
  * query, on any pickup day. The match is a case-insensitive substring.
- * A tabla and a Client name are not fields. The earliest pickups fill the
- * list, then the Ride id. Names are resolved through the catalog modules
- * on this transaction (ADR-0018). Nothing is written.
+ * A tabla and a Client name are not fields. Today and later come first,
+ * earliest pickup first. Past operational days follow, newest first.
+ * `now` names that operational day. Names are resolved through the catalog
+ * modules on this transaction (ADR-0018). Nothing is written.
  * A database failure is logged as a SQLSTATE only, so the query text in
  * Drizzle's error message never reaches the log.
  */
-async function loadTransferSearch(transaction: TenantTransaction, query: string): Promise<TransferSearch> {
+async function loadTransferSearch(transaction: TenantTransaction, query: string, now: Date): Promise<TransferSearch> {
   const settings = await loadTenantSettings(transaction)
   const pattern = likePattern(query)
+  const today = operationalDateInTimeZone(settings.timeZone, now, settings.operationalDayStartHour)
+  // A pickup at or after this instant is today or a later operational day.
+  const cutoff = localDayBounds(today, settings.timeZone, settings.operationalDayStartHour).start.toISOString()
   const selected = z.object({ rows: z.array(searchRowSchema) }).parse(await hideDatabaseError(
     () => transaction.execute(sql`
       select
@@ -62,7 +66,11 @@ async function loadTransferSearch(transaction: TenantTransaction, query: string)
       where t.guest_name ilike ${pattern} escape '\\'
          or t.client_reference ilike ${pattern} escape '\\'
          or t.flight_number ilike ${pattern} escape '\\'
-      order by t.pickup_at, r.id
+      order by (t.pickup_at >= ${cutoff}) desc,
+               case when t.pickup_at >= ${cutoff} then t.pickup_at end asc,
+               case when t.pickup_at >= ${cutoff} then r.id end asc,
+               case when t.pickup_at < ${cutoff} then t.pickup_at end desc,
+               case when t.pickup_at < ${cutoff} then r.id end desc
       limit ${TRANSFER_SEARCH_LIMIT}
     `),
     'Transfer search failed',
@@ -98,15 +106,17 @@ async function loadTransferSearch(transaction: TenantTransaction, query: string)
 /**
  * Search this Tenant's Transfers across days. The query is parsed first, so
  * a blank or over-long value never opens a session and is not logged.
- * A driver is 403. No session is 401. Another Tenant cannot: the tables
- * have FORCE RLS. The read writes no audit entry.
+ * Today and later are listed first, earliest pickup first. Past operational
+ * days follow, newest first. At most 20 rows. `now` is the clock; the route
+ * leaves it unset. A driver is 403. No session is 401. Another Tenant
+ * cannot: the tables have FORCE RLS. The read writes no audit entry.
  */
-export async function searchTransfers(headers: Headers, rawQuery: unknown): Promise<TransferSearch> {
+export async function searchTransfers(headers: Headers, rawQuery: unknown, now: Date = new Date()): Promise<TransferSearch> {
   const query = parseTransferSearchQuery(rawQuery)
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
     try {
-      return await loadTransferSearch(transaction, query)
+      return await loadTransferSearch(transaction, query, now)
     }
     catch (error) {
       if (error instanceof TenantAccessError)
