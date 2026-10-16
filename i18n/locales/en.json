@@ -348,7 +348,6 @@
     "add": "Record a transfer",
     "client": "Client",
     "chooseClient": "Choose a client",
-    "clientReference": "Client reference",
     "more": "More",
     "draftRestored": "Unfinished entry restored",
     "discardDraft": "Discard",

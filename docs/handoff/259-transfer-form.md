@@ -1,6 +1,6 @@
 # 259 Transfer form in the panel
 
-Out of scope: no new server route, and no migration. The Client reference is shown and kept in the browser draft only.
+Out of scope: no new server route, and no migration. The Client reference stays off the form and out of the draft until `app.transfers` has a column.
 
 ## Decisions
 
@@ -9,7 +9,7 @@ Out of scope: no new server route, and no migration. The Client reference is sho
 - Client and Location are searchable selects. "+ Dodaj ‘…’" posts through the existing Client and Location writes and selects the new record. Location still asks for kind, because `POST /api/locations` requires it. A picked address suggestion sends `place`; typed text sends null.
 - After save the panel shows the new Ride, with Dodijeli as its action, and a "Zabilježeno." toast.
 - The unfinished new Transfer is `localStorage` under `transferpro-transfer-draft:${userId}:${tenantId}`. It expires after 24 hours, restores with "Vraćen nedovršeni unos" and "Odbaci", and is removed on save, Odbaci, and sign-out. Closing or Odustani keeps it. A correction is not a draft. The old `sessionStorage` key `transferpro-transfer-form` is removed on restore. The draft is never sent to the server.
-- The Client reference has no column (`app.transfers`, `createTransferSchema`). The field is in the form and the draft. `bookingBody()` does not send it, so a typed reference is dropped on save. Open question for the owner: store it, or drop the field until a migration is allowed.
+- QC: the Client reference is not on the form and not in the draft. `app.transfers` has no column, and a typed value must not be dropped on save. The within-day search predicate still accepts a reference and the screen still passes an empty string.
 - Menus inside the slideover use `z-[70]`. The panel is `z-[60]`, and a portaled menu with no z-index sits under it, so a click landed on the field behind the option.
 - No migration.
 

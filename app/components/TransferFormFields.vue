@@ -28,7 +28,6 @@ const {
   endLocationId,
   passengers,
   guest,
-  clientReference,
   tabla,
   flight,
   price,
@@ -586,21 +585,6 @@ onUnmounted(() => {
       <template #error="{ error }">
         <span role="alert">{{ error }}</span>
       </template>
-    </UFormField>
-    <UFormField
-      :label="t('transfers.clientReference')"
-      name="client-reference"
-      class="mb-4"
-      :size="controlSize"
-    >
-      <UInput
-        id="transfer-client-reference"
-        v-model="clientReference"
-        name="client-reference"
-        type="text"
-        autocomplete="off"
-        class="w-full"
-      />
     </UFormField>
     <UFormField
       :label="t('transfers.payment')"

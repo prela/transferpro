@@ -21,7 +21,6 @@ const transferDraftFieldsSchema = z.object({
   endLocationId: z.uuid().nullable(),
   passengers: z.string(),
   guest: z.string(),
-  clientReference: z.string(),
   price: z.string(),
   payment: paymentMethodSchema.nullable(),
   flight: z.string(),
@@ -63,7 +62,6 @@ export function transferDraftIsBlank(fields: TransferDraftFields, openedPickup?:
     && fields.endLocationId === null
     && fields.payment === null
     && fields.guest.trim() === ''
-    && fields.clientReference.trim() === ''
     && fields.price.trim() === ''
     && fields.flight.trim() === ''
     && fields.tabla.trim() === ''

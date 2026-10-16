@@ -35,7 +35,6 @@ function fields(overrides: Partial<Parameters<typeof rememberTransferDraft>[3]> 
     endLocationId: null,
     passengers: '1',
     guest: 'Ana Anić',
-    clientReference: 'V-19',
     price: '42,50',
     payment: 'cash' as const,
     flight: 'OU384',
@@ -82,7 +81,7 @@ it('clears the draft on save, on discard, and on sign-out, and leaves it while e
   const store = memory()
   rememberTransferDraft(store, USER, TENANT, fields(), NOW)
   applyTransferDraftEvent(store, USER, TENANT, 'edit')
-  expect(recallTransferDraft(store, USER, TENANT, NOW)?.clientReference).toBe('V-19')
+  expect(recallTransferDraft(store, USER, TENANT, NOW)?.guest).toBe('Ana Anić')
 })
 
 it('stores the booking the form shows and nothing that would identify an email', () => {
@@ -94,7 +93,6 @@ it('stores the booking the form shows and nothing that would identify an email',
     'airportMark',
     'childSeats',
     'clientId',
-    'clientReference',
     'endLocationId',
     'flight',
     'guest',
@@ -117,7 +115,6 @@ it('stores the booking the form shows and nothing that would identify an email',
 it('treats a blank new Transfer as nothing to keep, and opens Više only when one of its fields has a value', () => {
   expect(transferDraftIsBlank(fields({
     guest: '  ',
-    clientReference: '',
     price: '',
     payment: null,
     flight: '',
@@ -130,7 +127,6 @@ it('treats a blank new Transfer as nothing to keep, and opens Više only when on
   expect(transferDraftIsBlank(fields())).toBe(false)
   const clockOnly = fields({
     guest: '',
-    clientReference: '',
     price: '',
     payment: null,
     flight: '',

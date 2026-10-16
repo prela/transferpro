@@ -66,7 +66,6 @@ export function useTransferForm(options: {
   const endLocationId = ref<string | undefined>()
   const passengers = ref('1')
   const guest = ref('')
-  const clientReference = ref('')
   const tabla = ref('')
   const flight = ref('')
   const price = ref('')
@@ -330,8 +329,6 @@ export function useTransferForm(options: {
       endLocationId: idOrNull(endLocationId.value),
       passengers: passengers.value,
       guest: guest.value,
-      // Kept in the browser only. The Transfer row has no Client reference column.
-      clientReference: clientReference.value,
       price: price.value,
       payment: payment.value ?? null,
       flight: flight.value,
@@ -350,7 +347,6 @@ export function useTransferForm(options: {
     endLocationId.value = draft.endLocationId ?? undefined
     passengers.value = draft.passengers
     guest.value = draft.guest
-    clientReference.value = draft.clientReference
     tabla.value = draft.tabla
     flight.value = draft.flight
     price.value = draft.price
@@ -452,7 +448,6 @@ export function useTransferForm(options: {
     endLocationId.value = undefined
     passengers.value = '1'
     guest.value = ''
-    clientReference.value = ''
     tabla.value = ''
     flight.value = ''
     price.value = ''
@@ -498,7 +493,6 @@ export function useTransferForm(options: {
     luggage.value = String(ride.luggageCount)
     childSeats.value = String(ride.childSeatCount)
     note.value = ride.note ?? ''
-    clientReference.value = ''
     placeTarget.value = null
     clientTarget.value = false
     restored.value = false
@@ -513,7 +507,6 @@ export function useTransferForm(options: {
       endLocationId: endLocationId.value,
       passengerCount: Number(passengers.value),
       guestName: guest.value,
-      // The Client reference has no column. Sending it would be refused.
       tabla: tabla.value,
       flightNumber: flight.value,
       price: priceFromInput(price.value),
@@ -646,7 +639,6 @@ export function useTransferForm(options: {
     endLocationId,
     passengers,
     guest,
-    clientReference,
     tabla,
     flight,
     price,
