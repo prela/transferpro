@@ -20,12 +20,12 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
   // The log is on Audit. Opening it reads the rows the save already wrote.
   await page.goto('/audit')
   await expect(page.getByRole('heading', { name: 'Revizijski zapisnik' })).toBeVisible()
-  await expect(page.getByText('Promijenjeno čekanje na aerodromu')).toBeVisible()
-  await expect(page.getByText('90 → 45 min')).toBeVisible()
-  await expect(page.getByText('Promijenjeno čekanje izvan aerodroma')).toBeVisible()
-  await expect(page.getByText('25 → 30 min')).toBeVisible()
-  await expect(page.getByText('Promijenjena vremenska zona')).toBeVisible()
-  await expect(page.getByText('Europe/Zagreb → Europe/London')).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Promijenjeno čekanje na aerodromu', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: '90 → 45 min', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Promijenjeno čekanje izvan aerodroma', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: '25 → 30 min', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Promijenjena vremenska zona', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Europe/Zagreb → Europe/London', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Osvježi', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
 
@@ -49,8 +49,8 @@ test('admin sets the operational-day start and sees it after reload, in light an
   await expect(page.getByRole('status').filter({ hasText: 'Spremljeno.' })).toBeVisible()
 
   await page.goto('/audit')
-  await expect(page.getByText('Promijenjen sat početka operativnog dana')).toBeVisible()
-  await expect(page.getByText('05:00 → 06:00')).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Promijenjen sat početka operativnog dana', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: '05:00 → 06:00', exact: true })).toBeVisible()
 
   await page.goto('/settings/tenant')
   await expect(hour).toContainText('06:00')
@@ -64,8 +64,8 @@ test('admin sets the operational-day start and sees it after reload, in light an
   await switchLocale(page, 'en')
   await expect(page.getByLabel('Operational day starts at')).toContainText('06:00')
   await page.goto('/audit')
-  await expect(page.getByText('Operational day start changed')).toBeVisible()
-  await expect(page.getByText('05:00 → 06:00')).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Operational day start changed', exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: '05:00 → 06:00', exact: true })).toBeVisible()
 })
 
 /** Settings in the sidebar, then the named tab. */
