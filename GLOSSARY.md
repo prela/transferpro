@@ -50,7 +50,7 @@ An assigned Ride that requires acceptance, at any pickup time, until it is accep
 _Avoid_: pending
 
 **Decline alert**:
-The board's notice that a Driver declined an assigned Ride, naming that Driver.
+The board's notice that a Driver declined an assigned Ride, naming that Driver. There is no deactivated Driver. When that Driver row is gone, the notice stays and does not name them.
 _Avoid_: warning, unassigned alarm
 
 **Accepted**:
