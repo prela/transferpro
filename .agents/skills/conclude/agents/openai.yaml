@@ -1,0 +1,5 @@
+interface:
+  display_name: "Conclude"
+  short_description: "Checks, handoff, push, and a pull request"
+policy:
+  allow_implicit_invocation: false

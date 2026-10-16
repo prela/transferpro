@@ -16,7 +16,7 @@ Skills live in `.agents/skills/`. Issue tracker, labels, and domain: `docs/agent
 
 ## Workflow
 
-Start with `/implement #N`. Use a subagent only when the ticket asks for one. One slice per chat. Stop after the slice and `/code-review`. Claim a work package only when its dependencies are merged. Blocked? Stop. Write what blocks you on the ticket; do not start another, and do not guess.
+Start with `/implement #N`. Use a subagent only when the ticket asks for one. One slice per chat. `/implement` ends at `READY_FOR_QC`. `/conclude` opens the pull request. Claim a work package only when its dependencies are merged. Blocked? Stop. Write what blocks you on the ticket; do not start another, and do not guess.
 
 While working, run only the tests for changed files. At the end, run the full suite once: `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm test:rls` when the slice touches tenant data. If the same failure happens twice, stop and report. Tests first: red before green for domain and application code. Coverage is 80% global and 95% for domain and application services. Never weaken or remove a test; flag any that you did. A UI change adds or extends a spec under `e2e/`. `pnpm test:rls` and `pnpm test:e2e` stay off the pre-commit hook.
 
@@ -28,7 +28,7 @@ Migrations, RLS, auth, and ride assignment run only on the strongest tier: Grok 
 
 A local agent told a branch name, and not already on it, runs `git fetch origin` then `git switch -c <branch> origin/develop` before any edit. If that branch exists, stop and report; never switch to it. It may also `git switch -c <name>` or `git checkout -b <name>`, with an optional start of exactly `develop` or `origin/develop` and no other flags. `git checkout -B` and `git switch -C` stay denied.
 
-`git add`, `git commit`, and `git push` (including `git push -u origin <branch>`) run only on the ticket's `feature/*`, `fix/*`, or `chore/*` branch. Never open a PR. Never commit to `develop` or `main`. Never push to `develop`, `main`, or any other branch. A bare `git push` uses the upstream name when one is set, otherwise the current branch. Before push, run `pnpm lint && pnpm typecheck && pnpm test`. Conventional Commits. Do not hand-edit `CHANGELOG.md`; it is generated.
+`git add`, `git commit`, and `git push` (including `git push -u origin <branch>`) run only on the ticket's `feature/*`, `fix/*`, or `chore/*` branch. Open a pull request only from `/conclude`. Never commit to `develop` or `main`. Never push to `develop`, `main`, or any other branch. A bare `git push` uses the upstream name when one is set, otherwise the current branch. Before push, run `pnpm lint && pnpm typecheck && pnpm test`. Conventional Commits. Do not hand-edit `CHANGELOG.md`; it is generated.
 
 Denied for a local agent, and still denied for a cloud agent unless the cloud paragraph says otherwise: a force push, `--force-with-lease`, a `+refspec`, deleting a remote branch (`--delete` or `:name`), `git reset` (including `--hard`), `git branch -D`, `git stash`, `git restore`, and a `checkout`, `restore`, or `stash` that discards changes. Plain `checkout` or `switch` of an existing branch or of files stays denied, including for a cloud agent.
 
@@ -56,4 +56,6 @@ No deep imports across modules or tiers. Import only from a module's `index.ts`.
 
 ## Report
 
-Handoff: commit SHA, branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, open questions. Then `Context summarized: yes/no`. The last line is `REVIEW_READY`.
+`/implement` reports the commit SHA, branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, and open questions, then `Context summarized: yes/no`. Its last line is `READY_FOR_QC`.
+
+`/conclude` writes `docs/handoff/<issue>-<slug>.md` and opens the pull request. Its last line is `REVIEW_READY` with the pull request link.
