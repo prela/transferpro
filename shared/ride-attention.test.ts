@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { calendarDateInTimeZone } from './date'
 import {
   classifyRideAttention,
+  homeRowNamesTheDate,
   parseTransferDayFilter,
   pickupNeedsCalendarDate,
   rideStateMark,
@@ -135,6 +136,27 @@ it('counts quick filters from the same classification', () => {
   expect(parseTransferDayFilter('nope')).toBe('all')
 })
 
+it('opens the Home balance parts that are not toolbar chips', () => {
+  const ahead = source({
+    state: 'accepted',
+    mustAccept: true,
+    driverId: '00000000-0000-4000-8000-000000000010',
+    pickupAt: new Date(NOW + HOUR).toISOString(),
+  })
+  const done = source({
+    state: 'done',
+    driverId: '00000000-0000-4000-8000-000000000010',
+  })
+  expect(parseTransferDayFilter('assignedNotStarted')).toBe('assignedNotStarted')
+  expect(parseTransferDayFilter('done')).toBe('done')
+  expect(transferDayFilterMatches('assignedNotStarted', ahead, [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('assignedNotStarted', source(), [], NOW)).toBe(false)
+  expect(transferDayFilterMatches('done', done, [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('noShow', source({ state: 'no-show' }), [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('cancelled', source({ state: 'cancelled' }), [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('closed', done, [], NOW)).toBe(true)
+})
+
 it('shows the calendar date when the pickup falls on the next calendar day', () => {
   const zone = 'Europe/Zagreb'
   const pickupAt = '2026-06-15T23:30:00.000Z'
@@ -142,6 +164,16 @@ it('shows the calendar date when the pickup falls on the next calendar day', () 
   expect(calendarDateInTimeZone(zone, new Date(pickupAt))).toBe('2026-06-16')
   expect(pickupNeedsCalendarDate(pickupAt, day, zone)).toBe(true)
   expect(pickupNeedsCalendarDate('2026-06-15T10:00:00.000Z', day, zone)).toBe(false)
+})
+
+it('names the date on Home when the pickup is another operational day', () => {
+  const zone = 'Europe/Zagreb'
+  const startHour = 4
+  // 02:30 in Zagreb on 16 June is still the operational day of 15 June.
+  const beforeStart = '2026-06-16T00:30:00.000Z'
+  expect(homeRowNamesTheDate(beforeStart, '2026-06-16', zone, startHour)).toBe(true)
+  expect(homeRowNamesTheDate(beforeStart, '2026-06-15', zone, startHour)).toBe(true)
+  expect(homeRowNamesTheDate('2026-06-15T10:00:00.000Z', '2026-06-15', zone, startHour)).toBe(false)
 })
 
 it('paints a Ride state as icon-ready text: waiting outlined, in progress, finished muted', () => {

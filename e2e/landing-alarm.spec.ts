@@ -108,7 +108,8 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
   await record('Open Lara')
 
   await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
-  const progress = page.getByRole('region', { name: 'U tijeku' })
+  // A landing alarm and an unclosed mark are urgent, so both rows sit in Pozornost.
+  const progress = page.getByRole('region', { name: 'Pozornost' })
   const landed = progress.getByRole('listitem').filter({ hasText: 'Landed Lana' })
   const open = progress.getByRole('listitem').filter({ hasText: 'Open Lara' })
   await expect(landed).toContainText('Alarm slijetanja')
@@ -117,7 +118,7 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
   await expect(open).not.toContainText('Alarm slijetanja')
 
   await switchLocale(page, 'en')
-  const progressEn = page.getByRole('region', { name: 'In progress' })
+  const progressEn = page.getByRole('region', { name: 'Attention' })
   await expect(progressEn.getByRole('listitem').filter({ hasText: 'Landed Lana' })).toContainText('Landing alarm')
   await expect(progressEn.getByRole('listitem').filter({ hasText: 'Open Lara' })).not.toContainText('Landing alarm')
   await switchTheme(page, 'dark')
