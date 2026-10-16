@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { OfficeNavGroup, OfficeNavLabels, OfficeNavLink, SessionShell } from '../../shared'
-import { officeNav, officePhoneBar } from '../../shared'
+import { officeHomeUrgentRideCount, officeNav, officePhoneBar } from '../../shared'
+import { useOfficeHomeFeedOwner } from '../composables/office-home-feed'
 import { sessionShellKey } from '../composables/session-shell'
 
 const { t, setLocale } = useI18n()
@@ -49,14 +50,19 @@ const icons: Record<OfficeNavLink['id'], string> = {
   companySettings: 'i-lucide-settings',
 }
 
+const officeHome = useOfficeHomeFeedOwner()
+const urgentRideCount = computed(() =>
+  officeHome.snapshot.value ? officeHomeUrgentRideCount(officeHome.snapshot.value) : null,
+)
+
 const groups = computed(() => {
   if (!officeRole.value)
     return []
-  return officeNav(officeRole.value, labels()).map(toFrameGroup)
+  return officeNav(officeRole.value, labels(), urgentRideCount.value).map(toFrameGroup)
 })
 
 const phoneLinks = computed(() =>
-  officePhoneBar(officeRole.value ? officeNav(officeRole.value, labels()) : []).map(toFrameLink),
+  officePhoneBar(officeRole.value ? officeNav(officeRole.value, labels(), urgentRideCount.value) : []).map(toFrameLink),
 )
 
 function labels(): OfficeNavLabels {

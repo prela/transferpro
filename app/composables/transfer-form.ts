@@ -1,5 +1,5 @@
 import type { InjectionKey } from 'vue'
-import type { Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, TransferDayRide } from '../../shared'
+import type { Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, TransferDayRide, TransferPrefill } from '../../shared'
 import { z } from 'zod'
 import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedTransferSchema, rememberTransferDraft, sameLocationError, tablaError, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
@@ -117,6 +117,11 @@ export function useTransferForm(options: {
   const clientKindErrorKey = ref<'clients.kindInvalid' | null>(null)
   /** Bumped when a submit fails so the summary can take focus. */
   const validationNonce = ref(0)
+  /**
+   * Bumped when a duplicate or a return fills the form. Više opens from
+   * this, because the mode is already `add` and would not change again.
+   */
+  const moreOpenNonce = ref(0)
   const restored = ref(false)
 
   let ignoreDraft = false
@@ -478,6 +483,54 @@ export function useTransferForm(options: {
   }
 
   /**
+   * A duplicate or a return journey. The fields are already decided; this
+   * only shows them. No Transfer is written. A draft of the new form is
+   * the same browser draft as any other unfinished entry.
+   */
+  function openPrefill(fields: TransferPrefill) {
+    clearFieldErrors()
+    formErrorKey.value = null
+    overlapOpen.value = false
+    ignoreDraft = true
+    editingTransferId.value = null
+    editingRideId.value = null
+    applyDraft({
+      clientId: fields.clientId,
+      pickupWall: fields.pickupWall,
+      startLocationId: fields.startLocationId,
+      endLocationId: fields.endLocationId,
+      passengers: fields.passengers,
+      guest: fields.guest,
+      tabla: fields.tabla,
+      clientReference: fields.clientReference,
+      flight: fields.flight,
+      price: fields.price,
+      payment: fields.payment,
+      airportMark: fields.airportMark,
+      luggage: fields.luggage,
+      childSeats: fields.childSeats,
+      note: fields.note,
+    })
+    placeTarget.value = null
+    clientTarget.value = false
+    restored.value = false
+    moreOpenNonce.value += 1
+    ignoreDraft = false
+    // The field watch already ran while updates were ignored. Write the
+    // prefill so a reload does not bring back an older draft instead.
+    if (options.persistDraft && import.meta.client) {
+      rememberTransferDraft(
+        localStorage,
+        options.userId(),
+        options.tenantId(),
+        currentDraft(),
+        new Date(),
+        `${pickupDay}T12:00`,
+      )
+    }
+  }
+
+  /**
    * Fills the booking form from the row. The landing time stays on the board.
    * Cancel drops the values and does not save.
    */
@@ -690,6 +743,7 @@ export function useTransferForm(options: {
     clientNameErrorKey,
     clientKindErrorKey,
     validationNonce,
+    moreOpenNonce,
     restored,
     clientItems,
     locationItems,
@@ -704,6 +758,7 @@ export function useTransferForm(options: {
     addClient,
     discardDraft,
     openAdd,
+    openPrefill,
     openCorrect,
     saveCorrection,
     record,

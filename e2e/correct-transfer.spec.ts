@@ -88,7 +88,13 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   expect((await page.request.post(`/api/rides/${finishedRideId}/cancel`, { data: {} })).ok()).toBeTruthy()
 
   await page.goto('/transfers')
-  await expect(page.getByRole('button', { name: `Radnje: ${finishedGuest}` })).toHaveCount(0)
+  // A closed Ride still has no correction. Duplicate and return stay on the
+  // menu: they only prefill a new Transfer (issue #260).
+  await page.getByRole('button', { name: `Radnje: ${finishedGuest}` }).click()
+  await expect(page.getByRole('menuitem', { name: 'Dupliciraj', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Povratni transfer', exact: true })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
   await expect(page.getByRole('cell', { name: 'Otkazano' })).toBeVisible()
   await page.getByRole('button', { name: `Radnje: ${guest}` }).click()
   await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()

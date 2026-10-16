@@ -53,8 +53,8 @@ function toItem(link: FrameLink): NavigationMenuItem {
     'icon': link.icon,
     'to': link.to,
     'exact': link.exact,
-    'aria-label': link.label,
-    // The count is not rendered while it is null. The field is the slot.
+    // The count is part of the name once the read has arrived, including zero.
+    'aria-label': typeof link.urgentCount === 'number' ? `${link.label}, ${link.urgentCount}` : link.label,
     'badge': link.urgentCount ?? undefined,
   }
 }
@@ -124,6 +124,10 @@ function onPhoneNavigate() {
     </UDashboardPanel>
   </UDashboardGroup>
 
+  <!--
+    basis-0 lets the urgent count sit on Početna without pushing Više
+    past the phone viewport. The default min-width is the label width.
+  -->
   <nav
     v-if="!phoneDetailOpen"
     class="fixed inset-x-0 bottom-0 z-30 flex border-t border-default bg-[var(--tp-frame)] lg:hidden"
@@ -135,10 +139,11 @@ function onPhoneNavigate() {
       :to="link.to"
       :exact="link.exact"
       :icon="link.icon"
+      :aria-label="typeof link.urgentCount === 'number' ? `${link.label}, ${link.urgentCount}` : link.label"
       color="neutral"
       variant="ghost"
       size="xl"
-      class="min-h-11 flex-1 justify-center"
+      class="min-h-11 min-w-0 flex-1 basis-0 justify-center px-1"
     >
       {{ link.label }}
       <!-- Home leaves this empty until the urgent count arrives (ADR-0039). -->
@@ -153,7 +158,7 @@ function onPhoneNavigate() {
       variant="ghost"
       size="xl"
       icon="i-lucide-menu"
-      class="min-h-11 flex-1 justify-center"
+      class="min-h-11 min-w-0 flex-1 basis-0 justify-center px-1"
       :label="t('shell.more')"
       @click="moreOpen = true"
     />

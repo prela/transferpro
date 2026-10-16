@@ -325,11 +325,21 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
     rides: 9,
     unassigned: 3,
     waitingOnAcceptance: 1,
+    assignedNotStarted: 1,
     inProgress: 1,
     done: 1,
     noShow: 1,
     cancelled: 1,
   })
+  expect(
+    snapshot.counts.unassigned
+    + snapshot.counts.waitingOnAcceptance
+    + snapshot.counts.assignedNotStarted
+    + snapshot.counts.inProgress
+    + snapshot.counts.done
+    + snapshot.counts.noShow
+    + snapshot.counts.cancelled,
+  ).toBe(snapshot.counts.rides)
   const listed = [
     ...snapshot.unassigned,
     ...snapshot.waitingOnAcceptance,
@@ -342,10 +352,13 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
     unassigned: [],
     waitingOnAcceptance: [],
     inProgress: [],
+    operationalDate: calendar,
+    operationalDayStartHour: 5,
     counts: {
       rides: 0,
       unassigned: 0,
       waitingOnAcceptance: 0,
+      assignedNotStarted: 0,
       inProgress: 0,
       done: 0,
       noShow: 0,

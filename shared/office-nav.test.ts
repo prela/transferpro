@@ -35,6 +35,14 @@ it('hides audit and company settings from a dispatcher', () => {
   expect(labelsSeen).not.toContain('Postavke tvrtke')
 })
 
+it('puts the urgent Ride count on Početna and on the phone bar', () => {
+  const groups = officeNav('admin', labels, 3)
+  expect(groups[0]?.links[0]?.urgentCount).toBe(3)
+  expect(groups[0]?.links[1]?.urgentCount).toBeNull()
+  expect(officePhoneBar(groups)[0]?.urgentCount).toBe(3)
+  expect(officeNav('dispatcher', labels, 0)[0]?.links[0]?.urgentCount).toBe(0)
+})
+
 it('puts home, transfers, and roster on the phone bar', () => {
   expect(officePhoneBar(officeNav('admin', labels)).map(item => item.id)).toEqual(['home', 'transfers', 'roster'])
 })

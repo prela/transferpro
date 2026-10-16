@@ -68,6 +68,7 @@ const {
   clientNameErrorKey,
   clientKindErrorKey,
   validationNonce,
+  moreOpenNonce,
   restored,
   clientItems,
   locationItems,
@@ -129,6 +130,12 @@ watch(validationNonce, async () => {
 })
 
 watch(formMode, () => {
+  syncMore()
+})
+
+// A prefill lands while the mode is already `add`, so the mode watch does
+// not run. Open Više when the copied booking has a value there.
+watch(moreOpenNonce, () => {
   syncMore()
 })
 

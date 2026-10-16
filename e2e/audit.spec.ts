@@ -78,7 +78,7 @@ test('a dispatcher has no audit item in the sidebar', async ({ page }) => {
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
 
   const nav = page.getByRole('navigation', { name: 'Odjeljci' })
-  await expect(nav.getByRole('link', { name: 'Početna', exact: true })).toBeVisible()
+  await expect(nav.getByRole('link', { name: /^Početna, \d+$/ })).toBeVisible()
   await expect(nav.getByRole('link', { name: 'Postavke tvrtke', exact: true })).toHaveCount(0)
   await expect(nav.getByRole('link', { name: 'Revizija', exact: true })).toHaveCount(0)
 })
