@@ -183,18 +183,6 @@ watch(generation, () => {
 <template>
   <section>
     <!-- The navbar is the h1. This region keeps the same name for the table. -->
-    <div class="mb-4">
-      <UButton
-        type="button"
-        color="neutral"
-        variant="outline"
-        class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
-        :disabled="loading"
-        @click="loadEntries"
-      >
-        {{ t('audit.refresh') }}
-      </UButton>
-    </div>
     <UAlert
       v-if="loadError"
       color="error"
@@ -251,5 +239,15 @@ watch(generation, () => {
         </template>
       </UTable>
     </div>
+    <UButton
+      type="button"
+      color="neutral"
+      variant="outline"
+      class="mt-4 h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
+      :disabled="loading"
+      @click="loadEntries"
+    >
+      {{ t('audit.refresh') }}
+    </UButton>
   </section>
 </template>

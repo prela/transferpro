@@ -258,6 +258,8 @@ async function onSubmit(event: FormSubmitEvent<VehicleForm>) {
   try {
     const body = vehicleBody(event.data)
     if (formMode.value === 'edit') {
+      if (archivedView.value)
+        return
       const id = editingId.value
       if (!id)
         return

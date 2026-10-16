@@ -95,6 +95,12 @@ test('admin adds a vehicle, corrects it, archives it, and the audit log does not
   await page.getByLabel('Prikaži arhivirano').check()
   await expect(page.getByRole('button', { name: 'Radnje: ZG111AA' })).toHaveCount(0)
   await expect(page.getByRole('cell', { name: 'Arhivirano' })).toBeVisible()
+  await page.getByRole('button', { name: nextPlate, exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await expect(dialog.getByLabel('Registarska oznaka', { exact: true })).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: 'Spremi', exact: true })).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await expect(dialog).toBeHidden()
 
   await openAudit(page)
   await expect(page.getByRole('cell', { name: 'Vozilo dodano', exact: true })).toBeVisible()

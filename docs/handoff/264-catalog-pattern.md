@@ -13,11 +13,15 @@ No server change and no migration. Partners and the Client card tabs stay as the
 ## Specs rewritten
 
 - `e2e/drivers.spec.ts` — the list opener is `+ Dodaj`, the panel submit is "Dodaj vozača", edit is the row, and search filters the loaded names. The audit assertions are unchanged.
-- `e2e/vehicles.spec.ts` — same opener and row edit. Archive stays under `⋮`. "Prikaži arhivirano" replaces "Prikaži arhivirana". Search covers the plate.
+- `e2e/vehicles.spec.ts` — same opener and row edit. Archive stays under `⋮`. "Prikaži arhivirano" replaces "Prikaži arhivirana". Search covers the plate. An archived row opens read-only.
 - `e2e/vehicles-hardening.spec.ts` — add uses `+ Dodaj`; the archived-plate conflict still opens from the row, not "Ispravi vozilo".
 - `e2e/catalog-empty-validation.spec.ts` — empty copy now says what is empty and what to do next; roster still says "Još nema vozača."
 - `e2e/theme-pages.spec.ts` — drivers and vehicles open `+ Dodaj` and still run theme and axe.
 - `e2e/audit.spec.ts` — the compact four columns are asserted; refresh and Admin-only redirects stay.
-- `e2e/catalogs.spec.ts` — added `@phone` coverage for drivers, vehicles, and audit beside the table at 1440 px, light and dark axe, and English once on audit.
+- `e2e/catalogs.spec.ts` — added `@phone` coverage for drivers, vehicles, and audit beside the table at 1440 px, two-line rows after create, light and dark axe, and English once on audit.
 
-E2e was not run in this slice (another agent holds the machine). `pnpm lint`, `pnpm typecheck`, and `pnpm test` are the local gate. No migration.
+E2e was not run in this slice (another agent holds the machine). `pnpm lint`, `pnpm typecheck`, and `pnpm test` (536) passed. No migration.
+
+## Code review
+
+Fixed point `240aa10` (merge of #263). After the first commit: archive confirm still uses `xl` (same as LocationList); `watch(generation)` still reloads Audit when another office screen bumps it — that was already today's behaviour. Two-line phone rows and the archived read-only open were then pinned in the specs. An archived Vehicle submit now returns before PATCH.
