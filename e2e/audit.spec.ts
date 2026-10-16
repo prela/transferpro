@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { expectNoInvitationCookie, invite, openAudit, signIn } from './fixtures/ui'
+import { chooseOption, expectNoInvitationCookie, invite, openAudit, signIn } from './fixtures/ui'
 
 test('an admin opens the audit log from the sidebar, newest first, and can refresh', async ({ page }) => {
   const tenant = await seedTenant('audit-admin')
@@ -13,9 +13,7 @@ test('an admin opens the audit log from the sidebar, newest first, and can refre
 
   await page.goto('/settings/members')
   const member = page.getByRole('row', { name: driver.name })
-  await member.getByRole('combobox', { name: 'Uloga' }).click()
-  await page.getByRole('option', { name: 'Dispečer', exact: true }).click()
-  await expect(member.getByRole('combobox', { name: 'Uloga' })).toContainText('Dispečer')
+  await chooseOption(page, member.getByRole('combobox', { name: 'Uloga' }), 'Dispečer')
 
   await page.goto('/settings/tenant')
   const settings = page.getByRole('region', { name: 'Postavke' })

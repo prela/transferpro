@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedTenant } from './fixtures/seed'
-import { signIn, switchLocale, switchTheme } from './fixtures/ui'
+import { chooseOption, openListbox, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
 test('admin changes the waits and the time zone, and the audit log updates', async ({ page }) => {
   const tenant = await seedTenant('settings')
@@ -11,9 +11,12 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
 
   await settings.getByLabel('Čekanje na aerodromu (minute)').fill('45')
   await settings.getByLabel('Čekanje izvan aerodroma (minute)').fill('30')
-  await settings.getByLabel('Vremenska zona').click()
-  await page.getByRole('combobox', { name: 'Vremenska zona' }).fill('Europe/London')
-  await page.getByRole('option', { name: 'Europe/London', exact: true }).click()
+  const listbox = await openListbox(page, settings.getByLabel('Vremenska zona'))
+  await listbox.locator('input').fill('Europe/London')
+  const london = listbox.getByRole('option', { name: 'Europe/London', exact: true })
+  await expect(london).toBeVisible()
+  await london.click()
+  await expect(listbox).toBeHidden()
   await settings.getByRole('button', { name: 'Spremi', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Spremljeno.' })).toBeVisible()
 
@@ -43,8 +46,7 @@ test('admin sets the operational-day start and sees it after reload, in light an
   const hour = settings.getByLabel('Sat početka operativnog dana')
 
   await expect(hour).toContainText('05:00')
-  await hour.click()
-  await page.getByRole('option', { name: '06:00', exact: true }).click()
+  await chooseOption(page, hour, '06:00')
   await settings.getByRole('button', { name: 'Spremi', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Spremljeno.' })).toBeVisible()
 

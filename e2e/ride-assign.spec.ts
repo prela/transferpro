@@ -2,7 +2,7 @@ import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedMember, seedTenant, seedVehicleRecord } from './fixtures/seed'
-import { chooseOption, openAudit, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
+import { chooseOption, openAudit, openListbox, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
 
 const phone = '+385911112233'
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
@@ -399,8 +399,7 @@ test('an assigned archived vehicle keeps its plate with a badge, and the picker 
   await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
 
   await assignButton(page, openGuest).click()
-  await page.getByRole('combobox', { name: 'Vozilo' }).click()
-  const listbox = page.getByRole('listbox')
+  const listbox = await openListbox(page, page.getByRole('combobox', { name: 'Vozilo' }))
   await expect(listbox.getByRole('option', { name: otherPlate, exact: true })).toBeVisible()
   await expect(listbox.getByRole('option', { name: archivedPlate, exact: true })).toHaveCount(0)
   await expect(listbox.getByRole('option', { name: livePlate, exact: true })).toHaveCount(0)

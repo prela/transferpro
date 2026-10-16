@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { openAudit, signIn, switchLocale, useTheme } from './fixtures/ui'
+import { openAudit, selectOption, signIn, switchLocale, useTheme } from './fixtures/ui'
 
 const driverName = 'Ana Roster'
 const otherDriverName = 'Marko Roster'
@@ -98,13 +98,7 @@ async function chooseVehicle(
     response.request().method() === 'PUT'
     && new URL(response.url()).pathname === '/api/roster',
   )
-  await combobox.click()
-  const listbox = page.getByRole('listbox')
-  await expect(listbox).toBeVisible()
-  const option = listbox.getByRole('option', { name: registrationPlate })
-  await expect(option).toBeAttached()
-  await option.scrollIntoViewIfNeeded()
-  await option.press('Enter')
+  await selectOption(page, combobox, registrationPlate, false)
   await saved
   if (expectPlate)
     await expect(combobox).toContainText(registrationPlate)
