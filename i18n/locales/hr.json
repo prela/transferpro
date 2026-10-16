@@ -284,6 +284,17 @@
   "transfers": {
     "nav": "Transferi",
     "title": "Transferi",
+    "occupation": {
+      "show": "Prikaži zauzetost",
+      "hide": "Sakrij zauzetost",
+      "region": "Zauzetost",
+      "now": "Sada {time}",
+      "block": "{time}, {passengers}, {from} → {to}",
+      "blockWarning": "{time}, {passengers}, {from} → {to}, {warning}",
+      "loadFailed": "Zauzetost se nije mogla učitati.",
+      "row": "{vehicle}, {driver}",
+      "rowVehicle": "{vehicle}"
+    },
     "day": "Dan",
     "today": "Danas",
     "previousDay": "Prethodni dan",

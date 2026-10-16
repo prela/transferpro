@@ -661,6 +661,20 @@ onUnmounted(() => {
         ref="listPane"
         class="min-w-0 flex-1"
       >
+        <OccupationStrip
+          :day="day"
+          :rides="rides"
+          :locations="locations"
+          :drivers="drivers"
+          :vehicles="vehicles"
+          :time-zone="timeZone"
+          :locale="locale"
+          :operational-day-start-hour="operationalDayStartHour"
+          :now-ms="nowMs"
+          :tenant-id="tenantId"
+          :user-id="userId"
+          @open="showRide($event, null)"
+        />
         <TransferRideTable
           ref="table"
           :rides="visibleRides"
