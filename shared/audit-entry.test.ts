@@ -262,9 +262,14 @@ it('records a Transfer by ids and field names, and refuses the guest name, the f
     data: { ...created.data, fields: [...created.data.fields, 'tabla'] as const },
   }
   expect(auditFactSchema.parse(withTabla)).toEqual(withTabla)
+  const withReference = {
+    ...created,
+    data: { ...created.data, fields: [...created.data.fields, 'clientReference'] as const },
+  }
+  expect(auditFactSchema.parse(withReference)).toEqual(withReference)
   expect(auditFactSchema.safeParse({
     ...created,
-    data: { ...created.data, guestName: 'Ana Anić', flightNumber: 'OU 384', note: 'terminal', tabla: 'GOSPOĐA HORVAT', price: '42.50' },
+    data: { ...created.data, guestName: 'Ana Anić', flightNumber: 'OU 384', note: 'terminal', tabla: 'GOSPOĐA HORVAT', clientReference: 'V-19', price: '42.50' },
   }).success).toBe(false)
   expect(auditFactSchema.safeParse({
     ...created,
@@ -295,7 +300,7 @@ it('records a correction by ids and changed field names, and a return to assigne
   expect(auditFactSchema.parse(corrected)).toEqual(corrected)
   expect(auditFactSchema.safeParse({
     ...corrected,
-    data: { ...corrected.data, guestName: 'Ana Anić', flightNumber: 'OU 384', note: 'terminal', tabla: 'GOSPOĐA HORVAT', price: '42.50' },
+    data: { ...corrected.data, guestName: 'Ana Anić', flightNumber: 'OU 384', note: 'terminal', tabla: 'GOSPOĐA HORVAT', clientReference: 'V-19', price: '42.50' },
   }).success).toBe(false)
   expect(auditFactSchema.safeParse({
     ...corrected,

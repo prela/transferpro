@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
+import { operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, hydrated, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
@@ -8,6 +9,21 @@ import { chooseOption, hydrated, signIn, signOut, switchLocale, useTheme } from 
  * Transfer form in the Ride panel (issue #259): Više, quick add, and the
  * local draft. The phone project runs the @phone block.
  */
+
+async function createdId(page: Page, path: string, data: unknown): Promise<void> {
+  const response = await page.request.post(path, { data })
+  if (!response.ok())
+    throw new Error(`${response.status()} ${await response.text()}`)
+}
+
+async function chooseMenu(page: Page, dialog: Locator, field: string, option: string) {
+  const trigger = dialog.getByRole('button', { name: field, exact: true })
+  await trigger.click()
+  const listbox = page.locator('[role="listbox"][data-state="open"]')
+  await expect(listbox).toBeVisible()
+  await listbox.getByRole('option', { name: option, exact: true }).click()
+  await expect(trigger).toContainText(option)
+}
 
 async function openForm(page: Page): Promise<Locator> {
   await page.goto('/transfers')
@@ -92,9 +108,46 @@ test('a validation error keeps every typed value and focuses the summary', async
   await dialog.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
   await expect(dialog.getByLabel('Ime gosta')).toHaveValue('Ana Ostaje')
   await expect(dialog.getByLabel('Cijena (EUR)')).toHaveValue('42,50')
-  await expect(dialog.getByLabel('Referenca naručitelja')).toHaveCount(0)
+  await expect(dialog.getByLabel('Referenca naručitelja')).toBeVisible()
   await expect(page.locator('#transfer-form-summary')).toBeFocused()
   await expect(page.locator('#transfer-form-summary')).toHaveAttribute('role', 'alert')
+})
+
+test('a typed Client reference survives save, correction, and reload', async ({ page }) => {
+  test.setTimeout(120_000)
+  const tenant = await seedTenant('transfer-reference')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await createdId(page, '/api/clients', { name: 'Agencija Referenca', kind: 'agency' })
+  await createdId(page, '/api/locations', { name: 'Polazak Referenca', kind: 'address' })
+  await createdId(page, '/api/locations', { name: 'Dolazak Referenca', kind: 'hotel' })
+  const dialog = await openForm(page)
+  await chooseMenu(page, dialog, 'Naručitelj', 'Agencija Referenca')
+  await chooseMenu(page, dialog, 'Polazište', 'Polazak Referenca')
+  await chooseMenu(page, dialog, 'Odredište', 'Dolazak Referenca')
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  await dialog.getByLabel('Vrijeme preuzimanja').fill(`${day}T12:00`)
+  await dialog.getByLabel('Ime gosta').fill('Ana Referenca')
+  await dialog.getByLabel('Cijena (EUR)').fill('18')
+  await chooseOption(page, dialog.getByRole('combobox', { name: 'Plaćanje' }), 'Gotovina')
+  await dialog.getByLabel('Referenca naručitelja').fill('V-19')
+  await dialog.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Notifications (F8)' }).getByText('Zabilježeno.')).toBeVisible()
+
+  await page.reload()
+  await hydrated(page)
+  await page.getByRole('button', { name: 'Radnje: Ana Referenca' }).click()
+  await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()
+  const correcting = page.getByRole('dialog')
+  await expect(correcting.getByLabel('Referenca naručitelja')).toHaveValue('V-19')
+  await correcting.getByLabel('Referenca naručitelja').fill('V-20')
+  await correcting.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
+  await expect(correcting).toBeHidden()
+
+  await page.reload()
+  await hydrated(page)
+  await page.getByRole('button', { name: 'Radnje: Ana Referenca' }).click()
+  await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()
+  await expect(page.getByRole('dialog').getByLabel('Referenca naručitelja')).toHaveValue('V-20')
 })
 
 test.describe('@phone', () => {
@@ -115,7 +168,7 @@ test.describe('@phone', () => {
         : page.getByRole('region', { name: 'Zabilježi transfer' })
       await expect(panel.getByRole('button', { name: 'Naručitelj', exact: true })).toBeVisible()
       await expect(panel.getByLabel('Ime gosta')).toBeVisible()
-      await expect(panel.getByLabel('Referenca naručitelja')).toHaveCount(0)
+      await expect(panel.getByLabel('Referenca naručitelja')).toBeVisible()
       await expect(panel.getByLabel('Broj leta')).toBeHidden()
       await panel.getByRole('button', { name: 'Više', exact: true }).click()
       await expect(panel.getByLabel('Broj leta')).toBeVisible()
@@ -129,8 +182,10 @@ test.describe('@phone', () => {
         await page.getByRole('button', { name: 'Record a transfer', exact: true }).click()
         const english = page.getByRole('region', { name: 'Record a transfer' }).or(page.getByRole('dialog'))
         await expect(english.getByLabel('Guest name')).toBeVisible()
-        await expect(english.getByLabel('Client reference')).toHaveCount(0)
-        await expect(english.getByRole('button', { name: 'More', exact: true })).toBeVisible()
+        await expect(english.getByLabel('Client reference')).toBeVisible()
+        await expect(english.getByLabel('Flight number')).toBeHidden()
+        await english.getByRole('button', { name: 'More', exact: true }).click()
+        await expect(english.getByLabel('Flight number')).toBeVisible()
         await page.mouse.move(0, 0)
         await expectNoAxeViolations(page)
       }

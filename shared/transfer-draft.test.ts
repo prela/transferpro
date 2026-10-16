@@ -40,6 +40,7 @@ function fields(overrides: Partial<Parameters<typeof rememberTransferDraft>[3]> 
     flight: 'OU384',
     airportMark: true,
     tabla: 'GOSPOĐA',
+    clientReference: 'V-19',
     luggage: '2',
     childSeats: '1',
     note: 'kasni',
@@ -93,6 +94,7 @@ it('stores the booking the form shows and nothing that would identify an email',
     'airportMark',
     'childSeats',
     'clientId',
+    'clientReference',
     'endLocationId',
     'flight',
     'guest',
@@ -120,6 +122,7 @@ it('treats a blank new Transfer as nothing to keep, and opens Više only when on
     flight: '',
     airportMark: false,
     tabla: '',
+    clientReference: '',
     luggage: '0',
     childSeats: '0',
     note: '',
@@ -132,12 +135,14 @@ it('treats a blank new Transfer as nothing to keep, and opens Više only when on
     flight: '',
     airportMark: false,
     tabla: '',
+    clientReference: '',
     luggage: '0',
     childSeats: '0',
     note: '',
     pickupWall: '2026-10-16T15:00',
   })
   expect(transferDraftIsBlank(clockOnly, '2026-10-16T12:00')).toBe(false)
+  expect(transferDraftIsBlank({ ...clockOnly, pickupWall: '2026-10-16T12:00', clientReference: 'V-19' }, '2026-10-16T12:00')).toBe(false)
   expect(transferDraftIsBlank({ ...clockOnly, pickupWall: '2026-10-16T12:00' }, '2026-10-16T12:00')).toBe(true)
 
   const empty = {

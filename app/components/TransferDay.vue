@@ -102,11 +102,10 @@ const unassignedNote = computed(() => sevenDayUnassignedNote(
 ))
 
 const narrowedRides = computed(() => rides.value.filter(ride =>
-  // The day row has no Client reference column. The predicate still matches one.
   transferDaySearchMatches(search.value, {
     guestName: ride.guestName,
     flightNumber: ride.flightNumber,
-    clientReference: '',
+    clientReference: ride.clientReference,
     tabla: ride.tabla,
     clientId: ride.clientId,
     driverId: ride.driverId,

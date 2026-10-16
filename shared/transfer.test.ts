@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCorrectTransfer, parseCreateTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
+import { canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCorrectTransfer, parseCreateTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -41,7 +41,19 @@ it('accepts a Transfer, trims the guest name, and stores a blank flight and note
     childSeatCount: 0,
     note: null,
     tabla: '',
+    clientReference: null,
   })
+})
+
+it('stores a Client reference trimmed, and a blank one as null', () => {
+  expect(parseCreateTransfer({ ...body, clientReference: '  V-19  ' }, now).clientReference).toBe('V-19')
+  expect(parseCreateTransfer({ ...body, clientReference: '   ' }, now).clientReference).toBeNull()
+  expect(parseCreateTransfer({ ...body, clientReference: null }, now).clientReference).toBeNull()
+  expect(parseCorrectTransfer({ ...body, clientReference: '  V-20  ', confirm: true }, now).input.clientReference).toBe('V-20')
+  expect(() => parseCreateTransfer({
+    ...body,
+    clientReference: 'A'.repeat(CLIENT_REFERENCE_MAX_LENGTH + 1),
+  }, now)).toThrow(TransferInputError)
 })
 
 it('accepts confirm on a correction and refuses it on a new Transfer', () => {
@@ -204,6 +216,9 @@ it('returns an accepted Ride only when the pickup, a place, or the flight number
   const guestOnly = changedTransferFields(stored, { ...stored, guestName: 'Iva Ivić' })
   expect(guestOnly).toEqual(['guestName'])
   expect(correctionReturnsAcceptedRide('accepted', guestOnly, sameFlight)).toBe(false)
+  const referenceOnly = changedTransferFields(stored, { ...stored, clientReference: 'V-19' })
+  expect(referenceOnly).toEqual(['clientReference'])
+  expect(correctionReturnsAcceptedRide('accepted', referenceOnly, sameFlight)).toBe(false)
   expect(correctionReturnsAcceptedRide('assigned', ['flightNumber'], { before: flight, after: 'OU 392' })).toBe(false)
   expect(correctionReturnsAcceptedRide('unassigned', ['pickupAt'], sameFlight)).toBe(false)
 

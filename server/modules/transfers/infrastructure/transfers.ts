@@ -24,6 +24,7 @@ const transferRowSchema = z.object({
   childSeatCount: z.number().int(),
   note: z.string().nullable(),
   tabla: z.string(),
+  clientReference: z.string().nullable(),
   landingAt: z.unknown().nullish(),
   expectedArrival: z.unknown().nullish(),
 })
@@ -61,13 +62,14 @@ const transferColumns = sql`
   luggage_count as "luggageCount",
   child_seat_count as "childSeatCount",
   note,
-  tabla
+  tabla,
+  client_reference as "clientReference"
 `
 
 /**
  * Insert one Transfer and its one unassigned Ride, then append
  * `transfer.created` on this transaction. The entry names ids and field
- * names. It does not store the guest name, the flight, the note, the tabla, or the price.
+ * names. It does not store the guest name, the flight, the note, the tabla, the Client reference, or the price.
  * The caller has already required a dispatcher or an admin, and has already
  * checked that role before loading the Client and the Locations.
  */
@@ -91,12 +93,13 @@ export async function recordTransfer(
     insert into app.transfers (
       client_id, pickup_at, start_location_id, end_location_id,
       passenger_count, guest_name, flight_number, price, payment,
-      airport_mark, luggage_count, child_seat_count, note, tabla
+      airport_mark, luggage_count, child_seat_count, note, tabla, client_reference
     )
     values (
       ${input.clientId}, ${input.pickupAt}, ${input.startLocationId}, ${input.endLocationId},
       ${input.passengerCount}, ${input.guestName}, ${input.flightNumber}, ${input.price}, ${input.payment},
-      ${input.airportMark}, ${input.luggageCount}, ${input.childSeatCount}, ${input.note}, ${input.tabla}
+      ${input.airportMark}, ${input.luggageCount}, ${input.childSeatCount}, ${input.note}, ${input.tabla},
+      ${input.clientReference}
     )
     returning ${transferColumns}
   `))
@@ -177,6 +180,7 @@ export async function loadRidesForDay(
       t.child_seat_count as "childSeatCount",
       t.note,
       t.tabla,
+      t.client_reference as "clientReference",
       t.landing_at as "landingAt",
       t.expected_arrival_at as "expectedArrival"
     from app.rides as r
@@ -241,6 +245,8 @@ function createdFields(input: CreateTransfer): TransferField[] {
     set.add('note')
   if (input.tabla !== '')
     set.add('tabla')
+  if (input.clientReference !== null)
+    set.add('clientReference')
   return TRANSFER_FIELDS.filter(field => set.has(field))
 }
 
@@ -261,6 +267,7 @@ function toTransfer(row: z.infer<typeof transferRowSchema>): Transfer {
     childSeatCount: row.childSeatCount,
     note: row.note,
     tabla: row.tabla,
+    clientReference: row.clientReference,
   }
 }
 
@@ -294,6 +301,7 @@ function toDayRide(
     childSeatCount: row.childSeatCount,
     note: row.note,
     tabla: row.tabla,
+    clientReference: row.clientReference,
     landingAt,
     expectedArrival,
     landingAlarm: landingAlarmOn(

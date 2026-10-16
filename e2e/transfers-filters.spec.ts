@@ -24,7 +24,7 @@ async function record(page: Page, guest: string, day: string, wall: string, spot
   clientId: string
   startLocationId: string
   endLocationId: string
-}, extra?: { flightNumber?: string, tabla?: string }) {
+}, extra?: { flightNumber?: string, tabla?: string, clientReference?: string }) {
   const recorded = await page.request.post('/api/transfers', {
     data: {
       clientId: spot.clientId,
@@ -40,6 +40,7 @@ async function record(page: Page, guest: string, day: string, wall: string, spot
       luggageCount: 0,
       childSeatCount: 0,
       tabla: extra?.tabla ?? '',
+      clientReference: extra?.clientReference ?? null,
     },
   })
   expect(recorded.ok()).toBeTruthy()
@@ -74,7 +75,7 @@ test('search, Client, and Driver filters narrow the day and stay in the URL', as
     startLocationId,
     endLocationId,
   }
-  const rideId = await record(page, 'Ana Traži', day, '12:00', ana, { flightNumber: 'OU111', tabla: 'ANA' })
+  const rideId = await record(page, 'Ana Traži', day, '12:00', ana, { flightNumber: 'OU111', tabla: 'ANA', clientReference: 'V-19' })
   await record(page, 'Ivo Traži', day, '13:00', {
     clientId: ivoClient,
     startLocationId,
@@ -93,6 +94,9 @@ test('search, Client, and Driver filters narrow the day and stay in the URL', as
   await expect(page.getByRole('row', { name: 'Ivo Traži' })).toBeVisible()
   await expect(page.getByRole('row', { name: 'Ana Traži' })).toHaveCount(0)
   await search.fill('ANA')
+  await expect(page.getByRole('row', { name: 'Ana Traži' })).toBeVisible()
+  await expect(page.getByRole('row', { name: 'Ivo Traži' })).toHaveCount(0)
+  await search.fill('V-19')
   await expect(page.getByRole('row', { name: 'Ana Traži' })).toBeVisible()
   await expect(page.getByRole('row', { name: 'Ivo Traži' })).toHaveCount(0)
 

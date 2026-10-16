@@ -26,6 +26,8 @@ const transferDraftFieldsSchema = z.object({
   flight: z.string(),
   airportMark: z.boolean(),
   tabla: z.string(),
+  // Missing on a draft written before the column existed. A blank is still a blank.
+  clientReference: z.string().optional().transform(value => value ?? ''),
   luggage: z.string(),
   childSeats: z.string(),
   note: z.string(),
@@ -65,6 +67,7 @@ export function transferDraftIsBlank(fields: TransferDraftFields, openedPickup?:
     && fields.price.trim() === ''
     && fields.flight.trim() === ''
     && fields.tabla.trim() === ''
+    && fields.clientReference.trim() === ''
     && fields.note.trim() === ''
     && !fields.airportMark
     && (fields.passengers.trim() === '' || fields.passengers.trim() === '1')

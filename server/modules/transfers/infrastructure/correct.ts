@@ -54,6 +54,7 @@ const lockedRows = z.object({
     childSeatCount: z.number().int(),
     note: z.string().nullable(),
     tabla: z.string(),
+    clientReference: z.string().nullable(),
     rideId: z.uuid(),
     state: rideStateSchema,
     driverId: z.uuid().nullable(),
@@ -206,10 +207,11 @@ export async function correctTransferForOffice(
       transfer: { id: current.id, ...input },
       ride,
     },
-    // Every stored field is a mailed fact except the price, and the price
-    // only while the Driver collects cash. Card and invoice-to-agency keep
-    // a fare change off the mail. ADR-0026.
-    notify: changed.some(field => field !== 'price' || input.payment === 'cash'),
+    // A mailed fact is the list in ADR-0026. The price mails only while the
+    // Driver collects cash. The Client reference is stored and is not mailed:
+    // the work order does not state it, and a save that changes only that
+    // number sends nothing.
+    notify: changed.some(field => field !== 'clientReference' && (field !== 'price' || input.payment === 'cash')),
     relocationWarnings,
   }
 }
@@ -284,6 +286,7 @@ async function lockTransfer(transaction: TenantTransaction, transferId: string):
            t.child_seat_count as "childSeatCount",
            t.note,
            t.tabla,
+           t.client_reference as "clientReference",
            r.id as "rideId",
            r.state,
            r.driver_id as "driverId",
@@ -313,6 +316,7 @@ function toBooking(row: LockedTransfer): CreateTransfer {
     childSeatCount: row.childSeatCount,
     note: row.note,
     tabla: row.tabla,
+    clientReference: row.clientReference,
   }
 }
 
@@ -352,6 +356,7 @@ async function writeTransfer(
         child_seat_count = ${input.childSeatCount},
         note = ${input.note},
         tabla = ${input.tabla},
+        client_reference = ${input.clientReference},
         landing_at = case when ${clearLanding} then null else landing_at end,
         expected_arrival_at = case when ${clearLanding} then null else expected_arrival_at end,
         expected_arrival_basis_at = case when ${clearLanding} then null else expected_arrival_basis_at end,

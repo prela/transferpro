@@ -29,6 +29,7 @@ const {
   passengers,
   guest,
   tabla,
+  clientReference,
   flight,
   price,
   payment,
@@ -50,6 +51,7 @@ const {
   formErrorKey,
   guestErrorKey,
   tablaErrorKey,
+  clientReferenceErrorKey,
   flightErrorKey,
   noteErrorKey,
   priceErrorKey,
@@ -102,6 +104,7 @@ const summaryLines = computed(() => {
     paymentErrorKey.value,
     flightErrorKey.value,
     tablaErrorKey.value,
+    clientReferenceErrorKey.value,
     luggageErrorKey.value,
     seatErrorKey.value,
     noteErrorKey.value,
@@ -579,6 +582,25 @@ onUnmounted(() => {
         name="passengers"
         type="text"
         inputmode="numeric"
+        autocomplete="off"
+        class="w-full"
+      />
+      <template #error="{ error }">
+        <span role="alert">{{ error }}</span>
+      </template>
+    </UFormField>
+    <UFormField
+      :label="t('transfers.clientReference')"
+      name="clientReference"
+      class="mb-4"
+      :size="controlSize"
+      :error="clientReferenceErrorKey ? t(clientReferenceErrorKey) : false"
+    >
+      <UInput
+        id="transfer-client-reference"
+        v-model="clientReference"
+        name="clientReference"
+        type="text"
         autocomplete="off"
         class="w-full"
       />
