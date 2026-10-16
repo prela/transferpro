@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { seedTenant } from './fixtures/seed'
-import { openMembers, signIn } from './fixtures/ui'
+import { openListbox, openMembers, signIn } from './fixtures/ui'
 
 const roles = ['Administrator', 'Dispečer', 'Vozač'] as const
 const viewports = [
@@ -32,8 +32,8 @@ for (const viewport of viewports) {
       await expect(select).toBeVisible()
 
       for (const role of roles) {
-        await select.click()
-        const option = page.getByRole('option', { name: role, exact: true })
+        const listbox = await openListbox(page, select)
+        const option = listbox.getByRole('option', { name: role, exact: true })
         await expect(option).toBeVisible()
         const box = await option.boundingBox()
         expect(box, `option ${role} must have a box`).not.toBeNull()

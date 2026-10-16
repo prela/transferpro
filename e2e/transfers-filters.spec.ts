@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { seedTenant } from './fixtures/seed'
-import { hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
+import { chooseOption, hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
 
 /**
  * Transfers quick filters, within-day search, and the seven-day unassigned
@@ -103,11 +103,7 @@ test('search, Client, and Driver filters narrow the day and stay in the URL', as
   await search.fill('')
   await expect(page.getByRole('button', { name: 'Sve (2)', exact: true })).toBeVisible()
   const client = page.getByRole('button', { name: 'Naručitelj', exact: true })
-  await client.click()
-  const clientList = page.getByRole('listbox')
-  await expect(clientList).toBeVisible()
-  await clientList.getByRole('option', { name: 'Hotel Ivo', exact: true }).click()
-  await expect(client).toContainText('Hotel Ivo')
+  await chooseOption(page, client, 'Hotel Ivo')
   await expect(page).toHaveURL(new RegExp(`client=${ivoClient}`))
   await expect(page.getByRole('button', { name: 'Sve (1)', exact: true })).toBeVisible()
   await expect(page.getByRole('row', { name: 'Ivo Traži' })).toBeVisible()
