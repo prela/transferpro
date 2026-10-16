@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, check, date, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { boolean, check, date, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 import { DRIVER_EMAIL_MAX_LENGTH, DRIVER_KINDS, DRIVER_MEMBER_ID_MAX_LENGTH, DRIVER_NAME_MAX_LENGTH, DRIVER_PHONE_MAX_LENGTH } from '../shared'
 import { tenantTable } from './tenant-table'
 
@@ -19,7 +19,8 @@ import { tenantTable } from './tenant-table'
  * so a member of another Tenant fails that check.
  * `(tenant_id, id)` is unique so a Ride and a roster row can reference this
  * Driver and another Tenant's id in the same breath (migration 0019).
- * There is no archived or inactive column. There is no delete in this ticket.
+ * `archived_at` hides the Driver from the default list. The row stays, so a
+ * Ride and a decline alert can still read the name. There is no delete.
  * FORCE RLS is in the migration; drizzle-kit cannot emit it.
  */
 
@@ -39,6 +40,7 @@ export const drivers = tenantTable('drivers', {
   transportLicenceExpiresOn: date('transport_licence_expires_on', { mode: 'string' }).notNull(),
   memberUserId: text('member_user_id'),
   mustAccept: boolean('must_accept').notNull().default(false),
+  archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
 }, table => [
   check(
     'drivers_name',

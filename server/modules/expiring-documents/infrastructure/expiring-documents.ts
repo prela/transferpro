@@ -18,7 +18,7 @@ export async function listExpiringDocuments(headers: Headers, now: Date = new Da
     const today = calendarDateInTimeZone(settings.timeZone, now)
     const drivers = actor.role === 'driver'
       ? await loadDriverLinkedToMember(transaction, actor.userId)
-      : await loadDrivers(transaction)
+      : await loadDrivers(transaction, false)
     const vehicles = actor.role === 'driver'
       ? []
       : await loadVehicles(transaction, false)

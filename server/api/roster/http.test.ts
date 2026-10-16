@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RosterDriverTakenError, RosterVehicleArchivedError, RosterVehicleTakenError } from '../../modules/roster'
+import { RosterDriverArchivedError, RosterDriverTakenError, RosterVehicleArchivedError, RosterVehicleTakenError } from '../../modules/roster'
 import { rosterHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -26,6 +26,14 @@ describe('rosterHttpError', () => {
     expect(error).toMatchObject({
       statusCode: 409,
       data: { code: 'roster_vehicle_archived' },
+    })
+  })
+
+  it('returns a distinct code when the driver is archived', () => {
+    const error = thrown(() => rosterHttpError(new RosterDriverArchivedError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'roster_driver_archived' },
     })
   })
 

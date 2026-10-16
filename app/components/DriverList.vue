@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { FormSubmitEvent } from '@nuxt/ui'
+import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
 import type { Driver, DriverKind } from '../../shared'
 import { z } from 'zod'
 import { catalogSearchMatches, DRIVER_KINDS, driverDateError, driverEmailError, driverListSchema, driverNameError, driverPhoneError, driverSchema, memberListSchema } from '../../shared'
@@ -14,6 +14,7 @@ const { notifyAuditChanged } = useAuditRefresh()
 const listTitleId = useId()
 const searchId = useId()
 const query = ref('')
+const includeArchived = ref(false)
 
 /**
  * Reka UI refuses a SelectItem whose value is `''`: that string is reserved
@@ -28,15 +29,19 @@ const loading = ref(false)
 const loadErrorKey = ref<DriverFailure | null>(null)
 const formErrorKey = ref<DriverFailure | null>(null)
 const saving = ref(false)
+const archiveErrorKey = ref<DriverFailure | null>(null)
+const archivingId = ref<string | null>(null)
+const restoring = ref(false)
 
 /**
- * Add and correct share one panel. A Driver has no archive:
- * there is no archive route, so the row has no ⋮.
+ * Add and correct share one panel. Archive stays a separate confirm.
+ * An archived row opens read-only and can be restored from that panel.
  */
 const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
 /** The panel title stays the name that was opened, not the half-typed correction. */
 const openedName = ref('')
+const archiveTarget = ref<Driver | null>(null)
 const linkedOnOpen = ref(noAccount)
 const emailOnOpen = ref('')
 const state = reactive<{
@@ -58,7 +63,7 @@ const state = reactive<{
   mustAccept: false,
 })
 
-type DriverFailure = 'drivers.loadFailed' | 'drivers.rejected' | 'drivers.notFound' | 'drivers.forbidden' | 'drivers.signedOut' | 'drivers.saveFailed'
+type DriverFailure = 'drivers.loadFailed' | 'drivers.rejected' | 'drivers.notFound' | 'drivers.forbidden' | 'drivers.signedOut' | 'drivers.saveFailed' | 'drivers.archivedLocked'
 interface DriverForm {
   name: string
   kind: DriverKind
@@ -90,6 +95,8 @@ const columns = computed(() => [
   { id: 'transport', header: t('drivers.transportLicenceExpiresOn'), meta: phoneColumn },
   { id: 'member', header: t('drivers.member'), meta: phoneColumn },
   { id: 'mustAccept', header: t('drivers.mustAccept'), meta: phoneColumn },
+  { id: 'status', header: '', meta: phoneColumn },
+  { id: 'actions', header: '' },
 ])
 
 const visibleDrivers = computed(() => drivers.value.filter(driver =>
@@ -101,8 +108,24 @@ const visibleDrivers = computed(() => drivers.value.filter(driver =>
     formatDay(driver.drivingLicenceExpiresOn),
     formatDay(driver.transportLicenceExpiresOn),
     memberLabel(driver.memberUserId),
+    driver.archivedAt ? t('drivers.archived') : '',
   ]),
 ))
+
+/** An archived row opens for reading. The server refuses a correction. */
+const archivedView = computed(() => {
+  if (formMode.value !== 'edit' || editingId.value === null)
+    return false
+  return drivers.value.find(driver => driver.id === editingId.value)?.archivedAt != null
+})
+
+const archiveOpen = computed({
+  get: () => archiveTarget.value !== null,
+  set(open: boolean) {
+    if (!open && archivingId.value === null)
+      archiveTarget.value = null
+  },
+})
 
 /** Messages follow the active Locale. A linked Driver does not type an address. */
 const schema = computed(() => z.object({
@@ -147,7 +170,7 @@ const schema = computed(() => z.object({
 const formOpen = computed({
   get: () => formMode.value !== null,
   set(open: boolean) {
-    if (!open && !saving.value)
+    if (!open && !saving.value && !restoring.value)
       formMode.value = null
   },
 })
@@ -166,6 +189,7 @@ function failureKey(error: unknown): DriverFailure {
     case 401: return 'drivers.signedOut'
     case 403: return 'drivers.forbidden'
     case 404: return 'drivers.notFound'
+    case 409: return 'drivers.archivedLocked'
     default: return 'drivers.saveFailed'
   }
 }
@@ -186,8 +210,21 @@ function memberLabel(userId: string | null): string {
   return members.value.find(member => member.userId === userId)?.name ?? t('drivers.memberGone')
 }
 
+function driverActions(driver: Driver): DropdownMenuItem[][] {
+  if (driver.archivedAt !== null)
+    return []
+  return [[
+    {
+      label: t('drivers.archive'),
+      icon: 'i-lucide-archive',
+      onSelect: () => askArchive(driver),
+    },
+  ]]
+}
+
 function driverSecondLine(driver: Driver): string {
-  return `${t(`drivers.kinds.${driver.kind}`)} · ${formatDay(driver.drivingLicenceExpiresOn)}`
+  const extra = driver.archivedAt ? t('drivers.archived') : formatDay(driver.drivingLicenceExpiresOn)
+  return `${t(`drivers.kinds.${driver.kind}`)} · ${extra}`
 }
 
 async function loadMembers() {
@@ -204,7 +241,8 @@ async function loadDrivers() {
   loading.value = true
   loadErrorKey.value = null
   try {
-    const next = driverListSchema.parse(await $fetch('/api/drivers')).drivers
+    const query = includeArchived.value ? '?includeArchived=true' : ''
+    const next = driverListSchema.parse(await $fetch(`/api/drivers${query}`)).drivers
     drivers.value = next
   }
   catch (error) {
@@ -271,6 +309,8 @@ async function onSubmit(event: FormSubmitEvent<DriverForm>) {
   try {
     const linked = event.data.memberUserId !== noAccount
     if (formMode.value === 'edit') {
+      if (archivedView.value)
+        return
       const id = editingId.value
       if (!id)
         return
@@ -322,6 +362,51 @@ async function onSubmit(event: FormSubmitEvent<DriverForm>) {
   }
 }
 
+function askArchive(driver: Driver) {
+  archiveErrorKey.value = null
+  archiveTarget.value = driver
+}
+
+async function confirmArchive() {
+  const driver = archiveTarget.value
+  if (!driver || archivingId.value)
+    return
+  archivingId.value = driver.id
+  archiveErrorKey.value = null
+  try {
+    driverSchema.parse(await $fetch(`/api/drivers/${driver.id}/archive`, { method: 'POST' }))
+    archiveTarget.value = null
+    notifyAuditChanged()
+    await loadDrivers()
+  }
+  catch (error) {
+    archiveErrorKey.value = failureKey(error)
+  }
+  finally {
+    archivingId.value = null
+  }
+}
+
+async function confirmUnarchive() {
+  const id = editingId.value
+  if (!id || restoring.value)
+    return
+  restoring.value = true
+  formErrorKey.value = null
+  try {
+    driverSchema.parse(await $fetch(`/api/drivers/${id}/unarchive`, { method: 'POST' }))
+    formMode.value = null
+    notifyAuditChanged()
+    await loadDrivers()
+  }
+  catch (error) {
+    formErrorKey.value = failureKey(error)
+  }
+  finally {
+    restoring.value = false
+  }
+}
+
 function httpStatus(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null)
     return undefined
@@ -342,7 +427,7 @@ onMounted(() => {
   <CatalogPanel
     v-model:open="formOpen"
     :title="formTitle"
-    :dismissible="!saving"
+    :dismissible="!saving && !restoring"
   >
     <template #toolbar>
       <div class="mb-4 flex flex-wrap items-end gap-3">
@@ -361,6 +446,15 @@ onMounted(() => {
             :class="commandInputClass"
           />
         </div>
+        <UCheckbox
+          id="driver-show-archived"
+          v-model="includeArchived"
+          name="show-archived"
+          class="mb-1 max-lg:min-h-11"
+          :label="t('drivers.showArchived')"
+          :ui="{ label: 'max-lg:text-base' }"
+          @update:model-value="loadDrivers()"
+        />
         <UButton
           type="button"
           class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
@@ -426,6 +520,28 @@ onMounted(() => {
           <template #mustAccept-cell="{ row }">
             {{ row.original.mustAccept ? t('drivers.yes') : t('drivers.no') }}
           </template>
+          <template #status-cell="{ row }">
+            {{ row.original.archivedAt ? t('drivers.archived') : '' }}
+          </template>
+          <template #actions-header>
+            <span class="sr-only">{{ t('drivers.actions') }}</span>
+          </template>
+          <template #actions-cell="{ row }">
+            <UDropdownMenu
+              v-if="row.original.archivedAt === null"
+              :items="driverActions(row.original)"
+              size="sm"
+            >
+              <UButton
+                type="button"
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-ellipsis-vertical"
+                class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11"
+                :aria-label="t('drivers.actionsFor', { name: row.original.name })"
+              />
+            </UDropdownMenu>
+          </template>
           <template #loading>
             <div
               role="status"
@@ -456,6 +572,12 @@ onMounted(() => {
         class="mb-4"
         :description="t(formErrorKey)"
       />
+      <p
+        v-if="archivedView"
+        class="mb-4 text-sm text-muted"
+      >
+        {{ t('drivers.archived') }}
+      </p>
       <UForm
         id="driver-form"
         novalidate
@@ -478,6 +600,7 @@ onMounted(() => {
             type="text"
             autocomplete="off"
             class="w-full"
+            :disabled="archivedView"
           />
           <template #error="{ error }">
             <span
@@ -497,6 +620,7 @@ onMounted(() => {
             :items="kindItems"
             :placeholder="t('drivers.chooseKind')"
             class="w-full"
+            :disabled="archivedView"
           />
           <template #error="{ error }">
             <span
@@ -516,6 +640,7 @@ onMounted(() => {
             type="tel"
             autocomplete="off"
             class="w-full"
+            :disabled="archivedView"
           />
           <template #error="{ error }">
             <span
@@ -536,7 +661,7 @@ onMounted(() => {
             type="email"
             autocomplete="off"
             class="w-full"
-            :disabled="emailLocked"
+            :disabled="emailLocked || archivedView"
           />
           <p
             v-if="emailLocked"
@@ -562,6 +687,7 @@ onMounted(() => {
             type="date"
             autocomplete="off"
             class="w-full"
+            :disabled="archivedView"
           />
           <template #error="{ error }">
             <span
@@ -581,6 +707,7 @@ onMounted(() => {
             type="date"
             autocomplete="off"
             class="w-full"
+            :disabled="archivedView"
           />
           <template #error="{ error }">
             <span
@@ -599,6 +726,7 @@ onMounted(() => {
             name="memberUserId"
             :items="memberItems"
             class="w-full"
+            :disabled="archivedView"
           />
         </UFormField>
         <UCheckbox
@@ -607,6 +735,7 @@ onMounted(() => {
           name="must-accept"
           :size="phone ? 'xl' : 'sm'"
           :label="t('drivers.mustAccept')"
+          :disabled="archivedView"
         />
       </UForm>
     </template>
@@ -618,12 +747,24 @@ onMounted(() => {
         :size="commandControlSize(phone)"
         class="w-full justify-center sm:w-auto"
         :class="commandControlClass(phone)"
-        :disabled="saving"
+        :disabled="saving || restoring"
         @click="formOpen = false"
       >
         {{ t('drivers.cancel') }}
       </UButton>
       <UButton
+        v-if="archivedView"
+        type="button"
+        :size="commandControlSize(phone)"
+        class="w-full justify-center sm:w-auto"
+        :class="commandControlClass(phone)"
+        :loading="restoring"
+        @click="confirmUnarchive"
+      >
+        {{ t('drivers.unarchive') }}
+      </UButton>
+      <UButton
+        v-else
         type="submit"
         form="driver-form"
         :size="commandControlSize(phone)"
@@ -635,4 +776,51 @@ onMounted(() => {
       </UButton>
     </template>
   </CatalogPanel>
+
+  <UModal
+    v-model:open="archiveOpen"
+    :title="t('drivers.archive')"
+    :dismissible="archivingId === null"
+    :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
+  >
+    <template #body>
+      <p
+        v-if="archiveTarget"
+        class="mb-2 font-medium"
+      >
+        {{ archiveTarget.name }}
+      </p>
+      <p>{{ t('drivers.confirmArchive') }}</p>
+      <UAlert
+        v-if="archiveErrorKey"
+        color="error"
+        variant="subtle"
+        role="alert"
+        class="mt-4"
+        :description="t(archiveErrorKey)"
+      />
+    </template>
+    <template #footer>
+      <UButton
+        type="button"
+        color="neutral"
+        variant="outline"
+        size="xl"
+        class="w-full justify-center sm:w-auto"
+        :disabled="archivingId !== null"
+        @click="archiveOpen = false"
+      >
+        {{ t('drivers.cancel') }}
+      </UButton>
+      <UButton
+        type="button"
+        size="xl"
+        class="w-full justify-center sm:w-auto"
+        :loading="archivingId !== null"
+        @click="confirmArchive"
+      >
+        {{ t('drivers.archive') }}
+      </UButton>
+    </template>
+  </UModal>
 </template>

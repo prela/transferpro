@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { z } from 'zod'
 import { DriverInputError, parseIncludeArchivedQuery, QueryParamError } from '../../../shared'
-import { DriverNotFoundError } from '../../modules/drivers'
+import { DriverArchivedError, DriverNotFoundError } from '../../modules/drivers'
 import { TenantAccessError } from '../../modules/tenancy'
 
 /**
@@ -11,6 +11,12 @@ import { TenantAccessError } from '../../modules/tenancy'
 export function driverHttpError(error: unknown): never {
   if (error instanceof DriverInputError || error instanceof DriverNotFoundError || error instanceof TenantAccessError)
     throw createError({ statusCode: error.statusCode })
+  if (error instanceof DriverArchivedError) {
+    throw createError({
+      statusCode: error.statusCode,
+      data: { code: error.code },
+    })
+  }
   throw error
 }
 
@@ -22,10 +28,10 @@ export function parseDriverId(raw: unknown): string {
   return parsed.data
 }
 
-/** Drivers have no archive yet. The param is validated and ignored. */
-export function parseIncludeArchived(raw: unknown): void {
+/** Default list hides archived Drivers. Only the string true includes them. */
+export function parseIncludeArchived(raw: unknown): boolean {
   try {
-    parseIncludeArchivedQuery(raw)
+    return parseIncludeArchivedQuery(raw)
   }
   catch (error) {
     if (error instanceof QueryParamError)

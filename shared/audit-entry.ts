@@ -28,6 +28,8 @@ export const auditActions = [
   'client.kind_changed',
   'driver.created',
   'driver.field_changed',
+  'driver.archived',
+  'driver.unarchived',
   'vehicle.created',
   'vehicle.field_changed',
   'vehicle.archived',
@@ -191,6 +193,26 @@ const driverFieldChanged = z.object({
   data: z.strictObject({
     driverId,
     field: driverFieldSchema,
+  }),
+})
+
+/*
+ * Archive and unarchive name the row and nothing else. The name, the phone,
+ * and the email stay on `app.drivers`. A second call writes no row.
+ */
+const driverArchived = z.object({
+  action: z.literal('driver.archived'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    driverId,
+  }),
+})
+
+const driverUnarchived = z.object({
+  action: z.literal('driver.unarchived'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    driverId,
   }),
 })
 
@@ -590,6 +612,8 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   clientKindChanged,
   driverCreated,
   driverFieldChanged,
+  driverArchived,
+  driverUnarchived,
   vehicleCreated,
   vehicleFieldChanged,
   vehicleArchived,
@@ -669,6 +693,8 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   clientKindChanged.extend(listed),
   driverCreated.extend(listed),
   driverFieldChanged.extend(listed),
+  driverArchived.extend(listed),
+  driverUnarchived.extend(listed),
   vehicleCreated.extend(listed),
   vehicleFieldChanged.extend(listed),
   vehicleArchived.extend(listed),

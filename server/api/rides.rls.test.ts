@@ -7,11 +7,11 @@ import { afterAll, beforeAll, expect, it } from 'vitest'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../../shared'
 import { captureLogs } from '../core/testing'
 import { createClient } from '../modules/clients'
-import { createDriver, updateDriver } from '../modules/drivers'
+import { archiveDriver, createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
 import { setRosterDay } from '../modules/roster'
 import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale } from '../modules/tenancy'
-import { assignRide, cancelRide, changeVehicle, clearRide, createTransfer, listTransferDay, listUpcomingRides, reassignRide } from '../modules/transfers'
+import { assignRide, cancelRide, changeVehicle, clearRide, createTransfer, listTransferDay, listUpcomingRides, readOfficeHome, reassignRide } from '../modules/transfers'
 import { archiveVehicle, createVehicle } from '../modules/vehicles'
 import postAcceptByPhone from './rides/[id]/accept-by-phone.post'
 import postAccept from './rides/[id]/accept.post'
@@ -879,6 +879,41 @@ it('refuses another Tenant\'s Driver or Vehicle, and that Tenant cannot read or 
     )
   })
   expect(sameTenant.rows).toEqual([{ state: 'assigned' }])
+})
+
+it('refuses an archived Driver with no transition and no audit row, and still accepts another Driver', async () => {
+  const world = await office('hasg-drvarch')
+  const archived = await createDriver(world.dispatcher, driverBody)
+  const other = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911110301' })
+  await updateDriver(world.admin, other.id, { mustAccept: true })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG3010AA'))
+  await archiveDriver(world.dispatcher, archived.id)
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString()))
+
+  const refused = await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: archived.id,
+    vehicleId: vehicle.id,
+  })
+  expect(refused.status).toBe(409)
+  expect(await refused.text()).toContain('ride_driver_archived')
+  expect(await rideRow(recorded.ride.id)).toEqual({
+    state: 'unassigned',
+    driver_id: null,
+    vehicle_id: null,
+    must_accept: null,
+  })
+  expect(await assignmentAudits(world.tenantId)).toEqual([])
+
+  const assigned = await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: other.id,
+    vehicleId: vehicle.id,
+  })
+  expect(assigned.status).toBe(200)
+  expect(await assigned.json()).toMatchObject({ ride: { driverId: other.id, state: 'assigned' } })
+
+  await archiveDriver(world.dispatcher, other.id)
+  const home = await readOfficeHome(world.dispatcher, new Date())
+  expect(home.waitingOnAcceptance.find(row => row.guestName === guest)?.driverName).toBe(driverBody.name)
 })
 
 it('refuses an archived Vehicle with no transition and no audit row, and still accepts another Vehicle', async () => {
@@ -3062,6 +3097,11 @@ it('declines an assigned Ride, with the copied flag off or on, and the board nam
       guestName: 'Ivo Ivić',
     },
   ])
+
+  await archiveDriver(world.dispatcher, linked.driver.id)
+  await archiveDriver(world.dispatcher, must.driver.id)
+  const afterArchive = await listTransferDay(world.dispatcher, day)
+  expect(afterArchive.declineAlerts.map(alert => alert.driverName)).toEqual(['Drago Driver', 'Nika Vozač'])
 
   const audits = await declineAudits(world.tenantId)
   expect(audits).toEqual([

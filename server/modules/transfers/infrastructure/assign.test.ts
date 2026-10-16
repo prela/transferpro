@@ -6,7 +6,7 @@ import { expect, it, vi } from 'vitest'
 import { RosterInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
 import { TenantSettingsMissingError } from '../../tenancy'
-import { assignUnassignedRide, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError, suggestRosterVehicle } from './assign'
+import { assignUnassignedRide, RideDriverArchivedError, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError, suggestRosterVehicle } from './assign'
 import { RideOverlapError } from './ride-schedule'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
@@ -20,6 +20,7 @@ const dialect = new PgDialect()
 interface Script {
   rideState?: 'unassigned' | 'assigned' | 'missing'
   driverMustAccept?: boolean | 'missing'
+  driverArchived?: boolean
   vehicle?: 'active' | 'archived' | 'missing'
   updateWins?: boolean
   pickupAt?: Date
@@ -65,6 +66,7 @@ function fakeTransaction(script: Script) {
             transportLicenceExpiresOn: '2030-06-01',
             memberUserId: null,
             mustAccept: script.driverMustAccept ?? false,
+            archivedAt: script.driverArchived ? new Date('2026-10-01T00:00:00.000Z') : null,
           }],
         }
       }
@@ -205,6 +207,12 @@ it('refuses a Driver that is not in this Tenant, and writes nothing', async () =
   const { transaction, queries } = fakeTransaction({ driverMustAccept: 'missing' })
   await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideNotFoundError)
   expect(wroteAssignment(queries)).toBe(false)
+})
+
+it('refuses an archived Driver, and writes nothing', async () => {
+  const { transaction, queries } = fakeTransaction({ driverArchived: true })
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideDriverArchivedError)
+  expect(queries.some(query => query.sql.includes('update app.rides'))).toBe(false)
 })
 
 it('refuses an archived Vehicle, and writes nothing', async () => {

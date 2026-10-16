@@ -71,6 +71,8 @@ export const driverSchema = z.object({
   transportLicenceExpiresOn: driverDateSchema,
   memberUserId: memberIdSchema.nullable(),
   mustAccept: z.boolean(),
+  // Null while the Driver is on the default list. Archive is its own route.
+  archivedAt: z.iso.datetime().nullable(),
 })
 
 export type Driver = z.infer<typeof driverSchema>
@@ -83,7 +85,8 @@ export type DriverList = z.infer<typeof driverListSchema>
 
 /**
  * POST /api/drivers. Must-accept is absent: a new Driver starts off.
- * An unknown key is refused. `memberUserId` null means no account.
+ * An unknown key is refused, including `archivedAt`: archive is its own route.
+ * `memberUserId` null means no account.
  * `email` is optional. A blank is omitted. A body that names an account
  * and also supplies an email is refused: the sign-in address is copied.
  */
@@ -109,6 +112,7 @@ export interface CreateDriver {
 
 /**
  * PATCH /api/drivers/:id. A field that is absent stays as it is.
+ * `archivedAt` is not a field here: archive and unarchive are their own routes.
  * `memberUserId` null clears the link. `email` null clears the address.
  * An email together with a member id is refused. An empty object changes nothing.
  */

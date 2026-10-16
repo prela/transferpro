@@ -134,7 +134,9 @@
       },
       "driver": {
         "created": "Vozač dodan",
-        "field_changed": "Vozač ispravljen"
+        "field_changed": "Vozač ispravljen",
+        "archived": "Vozač arhiviran",
+        "unarchived": "Vozač vraćen"
       },
       "vehicle": {
         "created": "Vozilo dodano",
@@ -522,6 +524,12 @@
     "edit": "Ispravi vozača",
     "actions": "Radnje",
     "actionsFor": "Radnje: {name}",
+    "archive": "Arhiviraj",
+    "unarchive": "Vrati",
+    "confirmArchive": "Arhivirati ovog vozača? Nestaje s aktivnog popisa i ne može se dodijeliti novoj vožnji.",
+    "showArchived": "Prikaži arhivirano",
+    "archived": "Arhivirano",
+    "archivedLocked": "Arhiviranog vozača nije moguće mijenjati. Uključite arhivirane vozače da ga pronađete.",
     "name": "Ime",
     "kind": "Vrsta",
     "chooseKind": "Odaberite vrstu",
@@ -642,6 +650,7 @@
     "missingVehicle": "Vozilo za ovaj dan više nije na popisu. Uklonite ga ili odaberite drugo.",
     "vehicleTaken": "To vozilo je već dano drugom vozaču za taj dan.",
     "vehicleArchived": "Arhivirano vozilo ne može se dati za taj dan.",
+    "driverArchived": "Arhivirani vozač ne može dobiti novi dan.",
     "driverTaken": "Taj vozač već ima vozilo za taj dan. Učitajte dan ponovno.",
     "notFound": "Taj vozač ili to vozilo nije na popisu.",
     "forbidden": "Vozač ne može mijenjati raspored.",
@@ -749,6 +758,7 @@
     "changeFailed": "Vožnja nije promijenjena. Pokušajte ponovno.",
     "submit": "Dodijeli vožnju",
     "submitting": "Dodjeljivanje",
+    "driverArchived": "Arhivirani vozač ne može se dodijeliti.",
     "vehicleArchived": "Arhivirano vozilo ne može se dodijeliti.",
     "notUnassigned": "Dodijeliti se može samo vožnja koja još nema vozača i vozilo.",
     "overlapTitle": "Ovaj vozač ili vozilo već ima drugu vožnju",

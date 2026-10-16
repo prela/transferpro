@@ -7,7 +7,7 @@ import { expect, it, vi } from 'vitest'
 import { DriverInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
 import { TenantAccessError } from '../../tenancy'
-import { addDriver, correctDriver, driverMustAcceptForAssign, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers } from './drivers'
+import { addDriver, archiveStoredDriver, correctDriver, DriverArchivedError, driverAssignState, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers, unarchiveStoredDriver } from './drivers'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const driverId = '9e4b3f6d-5555-4555-8555-555555555555'
@@ -25,6 +25,7 @@ const stored: Driver = {
   transportLicenceExpiresOn: '2028-01-31',
   memberUserId: null,
   mustAccept: false,
+  archivedAt: null,
 }
 
 const signIn = 'marko@example.test'
@@ -65,6 +66,7 @@ function fakeTransaction(
             transportLicenceExpiresOn: compiled.params[5],
             memberUserId: compiled.params[6],
             mustAccept: false,
+            archivedAt: null,
           }],
         }
       }
@@ -72,6 +74,14 @@ function fakeTransaction(
       if (text.includes('for update')) {
         const id = compiled.params[0]
         return { rows: drivers.filter(row => row.id === id) }
+      }
+      if (text.includes('archived_at = now()')) {
+        const current = drivers.find(row => row.id === compiled.params[0]) ?? drivers[0]
+        return { rows: [{ ...current, archivedAt: new Date('2026-10-05T10:00:00.000Z') }] }
+      }
+      if (text.includes('archived_at = null')) {
+        const current = drivers.find(row => row.id === compiled.params[0]) ?? drivers[0]
+        return { rows: [{ ...current, archivedAt: null }] }
       }
       if (text.includes('update'))
         return { rows: [] }
@@ -81,7 +91,10 @@ function fakeTransaction(
           const memberId = compiled.params[0]
           return { rows: drivers.filter(row => row.memberUserId === memberId) }
         }
-        return { rows: drivers }
+        const visible = text.includes('archived_at is null')
+          ? drivers.filter(row => row.archivedAt === null)
+          : drivers
+        return { rows: visible }
       }
       return { rows: [] }
     }),
@@ -192,9 +205,12 @@ it('replaces any other write failure so the log line does not keep the phone', a
   expect(logLine(error)).not.toContain(phone)
 })
 
-it('lists the Drivers the session returned', async () => {
-  const { transaction } = fakeTransaction([stored])
-  await expect(loadDrivers(transaction)).resolves.toEqual([stored])
+it('lists the Drivers the session returned, and leaves an archived Driver off the default list', async () => {
+  const archived = { ...stored, id: '8d3a2e5c-4444-4444-8444-444444444444', name: 'Boris Kovač', archivedAt: '2026-10-05T10:00:00.000Z' }
+  const { transaction, queries } = fakeTransaction([stored, archived])
+  await expect(loadDrivers(transaction, false)).resolves.toEqual([stored])
+  expect(queries.at(-1)?.sql).toContain('archived_at is null')
+  await expect(loadDrivers(transaction, true)).resolves.toEqual([stored, archived])
 })
 
 it('returns only the Driver linked to the given member', async () => {
@@ -203,7 +219,7 @@ it('returns only the Driver linked to the given member', async () => {
   const other = { ...stored, id: otherId, name: 'Boris Kovač', memberUserId: '5a0d9b29-1111-4111-8111-111111111111' }
   const { transaction } = fakeTransaction([other, linked])
   await expect(loadDriverLinkedToMember(transaction, memberUserId)).resolves.toEqual([linked])
-  await expect(loadDrivers(transaction)).resolves.toEqual([other, linked])
+  await expect(loadDrivers(transaction, false)).resolves.toEqual([other, linked])
 })
 
 it('records each corrected field by name, and not the phone or the date', async () => {
@@ -317,6 +333,49 @@ it('clears a member link and refuses a second shape that is not a driver', async
   })).rejects.toBeInstanceOf(DriverInputError)
 })
 
+it('archives a Driver without storing the name, and a second archive writes nothing', async () => {
+  const { transaction, queries } = fakeTransaction([stored])
+  const archived = await archiveStoredDriver(transaction, actorUserId, driverId)
+  expect(archived.archivedAt).toBe('2026-10-05T10:00:00.000Z')
+  expect(auditPayloads(queries)).toEqual([
+    JSON.stringify({ driverId }),
+  ])
+  expect(JSON.stringify(auditPayloads(queries))).not.toContain('Marko')
+  expect(JSON.stringify(auditPayloads(queries))).not.toContain(phone)
+
+  const already = fakeTransaction([{ ...stored, archivedAt: '2026-10-05T10:00:00.000Z' }])
+  await expect(archiveStoredDriver(already.transaction, actorUserId, driverId)).resolves.toMatchObject({
+    archivedAt: '2026-10-05T10:00:00.000Z',
+  })
+  expect(already.queries.filter(query => query.sql.includes('update') && !query.sql.includes('for update'))).toEqual([])
+  expect(auditPayloads(already.queries)).toEqual([])
+})
+
+it('restores an archived Driver, and a second restore writes nothing', async () => {
+  const archived = { ...stored, archivedAt: '2026-10-05T10:00:00.000Z' }
+  const { transaction, queries } = fakeTransaction([archived])
+  await expect(unarchiveStoredDriver(transaction, actorUserId, driverId)).resolves.toMatchObject({
+    archivedAt: null,
+  })
+  expect(auditPayloads(queries)).toEqual([
+    JSON.stringify({ driverId }),
+  ])
+  expect(JSON.stringify(auditPayloads(queries))).not.toContain('Marko')
+
+  const live = fakeTransaction([stored])
+  await expect(unarchiveStoredDriver(live.transaction, actorUserId, driverId)).resolves.toEqual(stored)
+  expect(live.queries.filter(query => query.sql.includes('update') && !query.sql.includes('for update'))).toEqual([])
+  expect(auditPayloads(live.queries)).toEqual([])
+})
+
+it('refuses a correction of an archived Driver and writes nothing', async () => {
+  const archived = { ...stored, archivedAt: '2026-10-05T10:00:00.000Z' }
+  const { transaction, queries } = fakeTransaction([archived])
+  await expect(correctDriver(transaction, actorUserId, 'admin', driverId, { kind: 'external' })).rejects.toBeInstanceOf(DriverArchivedError)
+  expect(queries.filter(query => query.sql.includes('update') && !query.sql.includes('for update'))).toEqual([])
+  expect(auditPayloads(queries)).toEqual([])
+})
+
 it('does not find a Driver the session cannot see', async () => {
   const { transaction, queries } = fakeTransaction([])
   await expect(correctDriver(transaction, actorUserId, 'admin', driverId, { kind: 'external' })).rejects.toBeInstanceOf(DriverNotFoundError)
@@ -329,7 +388,7 @@ it('replaces an assign read failure so the log line does not keep the driver id'
     message: `cancel ${driverId}`,
     sql: 'for share',
   })
-  const error = await driverMustAcceptForAssign(transaction, driverId).catch(caught => caught)
+  const error = await driverAssignState(transaction, driverId).catch(caught => caught)
   expect(error).toMatchObject({ message: 'Driver read failed' })
   expect(String(error)).not.toContain(driverId)
   expect(logLine(error)).not.toContain(driverId)

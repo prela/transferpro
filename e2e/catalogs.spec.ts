@@ -93,6 +93,7 @@ test.describe('@phone', () => {
 
       await openOfficeLink(page, 'Vozači')
       await expect(page.getByRole('searchbox', { name: 'Traži' })).toBeVisible()
+      await expect(page.getByLabel('Prikaži arhivirano')).toBeVisible()
       await expect(page.getByText('Još nema vozača. Dodajte prvog.')).toBeVisible()
       await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
       const addDriver = page.getByRole(phone ? 'dialog' : 'region', { name: 'Dodaj vozača' })

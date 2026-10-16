@@ -18,6 +18,7 @@ const driverRowSchema = z.object({
   transportLicenceExpiresOn: driverDateSchema,
   memberUserId: z.string().nullable(),
   mustAccept: z.boolean(),
+  archivedAt: z.unknown().nullable(),
 })
 
 const driverRows = z.object({
@@ -45,18 +46,30 @@ export class DriverNotFoundError extends Error {
   }
 }
 
+/** The Driver is archived and cannot be corrected. The name is not in the message. */
+export class DriverArchivedError extends Error {
+  readonly statusCode = 409
+  readonly code = 'driver_archived'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'DriverArchivedError'
+  }
+}
+
 const driverColumns = sql`
   id, name, kind, phone, email,
   driving_licence_expires_on::text as "drivingLicenceExpiresOn",
   transport_licence_expires_on::text as "transportLicenceExpiresOn",
   member_user_id as "memberUserId",
-  must_accept as "mustAccept"
+  must_accept as "mustAccept",
+  archived_at as "archivedAt"
 `
 
 /**
  * Whether this Tenant has that Driver.
  * Another Tenant's id is absent: the select runs under the session's row security.
- * The roster module calls this through the Drivers index, by id.
+ * Assignment uses this when it does not need the lock. The roster uses `driverPresence`.
  */
 export async function driverIsInTenant(transaction: TenantTransaction, driverId: string): Promise<boolean> {
   const selected = z.object({
@@ -70,34 +83,76 @@ export async function driverIsInTenant(transaction: TenantTransaction, driverId:
 }
 
 /**
- * The must-accept flag of this Tenant's Driver, or null when the id is absent,
- * and a `for share` lock on that row.
- * Assignment copies this boolean onto the Ride. A correction of must-accept
- * takes `for update`, so it cannot commit a different value before the Ride
- * update on this transaction. The phone and the licence dates stay unread.
+ * Whether this Tenant's Driver can be given a new roster day.
+ * `archived` stays readable on a day already stored; a new day still refuses
+ * it. A missing id and another Tenant's id are the same result.
+ * The roster module calls this through the Drivers index, by id.
+ * This read does not lock.
+ */
+export type DriverPresence = 'active' | 'archived' | 'missing'
+
+export async function driverPresence(transaction: TenantTransaction, driverId: string): Promise<DriverPresence> {
+  const selected = z.object({
+    rows: z.array(z.object({
+      archivedAt: z.unknown().nullable(),
+    })),
+  }).parse(await transaction.execute(sql`
+    select archived_at as "archivedAt"
+    from app.drivers
+    where id = ${driverId}
+  `))
+  const row = selected.rows[0]
+  if (!row)
+    return 'missing'
+  return toArchivedAt(row.archivedAt) === null ? 'active' : 'archived'
+}
+
+/**
+ * Must-accept and archive for this Tenant's Driver, or null when the id is
+ * absent, and a `for share` lock on that row.
+ * Assignment copies `mustAccept` onto the Ride and refuses `archived`.
+ * A correction of must-accept takes `for update`, and archive does too, so
+ * neither can commit a different pair before the Ride update on this
+ * transaction. The phone and the licence dates stay unread.
  * Another Tenant's id is null: the select runs under the session's row security.
  * `loadDrivers` does not lock. This read is only for the assign transaction.
  */
-export async function driverMustAcceptForAssign(transaction: TenantTransaction, driverId: string): Promise<boolean | null> {
+export interface DriverAssignState {
+  readonly mustAccept: boolean
+  readonly archived: boolean
+}
+
+export async function driverAssignState(
+  transaction: TenantTransaction,
+  driverId: string,
+): Promise<DriverAssignState | null> {
   const selected = z.object({
-    rows: z.array(z.object({ mustAccept: z.boolean() })),
+    rows: z.array(z.object({
+      mustAccept: z.boolean(),
+      archivedAt: z.unknown().nullable(),
+    })),
   }).parse(await readDriverForAssign(transaction, sql`
-    select must_accept as "mustAccept"
+    select must_accept as "mustAccept", archived_at as "archivedAt"
     from app.drivers
     where id = ${driverId}
     for share
   `))
-  return selected.rows[0]?.mustAccept ?? null
+  const row = selected.rows[0]
+  if (!row)
+    return null
+  return { mustAccept: row.mustAccept, archived: toArchivedAt(row.archivedAt) !== null }
 }
 
 /**
  * This Tenant's Drivers, by name, so the office can find one.
- * There is no inactive or archived Driver column, so this is every row.
+ * Archived rows stay out of the default list. A caller that still needs the
+ * name, such as an existing Ride or a decline alert, passes true.
  */
-export async function loadDrivers(transaction: TenantTransaction): Promise<Driver[]> {
+export async function loadDrivers(transaction: TenantTransaction, includeArchived: boolean): Promise<Driver[]> {
   const selected = driverRows.parse(await transaction.execute(sql`
     select ${driverColumns}
     from app.drivers
+    where ${includeArchived ? sql`true` : sql`archived_at is null`}
     order by name, id
   `))
   return selected.rows.map(toDriver)
@@ -208,10 +263,77 @@ export async function addDriver(
 }
 
 /**
+ * Set archived_at. The Driver stays on the row so a Ride and a decline
+ * alert can still show the name. A second archive writes nothing.
+ * The caller has already required a dispatcher or an admin.
+ */
+export async function archiveStoredDriver(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  driverId: string,
+): Promise<Driver> {
+  const current = await lockDriver(transaction, driverId)
+  if (current.archivedAt !== null)
+    return current
+
+  const selected = driverRows.parse(await writeDriver(transaction, sql`
+    update app.drivers
+    set archived_at = now()
+    where id = ${current.id}
+    returning ${driverColumns}
+  `))
+  const row = selected.rows[0]
+  if (!row)
+    throw new Error('Driver archive returned no row.')
+  const driver = toDriver(row)
+  await appendAuditEntry(transaction, {
+    action: 'driver.archived',
+    actorUserId,
+    subjectUserId: null,
+    data: { driverId: current.id },
+  })
+  return driver
+}
+
+/**
+ * Clear archived_at. The Driver returns to the default list and can be
+ * assigned again. A Driver who is already on that list writes nothing.
+ * The caller has already required a dispatcher or an admin.
+ */
+export async function unarchiveStoredDriver(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  driverId: string,
+): Promise<Driver> {
+  const current = await lockDriver(transaction, driverId)
+  if (current.archivedAt === null)
+    return current
+
+  const selected = driverRows.parse(await writeDriver(transaction, sql`
+    update app.drivers
+    set archived_at = null
+    where id = ${current.id}
+    returning ${driverColumns}
+  `))
+  const row = selected.rows[0]
+  if (!row)
+    throw new Error('Driver unarchive returned no row.')
+  const driver = toDriver(row)
+  await appendAuditEntry(transaction, {
+    action: 'driver.unarchived',
+    actorUserId,
+    subjectUserId: null,
+    data: { driverId: current.id },
+  })
+  return driver
+}
+
+/**
  * Correct the fields the patch names. One entry per field that changed,
  * and the entry stores the field name only. An email change names `email`
  * and does not store the address.
  * A patch that matches the locked row does not update and does not append.
+ * An archived Driver is refused before any write.
  * A dispatcher who tries to change must-accept is refused before the update,
  * so the other fields in that patch are not written either.
  * An address on a Driver who has, or will have, an account is refused and
@@ -228,6 +350,8 @@ export async function correctDriver(
   readSignInEmail: (userId: string) => Promise<string | null> = async () => null,
 ): Promise<Driver> {
   const current = await lockDriver(transaction, driverId)
+  if (current.archivedAt !== null)
+    throw new DriverArchivedError()
   let next = applyPatch(current, patch)
   if (next.mustAccept !== current.mustAccept && role !== 'admin')
     throw new TenantAccessError(403)
@@ -350,6 +474,7 @@ function applyPatch(current: Driver, patch: DriverPatch): Driver {
       : patch.transportLicenceExpiresOn,
     memberUserId: patch.memberUserId === undefined ? current.memberUserId : patch.memberUserId,
     mustAccept: patch.mustAccept === undefined ? current.mustAccept : patch.mustAccept,
+    archivedAt: current.archivedAt,
   })
 }
 
@@ -367,7 +492,27 @@ async function lockDriver(transaction: TenantTransaction, driverId: string): Pro
 }
 
 function toDriver(row: z.infer<typeof driverRowSchema>): Driver {
-  return driverSchema.parse(row)
+  return driverSchema.parse({
+    ...row,
+    archivedAt: toArchivedAt(row.archivedAt),
+  })
+}
+
+/**
+ * node-pg may return a Date or a timestamp string. The API always uses ISO-8601 UTC.
+ */
+function toArchivedAt(value: unknown): string | null {
+  if (value === null || value === undefined)
+    return null
+  if (value instanceof Date)
+    return value.toISOString()
+  if (typeof value === 'string') {
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime()))
+      throw new Error('Driver archived_at is not a timestamp.')
+    return parsed.toISOString()
+  }
+  throw new Error('Driver archived_at is not a timestamp.')
 }
 
 /**

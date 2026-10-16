@@ -3,6 +3,6 @@
  * A Driver is a person the office can assign. The record can exist with no
  * account. This module does not import Rides (ADR-0018).
  */
-export { createDriver, DriverNotFoundError, listDrivers, loadDriverLinkedToMember, loadDrivers, updateDriver } from './infrastructure/driver-access'
-export { driverIsInTenant, driverMustAcceptForAssign, loadDriverDocumentExpiry } from './infrastructure/drivers'
-export type { DriverDocumentExpiry } from './infrastructure/drivers'
+export { archiveDriver, createDriver, DriverArchivedError, DriverNotFoundError, listDrivers, loadDriverLinkedToMember, loadDrivers, unarchiveDriver, updateDriver } from './infrastructure/driver-access'
+export { driverAssignState, driverIsInTenant, driverPresence, loadDriverDocumentExpiry } from './infrastructure/drivers'
+export type { DriverAssignState, DriverDocumentExpiry, DriverPresence } from './infrastructure/drivers'

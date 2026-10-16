@@ -29,6 +29,7 @@ function driver(overrides: Pick<Driver, 'id' | 'name' | 'memberUserId' | 'drivin
     phone,
     email: null,
     mustAccept: false,
+    archivedAt: null,
     ...overrides,
   }
 }
@@ -141,6 +142,26 @@ it('shows a driver only their own linked licences', () => {
     { subject: 'driver', subjectId: anaId, subjectLabel: 'Ana Horvat', kind: 'driving_licence', expiresOn: '2026-10-04', status: 'expired' },
     { subject: 'driver', subjectId: anaId, subjectLabel: 'Ana Horvat', kind: 'transport_licence', expiresOn: lastIncluded, status: 'expiring' },
   ])
+})
+
+it('leaves an archived Driver off the office list and still shows that Driver to the linked account', () => {
+  const hidden = { ...boris, archivedAt: '2026-09-01T00:00:00.000Z' }
+  const officeList = selectExpiringDocuments({
+    role: 'admin',
+    userId: officeUser,
+    today,
+    drivers: [hidden, ana],
+    vehicles: [],
+  })
+  expect(officeList.some(document => document.subjectId === anaId)).toBe(true)
+  expect(officeList.some(document => document.subjectId === borisId)).toBe(false)
+  expect(selectExpiringDocuments({
+    role: 'driver',
+    userId: borisMember,
+    today,
+    drivers: [hidden],
+    vehicles: [],
+  }).map(document => document.kind)).toEqual(['driving_licence'])
 })
 
 it('shows nothing when the signed-in driver has no linked Driver', () => {

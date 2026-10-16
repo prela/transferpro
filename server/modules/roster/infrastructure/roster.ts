@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { isCalendarDate, RosterInputError } from '../../../../shared'
 import { appendAuditEntry } from '../../audit'
-import { driverIsInTenant } from '../../drivers'
+import { driverPresence } from '../../drivers'
 import { TenantAccessError } from '../../tenancy'
 import { vehiclePresence } from '../../vehicles'
 
@@ -58,6 +58,17 @@ export class RosterVehicleTakenError extends Error {
   constructor() {
     super('Conflict')
     this.name = 'RosterVehicleTakenError'
+  }
+}
+
+/** A new day cannot use an archived Driver. The name is not in the message. */
+export class RosterDriverArchivedError extends Error {
+  readonly statusCode = 409
+  readonly code = 'roster_driver_archived'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'RosterDriverArchivedError'
   }
 }
 
@@ -167,6 +178,9 @@ export async function loadRosterDay(transaction: TenantTransaction, rosterDate: 
 /**
  * Give a Driver a Vehicle for one calendar date, or clear that day when
  * `vehicleId` is null. The same pair again writes nothing.
+ * An archived Driver cannot take a new day or a different Vehicle. Clearing
+ * the day they already have still removes the row, and saving that same pair
+ * again writes nothing. The name stays out of the error.
  * A roster write never updates a Ride: this module has no ride table, so a
  * later assignment keeps the Vehicle it stored.
  */
@@ -175,16 +189,20 @@ export async function setRosterVehicle(
   actorUserId: string,
   input: SetRoster,
 ): Promise<RosterAssignment | null> {
-  if (!await driverIsInTenant(transaction, input.driverId))
+  const driver = await driverPresence(transaction, input.driverId)
+  if (driver === 'missing')
     throw new RosterNotFoundError()
 
   const current = await lockDriverDay(transaction, input.rosterDate, input.driverId)
   if (input.vehicleId === null)
     return clearRoster(transaction, actorUserId, current)
 
-  // Re-saving the same pair is not a new write, so a Vehicle archived later still matches.
+  // Re-saving the same pair is not a new write, so a Driver or Vehicle archived later still matches.
   if (current !== null && current.vehicleId === input.vehicleId)
     return { driverId: current.driverId, vehicleId: current.vehicleId }
+
+  if (driver === 'archived')
+    throw new RosterDriverArchivedError()
 
   const presence = await vehiclePresence(transaction, input.vehicleId)
   if (presence === 'missing')

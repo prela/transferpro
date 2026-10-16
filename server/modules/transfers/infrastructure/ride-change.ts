@@ -7,10 +7,10 @@ import { z } from 'zod'
 import { parseChangeRideVehicle, parseClearRide, parseReassignRide, RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideChangeAllowed } from '../../../../shared'
 import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
-import { driverMustAcceptForAssign } from '../../drivers'
+import { driverAssignState } from '../../drivers'
 import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { vehiclePresenceForAssign } from '../../vehicles'
-import { RideNotFoundError, RideVehicleArchivedError } from './assign'
+import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
 import { checkRideSchedule } from './ride-schedule'
 import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
 
@@ -234,9 +234,11 @@ export async function reassignAssignedRide(
   if (current.driverId === input.driverId)
     throw new RideSameDriverError()
 
-  const driverFlag = await driverMustAcceptForAssign(transaction, input.driverId)
-  if (driverFlag === null)
+  const driver = await driverAssignState(transaction, input.driverId)
+  if (driver === null)
     throw new RideNotFoundError()
+  if (driver.archived)
+    throw new RideDriverArchivedError()
 
   const presence = await vehiclePresenceForAssign(transaction, input.vehicleId)
   if (presence === 'missing')
@@ -251,7 +253,7 @@ export async function reassignAssignedRide(
     confirm: input.confirm === true,
   })
 
-  const mustAccept = driverFlag
+  const mustAccept = driver.mustAccept
   const updated = reassignedRows.parse(await runStep(transaction, sql`
     update app.rides
     set state = 'assigned',

@@ -1,9 +1,9 @@
 import type { DriverList } from '../../../../shared'
 import { parseCreateDriver, parseDriverPatch } from '../../../../shared'
 import { readSignInEmail, TenantAccessError, withTenantFromSession } from '../../tenancy'
-import { addDriver, correctDriver, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers } from './drivers'
+import { addDriver, archiveStoredDriver, correctDriver, DriverArchivedError, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers, unarchiveStoredDriver } from './drivers'
 
-export { DriverNotFoundError, loadDriverLinkedToMember, loadDrivers }
+export { DriverArchivedError, DriverNotFoundError, loadDriverLinkedToMember, loadDrivers }
 
 function officeOnly(role: string): void {
   // A driver sees their own Rides. Adding a Driver is office work.
@@ -11,11 +11,11 @@ function officeOnly(role: string): void {
     throw new TenantAccessError(403)
 }
 
-/** This Tenant's Drivers. A driver is 403. Another Tenant sees none. */
-export async function listDrivers(headers: Headers): Promise<DriverList> {
+/** This Tenant's Drivers. A driver is 403. Another Tenant sees none. Archived rows stay out unless asked for. */
+export async function listDrivers(headers: Headers, includeArchived: boolean): Promise<DriverList> {
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return { drivers: await loadDrivers(transaction) }
+    return { drivers: await loadDrivers(transaction, includeArchived) }
   })
 }
 
@@ -41,5 +41,27 @@ export async function updateDriver(headers: Headers, driverId: string, raw: unkn
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
     return correctDriver(transaction, actor.userId, actor.role, driverId, patch, readSignInEmail)
+  })
+}
+
+/**
+ * Archive a Driver. It leaves the default list and cannot be newly assigned.
+ * There is no delete. A second archive writes nothing.
+ */
+export async function archiveDriver(headers: Headers, driverId: string) {
+  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+    officeOnly(actor.role)
+    return archiveStoredDriver(transaction, actor.userId, driverId)
+  })
+}
+
+/**
+ * Put an archived Driver back on the default list. A Driver who is already
+ * there writes nothing.
+ */
+export async function unarchiveDriver(headers: Headers, driverId: string) {
+  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+    officeOnly(actor.role)
+    return unarchiveStoredDriver(transaction, actor.userId, driverId)
   })
 }

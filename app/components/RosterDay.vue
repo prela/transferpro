@@ -54,11 +54,20 @@ const weekRangeLabel = computed(() => {
 const showingThisWeek = computed(() => weekStart.value === mondayOfWeek(today))
 const showingToday = computed(() => phoneDate.value === today)
 const activeVehicles = computed(() => vehicles.value.filter(vehicle => vehicle.archivedAt === null))
+const activeDrivers = computed(() => drivers.value.filter(driver => driver.archivedAt === null))
+// An archived Driver is not a new row. A day they already have still shows their name.
+const boardDrivers = computed(() => {
+  const placed = new Set(
+    Object.values(assignmentsByDate).flatMap(rows => rows.map(row => row.driverId)),
+  )
+  return drivers.value.filter(driver => driver.archivedAt === null || placed.has(driver.id))
+})
 
 type RosterFailure
   = 'roster.loadFailed'
     | 'roster.vehicleTaken'
     | 'roster.vehicleArchived'
+    | 'roster.driverArchived'
     | 'roster.driverTaken'
     | 'roster.notFound'
     | 'roster.forbidden'
@@ -90,6 +99,13 @@ function vehicleItems(date: string, driverId: string) {
       : vehicle.registrationPlate,
     value: vehicle.id,
   }))
+}
+
+function assignedPlate(driverId: string, date: string): string | null {
+  const assigned = assignmentFor(driverId, date)
+  if (!assigned)
+    return null
+  return vehicles.value.find(item => item.id === assigned.vehicleId)?.registrationPlate ?? null
 }
 
 function archivedPlate(driverId: string, date: string): string | null {
@@ -146,7 +162,7 @@ async function loadAll() {
   loadError.value = false
   try {
     const [driverList, vehicleList] = await Promise.all([
-      driverListSchema.parse(await $fetch('/api/drivers')),
+      driverListSchema.parse(await $fetch('/api/drivers', { query: { includeArchived: 'true' } })),
       vehicleListSchema.parse(await $fetch('/api/vehicles', { query: { includeArchived: 'true' } })),
     ])
     if (ticket !== loadTicket)
@@ -272,7 +288,7 @@ async function copyLastWeek() {
       })),
     )
     const plan = planRosterCopy({
-      driverIds: drivers.value.map(driver => driver.id),
+      driverIds: activeDrivers.value.map(driver => driver.id),
       thisWeekDates: week.value,
       lastWeek,
       thisWeek,
@@ -319,6 +335,8 @@ function failureKey(error: unknown): RosterFailure {
     return 'roster.vehicleTaken'
   if (code === 'roster_vehicle_archived')
     return 'roster.vehicleArchived'
+  if (code === 'roster_driver_archived')
+    return 'roster.driverArchived'
   if (code === 'roster_driver_taken')
     return 'roster.driverTaken'
   switch (httpStatus(error)) {
@@ -383,7 +401,7 @@ onMounted(() => {
       <UButton
         type="button"
         size="sm"
-        :disabled="loading || copying || drivers.length === 0"
+        :disabled="loading || copying || activeDrivers.length === 0"
         :loading="copying"
         @click="copyLastWeek"
       >
@@ -457,7 +475,7 @@ onMounted(() => {
     >
       {{ t('roster.loading') }}
     </p>
-    <p v-else-if="drivers.length === 0">
+    <p v-else-if="boardDrivers.length === 0">
       {{ t('roster.emptyDrivers') }}
     </p>
     <template v-else>
@@ -487,7 +505,7 @@ onMounted(() => {
           </thead>
           <tbody>
             <tr
-              v-for="driver in drivers"
+              v-for="driver in boardDrivers"
               :key="driver.id"
             >
               <th class="align-top text-start font-medium">
@@ -498,7 +516,14 @@ onMounted(() => {
                 :key="date"
                 class="align-top"
               >
+                <p
+                  v-if="driver.archivedAt !== null && assignedPlate(driver.id, date)"
+                  class="font-mono text-sm"
+                >
+                  {{ assignedPlate(driver.id, date) }}
+                </p>
                 <USelect
+                  v-else
                   :id="`roster-vehicle-${driver.id}-${date}`"
                   :model-value="choices[cellKey(driver.id, date)]"
                   :name="`vehicle-${driver.id}-${date}`"
@@ -563,7 +588,7 @@ onMounted(() => {
 
       <div class="flex flex-col gap-6 lg:hidden">
         <div
-          v-for="driver in drivers"
+          v-for="driver in boardDrivers"
           :key="driver.id"
           class="flex flex-col gap-3"
         >
@@ -582,7 +607,14 @@ onMounted(() => {
           >
             {{ t('roster.missingVehicle') }}
           </p>
+          <p
+            v-if="driver.archivedAt !== null && assignedPlate(driver.id, phoneDate)"
+            class="font-mono text-base"
+          >
+            {{ assignedPlate(driver.id, phoneDate) }}
+          </p>
           <UFormField
+            v-else
             :label="t('roster.vehicleFor', { name: driver.name })"
             :name="`vehicle-${driver.id}`"
             size="xl"
