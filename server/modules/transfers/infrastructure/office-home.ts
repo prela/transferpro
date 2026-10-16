@@ -29,8 +29,8 @@ const sourceRowSchema = z.object({
   landingAt: z.unknown().nullish(),
   expectedArrival: z.unknown().nullish(),
   tabla: z.string(),
-  // Driver ids, not names. Null when that Driver row was removed.
-  declinedBy: z.array(z.uuid().nullable()),
+  // Driver ids, not names. The name is resolved with the other catalog names.
+  declinedBy: z.array(z.uuid()),
 })
 
 /**
@@ -153,12 +153,9 @@ function requiredName(id: string, names: Map<string, string>): string {
 /**
  * The declining Driver's display name.
  * `loadDrivers` returns every Driver row. There is no deactivated Driver.
- * A null id is a removed Driver: the alert stayed and the foreign key
- * cleared the id. An id missing from that list uses the same mark, so
- * one absent name does not fail the snapshot. The mark is not logged.
+ * An id missing from that list uses a neutral mark, so one absent name
+ * does not fail the snapshot. The mark is not logged.
  */
-function declineDriverName(id: string | null, names: Map<string, string>): string {
-  if (id === null)
-    return MISSING_DECLINE_DRIVER
+function declineDriverName(id: string, names: Map<string, string>): string {
   return names.get(id) ?? MISSING_DECLINE_DRIVER
 }
