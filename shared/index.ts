@@ -30,6 +30,8 @@ export { changeMemberRoleBodySchema, memberErrorKey, memberErrorMessage, memberL
 export type { ChangeMemberRoleBody, Member, MemberErrorKey, MemberList } from './member'
 export { canMarkNoShow, noShowWaitElapsed } from './no-show'
 export type { NoShowClock } from './no-show'
+export { occupationStripStorageKey, placeOccupationStrip, readOccupationStripCollapsed, writeOccupationStripCollapsed } from './occupation-strip'
+export type { OccupationStrip, OccupationStripBlock, OccupationStripRide, OccupationStripRow, OccupationStripTick, OccupationWarning } from './occupation-strip'
 export { buildOfficeHome, officeHomeSchema, officeHomeUrgentKeys } from './office-home'
 export type { OfficeHome, OfficeHomeDecline, OfficeHomeRide } from './office-home'
 export { accountInitials, officeNav, officePhoneBar } from './office-nav'

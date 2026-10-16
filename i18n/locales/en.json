@@ -284,6 +284,17 @@
   "transfers": {
     "nav": "Transfers",
     "title": "Transfers",
+    "occupation": {
+      "show": "Show occupation",
+      "hide": "Hide occupation",
+      "region": "Occupation",
+      "now": "Now {time}",
+      "block": "{time}, {passengers}, {from} → {to}",
+      "blockWarning": "{time}, {passengers}, {from} → {to}, {warning}",
+      "loadFailed": "Occupation could not be loaded.",
+      "row": "{vehicle}, {driver}",
+      "rowVehicle": "{vehicle}"
+    },
     "day": "Day",
     "today": "Today",
     "previousDay": "Previous day",
