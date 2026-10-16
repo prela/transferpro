@@ -411,7 +411,6 @@ onMounted(loadLocations)
           />
           <UButton
             type="button"
-            icon="i-lucide-plus"
             class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
             @click="openAdd"
           >
@@ -435,7 +434,7 @@ onMounted(loadLocations)
         />
         <div
           v-else
-          class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          class="focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary lg:overflow-x-auto"
           role="region"
           :aria-labelledby="listTitleId"
           tabindex="0"
@@ -444,12 +443,13 @@ onMounted(loadLocations)
             :data="visibleLocations"
             :columns="columns"
             :loading="loading"
-            class="whitespace-nowrap"
+            class="lg:whitespace-nowrap"
+            @select="(_event: Event, row: { original: Location }) => openEdit(row.original)"
           >
             <template #name-cell="{ row }">
               <button
                 type="button"
-                class="text-left font-medium"
+                class="block min-h-7 w-full text-left font-medium max-lg:min-h-11 max-lg:text-base"
                 @click="openEdit(row.original)"
               >
                 {{ row.original.name }}
@@ -477,7 +477,7 @@ onMounted(loadLocations)
               <UDropdownMenu
                 v-if="row.original.archivedAt === null"
                 :items="locationActions(row.original)"
-                size="xl"
+                size="sm"
               >
                 <UButton
                   type="button"

@@ -182,7 +182,6 @@ onMounted(loadClients)
         </div>
         <UButton
           type="button"
-          icon="i-lucide-plus"
           class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
           @click="openAdd"
         >
@@ -207,7 +206,7 @@ onMounted(loadClients)
       />
       <div
         v-else
-        class="overflow-x-auto focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        class="focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary lg:overflow-x-auto"
         role="region"
         :aria-labelledby="listTitleId"
         tabindex="0"
@@ -216,12 +215,13 @@ onMounted(loadClients)
           :data="visibleClients"
           :columns="columns"
           :loading="loading"
-          class="whitespace-nowrap"
+          class="lg:whitespace-nowrap"
+          @select="(_event: Event, row: { original: Client }) => openEdit(row.original)"
         >
           <template #name-cell="{ row }">
             <button
               type="button"
-              class="text-left font-medium"
+              class="block min-h-7 w-full text-left font-medium max-lg:min-h-11 max-lg:text-base"
               @click="openEdit(row.original)"
             >
               {{ row.original.name }}
