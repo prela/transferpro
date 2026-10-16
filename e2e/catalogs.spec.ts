@@ -81,5 +81,60 @@ test.describe('@phone', () => {
         await expectNoAxeViolations(page)
       }
     })
+
+    test(`drivers, vehicles, and audit follow the catalog pattern in ${theme}`, async ({ page }) => {
+      test.setTimeout(120_000)
+      const phone = isPhone(page)
+      if (!phone)
+        await page.setViewportSize({ width: 1440, height: 900 })
+      const tenant = await seedTenant(`catalog-fleet-${theme}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+
+      await openOfficeLink(page, 'Vozači')
+      await expect(page.getByRole('searchbox', { name: 'Traži' })).toBeVisible()
+      await expect(page.getByText('Još nema vozača. Dodajte prvog.')).toBeVisible()
+      await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
+      const addDriver = page.getByRole(phone ? 'dialog' : 'region', { name: 'Dodaj vozača' })
+      await expect(addDriver.getByLabel('Ime')).toBeVisible()
+      await addDriver.getByRole('button', { name: 'Zatvori', exact: true }).click()
+      await expect(addDriver).toBeHidden()
+      await expectNoAxeViolations(page)
+
+      await openOfficeLink(page, 'Vozila')
+      await expect(page.getByRole('searchbox', { name: 'Traži' })).toBeVisible()
+      await expect(page.getByLabel('Prikaži arhivirano')).toBeVisible()
+      await expect(page.getByText('Još nema vozila. Dodajte prvo.')).toBeVisible()
+      await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
+      const addVehicle = page.getByRole(phone ? 'dialog' : 'region', { name: 'Dodaj vozilo' })
+      await expect(addVehicle.getByLabel('Registarska oznaka', { exact: true })).toBeVisible()
+      await addVehicle.getByRole('button', { name: 'Odustani', exact: true }).click()
+      await expect(addVehicle).toBeHidden()
+      await expectNoAxeViolations(page)
+
+      await openOfficeLink(page, 'Revizija')
+      await expect(page.getByRole('heading', { level: 1, name: 'Revizijski zapisnik' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Osvježi', exact: true })).toBeVisible()
+      await expect(page.getByRole('columnheader', { name: 'Vrijeme' })).toBeVisible()
+      await expect(page.getByRole('columnheader', { name: 'Član' })).toHaveCount(0)
+      if (phone) {
+        await expect(page.getByRole('columnheader', { name: 'Tko' })).toBeHidden()
+        await expect(page.getByRole('columnheader', { name: 'Radnja' })).toBeHidden()
+        await expect(page.getByRole('columnheader', { name: 'Detalj' })).toBeHidden()
+      }
+      else {
+        await expect(page.getByRole('columnheader', { name: 'Tko' })).toBeVisible()
+        await expect(page.getByRole('columnheader', { name: 'Radnja' })).toBeVisible()
+        await expect(page.getByRole('columnheader', { name: 'Detalj' })).toBeVisible()
+      }
+      await expectNoAxeViolations(page)
+
+      if (theme === 'light') {
+        await switchLocale(page, 'en')
+        await expect(page.getByRole('heading', { level: 1, name: 'Audit log' })).toBeVisible()
+        await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible()
+        await expectNoAxeViolations(page)
+      }
+    })
   }
 })

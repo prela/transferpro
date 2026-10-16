@@ -27,6 +27,11 @@ test('an admin opens the audit log from the sidebar, newest first, and can refre
   await nav.getByRole('link', { name: 'Revizija', exact: true }).click()
   await expect(page).toHaveURL(/\/audit$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Revizijski zapisnik' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Vrijeme' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Tko' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Radnja' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Detalj' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: 'Član' })).toHaveCount(0)
 
   const rows = page.getByRole('row').filter({ has: page.getByRole('cell') })
   await expect(rows.nth(0)).toContainText('Promijenjeno čekanje na aerodromu')
