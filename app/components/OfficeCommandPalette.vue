@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { InputProps } from '@nuxt/ui'
 import type { TransferSearchHit } from '../../shared'
-import { formatCommandDay, parseCommandDay, TRANSFER_SEARCH_MAX_LENGTH, transferSearchSchema } from '../../shared'
+import { formatCalendarDate, parseCommandDay, TRANSFER_SEARCH_LIMIT, TRANSFER_SEARCH_MAX_LENGTH, transferSearchSchema } from '../../shared'
 
 /**
  * Office command palette (ADR-0038). Ctrl/Cmd+K on the desktop, the top-bar
@@ -101,13 +101,53 @@ const searchInput = computed(() => ({
   'aria-label': t('palette.placeholder'),
 }) as InputProps)
 
+/**
+ * The read returns up to 20 rows. The palette's own cap is 12, which would
+ * hide a later hit, so the cap follows the read.
+ */
+const searchFuse = { resultLimit: TRANSFER_SEARCH_LIMIT }
+
+/**
+ * "Idi na dan…" opens this list. The array is stable so the nested page
+ * keeps it after the palette copies the children. The label is the typed
+ * text: the nested list is filtered, and the formatted day would not match.
+ */
+interface PaletteRow {
+  label: string
+  icon?: string
+  to?: string
+  description?: string
+  disabled?: boolean
+  placeholder?: string
+  onSelect?: () => void
+  children?: PaletteRow[]
+}
+
+const daySteps = reactive<PaletteRow[]>([])
+
+watch([searchTerm, locale], () => {
+  const iso = parseCommandDay(searchTerm.value)
+  const next: PaletteRow[] = iso
+    ? [{
+        label: searchTerm.value.trim(),
+        description: t('palette.goToDayOn', { date: formatCalendarDate(iso, displayLocale()) }),
+        icon: 'i-lucide-calendar',
+        to: `/transfers?day=${iso}`,
+      }]
+    : [{
+        label: t('palette.goToDayHint'),
+        disabled: true,
+      }]
+  daySteps.splice(0, daySteps.length, ...next)
+}, { immediate: true })
+
 const groups = computed(() => {
   const localeCode = displayLocale()
   const next: {
     id: string
     label: string
     ignoreFilter?: boolean
-    items: Record<string, unknown>[]
+    items: PaletteRow[]
   }[] = []
   if (props.links.length > 0) {
     next.push({
@@ -121,7 +161,8 @@ const groups = computed(() => {
     })
   }
   // Filtered, so a guest name does not leave "Novi transfer" as the first row.
-  // The resolved day is its own group: the typed date does not match the label.
+  // Choosing "Idi na dan…" opens daySteps. A date typed at the root would not
+  // match that label, so the resolved day is a separate group.
   next.push({
     id: 'commands',
     label: t('palette.commands'),
@@ -133,13 +174,12 @@ const groups = computed(() => {
           void requestNewTransfer()
         },
       },
-      ...(day.value
-        ? []
-        : [{
-            label: t('palette.goToDay'),
-            icon: 'i-lucide-calendar',
-            description: t('palette.goToDayHint'),
-          }]),
+      {
+        label: t('palette.goToDay'),
+        icon: 'i-lucide-calendar',
+        placeholder: t('palette.goToDayHint'),
+        children: daySteps,
+      },
     ],
   })
   if (day.value) {
@@ -149,7 +189,7 @@ const groups = computed(() => {
       label: t('palette.commands'),
       ignoreFilter: true,
       items: [{
-        label: t('palette.goToDayOn', { date: formatCommandDay(iso, localeCode) }),
+        label: t('palette.goToDayOn', { date: formatCalendarDate(iso, localeCode) }),
         icon: 'i-lucide-calendar',
         to: `/transfers?day=${iso}`,
       }],
@@ -174,7 +214,7 @@ const groups = computed(() => {
       items: hits.value.map(hit => ({
         label: hit.guestName,
         description: t('palette.result', {
-          day: formatCommandDay(hit.operationalDay, localeCode),
+          day: formatCalendarDate(hit.operationalDay, localeCode),
           start: hit.start,
           end: hit.end,
           client: hit.clientName,
@@ -204,6 +244,7 @@ const groups = computed(() => {
     :description="t('palette.description')"
     :placeholder="t('palette.placeholder')"
     :input="searchInput"
+    :fuse="searchFuse"
     :preserve-group-order="true"
   />
 </template>

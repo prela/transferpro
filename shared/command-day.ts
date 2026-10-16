@@ -1,4 +1,3 @@
-import type { DisplayLocale } from './display-locale'
 import { isCalendarDate } from './date'
 
 /**
@@ -23,17 +22,4 @@ export function parseCommandDay(raw: string): string | null {
   const year = match[3]
   const iso = `${year}-${month}-${day}`
   return isCalendarDate(iso) ? iso : null
-}
-
-/**
- * The same date order as {@link formatInstant}, without a clock.
- * The ISO value is already padded, so the string does not depend on ICU.
- */
-export function formatCommandDay(iso: string, locale: DisplayLocale): string {
-  if (!isCalendarDate(iso))
-    throw new RangeError('Command day is not a calendar date.')
-  const [year, month, day] = iso.split('-')
-  if (locale === 'hr')
-    return `${day}. ${month}. ${year}.`
-  return `${day}/${month}/${year}`
 }

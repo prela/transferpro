@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { formatCommandDay, parseCommandDay } from './command-day'
+import { parseCommandDay } from './command-day'
 
 /**
  * "Idi na dan…" reads a date the office typed. The Transfers URL accepts
@@ -25,9 +25,4 @@ it('refuses a day that is not a calendar date, a partial date, or other text', (
   expect(parseCommandDay('Ana 20.10.2026')).toBeNull()
   expect(parseCommandDay('OU111')).toBeNull()
   expect(parseCommandDay('V-19')).toBeNull()
-})
-
-it('formats the day the way the rest of the office writes a date', () => {
-  expect(formatCommandDay('2026-10-20', 'hr')).toBe('20. 10. 2026.')
-  expect(formatCommandDay('2026-10-06', 'en')).toBe('06/10/2026')
 })
