@@ -2,6 +2,7 @@ import { expect, it } from 'vitest'
 import { calendarDateInTimeZone } from './date'
 import {
   classifyRideAttention,
+  homeRowNamesTheDate,
   parseTransferDayFilter,
   pickupNeedsCalendarDate,
   rideStateMark,
@@ -163,6 +164,16 @@ it('shows the calendar date when the pickup falls on the next calendar day', () 
   expect(calendarDateInTimeZone(zone, new Date(pickupAt))).toBe('2026-06-16')
   expect(pickupNeedsCalendarDate(pickupAt, day, zone)).toBe(true)
   expect(pickupNeedsCalendarDate('2026-06-15T10:00:00.000Z', day, zone)).toBe(false)
+})
+
+it('names the date on Home when the pickup is another operational day', () => {
+  const zone = 'Europe/Zagreb'
+  const startHour = 4
+  // 02:30 in Zagreb on 16 June is still the operational day of 15 June.
+  const beforeStart = '2026-06-16T00:30:00.000Z'
+  expect(homeRowNamesTheDate(beforeStart, '2026-06-16', zone, startHour)).toBe(true)
+  expect(homeRowNamesTheDate(beforeStart, '2026-06-15', zone, startHour)).toBe(true)
+  expect(homeRowNamesTheDate('2026-06-15T10:00:00.000Z', '2026-06-15', zone, startHour)).toBe(false)
 })
 
 it('paints a Ride state as icon-ready text: waiting outlined, in progress, finished muted', () => {

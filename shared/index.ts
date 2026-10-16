@@ -41,7 +41,7 @@ export type { CompanyAccount, CompanyAccountList, PlatformActor, PlatformShell }
 export { includeArchivedQuerySchema, parseIncludeArchivedQuery, QueryParamError } from './query'
 export { ASSIGNMENT_REFUSED_STATES, AssignRideInputError, assignRideSchema, assignTransitionAllowed, parseAssignRide, parseChangeRideVehicle, parseClearRide, parseReassignRide, parseRosterVehicleRead, RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideAssignmentFieldSchema, rideChangeAllowed, RideCommandInputError, rideVehicleChangeFieldSchema, rosterVehicleSuggestionSchema } from './ride-assignment'
 export type { AssignRide, ChangeRideVehicle, ReassignRide, RideAssignmentField, RosterVehicleSuggestion } from './ride-assignment'
-export { classifyRideAttention, parseTransferDayFilter, pickupNeedsCalendarDate, rideAttentionTier, rideStateMark, rideUrgentKeys, TRANSFER_DAY_FILTERS, transferDayFilterCounts, transferDayFilterMatches } from './ride-attention'
+export { classifyRideAttention, homeRowNamesTheDate, parseTransferDayFilter, pickupNeedsCalendarDate, rideAttentionTier, rideStateMark, rideUrgentKeys, TRANSFER_DAY_FILTERS, transferDayFilterCounts, transferDayFilterMatches } from './ride-attention'
 export type { RideAttentionItem, RideAttentionKind, RideAttentionSource, RideAttentionTier, RideDecline, RideStateMark, TransferBoardFilter, TransferDayFilter, TransferDayFilterRide } from './ride-attention'
 export { judgeSchedule, occupiedEnd } from './ride-schedule'
 export type { ScheduleClash, ScheduleResource, ScheduleRide, ScheduleVerdict } from './ride-schedule'

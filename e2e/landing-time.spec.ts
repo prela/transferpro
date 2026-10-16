@@ -99,13 +99,19 @@ test('the office Ride and the Driver Ride show a stored landing time in both lan
   await storeLanding(body.ride.id)
 
   await page.goto('/')
-  await expect(page.getByText(`Vrijeme slijetanja: ${landingHr}`)).toBeVisible()
+  // The landing time sits in the Ride detail. Home keeps the urgent row only.
+  const homeRow = page.getByRole('region', { name: 'Pozornost' }).getByRole('listitem').filter({ hasText: 'Ana Let' })
+  await homeRow.getByRole('button').click()
+  const detail = page.locator('#ride-detail')
+  await expect(detail.getByText('Vrijeme slijetanja', { exact: true })).toBeVisible()
+  await expect(detail.getByText(landingHr, { exact: true })).toBeVisible()
   await switchTheme(page, 'dark')
-  await expect(page.getByText(`Vrijeme slijetanja: ${landingHr}`)).toBeVisible()
+  await expect(detail.getByText(landingHr, { exact: true })).toBeVisible()
   await switchLocale(page, 'en')
-  await expect(page.getByText(`Landing time: ${landingEn}`)).toBeVisible()
+  await expect(detail.getByText('Landing time', { exact: true })).toBeVisible()
+  await expect(detail.getByText(landingEn, { exact: true })).toBeVisible()
   await switchTheme(page, 'light')
-  await expect(page.getByText(`Landing time: ${landingEn}`)).toBeVisible()
+  await expect(detail.getByText(landingEn, { exact: true })).toBeVisible()
 
   await page.goto('/transfers')
   await expect(page.getByRole('columnheader', { name: 'Flight' })).toBeVisible()

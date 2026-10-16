@@ -196,7 +196,7 @@ function formatOperationalDate(iso: string, locale: DisplayLocale): string {
               {{ t('officeHome.attention') }}
             </h2>
             <p v-if="blocks.attention.length === 0">
-              {{ t('officeHome.empty') }}
+              {{ t('officeHome.emptyAttention') }}
             </p>
             <section
               v-for="group in blocks.attention"
@@ -235,7 +235,7 @@ function formatOperationalDate(iso: string, locale: DisplayLocale): string {
               {{ t('officeHome.unassigned') }}
             </h2>
             <p v-if="blocks.unassigned.length === 0">
-              {{ t('officeHome.empty') }}
+              {{ t('officeHome.emptyUnassigned') }}
             </p>
             <ul
               v-else
@@ -268,7 +268,7 @@ function formatOperationalDate(iso: string, locale: DisplayLocale): string {
               {{ t('officeHome.waiting') }}
             </h2>
             <p v-if="blocks.waitingOnAcceptance.length === 0">
-              {{ t('officeHome.empty') }}
+              {{ t('officeHome.emptyWaiting') }}
             </p>
             <ul
               v-else
@@ -303,7 +303,7 @@ function formatOperationalDate(iso: string, locale: DisplayLocale): string {
               {{ t('officeHome.inProgress') }}
             </h2>
             <p v-if="blocks.inProgress.length === 0">
-              {{ t('officeHome.empty') }}
+              {{ t('officeHome.emptyInProgress') }}
             </p>
             <ul
               v-else

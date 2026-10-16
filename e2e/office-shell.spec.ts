@@ -122,7 +122,7 @@ test('the sidebar is usable in light and dark, in Croatian and English', async (
 
   await switchLocale(page, 'en')
   const english = page.getByRole('navigation', { name: 'Sections' })
-  await expect(english.getByRole('link', { name: 'Home', exact: true })).toHaveAttribute('aria-current', 'page')
+  await expect(english.getByRole('link', { name: /^Home, \d+$/ })).toHaveAttribute('aria-current', 'page')
   await expect(english.getByRole('link', { name: 'Clients', exact: true })).toBeVisible()
   await expect(english.getByRole('link', { name: 'Roster', exact: true })).toBeVisible()
   await expect(page.locator('html')).toHaveClass(/dark/)
@@ -254,7 +254,7 @@ test.describe('@phone', () => {
         await switchLocale(page, 'en')
         const nav = page.getByRole('navigation', { name: 'Sections' })
         if (phone)
-          await expect(nav.getByRole('link', { name: 'Home', exact: true })).toBeVisible()
+          await expect(nav.getByRole('link', { name: /^Home, \d+$/ })).toBeVisible()
         else
           await expect(nav.getByRole('link', { name: 'Clients', exact: true })).toBeVisible()
         await expectNoAxeViolations(page)

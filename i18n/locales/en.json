@@ -787,7 +787,10 @@
       "landing-alarm": "Landing alarm",
       "unclosed-mark": "Not closed"
     },
-    "empty": "This list is empty.",
+    "emptyAttention": "No urgent rides. The other rides are on the lists below.",
+    "emptyUnassigned": "No unassigned rides. Open a new transfer on Transfers.",
+    "emptyWaiting": "No rides are waiting on acceptance. An assigned ride waits here until the driver accepts it.",
+    "emptyInProgress": "No rides are in progress. A started ride shows up here.",
     "counts": "Counts for the operational day",
     "countRides": "Rides",
     "unassignedAlarm": "Unassigned alarm",

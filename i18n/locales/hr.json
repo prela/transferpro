@@ -787,7 +787,10 @@
       "landing-alarm": "Alarm slijetanja",
       "unclosed-mark": "Nije zatvoreno"
     },
-    "empty": "Ovaj popis je prazan.",
+    "emptyAttention": "Nema hitnih vožnji. Ostale vožnje su na popisima ispod.",
+    "emptyUnassigned": "Nema nedodijeljenih vožnji. Novi transfer otvorite na Transferima.",
+    "emptyWaiting": "Nema vožnji koje čekaju prihvat. Dodijeljena vožnja čeka ovdje dok je vozač ne prihvati.",
+    "emptyInProgress": "Nema vožnji u tijeku. Započeta vožnja pojavit će se ovdje.",
     "counts": "Brojevi za operativni dan",
     "countRides": "Vožnje",
     "unassignedAlarm": "Alarm za nedodijeljenu vožnju",

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayLocale, OfficeHomeBlockRide } from '../../shared'
-import { clockLabel, formatInstant, operationalDateInTimeZone, pickupNeedsCalendarDate } from '../../shared'
+import { clockLabel, formatInstant, homeRowNamesTheDate, operationalDateInTimeZone } from '../../shared'
 
 const props = defineProps<{
   ride: OfficeHomeBlockRide
@@ -30,7 +30,7 @@ const href = computed(() => {
 
 const when = computed(() => {
   const instant = new Date(props.ride.pickupAt)
-  if (pickupNeedsCalendarDate(props.ride.pickupAt, props.operationalDate, props.timeZone))
+  if (homeRowNamesTheDate(props.ride.pickupAt, props.operationalDate, props.timeZone, props.operationalDayStartHour))
     return formatInstant(instant, props.timeZone, props.locale)
   return clockLabel(instant, props.timeZone, props.locale)
 })

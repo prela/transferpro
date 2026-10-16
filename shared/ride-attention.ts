@@ -1,5 +1,5 @@
 import type { RideState } from './transfer'
-import { calendarDateInTimeZone, isCalendarDate } from './date'
+import { calendarDateInTimeZone, isCalendarDate, operationalDateInTimeZone } from './date'
 import { rideIsInProgress } from './landing-alarm'
 
 /**
@@ -260,4 +260,23 @@ export function pickupNeedsCalendarDate(pickupAt: string, day: string, timeZone:
   if (!isCalendarDate(day))
     return false
   return calendarDateInTimeZone(timeZone, new Date(pickupAt)) !== day
+}
+
+/**
+ * Home lists Rides from other operational days. The clock is enough on the
+ * day the screen is showing, including the part after midnight. A pickup
+ * before the start hour belongs to the previous operational day even when
+ * the calendar date matches, so that row names the date too.
+ */
+export function homeRowNamesTheDate(
+  pickupAt: string,
+  operationalDate: string,
+  timeZone: string,
+  operationalDayStartHour: number,
+): boolean {
+  if (pickupNeedsCalendarDate(pickupAt, operationalDate, timeZone))
+    return true
+  if (!isCalendarDate(operationalDate))
+    return false
+  return operationalDateInTimeZone(timeZone, new Date(pickupAt), operationalDayStartHour) !== operationalDate
 }
