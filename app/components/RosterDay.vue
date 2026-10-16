@@ -1,32 +1,59 @@
 <script setup lang="ts">
-import type { Driver, RosterAssignment, Vehicle } from '../../shared'
-import { calendarDateInTimeZone, driverListSchema, isCalendarDate, rosterDaySchema, setRosterResultSchema, vehicleListSchema } from '../../shared'
+import type { Driver, RosterAssignment, RosterCopySkipReason, Vehicle } from '../../shared'
+import {
+  addCalendarDays,
+  calendarDateInTimeZone,
+  driverListSchema,
+  mondayOfWeek,
+  planRosterCopy,
+  rosterDaySchema,
+  setRosterResultSchema,
+  vehicleListSchema,
+  weekDates,
+} from '../../shared'
 
 const props = defineProps<{
   timeZone: string
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const drivers = ref<Driver[]>([])
 const vehicles = ref<Vehicle[]>([])
-const assignments = ref<RosterAssignment[]>([])
+const assignmentsByDate = reactive<Record<string, RosterAssignment[]>>({})
 const choices = reactive<Record<string, string | undefined>>({})
-const rosterDate = ref(calendarDateInTimeZone(props.timeZone, new Date()))
+const cellState = reactive<Record<string, 'saving' | 'saved' | 'error' | undefined>>({})
+const cellError = reactive<Record<string, RosterFailure | undefined>>({})
+
+const today = calendarDateInTimeZone(props.timeZone, new Date())
+const weekStart = ref(mondayOfWeek(today))
+const phoneDate = ref(today)
 const loading = ref(true)
 const loadError = ref(false)
-const pendingId = ref<string | null>(null)
-const errorKey = ref<RosterFailure | null>(null)
-const saved = ref(false)
+const copying = ref(false)
+const copyResult = ref<{
+  copied: number
+  skipped: Array<{
+    driverId: string
+    rosterDate: string
+    reason: RosterCopySkipReason | 'refused'
+  }>
+} | null>(null)
 
-// A slower reload must not replace the rows from a newer date.
+// A slower reload must not replace the rows from a newer week.
 let loadTicket = 0
 
+const week = computed(() => weekDates(weekStart.value))
+const weekRangeLabel = computed(() => {
+  const start = week.value[0]
+  const end = week.value[6]
+  if (start === undefined || end === undefined)
+    return ''
+  return `${dayHeading(start)} – ${dayHeading(end)}`
+})
+const showingThisWeek = computed(() => weekStart.value === mondayOfWeek(today))
+const showingToday = computed(() => phoneDate.value === today)
 const activeVehicles = computed(() => vehicles.value.filter(vehicle => vehicle.archivedAt === null))
-const vehicleItems = computed(() => activeVehicles.value.map(vehicle => ({
-  label: vehicle.registrationPlate,
-  value: vehicle.id,
-})))
 
 type RosterFailure
   = 'roster.loadFailed'
@@ -38,12 +65,35 @@ type RosterFailure
     | 'roster.signedOut'
     | 'roster.saveFailed'
 
-function assignmentFor(driverId: string): RosterAssignment | null {
-  return assignments.value.find(row => row.driverId === driverId) ?? null
+function cellKey(driverId: string, date: string): string {
+  return `${driverId}:${date}`
 }
 
-function archivedPlate(driverId: string): string | null {
-  const assigned = assignmentFor(driverId)
+function assignmentFor(driverId: string, date: string): RosterAssignment | null {
+  return assignmentsByDate[date]?.find(row => row.driverId === driverId) ?? null
+}
+
+function givenVehicleIds(date: string, exceptDriverId: string): Set<string> {
+  return new Set(
+    (assignmentsByDate[date] ?? [])
+      .filter(row => row.driverId !== exceptDriverId)
+      .map(row => row.vehicleId),
+  )
+}
+
+function vehicleItems(date: string, driverId: string) {
+  const given = givenVehicleIds(date, driverId)
+  return activeVehicles.value.map(vehicle => ({
+    // The server still refuses a duplicate. The mark is only a hint.
+    label: given.has(vehicle.id)
+      ? `${vehicle.registrationPlate} (${t('roster.given')})`
+      : vehicle.registrationPlate,
+    value: vehicle.id,
+  }))
+}
+
+function archivedPlate(driverId: string, date: string): string | null {
+  const assigned = assignmentFor(driverId, date)
   if (!assigned)
     return null
   const vehicle = vehicles.value.find(item => item.id === assigned.vehicleId)
@@ -52,39 +102,48 @@ function archivedPlate(driverId: string): string | null {
   return vehicle.registrationPlate
 }
 
-function vehicleMissing(driverId: string): boolean {
-  const assigned = assignmentFor(driverId)
+function vehicleMissing(driverId: string, date: string): boolean {
+  const assigned = assignmentFor(driverId, date)
   if (!assigned)
     return false
   return !vehicles.value.some(item => item.id === assigned.vehicleId)
 }
 
-function syncChoice(driverId: string) {
-  const assigned = assignmentFor(driverId)
+function syncChoice(driverId: string, date: string) {
+  const assigned = assignmentFor(driverId, date)
+  const key = cellKey(driverId, date)
   if (!assigned) {
-    choices[driverId] = undefined
+    choices[key] = undefined
     return
   }
   const vehicle = vehicles.value.find(item => item.id === assigned.vehicleId)
   // An archived Vehicle stays visible as text. The picker does not re-select it.
-  choices[driverId] = vehicle && vehicle.archivedAt === null ? assigned.vehicleId : undefined
+  choices[key] = vehicle && vehicle.archivedAt === null ? assigned.vehicleId : undefined
 }
 
-function dirty(driverId: string): boolean {
-  const choice = choices[driverId]
-  if (!choice)
-    return false
-  const assigned = assignmentFor(driverId)
-  const vehicle = assigned ? vehicles.value.find(item => item.id === assigned.vehicleId) : undefined
-  const current = vehicle && vehicle.archivedAt === null ? vehicle.id : undefined
-  return choice !== current
+function dayHeading(iso: string): string {
+  return new Intl.DateTimeFormat(locale.value, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${iso}T12:00:00.000Z`))
+}
+
+function skipLine(row: { driverId: string, rosterDate: string, reason: RosterCopySkipReason | 'refused' }): string {
+  const name = drivers.value.find(driver => driver.id === row.driverId)?.name ?? row.driverId
+  const key = row.reason === 'archivedVehicle'
+    ? 'roster.skipArchived'
+    : row.reason === 'vehicleGiven'
+      ? 'roster.skipGiven'
+      : 'roster.skipRefused'
+  return t(key, { name, date: row.rosterDate })
 }
 
 async function loadAll() {
   const ticket = ++loadTicket
   loading.value = true
   loadError.value = false
-  errorKey.value = null
   try {
     const [driverList, vehicleList] = await Promise.all([
       driverListSchema.parse(await $fetch('/api/drivers')),
@@ -94,7 +153,7 @@ async function loadAll() {
       return
     drivers.value = driverList.drivers
     vehicles.value = vehicleList.vehicles
-    await loadDay(ticket)
+    await loadDates(week.value, ticket)
   }
   catch {
     if (ticket !== loadTicket)
@@ -104,18 +163,28 @@ async function loadAll() {
   }
 }
 
-async function loadDay(ticket = ++loadTicket) {
-  if (!isCalendarDate(rosterDate.value))
-    return
+async function readDates(dates: readonly string[]) {
+  return Promise.all(dates.map(async (date) => {
+    return rosterDaySchema.parse(await $fetch('/api/roster', { query: { date } }))
+  }))
+}
+
+function applyDays(days: readonly { rosterDate: string, assignments: RosterAssignment[] }[]) {
+  for (const day of days) {
+    assignmentsByDate[day.rosterDate] = day.assignments
+    for (const driver of drivers.value)
+      syncChoice(driver.id, day.rosterDate)
+  }
+}
+
+async function loadDates(dates: readonly string[], ticket = ++loadTicket) {
   loading.value = true
   loadError.value = false
   try {
-    const day = rosterDaySchema.parse(await $fetch('/api/roster', { query: { date: rosterDate.value } }))
+    const days = await readDates(dates)
     if (ticket !== loadTicket)
       return
-    assignments.value = day.assignments
-    for (const driver of drivers.value)
-      syncChoice(driver.id)
+    applyDays(days)
   }
   catch {
     if (ticket !== loadTicket)
@@ -128,39 +197,120 @@ async function loadDay(ticket = ++loadTicket) {
   }
 }
 
-async function write(driverId: string, vehicleId: string | null) {
-  if (!isCalendarDate(rosterDate.value))
-    return
-  pendingId.value = driverId
-  errorKey.value = null
-  saved.value = false
+async function write(driverId: string, rosterDate: string, vehicleId: string | null): Promise<boolean> {
+  const key = cellKey(driverId, rosterDate)
+  cellState[key] = 'saving'
+  cellError[key] = undefined
   try {
     const result = setRosterResultSchema.parse(await $fetch('/api/roster', {
       method: 'PUT',
-      body: { rosterDate: rosterDate.value, driverId, vehicleId },
+      body: { rosterDate, driverId, vehicleId },
     }))
-    const rest = assignments.value.filter(row => row.driverId !== driverId)
-    assignments.value = result.assignment ? [...rest, result.assignment] : rest
-    syncChoice(driverId)
-    saved.value = true
+    const rest = (assignmentsByDate[rosterDate] ?? []).filter(row => row.driverId !== driverId)
+    assignmentsByDate[rosterDate] = result.assignment ? [...rest, result.assignment] : rest
+    syncChoice(driverId, rosterDate)
+    cellState[key] = 'saved'
+    return true
   }
   catch (error) {
-    errorKey.value = failureKey(error)
+    // Revert the picker so a later choice of the same Vehicle still saves.
+    syncChoice(driverId, rosterDate)
+    cellState[key] = 'error'
+    cellError[key] = failureKey(error)
+    return false
+  }
+}
+
+function pick(driverId: string, date: string, vehicleId: string | undefined | null) {
+  const key = cellKey(driverId, date)
+  const assigned = assignmentFor(driverId, date)
+  const current = assigned && vehicles.value.find(item => item.id === assigned.vehicleId)?.archivedAt === null
+    ? assigned.vehicleId
+    : undefined
+  const next = vehicleId ?? undefined
+  if (next === current)
+    return
+  choices[key] = next
+  if (!next) {
+    if (assigned)
+      void write(driverId, date, null)
+    return
+  }
+  void write(driverId, date, next)
+}
+
+function cellErrorText(driverId: string, date: string): string | undefined {
+  const key = cellError[cellKey(driverId, date)]
+  return key ? t(key) : undefined
+}
+
+function clear(driverId: string, date: string) {
+  void write(driverId, date, null)
+}
+
+async function copyLastWeek() {
+  copyResult.value = null
+  copying.value = true
+  const previous = weekDates(addCalendarDays(weekStart.value, -7))
+  try {
+    applyDays(await readDates(previous))
+    const archivedVehicleIds = vehicles.value
+      .filter(vehicle => vehicle.archivedAt !== null)
+      .map(vehicle => vehicle.id)
+    const lastWeek = previous.flatMap(date =>
+      (assignmentsByDate[date] ?? []).map(row => ({
+        driverId: row.driverId,
+        rosterDate: date,
+        vehicleId: row.vehicleId,
+      })),
+    )
+    const thisWeek = week.value.flatMap(date =>
+      (assignmentsByDate[date] ?? []).map(row => ({
+        driverId: row.driverId,
+        rosterDate: date,
+        vehicleId: row.vehicleId,
+      })),
+    )
+    const plan = planRosterCopy({
+      driverIds: drivers.value.map(driver => driver.id),
+      thisWeekDates: week.value,
+      lastWeek,
+      thisWeek,
+      archivedVehicleIds,
+    })
+    let copied = 0
+    const skipped: Array<{
+      driverId: string
+      rosterDate: string
+      reason: RosterCopySkipReason | 'refused'
+    }> = [...plan.skipped]
+    // Cell by cell, not a batch. A later refusal does not undo an earlier write.
+    for (const cell of plan.writes) {
+      const ok = await write(cell.driverId, cell.rosterDate, cell.vehicleId)
+      if (ok)
+        copied += 1
+      else
+        skipped.push({ driverId: cell.driverId, rosterDate: cell.rosterDate, reason: 'refused' })
+    }
+    copyResult.value = { copied, skipped }
+  }
+  catch {
+    loadError.value = true
   }
   finally {
-    pendingId.value = null
+    copying.value = false
   }
 }
 
-function save(driverId: string) {
-  const vehicleId = choices[driverId]
-  if (!vehicleId)
-    return
-  void write(driverId, vehicleId)
+function shiftWeek(days: number) {
+  copyResult.value = null
+  weekStart.value = addCalendarDays(weekStart.value, days)
+  void loadDates(weekDates(weekStart.value))
 }
 
-function clear(driverId: string) {
-  void write(driverId, null)
+function shiftDay(days: number) {
+  phoneDate.value = addCalendarDays(phoneDate.value, days)
+  void loadDates([phoneDate.value])
 }
 
 function failureKey(error: unknown): RosterFailure {
@@ -199,12 +349,6 @@ function httpStatus(error: unknown): number | undefined {
   return undefined
 }
 
-watch(rosterDate, () => {
-  saved.value = false
-  errorKey.value = null
-  void loadDay()
-})
-
 onMounted(() => {
   void loadAll()
 })
@@ -212,21 +356,69 @@ onMounted(() => {
 
 <template>
   <section>
-    <UFormField
-      :label="t('roster.date')"
-      name="rosterDate"
-      class="mb-4 max-w-xs"
-      size="xl"
-    >
-      <UInput
-        id="roster-date"
-        v-model="rosterDate"
-        name="rosterDate"
-        type="date"
-        autocomplete="off"
-        class="w-full"
+    <div class="mb-4 hidden items-center gap-2 lg:flex">
+      <UButton
+        type="button"
+        size="sm"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-chevron-left"
+        :aria-label="t('roster.previousWeek')"
+        :disabled="loading || copying"
+        @click="shiftWeek(-7)"
       />
-    </UFormField>
+      <p class="min-w-36 text-center font-medium">
+        {{ showingThisWeek ? t('roster.thisWeek') : weekRangeLabel }}
+      </p>
+      <UButton
+        type="button"
+        size="sm"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-chevron-right"
+        :aria-label="t('roster.nextWeek')"
+        :disabled="loading || copying"
+        @click="shiftWeek(7)"
+      />
+      <UButton
+        type="button"
+        size="sm"
+        :disabled="loading || copying || drivers.length === 0"
+        :loading="copying"
+        @click="copyLastWeek"
+      >
+        {{ copying ? t('roster.copying') : t('roster.copyLastWeek') }}
+      </UButton>
+    </div>
+
+    <div class="mb-4 flex items-center gap-2 lg:hidden">
+      <UButton
+        type="button"
+        size="xl"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-chevron-left"
+        class="min-h-11"
+        :aria-label="t('roster.previousDay')"
+        :disabled="loading"
+        @click="shiftDay(-1)"
+      />
+      <p class="min-w-36 flex-1 text-center text-lg font-medium">
+        {{ showingToday ? t('roster.today') : dayHeading(phoneDate) }}
+      </p>
+      <UButton
+        type="button"
+        size="xl"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-chevron-right"
+        class="min-h-11"
+        :aria-label="t('roster.nextDay')"
+        :disabled="loading"
+        @click="shiftDay(1)"
+      />
+    </div>
+
     <p class="mb-4 text-sm text-muted">
       {{ t('roster.intro') }}
     </p>
@@ -238,22 +430,27 @@ onMounted(() => {
       class="mb-4"
       :description="t('roster.loadFailed')"
     />
-    <UAlert
-      v-if="errorKey"
-      color="error"
-      variant="subtle"
-      role="alert"
-      class="mb-4"
-      :description="t(errorKey)"
-    />
-    <UAlert
-      v-else-if="saved"
-      color="success"
-      variant="subtle"
+    <div
+      v-if="copyResult"
       role="status"
-      class="mb-4"
-      :description="t('roster.saved')"
-    />
+      class="mb-4 text-sm"
+    >
+      <p>{{ t('roster.copyCopied', { count: copyResult.copied }) }}</p>
+      <p v-if="copyResult.skipped.length > 0">
+        {{ t('roster.copySkipped', { count: copyResult.skipped.length }) }}
+      </p>
+      <ul
+        v-if="copyResult.skipped.length > 0"
+        class="mt-2 list-disc ps-5"
+      >
+        <li
+          v-for="row in copyResult.skipped"
+          :key="`${row.driverId}:${row.rosterDate}:${row.reason}`"
+        >
+          {{ skipLine(row) }}
+        </li>
+      </ul>
+    </div>
     <p
       v-if="loading"
       role="status"
@@ -271,24 +468,116 @@ onMounted(() => {
         class="mb-4"
         :description="t('roster.emptyVehicles')"
       />
-      <div class="flex flex-col gap-6">
-        <form
+
+      <div class="hidden overflow-x-auto lg:block">
+        <table class="w-full min-w-[56rem] border-separate border-spacing-2">
+          <thead>
+            <tr>
+              <th class="text-start text-sm font-medium">
+                {{ t('roster.driver') }}
+              </th>
+              <th
+                v-for="date in week"
+                :key="date"
+                class="text-start text-sm font-medium"
+              >
+                {{ dayHeading(date) }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="driver in drivers"
+              :key="driver.id"
+            >
+              <th class="align-top text-start font-medium">
+                {{ driver.name }}
+              </th>
+              <td
+                v-for="date in week"
+                :key="date"
+                class="align-top"
+              >
+                <USelect
+                  :id="`roster-vehicle-${driver.id}-${date}`"
+                  :model-value="choices[cellKey(driver.id, date)]"
+                  :name="`vehicle-${driver.id}-${date}`"
+                  :items="vehicleItems(date, driver.id)"
+                  :placeholder="t('roster.chooseVehicle')"
+                  value-key="value"
+                  :aria-label="t('roster.vehicleForDay', { name: driver.name, date })"
+                  :disabled="copying || cellState[cellKey(driver.id, date)] === 'saving'"
+                  size="sm"
+                  class="w-full min-w-36 font-mono"
+                  @update:model-value="pick(driver.id, date, $event ?? undefined)"
+                />
+                <p
+                  v-if="archivedPlate(driver.id, date)"
+                  class="mt-1 text-xs text-muted"
+                >
+                  {{ t('roster.archivedStill', { plate: archivedPlate(driver.id, date) }) }}
+                </p>
+                <p
+                  v-else-if="vehicleMissing(driver.id, date)"
+                  class="mt-1 text-xs text-muted"
+                >
+                  {{ t('roster.missingVehicle') }}
+                </p>
+                <p
+                  v-if="cellState[cellKey(driver.id, date)] === 'saving'"
+                  class="mt-1 text-xs"
+                >
+                  {{ t('roster.saving') }}
+                </p>
+                <p
+                  v-else-if="cellState[cellKey(driver.id, date)] === 'saved'"
+                  role="status"
+                  class="mt-1 text-xs"
+                >
+                  {{ t('roster.saved') }}
+                </p>
+                <p
+                  v-else-if="cellErrorText(driver.id, date)"
+                  role="alert"
+                  class="mt-1 text-xs text-error"
+                >
+                  {{ cellErrorText(driver.id, date) }}
+                </p>
+                <UButton
+                  v-if="assignmentFor(driver.id, date)"
+                  type="button"
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  class="mt-1"
+                  :disabled="copying || cellState[cellKey(driver.id, date)] === 'saving'"
+                  @click="clear(driver.id, date)"
+                >
+                  {{ t('roster.clearForDay', { name: driver.name, date }) }}
+                </UButton>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex flex-col gap-6 lg:hidden">
+        <div
           v-for="driver in drivers"
           :key="driver.id"
           class="flex flex-col gap-3"
-          @submit.prevent="save(driver.id)"
         >
           <h2 class="text-lg font-semibold">
             {{ driver.name }}
           </h2>
           <p
-            v-if="archivedPlate(driver.id)"
+            v-if="archivedPlate(driver.id, phoneDate)"
             class="text-sm text-muted"
           >
-            {{ t('roster.archivedStill', { plate: archivedPlate(driver.id) }) }}
+            {{ t('roster.archivedStill', { plate: archivedPlate(driver.id, phoneDate) }) }}
           </p>
           <p
-            v-else-if="vehicleMissing(driver.id)"
+            v-else-if="vehicleMissing(driver.id, phoneDate)"
             class="text-sm text-muted"
           >
             {{ t('roster.missingVehicle') }}
@@ -300,36 +589,47 @@ onMounted(() => {
           >
             <USelect
               :id="`roster-vehicle-${driver.id}`"
-              v-model="choices[driver.id]"
+              :model-value="choices[cellKey(driver.id, phoneDate)]"
               :name="`vehicle-${driver.id}`"
-              :items="vehicleItems"
+              :items="vehicleItems(phoneDate, driver.id)"
               :placeholder="t('roster.chooseVehicle')"
-              class="w-full font-mono"
-              @update:model-value="saved = false"
+              value-key="value"
+              :disabled="cellState[cellKey(driver.id, phoneDate)] === 'saving'"
+              size="xl"
+              class="w-full min-h-11 font-mono"
+              @update:model-value="pick(driver.id, phoneDate, $event ?? undefined)"
             />
           </UFormField>
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              type="submit"
-              size="xl"
-              :disabled="pendingId !== null || !dirty(driver.id)"
-              :loading="pendingId === driver.id"
-            >
-              {{ pendingId === driver.id ? t('roster.saving') : t('roster.saveFor', { name: driver.name }) }}
-            </UButton>
-            <UButton
-              v-if="assignmentFor(driver.id)"
-              type="button"
-              color="neutral"
-              variant="outline"
-              size="xl"
-              :disabled="pendingId !== null"
-              @click="clear(driver.id)"
-            >
-              {{ t('roster.clearFor', { name: driver.name }) }}
-            </UButton>
-          </div>
-        </form>
+          <p
+            v-if="cellState[cellKey(driver.id, phoneDate)] === 'saving'"
+          >
+            {{ t('roster.saving') }}
+          </p>
+          <p
+            v-else-if="cellState[cellKey(driver.id, phoneDate)] === 'saved'"
+            role="status"
+          >
+            {{ t('roster.saved') }}
+          </p>
+          <p
+            v-else-if="cellErrorText(driver.id, phoneDate)"
+            role="alert"
+          >
+            {{ cellErrorText(driver.id, phoneDate) }}
+          </p>
+          <UButton
+            v-if="assignmentFor(driver.id, phoneDate)"
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="xl"
+            class="min-h-11"
+            :disabled="cellState[cellKey(driver.id, phoneDate)] === 'saving'"
+            @click="clear(driver.id, phoneDate)"
+          >
+            {{ t('roster.clearFor', { name: driver.name }) }}
+          </UButton>
+        </div>
       </div>
     </template>
   </section>

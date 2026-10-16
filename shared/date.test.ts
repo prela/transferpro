@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { instantFromWallClock, localDayBounds, operationalDateInTimeZone, wallClockInTimeZone } from './date'
+import { instantFromWallClock, localDayBounds, mondayOfWeek, operationalDateInTimeZone, wallClockInTimeZone, weekDates } from './date'
 
 it('writes a Zagreb wall clock from a stored instant, in winter time', () => {
   // 15 January 2026, 09:30Z is 10:30 in Zagreb.
@@ -130,6 +130,21 @@ it('breaks the 25-hour Zagreb night at local 05:00 on 25 October 2026', () => {
   expect(nextStart < day.end).toBe(false)
   expect(operationalDateInTimeZone('Europe/Zagreb', late)).toBe('2026-10-24')
   expect(operationalDateInTimeZone('Europe/Zagreb', nextStart)).toBe('2026-10-25')
+})
+
+it('names the Monday of the week that holds a calendar date', () => {
+  expect(mondayOfWeek('2026-10-12')).toBe('2026-10-12')
+  expect(mondayOfWeek('2026-10-16')).toBe('2026-10-12')
+  expect(mondayOfWeek('2026-10-18')).toBe('2026-10-12')
+  expect(weekDates(mondayOfWeek('2026-10-16'))).toEqual([
+    '2026-10-12',
+    '2026-10-13',
+    '2026-10-14',
+    '2026-10-15',
+    '2026-10-16',
+    '2026-10-17',
+    '2026-10-18',
+  ])
 })
 
 it('refuses a clock reading that is not a real minute', () => {

@@ -125,6 +125,26 @@ export function addCalendarDays(isoDate: string, days: number): string {
 }
 
 /**
+ * Monday of the ISO week that holds `isoDate`. The roster week grid starts
+ * here. Sunday belongs to the week that began the previous Monday.
+ */
+export function mondayOfWeek(isoDate: string): string {
+  if (!isCalendarDate(isoDate))
+    throw new RangeError('Not a calendar date.')
+  const [year, month, day] = isoDate.split('-').map(Number)
+  const weekday = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1)).getUTCDay()
+  const daysFromMonday = weekday === 0 ? 6 : weekday - 1
+  return addCalendarDays(isoDate, -daysFromMonday)
+}
+
+/** Seven calendar dates from Monday through Sunday. */
+export function weekDates(monday: string): readonly string[] {
+  if (mondayOfWeek(monday) !== monday)
+    throw new RangeError('Not a Monday.')
+  return Array.from({ length: 7 }, (_, offset) => addCalendarDays(monday, offset))
+}
+
+/**
  * `HH:00` for the Tenant's operational-day start. A skipped hour and a
  * repeated hour go through {@link instantFromWallClock}, the same rule as a
  * pickup clock. An hour outside 0 through 8 is not a stored start.
