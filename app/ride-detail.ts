@@ -25,6 +25,7 @@ export function rideFormStamp(ride: TransferDayRide): string {
     ride.landingAt ?? '',
     ride.expectedArrival ?? '',
     ride.guestName,
+    ride.clientId,
     ride.flightNumber ?? '',
     String(ride.passengerCount),
     String(ride.luggageCount),
@@ -49,3 +50,9 @@ export function commandControlSize(phone: boolean): 'sm' | 'xl' {
 export function commandControlClass(phone: boolean): string {
   return phone ? 'min-h-12' : 'h-7 min-h-7'
 }
+
+/**
+ * Size `sm` is 14 px, and 12 px from the `md` breakpoint. Inputs stay 16 px
+ * on every layout. ADR-0038.
+ */
+export const commandInputClass = '[&_input]:!text-base [&_textarea]:!text-base [&_[role=combobox]]:!text-base'

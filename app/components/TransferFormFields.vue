@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { transferFormKey } from '../composables/transfer-form'
+import { commandInputClass } from '../ride-detail'
 
 const props = withDefaults(defineProps<{
   /** Office controls are small. The phone and the add slideover stay large. */
@@ -87,6 +88,7 @@ const { t } = useI18n()
   <form
     v-if="placeTarget"
     class="mb-6"
+    :class="commandInputClass"
     @submit.prevent="addPlace"
   >
     <h3 class="mb-4 text-lg font-semibold">
@@ -157,6 +159,7 @@ const { t } = useI18n()
 
   <form
     id="transfer-form"
+    :class="commandInputClass"
     @submit.prevent="formMode === 'edit' ? saveCorrection() : record()"
   >
     <UFormField

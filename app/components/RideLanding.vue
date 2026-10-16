@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { instantFromWallClock, recordedLandingSchema, wallClockInTimeZone } from '../../shared'
-import { commandControlClass, commandControlSize } from '../ride-detail'
+import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
 const props = defineProps<{
   rideId: string
@@ -145,6 +145,7 @@ function clearLanding() {
       :label="t('transfers.fields.landingAt')"
       name="landing"
       class="mb-4"
+      :class="commandInputClass"
       :size="controlSize"
       :error="errorKey === 'ride.landingInvalid' ? t(errorKey) : false"
     >

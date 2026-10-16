@@ -2,7 +2,7 @@
 import type { Driver, Vehicle } from '../../shared'
 import { assignedRideSchema, rosterVehicleSuggestionSchema } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
-import { commandControlClass, commandControlSize } from '../ride-detail'
+import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
 const props = defineProps<{
   rideId: string
@@ -209,6 +209,7 @@ async function submit(confirm = false) {
       :label="t('ride.driver')"
       name="reassign-driver"
       class="mb-4"
+      :class="commandInputClass"
       :size="controlSize"
     >
       <USelect
@@ -226,6 +227,7 @@ async function submit(confirm = false) {
       :label="t('ride.vehicle')"
       name="reassign-vehicle"
       class="mb-4"
+      :class="commandInputClass"
       :size="controlSize"
     >
       <USelect
