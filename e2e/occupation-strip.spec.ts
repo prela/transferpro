@@ -92,7 +92,9 @@ test('a block names the ride, opens its detail, and the collapsed strip survives
   await expect(block).toBeVisible()
   await expect(page.getByRole('button', { name: '12:30, 2 putnika, Polazak Traka → Dolazak Traka, Preklapanje', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Zauzetost' })).toContainText('DU261AA, Ana Traka')
-  await block.click()
+  // The two windows overlap, so the later block covers the centre of this one.
+  await block.focus()
+  await page.keyboard.press('Enter')
   await expect(page.locator('#ride-detail')).toContainText('Iva Traka')
   await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
   await expect(page.locator('#ride-detail')).toHaveCount(0)
