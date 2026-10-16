@@ -20,9 +20,16 @@ const UNASSIGNED_ALARM_MS = 4 * 60 * 60 * 1000
  */
 const UNCLOSED_MARK_MS = 60 * 60 * 1000
 
+/** A decline already read with this Ride. The row stores the Driver id; the name is joined at read. */
+export interface OfficeHomeDecline {
+  readonly driverName: string
+}
+
 /**
  * One Ride the office-home query already read. Names are display text.
  * `driverId` is how "has a Driver" is decided; it is not on the response.
+ * `declineAlerts` is empty when nobody declined. The snapshot keeps them
+ * only while the Ride is unassigned (ADR-0039).
  */
 export interface OfficeHomeRide {
   readonly rideId: string
@@ -41,6 +48,7 @@ export interface OfficeHomeRide {
   readonly expectedArrival: string | null
   readonly tabla: string
   readonly mustAccept: boolean | null
+  readonly declineAlerts?: readonly OfficeHomeDecline[]
 }
 
 const officeHomeRowSchema = z.strictObject({
@@ -60,8 +68,14 @@ const officeHomeRowSchema = z.strictObject({
   tabla: z.string().max(TABLA_MAX_LENGTH),
 })
 
+const officeHomeDeclineSchema = z.strictObject({
+  driverName: z.string().trim().min(1),
+})
+
 const officeHomeUnassignedSchema = officeHomeRowSchema.extend({
   unassignedAlarm: z.boolean(),
+  // Any pickup day. Empty once the Ride is assigned again (ADR-0039).
+  declineAlerts: z.array(officeHomeDeclineSchema),
 }).strict()
 
 const officeHomeInProgressSchema = officeHomeRowSchema.extend({
@@ -81,6 +95,7 @@ const officeHomeCountsSchema = z.strictObject({
 
 /**
  * The three lists and the seven counts from one moment (ADR-0024).
+ * An unassigned row also carries decline alerts for any pickup day.
  * Waiting has no mark. In progress carries the unclosed mark (ADR-0027)
  * and the landing alarm (ADR-0030). There is no week, month, or euro total.
  */
@@ -225,6 +240,8 @@ export function buildOfficeHome(
       unassigned.push({
         ...shown,
         unassignedAlarm: pickup > nowMs && pickup - nowMs <= UNASSIGNED_ALARM_MS,
+        // A later assignment leaves the stored alert. This list drops it.
+        declineAlerts: (ride.declineAlerts ?? []).map(alert => ({ driverName: alert.driverName })),
       })
     }
     else if (list === 'waitingOnAcceptance') {

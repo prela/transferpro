@@ -9,7 +9,7 @@ import { createClient } from '../modules/clients'
 import { createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
-import { assignRide, createTransfer, readOfficeHome } from '../modules/transfers'
+import { assignRide, createTransfer, declineRide, readOfficeHome } from '../modules/transfers'
 import { createVehicle } from '../modules/vehicles'
 import getOfficeHome from './office-home.get'
 
@@ -461,3 +461,167 @@ it('turns the landing alarm on from the stored landing plus the Tenant transfer 
   expect(longer.inProgress[0]).toMatchObject({ landingAlarm: false, unclosedMark: true })
   expect(await auditCount(created.tenantId)).toBe(audits)
 })
+
+it('carries a decline alert and the Driver name for any day, drops it when the Ride is assigned again, and hides the other Tenant', async () => {
+  const created = await tenant('ohm-decline', 'Hana Admin')
+  await addMember(created.tenantId, 'ohm-decline-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const driverUserId = await addMember(created.tenantId, 'ohm-decline-driver@example.test', 'Marko Odbio', 'driver')
+  const admin = await signIn('ohm-decline-admin@example.test')
+  const dispatcher = await signIn('ohm-decline-dispatcher@example.test')
+  const driverSession = await signIn('ohm-decline-driver@example.test')
+  const calendar = calendarDateInTimeZone(zone, new Date())
+  const tomorrow = addCalendarDays(calendar, 1)
+  const later = addCalendarDays(calendar, 3)
+  const now = instantFromWallClock(`${calendar}T12:00`, zone)
+  const client = await createClient(admin, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(admin, { name: 'Hotel Excelsior', kind: 'hotel' })
+  const driver = await createDriver(admin, {
+    name: 'Marko Odbio',
+    kind: 'own',
+    phone: '+385911112481',
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+    memberUserId: driverUserId,
+  })
+  const vehicle = await createVehicle(admin, {
+    registrationPlate: 'DU248AA',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+
+  async function declinedRide(guestName: string, wall: string) {
+    const recorded = await createTransfer(admin, {
+      clientId: client.id,
+      pickupAt: instantFromWallClock(wall, zone).toISOString(),
+      startLocationId: start.id,
+      endLocationId: end.id,
+      passengerCount: 1,
+      guestName,
+      price: 10,
+      payment: 'cash',
+      airportMark: false,
+      luggageCount: 0,
+      childSeatCount: 0,
+    })
+    await assignRide(admin, { rideId: recorded.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+    const declined = await declineRide(driverSession, recorded.ride.id, {})
+    expect(declined.state).toBe('unassigned')
+    return recorded.ride.id
+  }
+
+  const todayId = await declinedRide('Danas Klara', `${calendar}T14:00`)
+  const tomorrowId = await declinedRide('Sutra Klara', `${tomorrow}T12:00`)
+  const laterId = await declinedRide('Kasnije Klara', `${later}T12:00`)
+
+  const foreign = await tenant('ohm-decline-b', 'Iva Admin')
+  const foreignDriverUserId = await addMember(foreign.tenantId, 'ohm-decline-b-driver@example.test', 'Strani Vozač', 'driver')
+  const foreignAdmin = await signIn('ohm-decline-b-admin@example.test')
+  const foreignDriverSession = await signIn('ohm-decline-b-driver@example.test')
+  const foreignClient = await createClient(foreignAdmin, { name: 'Agencija Juga', kind: 'agency' })
+  const foreignStart = await createLocation(foreignAdmin, { name: 'Zračna luka Split', kind: 'airport' })
+  const foreignEnd = await createLocation(foreignAdmin, { name: 'Hotel Park', kind: 'hotel' })
+  const foreignDriver = await createDriver(foreignAdmin, {
+    name: 'Strani Vozač',
+    kind: 'own',
+    phone: '+385911112482',
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+    memberUserId: foreignDriverUserId,
+  })
+  const foreignVehicle = await createVehicle(foreignAdmin, {
+    registrationPlate: 'ST248BB',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const foreignRecorded = await createTransfer(foreignAdmin, {
+    clientId: foreignClient.id,
+    pickupAt: instantFromWallClock(`${calendar}T15:00`, zone).toISOString(),
+    startLocationId: foreignStart.id,
+    endLocationId: foreignEnd.id,
+    passengerCount: 1,
+    guestName: 'Strana Gošća',
+    price: 10,
+    payment: 'cash',
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 0,
+  })
+  await assignRide(foreignAdmin, { rideId: foreignRecorded.ride.id, driverId: foreignDriver.id, vehicleId: foreignVehicle.id })
+  await declineRide(foreignDriverSession, foreignRecorded.ride.id, {})
+
+  const audits = await auditCount(created.tenantId)
+  const snapshot = officeHomeSchema.parse(await readOfficeHome(admin, now))
+  expect(officeHomeSchema.parse(await readOfficeHome(dispatcher, now))).toEqual(snapshot)
+  expect(await auditCount(created.tenantId)).toBe(audits)
+
+  expect(snapshot.unassigned.map(row => ({
+    rideId: row.rideId,
+    guestName: row.guestName,
+    declineAlerts: row.declineAlerts,
+  }))).toEqual([
+    { rideId: todayId, guestName: 'Danas Klara', declineAlerts: [{ driverName: 'Marko Odbio' }] },
+    { rideId: tomorrowId, guestName: 'Sutra Klara', declineAlerts: [{ driverName: 'Marko Odbio' }] },
+    { rideId: laterId, guestName: 'Kasnije Klara', declineAlerts: [{ driverName: 'Marko Odbio' }] },
+  ])
+  expect(snapshot.waitingOnAcceptance.every(row => !('declineAlerts' in row))).toBe(true)
+  expect(snapshot.inProgress.every(row => !('declineAlerts' in row))).toBe(true)
+
+  const http = await call(admin)
+  expect(http.status).toBe(200)
+  // The route uses the real clock, so the alarm flag can differ from `now`.
+  // The decline name does not.
+  expect(officeHomeSchema.parse(await http.json()).unassigned.map(row => ({
+    rideId: row.rideId,
+    declineAlerts: row.declineAlerts,
+  }))).toEqual([
+    { rideId: todayId, declineAlerts: [{ driverName: 'Marko Odbio' }] },
+    { rideId: tomorrowId, declineAlerts: [{ driverName: 'Marko Odbio' }] },
+    { rideId: laterId, declineAlerts: [{ driverName: 'Marko Odbio' }] },
+  ])
+
+  const refused = await call(driverSession)
+  expect(refused.status).toBe(403)
+  const refusedBody = await refused.text()
+  expect(refusedBody).not.toContain('Marko Odbio')
+  expect(refusedBody).not.toContain('Danas Klara')
+  expect(refusedBody).not.toContain('Strana Gošća')
+  await expect(readOfficeHome(driverSession, now)).rejects.toMatchObject({ statusCode: 403 })
+
+  const hidden = JSON.stringify(await readOfficeHome(admin, now))
+  expect(hidden).not.toContain('Strani Vozač')
+  expect(hidden).not.toContain('Strana Gošća')
+  const foreignHome = JSON.stringify(await readOfficeHome(foreignAdmin, now))
+  expect(foreignHome).not.toContain('Marko Odbio')
+  expect(foreignHome).not.toContain('Danas Klara')
+  expect(foreignHome).toContain('Strani Vozač')
+
+  await assignRide(admin, { rideId: todayId, driverId: driver.id, vehicleId: vehicle.id })
+  const again = officeHomeSchema.parse(await readOfficeHome(admin, now))
+  expect(again.unassigned.map(row => row.rideId)).toEqual([tomorrowId, laterId])
+  expect(JSON.stringify(again)).not.toContain(todayId)
+  expect(again.unassigned.map(row => row.declineAlerts)).toEqual([
+    [{ driverName: 'Marko Odbio' }],
+    [{ driverName: 'Marko Odbio' }],
+  ])
+
+  const stored = await auditText(created.tenantId)
+  expect(stored).not.toContain('Marko Odbio')
+  expect(stored).not.toContain('Danas Klara')
+  expect(stored).not.toContain('Sutra Klara')
+  expect(stored).not.toContain('Kasnije Klara')
+  expect(await auditText(foreign.tenantId)).not.toContain('Strani Vozač')
+  expect(await auditText(foreign.tenantId)).not.toContain('Strana Gošća')
+})
+
+async function auditText(tenantId: string): Promise<string> {
+  const result = await ownerPool.query<{ data: unknown }>(
+    `select data from app.audit_entry where tenant_id = $1`,
+    [tenantId],
+  )
+  return JSON.stringify(result.rows)
+}

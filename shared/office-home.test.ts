@@ -564,6 +564,71 @@ it('names the urgent marks already on the office home read', () => {
   ])
 })
 
+it('carries a decline alert and the Driver name on an unassigned Ride of any day, and drops both once the Ride is assigned', () => {
+  // Noon in Zagreb. Today, tomorrow, and a later day are three operational days.
+  const now = new Date('2026-06-15T10:00:00.000Z')
+  const snapshot = buildOfficeHome([
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000061',
+      guestName: 'Today',
+      pickupAt: '2026-06-15T12:00:00.000Z',
+      state: 'unassigned',
+      declineAlerts: [
+        { driverName: 'Marko Vozač' },
+        { driverName: 'Ana Vozač' },
+      ],
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000062',
+      guestName: 'Tomorrow',
+      pickupAt: '2026-06-16T08:00:00.000Z',
+      state: 'unassigned',
+      declineAlerts: [{ driverName: 'Ivo Vozač' }],
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000063',
+      guestName: 'Later',
+      pickupAt: '2026-06-20T08:00:00.000Z',
+      state: 'unassigned',
+      declineAlerts: [{ driverName: 'Petra Vozač' }],
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000064',
+      guestName: 'No decline',
+      pickupAt: '2026-06-15T11:00:00.000Z',
+      state: 'unassigned',
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-000000000065',
+      guestName: 'Assigned again',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      state: 'accepted',
+      mustAccept: true,
+      driverId: '00000000-0000-4000-8000-0000000000aa',
+      driverName: 'Nika',
+      vehiclePlate: 'DU100AA',
+      declineAlerts: [{ driverName: 'Stari Vozač' }],
+    }),
+  ], now, zone)
+
+  expect(snapshot.unassigned.map(row => ({
+    guestName: row.guestName,
+    declineAlerts: row.declineAlerts,
+  }))).toEqual([
+    { guestName: 'No decline', declineAlerts: [] },
+    {
+      guestName: 'Today',
+      declineAlerts: [{ driverName: 'Marko Vozač' }, { driverName: 'Ana Vozač' }],
+    },
+    { guestName: 'Tomorrow', declineAlerts: [{ driverName: 'Ivo Vozač' }] },
+    { guestName: 'Later', declineAlerts: [{ driverName: 'Petra Vozač' }] },
+  ])
+  expect(snapshot.inProgress.map(row => row.guestName)).toEqual(['Assigned again'])
+  expect(snapshot.inProgress.every(row => !('declineAlerts' in row))).toBe(true)
+  expect(snapshot.waitingOnAcceptance.every(row => !('declineAlerts' in row))).toBe(true)
+  expect(JSON.stringify(snapshot)).not.toContain('Stari Vozač')
+})
+
 it('returns empty lists and zero counts when nothing matches', () => {
   const snapshot = buildOfficeHome([], new Date('2026-06-15T08:00:00.000Z'), zone)
   expect(snapshot.unassigned).toEqual([])
