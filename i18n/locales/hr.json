@@ -116,7 +116,8 @@
       "member": {
         "invited": "Član pozvan",
         "role_changed": "Uloga promijenjena",
-        "removed": "Član uklonjen"
+        "removed": "Član uklonjen",
+        "invitation_revoked": "Pozivnica povučena"
       },
       "settings": {
         "airport_wait_changed": "Promijenjeno čekanje na aerodromu",
