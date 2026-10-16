@@ -194,6 +194,11 @@
     "saveFailed": "Postavke se nisu mogle spremiti. Pokušajte ponovno.",
     "adminOnly": "Samo administrator može ovo promijeniti."
   },
+  "catalog": {
+    "add": "+ Dodaj",
+    "search": "Traži",
+    "searchEmpty": "Nema zapisa za ovu pretragu. Promijenite tekst ili dodajte novi."
+  },
   "clients": {
     "nav": "Naručitelji",
     "title": "Naručitelji",
@@ -214,7 +219,7 @@
     "cancel": "Odustani",
     "loading": "Učitavanje klijenata",
     "loadFailed": "Klijente nije bilo moguće učitati. Pokušajte ponovno.",
-    "empty": "Još nema klijenata.",
+    "empty": "Još nema naručitelja. Dodajte prvog.",
     "rejected": "Ime ili vrsta nisu prihvaćeni.",
     "notFound": "Taj klijent više nije na popisu.",
     "forbidden": "Vozač ne može dodavati ni ispravljati klijente.",
@@ -235,7 +240,7 @@
     "actionsFor": "Radnje: {name}",
     "archive": "Arhiviraj",
     "confirmArchive": "Arhivirati ovu lokaciju? Nestaje s aktivnog popisa.",
-    "showArchived": "Prikaži arhivirane",
+    "showArchived": "Prikaži arhivirano",
     "archived": "Arhivirano",
     "name": "Ime",
     "kind": "Vrsta",
@@ -255,7 +260,7 @@
     "cancel": "Odustani",
     "loading": "Učitavanje lokacija",
     "loadFailed": "Lokacije nije bilo moguće učitati. Pokušajte ponovno.",
-    "empty": "Još nema lokacija.",
+    "empty": "Još nema lokacija. Dodajte prvu.",
     "rejected": "Lokacija nije prihvaćena.",
     "notFound": "Ta lokacija više nije na popisu.",
     "forbidden": "Vozač ne može dodavati ni ispravljati lokacije.",

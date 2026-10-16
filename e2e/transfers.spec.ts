@@ -15,7 +15,7 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
 
   await page.getByRole('link', { name: 'Naručitelji' }).click()
-  await page.getByRole('button', { name: 'Dodaj klijenta', exact: true }).click()
+  await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   const clientDialog = page.getByRole('dialog')
   await clientDialog.getByLabel('Ime').fill(clientName)
   await chooseOption(page, clientDialog.getByRole('combobox', { name: 'Vrsta' }), 'Agencija')

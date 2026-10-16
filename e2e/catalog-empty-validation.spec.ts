@@ -8,12 +8,12 @@ test('empty catalog lists and remaining field messages appear on the screens', a
   const nav = page.getByRole('navigation', { name: 'Odjeljci' })
 
   await nav.getByRole('link', { name: 'Naručitelji' }).click()
-  await expect(page.getByText('Još nema klijenata.')).toBeVisible()
+  await expect(page.getByText('Još nema naručitelja. Dodajte prvog.')).toBeVisible()
 
   await nav.getByRole('link', { name: 'Početna' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Početna' })).toBeVisible()
   await nav.getByRole('link', { name: 'Lokacije' }).click()
-  await expect(page.getByText('Još nema lokacija.')).toBeVisible()
+  await expect(page.getByText('Još nema lokacija. Dodajte prvu.')).toBeVisible()
 
   await nav.getByRole('link', { name: 'Početna' }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Početna' })).toBeVisible()
