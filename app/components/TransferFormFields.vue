@@ -117,7 +117,6 @@ function syncMore() {
     flight: flight.value,
     airportMark: airportMark.value,
     tabla: tabla.value,
-    clientReference: clientReference.value,
     luggage: luggage.value,
     childSeats: childSeats.value,
     note: note.value,
@@ -591,6 +590,25 @@ onUnmounted(() => {
       </template>
     </UFormField>
     <UFormField
+      :label="t('transfers.clientReference')"
+      name="clientReference"
+      class="mb-4"
+      :size="controlSize"
+      :error="clientReferenceErrorKey ? t(clientReferenceErrorKey) : false"
+    >
+      <UInput
+        id="transfer-client-reference"
+        v-model="clientReference"
+        name="clientReference"
+        type="text"
+        autocomplete="off"
+        class="w-full"
+      />
+      <template #error="{ error }">
+        <span role="alert">{{ error }}</span>
+      </template>
+    </UFormField>
+    <UFormField
       :label="t('transfers.payment')"
       name="payment"
       class="mb-4"
@@ -647,25 +665,6 @@ onUnmounted(() => {
       v-show="moreOpen"
       id="transfer-more"
     >
-      <UFormField
-        :label="t('transfers.clientReference')"
-        name="clientReference"
-        class="mb-4"
-        :size="controlSize"
-        :error="clientReferenceErrorKey ? t(clientReferenceErrorKey) : false"
-      >
-        <UInput
-          id="transfer-client-reference"
-          v-model="clientReference"
-          name="clientReference"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
       <UFormField
         :label="t('transfers.flight')"
         name="flight"

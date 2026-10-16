@@ -149,13 +149,11 @@ it('treats a blank new Transfer as nothing to keep, and opens Više only when on
     flight: '',
     airportMark: false,
     tabla: '',
-    clientReference: '',
     luggage: '0',
     childSeats: '0',
     note: '',
   }
   expect(transferMoreHasValue(empty)).toBe(false)
-  expect(transferMoreHasValue({ ...empty, clientReference: 'V-19' })).toBe(true)
   expect(transferMoreHasValue({ ...empty, flight: 'OU1' })).toBe(true)
   expect(transferMoreHasValue({ ...empty, airportMark: true })).toBe(true)
   expect(transferMoreHasValue({ ...empty, tabla: 'A' })).toBe(true)

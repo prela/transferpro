@@ -80,11 +80,10 @@ export function transferDraftIsBlank(fields: TransferDraftFields, openedPickup?:
  * these. Zero luggage and zero child seats are the blank default, not a value.
  * The airport mark counts only when it was chosen.
  */
-export function transferMoreHasValue(fields: Pick<TransferDraftFields, 'flight' | 'airportMark' | 'tabla' | 'clientReference' | 'luggage' | 'childSeats' | 'note'>): boolean {
+export function transferMoreHasValue(fields: Pick<TransferDraftFields, 'flight' | 'airportMark' | 'tabla' | 'luggage' | 'childSeats' | 'note'>): boolean {
   return fields.flight.trim() !== ''
     || fields.airportMark
     || fields.tabla.trim() !== ''
-    || fields.clientReference.trim() !== ''
     || (fields.luggage.trim() !== '' && fields.luggage.trim() !== '0')
     || (fields.childSeats.trim() !== '' && fields.childSeats.trim() !== '0')
     || fields.note.trim() !== ''
