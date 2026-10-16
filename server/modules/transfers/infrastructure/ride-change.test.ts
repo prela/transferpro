@@ -2,7 +2,7 @@ import type { SQL } from 'drizzle-orm'
 import type { TenantTransaction } from '../../../core/index'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
-import { RideNotFoundError, RideVehicleArchivedError } from './assign'
+import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
 import { changeRideVehicle, clearAssignedRide, reassignAssignedRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './ride-change'
 import { RideOverlapError } from './ride-schedule'
 
@@ -22,6 +22,7 @@ interface Script {
   mustAccept?: boolean | null
   /** The Driver named on a reassignment. Missing means that Driver is not in this Tenant. */
   nextMustAccept?: boolean | 'missing'
+  driverArchived?: boolean
   occupying?: Array<{ id: string, driverId: string, vehicleId: string, pickupAt: Date, landingAt: Date | null }>
   vehicle?: 'active' | 'archived' | 'missing'
   updateWins?: boolean
@@ -72,7 +73,12 @@ function fakeTransaction(script: Script) {
       if (text.includes('from app.drivers')) {
         if (script.nextMustAccept === 'missing')
           return { rows: [] }
-        return { rows: [{ mustAccept: script.nextMustAccept ?? false }] }
+        return {
+          rows: [{
+            mustAccept: script.nextMustAccept ?? false,
+            archivedAt: script.driverArchived ? new Date('2026-10-01T00:00:00.000Z') : null,
+          }],
+        }
       }
       if (text.includes('from app.vehicles')) {
         const presence = script.vehicle ?? 'active'
@@ -289,6 +295,16 @@ it('copies true when that is the new Driver\'s setting, including from assigned'
     driverId: otherDriverId,
     vehicleId: otherVehicleId,
   })).resolves.toMatchObject({ ride: { state: 'assigned', mustAccept: true, driverId: otherDriverId } })
+})
+
+it('refuses a reassignment to an archived Driver, and writes nothing', async () => {
+  const { transaction, queries } = fakeTransaction({ state: 'assigned', driverArchived: true })
+  await expect(reassignAssignedRide(transaction, actorUserId, {
+    rideId,
+    driverId: otherDriverId,
+    vehicleId,
+  })).rejects.toBeInstanceOf(RideDriverArchivedError)
+  expect(queries.some(query => query.sql.includes('update app.rides'))).toBe(false)
 })
 
 it('refuses a reassignment to the same Driver, and writes nothing', async () => {

@@ -95,7 +95,8 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
 
   const clients = new Map((await loadClients(transaction)).map(client => [client.id, client.name]))
   const places = new Map((await loadLocations(transaction, true)).map(place => [place.id, place.name]))
-  const drivers = new Map((await loadDrivers(transaction)).map(driver => [driver.id, driver.name]))
+  // Archived Drivers stay in the map. A past Ride and a decline alert still name them.
+  const drivers = new Map((await loadDrivers(transaction, true)).map(driver => [driver.id, driver.name]))
   const vehicles = new Map((await loadVehicles(transaction, true)).map(vehicle => [vehicle.id, vehicle.registrationPlate]))
 
   const rides: OfficeHomeRide[] = selected.rows.map((row) => {

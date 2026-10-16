@@ -47,6 +47,17 @@ export class RideNotFoundError extends Error {
   }
 }
 
+/** The Driver is archived. The name is not in the message. */
+export class RideDriverArchivedError extends Error {
+  readonly statusCode = 409
+  readonly code = 'ride_driver_archived'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'RideDriverArchivedError'
+  }
+}
+
 /** The Vehicle is archived. The plate is not in the message. */
 export class RideVehicleArchivedError extends Error {
   readonly statusCode = 409
@@ -81,7 +92,7 @@ export class RideNotUnassignedError extends Error {
  * The Driver row and the Vehicle row are read `for share` on this transaction.
  * A must-accept correction and archive take `for update`, so neither can commit
  * between the read and the Ride update.
- * Drivers have no archived or inactive column, so a Driver in this Tenant is assignable.
+ * An archived Driver is not a new assignment. The name stays on the row.
  * The caller has already required a dispatcher or an admin.
  */
 export async function assignUnassignedRide(
@@ -103,6 +114,8 @@ export async function assignUnassignedRide(
   const driverFlag = await driverMustAcceptForAssign(transaction, input.driverId)
   if (driverFlag === null)
     throw new RideNotFoundError()
+  if (driverFlag.archived)
+    throw new RideDriverArchivedError()
 
   const presence = await vehiclePresenceForAssign(transaction, input.vehicleId)
   if (presence === 'missing')
@@ -118,7 +131,7 @@ export async function assignUnassignedRide(
   })
 
   // The share lock held this boolean. The update does not read the Driver again.
-  const mustAccept = driverFlag
+  const mustAccept = driverFlag.mustAccept
   const updated = assignedRows.parse(await runRideStep(transaction, sql`
     update app.rides
     set state = 'assigned',

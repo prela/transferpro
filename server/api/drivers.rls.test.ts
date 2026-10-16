@@ -8,9 +8,11 @@ import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/
 import getDrivers from './drivers.get'
 import postDriver from './drivers.post'
 import patchDriver from './drivers/[id].patch'
+import archiveDriver from './drivers/[id]/archive.post'
+import unarchiveDriver from './drivers/[id]/unarchive.post'
 
 /**
- * GET, POST, and PATCH /api/drivers, through the route handlers.
+ * GET, POST, and PATCH /api/drivers, and POST archive and unarchive, through the route handlers.
  * An invalid body is answered before a session exists. The role and member
  * cases use a real sign-in, the same way the screen will call these routes.
  */
@@ -35,13 +37,18 @@ const authUrl = required('BETTER_AUTH_URL')
 const app = createApp()
 app.use('/api/drivers', (event) => {
   const pathOnly = event.path.split('?')[0] ?? '/'
-  const id = pathOnly === '/' ? '' : decodeURIComponent(pathOnly.slice(1))
-  if (id === '') {
+  const rest = pathOnly === '/' ? '' : decodeURIComponent(pathOnly.slice(1))
+  if (rest === '') {
     if (event.method === 'POST')
       return postDriver(event)
     return getDrivers(event)
   }
-  event.context.params = { id }
+  const [id, action] = rest.split('/')
+  event.context.params = { id: id ?? '' }
+  if (action === 'archive')
+    return archiveDriver(event)
+  if (action === 'unarchive')
+    return unarchiveDriver(event)
   return patchDriver(event)
 })
 const callDrivers = toWebHandler(app)
@@ -180,6 +187,10 @@ it('post answers 400 for a bad body and does not echo the phone, and no session 
   expect((await call('GET', '/api/drivers?includeArchived=')).status).toBe(400)
   expect((await call('GET', '/api/drivers?includeArchived=null')).status).toBe(400)
   expect((await call('GET', '/api/drivers?includeArchived=True')).status).toBe(400)
+  const missing = '9e4b3f6d-5555-4555-8555-555555555555'
+  expect((await call('POST', `/api/drivers/${missing}/archive`)).status).toBe(401)
+  expect((await call('POST', `/api/drivers/${missing}/unarchive`)).status).toBe(401)
+  expect((await call('POST', '/api/drivers/not-a-uuid/archive')).status).toBe(400)
 })
 
 it('a dispatcher and an admin can add, correct, and list a Driver, and a driver is refused', async () => {
@@ -208,6 +219,7 @@ it('a dispatcher and an admin can add, correct, and list a Driver, and a driver 
     memberUserId: null,
     email: null,
     mustAccept: false,
+    archivedAt: null,
   })
 
   const listed = await call('GET', '/api/drivers', admin)
@@ -268,6 +280,84 @@ it('a dispatcher and an admin can add, correct, and list a Driver, and a driver 
     { driverId: row.id, field: 'drivingLicenceExpiresOn' },
     { driverId: row.id, field: 'mustAccept' },
   ]))
+})
+
+it('archives and restores a Driver without storing the name, and another Tenant cannot', async () => {
+  const created = await tenant('hdr-arch', 'Hana Admin')
+  await addMember(created.tenantId, 'hdr-arch-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  await addMember(created.tenantId, 'hdr-arch-driver@example.test', 'Drago Driver', 'driver')
+  const other = await tenant('hdr-arch-b', 'Boris Admin')
+  const admin = await signIn('hdr-arch-admin@example.test')
+  const dispatcher = await signIn('hdr-arch-dispatcher@example.test')
+  const driver = await signIn('hdr-arch-driver@example.test')
+  const adminB = await signIn('hdr-arch-b-admin@example.test')
+
+  const added = await call('POST', '/api/drivers', dispatcher, driverBody({ name: 'Mara Marić' }))
+  expect(added.status).toBe(200)
+  const row = await added.json()
+
+  expect((await call('POST', `/api/drivers/${row.id}/archive`, driver)).status).toBe(403)
+  const archived = await call('POST', `/api/drivers/${row.id}/archive`, dispatcher)
+  expect(archived.status).toBe(200)
+  const archivedRow = await archived.json()
+  expect(archivedRow.archivedAt).toEqual(expect.any(String))
+  expect(JSON.stringify(archivedRow)).not.toContain('should-not-log')
+
+  const frozen = await call('PATCH', `/api/drivers/${row.id}`, admin, { kind: 'external' })
+  expect(frozen.status).toBe(409)
+  const frozenText = await frozen.text()
+  expect(frozenText).not.toContain('Mara')
+  expect(frozenText).toContain('driver_archived')
+
+  expect(await (await call('GET', '/api/drivers', dispatcher)).json()).toEqual({ drivers: [] })
+  const withArchived = await call('GET', '/api/drivers?includeArchived=true', admin)
+  expect(await withArchived.json()).toEqual({
+    drivers: [expect.objectContaining({
+      id: row.id,
+      name: 'Mara Marić',
+      archivedAt: expect.any(String),
+    })],
+  })
+
+  const again = await call('POST', `/api/drivers/${row.id}/archive`, admin)
+  expect(again.status).toBe(200)
+  expect((await again.json()).archivedAt).toBe(archivedRow.archivedAt)
+
+  expect((await call('POST', `/api/drivers/${row.id}/archive`, adminB)).status).toBe(404)
+  expect((await call('POST', `/api/drivers/${row.id}/unarchive`, adminB)).status).toBe(404)
+
+  const restored = await call('POST', `/api/drivers/${row.id}/unarchive`, admin)
+  expect(restored.status).toBe(200)
+  expect((await restored.json()).archivedAt).toBeNull()
+  expect(await (await call('GET', '/api/drivers', dispatcher)).json()).toEqual({
+    drivers: [expect.objectContaining({ id: row.id, archivedAt: null })],
+  })
+
+  const still = await call('POST', `/api/drivers/${row.id}/unarchive`, dispatcher)
+  expect(still.status).toBe(200)
+  expect((await still.json()).archivedAt).toBeNull()
+
+  const missing = '9e4b3f6d-5555-4555-8555-555555555555'
+  expect((await call('POST', `/api/drivers/${missing}/archive`, admin)).status).toBe(404)
+  expect((await call('POST', `/api/drivers/${missing}/unarchive`, admin)).status).toBe(404)
+
+  const rows = await auditRows(created.tenantId)
+  expect(rows.every(entry => entry.subject_user_id === null)).toBe(true)
+  const text = JSON.stringify(rows)
+  expect(text).not.toContain('Mara')
+  expect(text).not.toContain(phone)
+  expect(rows.filter(entry => entry.action === 'driver.archived')).toHaveLength(1)
+  expect(rows.filter(entry => entry.action === 'driver.unarchived')).toHaveLength(1)
+  expect(rows.map(entry => entry.action)).toEqual(expect.arrayContaining([
+    'driver.created',
+    'driver.archived',
+    'driver.unarchived',
+  ]))
+  expect(rows.filter(entry => entry.action !== 'driver.created').map(entry => entry.data)).toEqual([
+    { driverId: row.id },
+    { driverId: row.id },
+  ])
+  expect(other.tenantId).not.toBe(created.tenantId)
 })
 
 it('links a driver member, refuses a non-driver and a second Driver, and another Tenant cannot use the link', async () => {

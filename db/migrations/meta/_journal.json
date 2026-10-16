@@ -288,6 +288,13 @@
       "when": 1791400030000,
       "tag": "0040_invitation_revoked",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791400031000,
+      "tag": "0041_driver_archive",
+      "breakpoints": true
     }
   ]
 }

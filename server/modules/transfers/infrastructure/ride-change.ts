@@ -10,7 +10,7 @@ import { appendAuditEntry } from '../../audit'
 import { driverMustAcceptForAssign } from '../../drivers'
 import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { vehiclePresenceForAssign } from '../../vehicles'
-import { RideNotFoundError, RideVehicleArchivedError } from './assign'
+import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
 import { checkRideSchedule } from './ride-schedule'
 import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
 
@@ -237,6 +237,8 @@ export async function reassignAssignedRide(
   const driverFlag = await driverMustAcceptForAssign(transaction, input.driverId)
   if (driverFlag === null)
     throw new RideNotFoundError()
+  if (driverFlag.archived)
+    throw new RideDriverArchivedError()
 
   const presence = await vehiclePresenceForAssign(transaction, input.vehicleId)
   if (presence === 'missing')
@@ -251,7 +253,7 @@ export async function reassignAssignedRide(
     confirm: input.confirm === true,
   })
 
-  const mustAccept = driverFlag
+  const mustAccept = driverFlag.mustAccept
   const updated = reassignedRows.parse(await runStep(transaction, sql`
     update app.rides
     set state = 'assigned',

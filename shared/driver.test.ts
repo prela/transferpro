@@ -38,6 +38,7 @@ it('refuses an empty name, a long phone, an unknown kind, and a key that is not 
   expect(() => parseCreateDriver({ ...createBody, notes: 'call after 18' })).toThrow(DriverInputError)
   // Must-accept starts off. The create body cannot turn it on.
   expect(() => parseCreateDriver({ ...createBody, mustAccept: true })).toThrow(DriverInputError)
+  expect(() => parseCreateDriver({ ...createBody, archivedAt: '2026-10-05T00:00:00.000Z' })).toThrow(DriverInputError)
   const { phone: _phone, ...withoutPhone } = createBody
   expect(() => parseCreateDriver(withoutPhone)).toThrow(DriverInputError)
 })
@@ -84,6 +85,7 @@ it('accepts a correction of one field, a cleared member, and an empty patch', ()
   expect(parseDriverPatch({ kind: 'external' })).toEqual({ kind: 'external' })
   expect(parseDriverPatch({ memberUserId: null })).toEqual({ memberUserId: null })
   expect(parseDriverPatch({ mustAccept: true })).toEqual({ mustAccept: true })
+  expect(() => parseDriverPatch({ archivedAt: null })).toThrow(DriverInputError)
   expect(parseDriverPatch({})).toEqual({})
   expect(() => parseDriverPatch({ phone: ' ' })).toThrow(DriverInputError)
   expect(() => parseDriverPatch({ drivingLicenceExpiresOn: '2026-13-01' })).toThrow(DriverInputError)
@@ -128,9 +130,11 @@ it('lists a Driver the office can correct later', () => {
       email: null,
       memberUserId: null,
       mustAccept: false,
+      archivedAt: null,
     }],
   })
   expect(listed.drivers[0]?.memberUserId).toBeNull()
+  expect(listed.drivers[0]?.archivedAt).toBeNull()
   expect(driverListSchema.safeParse({
     drivers: [{ ...listed.drivers[0], kind: 'agency' }],
   }).success).toBe(false)

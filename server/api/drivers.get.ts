@@ -7,11 +7,12 @@ import { driverHttpError, parseIncludeArchived } from './drivers/http'
  * GET /api/drivers
  * This Tenant's Drivers. A dispatcher or an admin may read them. A driver
  * is 403. No session is 401. Another Tenant cannot: the table has FORCE RLS.
+ * Archived rows are omitted unless includeArchived=true.
  */
 export default defineEventHandler(async (event) => {
   try {
-    parseIncludeArchived(getQuery(event).includeArchived)
-    return driverListSchema.parse(await listDrivers(toWebRequest(event).headers))
+    const includeArchived = parseIncludeArchived(getQuery(event).includeArchived)
+    return driverListSchema.parse(await listDrivers(toWebRequest(event).headers, includeArchived))
   }
   catch (error) {
     driverHttpError(error)

@@ -1,12 +1,13 @@
 import { createError } from 'h3'
 import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
-import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
+import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
 
 /**
  * Turn an assignment or accept failure into an HTTP error. The message stays
  * a fixed phrase for the status. A plate or a phone is not copied from the
- * thrown error. `ride_vehicle_archived` is `ride.vehicleArchived`.
+ * thrown error. `ride_driver_archived` is `ride.driverArchived`.
+ * `ride_vehicle_archived` is `ride.vehicleArchived`.
  * `ride_not_unassigned` is `ride.notUnassigned`. `ride_not_acceptable` is the
  * accept conflict: the flag is off, or the Ride is not `assigned`.
  * `ride_not_open` is a vehicle change, a clear, or a reassignment on a Ride
@@ -42,7 +43,8 @@ export function rideHttpError(error: unknown): never {
     throw createError({ statusCode: error.statusCode })
   }
   if (
-    error instanceof RideVehicleArchivedError
+    error instanceof RideDriverArchivedError
+    || error instanceof RideVehicleArchivedError
     || error instanceof RideNotUnassignedError
     || error instanceof RideNotAcceptableError
     || error instanceof RideNotFinishableError

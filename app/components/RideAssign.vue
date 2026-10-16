@@ -48,7 +48,8 @@ const fromRoster = computed(() => rosterVehicleId.value !== null && vehicleId.va
 let fillTicket = 0
 
 type RideFailure
-  = 'ride.vehicleArchived'
+  = 'ride.driverArchived'
+    | 'ride.vehicleArchived'
     | 'ride.notUnassigned'
     | 'ride.notFound'
     | 'ride.rejected'
@@ -56,7 +57,10 @@ type RideFailure
     | 'ride.signedOut'
     | 'ride.saveFailed'
 
-const driverItems = computed(() => props.drivers.map(driver => ({
+// An archived Driver is not a new assignment (409 ride_driver_archived). Leave it off the picker.
+const offerableDrivers = computed(() => props.drivers.filter(driver => driver.archivedAt === null))
+
+const driverItems = computed(() => offerableDrivers.value.map(driver => ({
   label: driver.name,
   value: driver.id,
 })))
@@ -125,7 +129,7 @@ async function loadRosterHints() {
   catch {
     // The hint uses the Tenant defaults when settings cannot be read.
   }
-  await Promise.all(props.drivers.map(async (driver) => {
+  await Promise.all(offerableDrivers.value.map(async (driver) => {
     try {
       const suggestion = rosterVehicleSuggestionSchema.parse(await $fetch(`/api/rides/${props.rideId}/roster-vehicle`, {
         query: { driverId: driver.id },
@@ -143,6 +147,8 @@ async function loadRosterHints() {
  * The thrown message is never shown: it can carry an id or a stack.
  */
 function failureKey(error: unknown): RideFailure {
+  if (errorCode(error) === 'ride_driver_archived')
+    return 'ride.driverArchived'
   if (errorCode(error) === 'ride_vehicle_archived')
     return 'ride.vehicleArchived'
   if (errorCode(error) === 'ride_not_unassigned')
@@ -292,7 +298,7 @@ async function assign(confirm = false) {
       :aria-label="t('ride.driver')"
     >
       <li
-        v-for="driver in drivers"
+        v-for="driver in offerableDrivers"
         :key="driver.id"
       >
         <UButton

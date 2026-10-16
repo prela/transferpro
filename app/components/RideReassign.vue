@@ -42,6 +42,7 @@ let fillTicket = 0
 
 type RideFailure
   = 'ride.vehicleArchived'
+    | 'ride.driverArchived'
     | 'ride.sameDriver'
     | 'ride.notOpen'
     | 'ride.notFound'
@@ -50,8 +51,9 @@ type RideFailure
     | 'ride.signedOut'
     | 'ride.changeFailed'
 
+// An archived Driver is not a reassignment (409 ride_driver_archived). Leave it off the picker.
 const driverItems = computed(() => props.drivers
-  .filter(driver => driver.id !== props.driverId)
+  .filter(driver => driver.id !== props.driverId && driver.archivedAt === null)
   .map(driver => ({
     label: driver.name,
     value: driver.id,
@@ -68,6 +70,8 @@ const vehicleItems = computed(() => props.vehicles
 const canSubmit = computed(() => Boolean(nextDriverId.value) && Boolean(vehicleId.value))
 
 function failureKey(error: unknown): RideFailure {
+  if (errorCode(error) === 'ride_driver_archived')
+    return 'ride.driverArchived'
   if (errorCode(error) === 'ride_vehicle_archived')
     return 'ride.vehicleArchived'
   if (errorCode(error) === 'ride_same_driver')

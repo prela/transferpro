@@ -291,6 +291,8 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'client.kind_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'from', 'to')} and ${clientIdText(table.data)} and ${kindText(table.data, 'from')} and ${kindText(table.data, 'to')}
     when 'driver.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'driverId', 'fields')} and ${driverIdText(table.data)} and ${driverFieldsArray(table.data)}
     when 'driver.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'driverId', 'field')} and ${driverIdText(table.data)} and ${driverFieldText(table.data)}
+    when 'driver.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'driverId')} and ${driverIdText(table.data)}
+    when 'driver.unarchived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'driverId')} and ${driverIdText(table.data)}
     when 'vehicle.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId', 'fields')} and ${vehicleIdText(table.data)} and ${vehicleFieldsArray(table.data)}
     when 'vehicle.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId', 'field')} and ${vehicleIdText(table.data)} and ${vehicleFieldText(table.data)}
     when 'vehicle.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'vehicleId')} and ${vehicleIdText(table.data)}

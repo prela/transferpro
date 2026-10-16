@@ -139,6 +139,22 @@ it('records a Driver by id and field names, and refuses the phone and the dates'
     ...changed,
     data: { driverId, field: 'notes' },
   }).success).toBe(false)
+
+  const archived = {
+    action: 'driver.archived' as const,
+    subjectUserId: null,
+    data: { driverId },
+  }
+  expect(auditFactSchema.parse(archived)).toEqual(archived)
+  expect(auditFactSchema.safeParse({
+    ...archived,
+    data: { driverId, name: 'Marko Marić' },
+  }).success).toBe(false)
+  expect(auditFactSchema.parse({
+    action: 'driver.unarchived' as const,
+    subjectUserId: null,
+    data: { driverId },
+  }).data).toEqual({ driverId })
 })
 
 it('records a Vehicle by id and field names, and refuses the plate and the dates', () => {

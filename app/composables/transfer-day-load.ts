@@ -37,7 +37,9 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
       // Archived rows stay in the catalog so a Ride keeps its place name.
       // The record form still offers only places that are not archived.
       $fetch('/api/locations', { query: { includeArchived: 'true' } }).then(data => locationListSchema.parse(data)),
-      $fetch('/api/drivers').then(data => driverListSchema.parse(data)),
+      // Archived Drivers stay in the catalog so a Ride and a decline keep the name.
+      // The assign picker still offers only Drivers that are not archived.
+      $fetch('/api/drivers', { query: { includeArchived: 'true' } }).then(data => driverListSchema.parse(data)),
       // Archived Vehicles stay in the catalog so an assigned Ride keeps its plate.
       // The assign picker still offers only Vehicles that are not archived.
       $fetch('/api/vehicles', { query: { includeArchived: 'true' } }).then(data => vehicleListSchema.parse(data)),

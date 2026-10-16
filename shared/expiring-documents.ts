@@ -84,8 +84,8 @@ interface DatedDocument {
  * expiring, not expired.
  * A driver sees only the two licences of the Driver linked to `userId`,
  * and no vehicle row, even when vehicles were passed in.
- * An archived vehicle is left out. Drivers have no inactive or archived
- * state, so every Driver is eligible for the office.
+ * An archived vehicle is left out. An archived Driver is left out of the
+ * office list. A driver still sees the licences of the linked account.
  * Expired rows come first, then the soonest expiry. The same day is ordered
  * by document kind, then by label.
  */
@@ -118,7 +118,7 @@ function sources(input: {
 }): DatedDocument[] {
   const drivers = input.role === 'driver'
     ? input.drivers.filter(driver => driver.memberUserId === input.userId)
-    : input.drivers
+    : input.drivers.filter(driver => driver.archivedAt === null)
   const vehicles = input.role === 'driver'
     ? []
     : input.vehicles.filter(vehicle => vehicle.archivedAt === null)
