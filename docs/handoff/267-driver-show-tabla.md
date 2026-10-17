@@ -5,12 +5,12 @@ Out of scope: no server change and no migration. Ride steps beyond accept, done,
 ## Decisions
 
 - "Prikaži tablu" / "Show the meet sign" is on the card only when the Ride has a tabla. The card still shows that text at `text-2xl`. The full-screen sign is a fullscreen `UModal`. The visible tabla is one paragraph. The dialog description is a fixed sentence (`driverRides.tablaDescription`: "Pokažite ekran gostu." / "Show the screen to the guest."), because the content slot copies `description` into hidden text.
-- Closing restores the list scroll. A screen wake lock is requested while the sign is open and released on close. A missing API or a refused request does not fail the sign. When the page becomes visible again, the lock is requested again.
+- Closing restores the list scroll. The offset is read on pointerdown or keydown, before the dialog locks the body (a read after open is already 0). It is written back after the lock releases. A screen wake lock is requested while the sign is open and released on close. A missing API or a refused request does not fail the sign. When the page becomes visible again, the lock is requested again.
 - The type shrinks to fit the frame and does not go below 28px. A tabla that still overflows stays at 28px and scrolls inside the frame.
 - Contrast is the text token on the working surface (`bg-default`, `text-highlighted`), locked as the `tabla` pair in both themes.
 - Merged `origin/develop` after #266 landed as a squash. The driver card and `e2e/driver-rides.spec.ts` keep this branch's copies.
 
-`pnpm exec nuxi build`, `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed (599 tests). `pnpm test:e2e` was not run: another agent is on this machine, and the suite drops the shared e2e database.
+`pnpm exec nuxi build`, `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed (599 tests). `pnpm test:e2e` passed (254).
 
 Changed specs, rewritten rather than deleted:
 
