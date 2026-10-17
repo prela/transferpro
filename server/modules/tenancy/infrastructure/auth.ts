@@ -351,6 +351,24 @@ export function createAuth(
       return row.success ? row.data.email : null
     },
     /**
+     * Sign-in addresses for the Članovi table. The caller passes user ids the
+     * tenant session already listed, so another Tenant's members are not here.
+     * The app role cannot read auth.user. Do not log the result.
+     */
+    async emailsByUserId(userIds: readonly string[]): Promise<Map<string, string>> {
+      if (userIds.length === 0)
+        return new Map()
+      const result = await pool.query(
+        'select id, email from auth."user" where id = any($1::text[])',
+        [userIds],
+      )
+      const rows = z.array(z.object({
+        id: z.string(),
+        email: z.string().min(1),
+      })).parse(result.rows)
+      return new Map(rows.map(row => [row.id, row.email]))
+    },
+    /**
      * The signed-in account's own name and email, for the profile menu.
      * Callers must not write either value to a log or an audit entry.
      */

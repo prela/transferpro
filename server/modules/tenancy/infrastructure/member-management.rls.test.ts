@@ -437,12 +437,25 @@ it('a driver in tenant A who is a dispatcher in tenant B gets 403 from listMembe
 
     // The same session with tenant B active is a dispatcher there, and sees only B.
     await setActiveTenant(headers, tenantB.tenantId)
-    await expect(listMembers(headers)).resolves.toEqual({
+    const listed = await listMembers(headers)
+    expect(listed).toEqual({
       members: [
         { userId: tenantB.adminUserId, name: 'Admin B', role: 'admin' },
         { userId, name: 'Two Roles', role: 'dispatcher' },
       ],
     })
+
+    // Admin B's list carries emails, and only for people in tenant B.
+    // Admin A belongs only to tenant A, so that address must not appear.
+    const adminB = await signIn('mm-admin-role-b@example.test', 'password-b')
+    const seenByB = await listMembers(adminB)
+    expect(seenByB).toEqual({
+      members: [
+        { userId: tenantB.adminUserId, name: 'Admin B', email: 'mm-admin-role-b@example.test', role: 'admin' },
+        { userId, name: 'Two Roles', email: 'mm-two-roles@example.test', role: 'dispatcher' },
+      ],
+    })
+    expect(JSON.stringify(seenByB)).not.toContain('mm-admin-role-a@example.test')
   }
   finally {
     await closeTenantRuntime()

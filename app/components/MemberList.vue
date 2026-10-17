@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Member } from '../../shared'
 import { memberListSchema } from '../../shared'
 
@@ -18,9 +19,14 @@ const confirmingRemove = ref<string | null>(null)
 const removing = ref(false)
 // True only after this dialog's removal failed, so a role-change alert is not repeated inside it.
 const removeError = ref(false)
-const changingRole = ref<{ userId: string, oldRole: Member['role'], newRole: Member['role'] } | null>(null)
-// The chosen role shows at once. A failed change drops it so the select returns to the loaded role.
-const chosenRole = ref<Partial<Record<string, Member['role']>>>({})
+const confirmingRoleId = ref<string | null>(null)
+const nextRole = ref<Member['role'] | undefined>()
+const changingRole = ref(false)
+// True only after this dialog's change failed.
+const roleError = ref(false)
+
+/** Office control: 28px on the desktop, 44px on the phone. ADR-0038. */
+const controlClass = 'h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base'
 
 const roleItems = computed(() => [
   { label: t('invite.roles.admin'), value: 'admin' as const },
@@ -28,13 +34,16 @@ const roleItems = computed(() => [
   { label: t('invite.roles.driver'), value: 'driver' as const },
 ])
 
+const phoneColumn = { class: { td: 'max-lg:hidden', th: 'max-lg:hidden' } }
+
 const columns = computed(() => {
-  const cols: { accessorKey?: 'name' | 'role', id?: string, header: string }[] = [
+  const cols: { accessorKey?: 'name' | 'email' | 'role', id?: string, header: string, meta?: typeof phoneColumn }[] = [
     { accessorKey: 'name', header: t('members.name') },
+    { accessorKey: 'email', header: t('members.email'), meta: phoneColumn },
     { accessorKey: 'role', header: t('members.role') },
   ]
   if (props.isAdmin)
-    cols.push({ id: 'actions', header: '' })
+    cols.push({ id: 'actions', header: t('members.actions') })
   return cols
 })
 
@@ -54,65 +63,65 @@ async function loadMembers() {
   }
 }
 
-function displayedRole(member: Member): Member['role'] {
-  return chosenRole.value[member.userId] ?? member.role
-}
-
-function keepChosenRole(userId: string, role: Member['role'] | undefined) {
-  const next = { ...chosenRole.value }
-  if (role === undefined)
-    delete next[userId]
-  else
-    next[userId] = role
-  chosenRole.value = next
-}
-
-async function changeRole(userId: string, newRole: Member['role']) {
-  const member = members.value.find(m => m.userId === userId)
-  if (!member || newRole === member.role)
-    return
-
-  const oldRole = member.role
-  operationError.value = null
-  changingRole.value = { userId, oldRole, newRole }
-  keepChosenRole(userId, newRole)
-
-  try {
-    await $fetch(`/api/members/${userId}/role`, {
-      method: 'PATCH',
-      body: { role: newRole },
-    })
-    notifyAuditChanged()
-    await loadMembers()
-    keepChosenRole(userId, undefined)
-  }
-  catch (error) {
-    keepChosenRole(userId, undefined)
-    operationError.value = conflictKey(error, userId) ?? 'members.changeRoleFailed'
-  }
-  finally {
-    changingRole.value = null
-  }
-}
-
-function onRoleChange(userId: string, value: string) {
-  if (value !== 'admin' && value !== 'dispatcher' && value !== 'driver')
-    return
-  changeRole(userId, value)
-}
-
 const confirmingMember = computed(() =>
   members.value.find(member => member.userId === confirmingRemove.value),
+)
+
+const confirmingRoleMember = computed(() =>
+  members.value.find(member => member.userId === confirmingRoleId.value),
 )
 
 // X and Cancel write false. Esc and the overlay do too, except while a removal is in flight.
 const removeOpen = computed({
   get: () => confirmingRemove.value !== null,
   set(open: boolean) {
-    if (!open)
+    if (!open && !removing.value)
       confirmingRemove.value = null
   },
 })
+
+const roleOpen = computed({
+  get: () => confirmingRoleId.value !== null,
+  set(open: boolean) {
+    if (!open && !changingRole.value)
+      confirmingRoleId.value = null
+  },
+})
+
+function askRole(userId: string) {
+  operationError.value = null
+  roleError.value = false
+  nextRole.value = members.value.find(member => member.userId === userId)?.role
+  confirmingRoleId.value = userId
+}
+
+async function confirmRole() {
+  const userId = confirmingRoleId.value
+  const role = nextRole.value
+  const member = members.value.find(item => item.userId === userId)
+  if (!userId || role === undefined || !member || role === member.role)
+    return
+
+  operationError.value = null
+  changingRole.value = true
+  try {
+    await $fetch(`/api/members/${userId}/role`, {
+      method: 'PATCH',
+      body: { role },
+    })
+    roleError.value = false
+    confirmingRoleId.value = null
+    notifyAuditChanged()
+    await loadMembers()
+  }
+  catch (error) {
+    operationError.value = conflictKey(error, userId) ?? 'members.changeRoleFailed'
+    roleError.value = true
+  }
+  finally {
+    changingRole.value = false
+  }
+}
 
 async function removeMember(userId: string) {
   operationError.value = null
@@ -145,7 +154,7 @@ function conflictKey(error: unknown, userId: string): string | null {
     return null
   if (userId === props.currentUserId)
     return 'members.cannotModifySelf'
-  return members.value.find(m => m.userId === userId)?.role === 'admin' ? 'members.lastAdmin' : null
+  return members.value.find(member => member.userId === userId)?.role === 'admin' ? 'members.lastAdmin' : null
 }
 
 function isConflict(error: unknown): boolean {
@@ -155,9 +164,25 @@ function isConflict(error: unknown): boolean {
     || ('status' in error && error.status === 409)
 }
 
-function canModify(userId: string, currentUserId: string): boolean {
-  // An admin cannot remove themselves or change their own role
-  return userId !== currentUserId
+function canModify(userId: string): boolean {
+  // An admin cannot remove themselves or change their own role.
+  return userId !== props.currentUserId
+}
+
+function memberActions(member: Member): DropdownMenuItem[][] {
+  return [[
+    {
+      label: t('members.changeRole'),
+      onSelect: () => askRole(member.userId),
+    },
+    {
+      label: t('members.remove'),
+      onSelect: () => {
+        removeError.value = false
+        confirmingRemove.value = member.userId
+      },
+    },
+  ]]
 }
 
 onMounted(() => {
@@ -167,9 +192,6 @@ onMounted(() => {
 
 <template>
   <section :aria-label="t('members.title')">
-    <h2 class="mt-6 mb-4 text-xl font-semibold">
-      {{ t('members.title') }}
-    </h2>
     <UAlert
       v-if="loadError"
       color="error"
@@ -185,7 +207,7 @@ onMounted(() => {
     </p>
     <div v-else>
       <UAlert
-        v-if="operationError"
+        v-if="operationError && !removeError && !roleError"
         color="error"
         variant="subtle"
         role="alert"
@@ -203,34 +225,102 @@ onMounted(() => {
             v-if="row.original.userId === currentUserId"
             class="ms-2 text-sm text-muted"
           >({{ t('members.you') }})</span>
+          <p class="mt-0.5 text-sm text-muted lg:hidden">
+            {{ row.original.email }}
+          </p>
+        </template>
+        <template #email-cell="{ row }">
+          {{ row.original.email }}
         </template>
         <template #role-cell="{ row }">
-          <USelect
-            v-if="isAdmin && canModify(row.original.userId, currentUserId)"
-            :model-value="displayedRole(row.original)"
-            :items="roleItems"
-            :disabled="changingRole?.userId === row.original.userId"
-            :aria-label="t('members.role')"
-            size="xl"
-            class="w-full"
-            @update:model-value="onRoleChange(row.original.userId, String($event))"
-          />
-          <span v-else>{{ t(`invite.roles.${row.original.role}`) }}</span>
+          {{ t(`invite.roles.${row.original.role}`) }}
+        </template>
+        <template #actions-header>
+          <span class="sr-only">{{ t('members.actions') }}</span>
         </template>
         <template #actions-cell="{ row }">
-          <UButton
-            v-if="isAdmin && canModify(row.original.userId, currentUserId)"
-            type="button"
-            color="neutral"
-            variant="outline"
-            size="xl"
-            @click="removeError = false; confirmingRemove = row.original.userId"
+          <UDropdownMenu
+            v-if="isAdmin && canModify(row.original.userId)"
+            :items="memberActions(row.original)"
+            size="sm"
           >
-            {{ t('members.remove') }}
-          </UButton>
+            <UButton
+              type="button"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              icon="i-lucide-ellipsis-vertical"
+              :class="controlClass"
+              :aria-label="t('members.actionsFor', { name: row.original.name })"
+            />
+          </UDropdownMenu>
         </template>
       </UTable>
     </div>
+    <UModal
+      v-model:open="roleOpen"
+      :title="t('members.changeRole')"
+      :dismissible="!changingRole"
+    >
+      <template #body>
+        <!-- The submit button stays in the form so Enter confirms the new role. -->
+        <form @submit.prevent="confirmRole">
+          <p
+            v-if="confirmingRoleMember"
+            class="mb-2 font-medium"
+          >
+            {{ confirmingRoleMember.name }}
+          </p>
+          <p class="mb-4">
+            {{ t('members.confirmChangeRole', { name: confirmingRoleMember?.name ?? '' }) }}
+          </p>
+          <UFormField
+            :label="t('members.newRole')"
+            name="new-role"
+            size="xl"
+          >
+            <USelect
+              v-model="nextRole"
+              :items="roleItems"
+              :portal="true"
+              :aria-label="t('members.newRole')"
+              class="w-full"
+            />
+          </UFormField>
+          <UAlert
+            v-if="roleError && operationError"
+            color="error"
+            variant="subtle"
+            role="alert"
+            class="mt-4"
+            :description="t(operationError)"
+          />
+          <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <UButton
+              type="button"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              :class="controlClass"
+              class="w-full justify-center sm:w-auto"
+              @click="confirmingRoleId = null"
+            >
+              {{ t('members.cancel') }}
+            </UButton>
+            <UButton
+              type="submit"
+              size="sm"
+              :class="controlClass"
+              class="w-full justify-center sm:w-auto"
+              :loading="changingRole"
+              :disabled="nextRole === undefined || nextRole === confirmingRoleMember?.role"
+            >
+              {{ t('members.changeRole') }}
+            </UButton>
+          </div>
+        </form>
+      </template>
+    </UModal>
     <UModal
       v-model:open="removeOpen"
       :title="t('members.remove')"
@@ -259,7 +349,8 @@ onMounted(() => {
           type="button"
           color="neutral"
           variant="outline"
-          size="xl"
+          size="sm"
+          :class="controlClass"
           class="w-full justify-center sm:w-auto"
           @click="confirmingRemove = null"
         >
@@ -268,7 +359,8 @@ onMounted(() => {
         <UButton
           type="button"
           color="error"
-          size="xl"
+          size="sm"
+          :class="controlClass"
           class="w-full justify-center sm:w-auto"
           :loading="removing"
           @click="confirmingRemove && removeMember(confirmingRemove)"

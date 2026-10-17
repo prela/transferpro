@@ -75,7 +75,9 @@
     "emailFailed": "E-pošta nije poslana. Kopirajte poveznicu i pošaljite je sami.",
     "link": "Poveznica pozivnice",
     "copy": "Kopiraj poveznicu",
-    "copied": "Poveznica je kopirana"
+    "copied": "Poveznica je kopirana",
+    "open": "+ Pozovi člana",
+    "sent": "Pozivnica je poslana."
   },
   "acceptInvite": {
     "title": "Prihvati pozivnicu",
@@ -100,8 +102,14 @@
     "loading": "Učitavanje članova",
     "loadFailed": "Članovi se nisu mogli učitati. Pokušajte ponovno.",
     "name": "Ime",
+    "email": "E-pošta",
     "role": "Uloga",
-    "remove": "Ukloni člana",
+    "actions": "Radnje",
+    "actionsFor": "Radnje: {name}",
+    "changeRole": "Promijeni ulogu",
+    "newRole": "Nova uloga",
+    "confirmChangeRole": "Nova uloga vrijedi odmah. {name} gubi pristup prethodne uloge.",
+    "remove": "Ukloni",
     "confirmRemove": "Jeste li sigurni da želite ukloniti ovog člana? Odmah će izgubiti pristup.",
     "confirmRemoveButton": "Da, ukloni",
     "cancel": "Odustani",
@@ -109,7 +117,15 @@
     "removeFailed": "Član nije uklonjen. Pokušajte ponovno.",
     "lastAdmin": "Zadnji administrator se ne može ukloniti niti mu se može promijeniti uloga.",
     "cannotModifySelf": "Ne možete promijeniti svoju ulogu ili se ukloniti. Drugi administrator to može učiniti.",
-    "you": "vi"
+    "you": "vi",
+    "pendingTitle": "Pozivnice na čekanju",
+    "pendingEmpty": "Nema pozivnica na čekanju. Pozovite člana gumbom iznad.",
+    "pendingLoading": "Učitavanje pozivnica",
+    "pendingLoadFailed": "Pozivnice se nisu mogle učitati. Pokušajte ponovno.",
+    "pendingExpiry": "Istječe",
+    "revoke": "Povuci",
+    "revokeFor": "Povuci {email}",
+    "revokeFailed": "Pozivnica nije povučena. Pokušajte ponovno."
   },
   "audit": {
     "nav": "Revizija",
@@ -195,6 +211,7 @@
   },
   "settings": {
     "title": "Postavke",
+    "operations": "Operativa",
     "intro": "Ovo su čekanja prije nedolaska, koliko vožnja zauzima vozača i vozilo, i razmak koji upozorava. Vrijeme na zaslonu prikazuje se u ovoj vremenskoj zoni.",
     "airportWait": "Čekanje na aerodromu (minute)",
     "elsewhereWait": "Čekanje izvan aerodroma (minute)",

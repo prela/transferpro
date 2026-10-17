@@ -109,11 +109,25 @@ export async function openUserMenu(page: Page, tenantName: string) {
 }
 
 /**
+ * The invitation result stays in a modal. That overlay sits above the menu
+ * and the sidebar, so a later Odjava or Revizija click never lands.
+ * Other dialogs stay: Escape on those is not this helper's job.
+ */
+async function dismissInviteDialog(page: Page) {
+  const dialog = page.getByRole('dialog', { name: /^(Pozovi člana|Invite a member)$/ })
+  if (await dialog.count() > 0 && await dialog.first().isVisible()) {
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+  }
+}
+
+/**
  * Odjava lives in the profile menu for office staff, the Driver, and a
  * Superadmin. The invitation accept screen still shows that control on the
  * page. Open the menu only when Odjava is not already on screen, then click it.
  */
 export async function signOut(page: Page) {
+  await dismissInviteDialog(page)
   const onPage = page.getByRole('button', { name: 'Odjava', exact: true })
   const inMenu = page.getByRole('menuitem', { name: 'Odjava', exact: true })
   if (!(await onPage.isVisible()) && !(await inMenu.isVisible()))
@@ -210,7 +224,7 @@ export function isAdminSettingsRequest(method: string, path: string) {
  * A Dispatcher or a Driver who opens an Admin settings address lands on
  * Profile, and the browser does not call the Admin endpoints above.
  */
-export async function expectSettingsRedirect(page: Page, path: '/settings/tenant' | '/settings/members') {
+export async function expectSettingsRedirect(page: Page, path: '/settings' | '/settings/tenant' | '/settings/members') {
   const seen: string[] = []
   const onRequest = (request: { method: () => string, url: () => string }) => {
     const pathname = new URL(request.url()).pathname
@@ -222,9 +236,9 @@ export async function expectSettingsRedirect(page: Page, path: '/settings/tenant
     await page.goto(path)
     await expect(page).toHaveURL(/\/profile$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
-    await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
-    await expect(page.getByRole('region', { name: 'Pozovi člana' })).toHaveCount(0)
-    await expect(page.getByRole('heading', { name: 'Članovi' })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Operativa' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '+ Pozovi člana', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('navigation', { name: 'Postavke tvrtke' })).toHaveCount(0)
     await page.waitForLoadState('networkidle')
     expect(seen).toEqual([])
   }
@@ -241,15 +255,25 @@ export async function openRideMenu(page: Page, guest: string) {
 
 /** The audit log. Opening it reads the rows already written. */
 export async function openAudit(page: Page) {
+  await dismissInviteDialog(page)
   await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizija', exact: true }).click()
   await expect(page).toHaveURL(/\/audit$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Revizijski zapisnik' })).toBeVisible()
 }
 
-/** The invitation form and the Member list live on the Members tab. */
+/** Članovi is a tab of company settings. The invite form stays in the modal. */
 export async function openMembers(page: Page) {
-  await page.goto('/settings/members')
-  await expect(page.getByRole('region', { name: 'Pozovi člana' })).toBeVisible()
+  await page.goto('/settings?tab=members')
+  await expect(page.getByRole('heading', { level: 1, name: 'Postavke tvrtke' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '+ Pozovi člana', exact: true })).toBeVisible()
+}
+
+/** The invitation modal. Sending again is a new invitation, after this one closes. */
+export async function openInvite(page: Page) {
+  await page.getByRole('button', { name: '+ Pozovi člana', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Pozovi člana' })
+  await expect(dialog).toBeVisible()
+  return dialog
 }
 
 /**
@@ -258,12 +282,12 @@ export async function openMembers(page: Page) {
  */
 export async function invite(page: Page, email: string, role: InviteRole): Promise<string> {
   await openMembers(page)
-  const region = page.getByRole('region', { name: 'Pozovi člana' })
-  await region.getByLabel('E-pošta').fill(email)
-  const select = region.getByRole('combobox', { name: 'Uloga' })
+  const dialog = await openInvite(page)
+  await dialog.getByLabel('E-pošta').fill(email)
+  const select = dialog.getByRole('combobox', { name: 'Uloga' })
   await chooseOption(page, select, role)
-  await region.getByRole('button', { name: 'Pošalji pozivnicu', exact: true }).click()
-  const link = region.getByLabel('Poveznica pozivnice')
+  await dialog.getByRole('button', { name: 'Pošalji pozivnicu', exact: true }).click()
+  const link = dialog.getByLabel('Poveznica pozivnice')
   await expect(link).toBeVisible()
   const value = await link.inputValue()
   expect(value).toContain('/accept-invite#')

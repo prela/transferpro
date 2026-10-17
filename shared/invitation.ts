@@ -63,6 +63,8 @@ export const pendingInvitationSchema = z.object({
   expiresAt: z.iso.datetime(),
 })
 
+export type PendingInvitation = z.infer<typeof pendingInvitationSchema>
+
 export const pendingInvitationListSchema = z.object({
   invitations: z.array(pendingInvitationSchema),
 })

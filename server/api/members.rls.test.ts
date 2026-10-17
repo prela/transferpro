@@ -162,6 +162,17 @@ it('a dispatcher lists members and a driver is refused', async () => {
     ],
   })
 
+  const admin = await signIn('hmr-list-admin@example.test')
+  const asAdmin = await call('GET', '/api/members', admin)
+  expect(asAdmin.status).toBe(200)
+  expect(await asAdmin.json()).toEqual({
+    members: [
+      { userId: dispatcherId, name: 'Dino Dispatcher', email: 'hmr-list-dispatcher@example.test', role: 'dispatcher' },
+      { userId: driverId, name: 'Drago Driver', email: 'hmr-list-driver@example.test', role: 'driver' },
+      { userId: created.adminUserId, name: 'Hana Admin', email: 'hmr-list-admin@example.test', role: 'admin' },
+    ],
+  })
+
   const refused = await call('GET', '/api/members', driver)
   expect(refused.status).toBe(403)
   const text = await refused.text()
