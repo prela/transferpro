@@ -27,12 +27,17 @@ export interface NoShowClock {
 /**
  * ADR-0007. Elsewhere starts at the scheduled pickup and uses the elsewhere
  * wait. An airport uses the airport wait: from the recorded landing when
- * one is stored, and from the scheduled pickup when it is not. The wait has
- * elapsed at that instant, so the Driver may mark a No-show then. A landing
- * or an airport mark that is already stored is what this call uses.
+ * one is stored, and from the scheduled pickup when it is not. `until` is
+ * the first instant the wait has elapsed, which is what "Nedolazak" names.
+ * A landing or an airport mark that is already stored is what this call uses.
  */
-export function noShowWaitElapsed(clock: NoShowClock, now: Date): boolean {
-  const start = clock.airport && clock.landingAt !== null ? clock.landingAt : clock.pickupAt
+export function noShowWaitBounds(clock: NoShowClock): { from: Date, until: Date } {
+  const from = clock.airport && clock.landingAt !== null ? clock.landingAt : clock.pickupAt
   const minutes = clock.airport ? clock.airportWaitMinutes : clock.elsewhereWaitMinutes
-  return now.getTime() >= start.getTime() + minutes * MINUTE_MS
+  return { from, until: new Date(from.getTime() + minutes * MINUTE_MS) }
+}
+
+/** The Driver may mark a No-show once `until` is reached. The office is not gated here. */
+export function noShowWaitElapsed(clock: NoShowClock, now: Date): boolean {
+  return now.getTime() >= noShowWaitBounds(clock).until.getTime()
 }

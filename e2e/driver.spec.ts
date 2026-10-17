@@ -31,7 +31,7 @@ test('a driver who opens an office address lands on Driver Home before office da
   await expect(page.getByRole('link', { name: 'Vozači' })).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Članovi' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Spremi', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Dokumenti koji istječu' })).toHaveCount(0)
   await expect(page.getByText('Samo administrator može ovo promijeniti.')).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
 

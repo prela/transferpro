@@ -122,6 +122,23 @@ function absentLine(value: string | null): string | null {
   return trimmed === '' ? null : trimmed
 }
 
+/**
+ * The phone leads with the soonest pickup. A tie uses the ride id, the
+ * same order the upcoming read uses. The rest stay in that order so a
+ * compact row does not jump when the list is refreshed.
+ */
+export function leadDriverRide(rides: readonly DriverUpcomingRide[]): {
+  next: DriverUpcomingRide | null
+  rest: DriverUpcomingRide[]
+} {
+  const ordered = [...rides].sort((left, right) => {
+    const byPickup = left.pickupAt.localeCompare(right.pickupAt)
+    return byPickup !== 0 ? byPickup : left.rideId.localeCompare(right.rideId)
+  })
+  const [next, ...rest] = ordered
+  return { next: next ?? null, rest }
+}
+
 export function presentDriverRide(source: DriverRideSource): DriverUpcomingRide {
   const cash = source.payment === 'cash'
   return driverUpcomingRideSchema.parse({

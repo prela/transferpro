@@ -4,8 +4,11 @@ import { expiringDocumentListSchema } from '../../shared'
 
 const props = withDefaults(defineProps<{
   showRefresh?: boolean
+  /** `notice` is the Driver row: one line, and only when something expires. */
+  variant?: 'list' | 'notice'
 }>(), {
   showRefresh: true,
+  variant: 'list',
 })
 
 const { t, locale } = useI18n()
@@ -62,13 +65,72 @@ function documentKey(document: ExpiringDocument): string {
   return `${document.subject}:${document.subjectId}:${document.kind}`
 }
 
+const noticeOpen = ref(false)
+
 defineExpose({ reload: loadDocuments })
 
-onMounted(loadDocuments)
+// The Driver row is loaded with the Ride list. The office list loads itself.
+onMounted(() => {
+  if (props.variant !== 'notice')
+    void loadDocuments()
+})
 </script>
 
 <template>
-  <section :aria-labelledby="titleId">
+  <section
+    v-if="props.variant === 'notice' && (documents.length > 0 || loadError)"
+    :aria-label="t('expiringDocuments.title')"
+  >
+    <UAlert
+      v-if="loadError && documents.length === 0"
+      color="error"
+      variant="subtle"
+      role="alert"
+      :description="t('expiringDocuments.loadFailed')"
+    />
+    <!--
+      One row at the top of the Driver phone, and nothing when the list is
+      empty (ADR-0038). A tap shows which documents expire.
+    -->
+    <button
+      v-if="documents.length > 0"
+      type="button"
+      class="flex min-h-12 w-full items-center justify-between gap-3 rounded-lg border border-default bg-default px-3 text-left"
+      :aria-expanded="noticeOpen"
+      @click="noticeOpen = !noticeOpen"
+    >
+      <span>{{ t('expiringDocuments.title') }}</span>
+      <span class="tabular-nums">{{ documents.length }}</span>
+    </button>
+    <ul
+      v-if="noticeOpen && documents.length > 0"
+      class="mt-2 flex flex-col gap-3"
+    >
+      <li
+        v-for="document in documents"
+        :key="documentKey(document)"
+      >
+        <p class="font-medium">
+          {{ document.subjectLabel }}
+        </p>
+        <p>{{ t(`expiringDocuments.kinds.${document.kind}`) }}</p>
+        <time :datetime="document.expiresOn">
+          {{ formatDay(document.expiresOn) }}
+        </time>
+        <UBadge
+          class="w-fit"
+          :color="document.status === 'expired' ? 'error' : 'warning'"
+          variant="subtle"
+        >
+          {{ t(`expiringDocuments.${document.status}`) }}
+        </UBadge>
+      </li>
+    </ul>
+  </section>
+  <section
+    v-else
+    :aria-labelledby="titleId"
+  >
     <h2
       :id="titleId"
       class="mt-6 mb-4 text-xl font-semibold"

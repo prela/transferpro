@@ -84,7 +84,7 @@ test('the office and the Driver record a landing time in both languages and both
   await page.getByRole('menuitem', { name: 'Odjava', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
   await signIn(page, driver.email, driver.password, tenant.name)
-  await page.getByRole('button', { name: 'Zabilježi slijetanje', exact: true }).click()
+  await page.getByRole('button', { name: 'Vrijeme slijetanja', exact: true }).click()
   await page.locator('#landing-time').fill(driverWall)
   await page.getByRole('button', { name: 'Spremi vrijeme slijetanja', exact: true }).click()
   await expect(page.getByText(driverHr)).toBeVisible()
