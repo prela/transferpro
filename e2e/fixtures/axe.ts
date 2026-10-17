@@ -11,9 +11,10 @@ const WCAG_22_AA = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']
 /**
  * Nuxt UI's dialog enter is `scale-in` at 200ms (opacity 0 → 1). axe reads
  * the blended color, so a primary button at ~90% opacity fails 4.5:1 on a
- * fast runner and passes once the fade ends. Two seconds covers that enter
- * and a test that stretches it. Motion still running after that does not
- * block the check: axe runs, and the leftover count is warned.
+ * fast runner and passes once the fade ends. Two seconds covers that enter.
+ * Motion still running after that does not block the check: axe runs, and
+ * the leftover count is warned. The #304 contrast miss does not reproduce
+ * on this axe, so there is no regression spec for it.
  */
 const MOTION_TIMEOUT_MS = 2_000
 
