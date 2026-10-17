@@ -1,6 +1,6 @@
 # Password change and password reset
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0044
 
 Damir accepted this on 17 October 2026, in the grill of #241. It partially supersedes ADR-0037 and one sentence of ADR-0038, as listed under Superseded.
 

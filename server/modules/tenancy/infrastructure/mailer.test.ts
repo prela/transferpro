@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { captureLogs } from '../../../core/testing'
 import { assertTestMailer, createConsoleMailer, createFakeMailer, createResendMailer, invitationEmail, isConsoleMailer, isResendMailer, mailerForApp, passwordChangedEmail, passwordResetEmail, ResendTransportError } from './mailer'
@@ -336,6 +339,37 @@ it('logs a password changed console line without the address', async () => {
   expect(line).toMatchObject({ event: 'mail.console', kind: 'password-changed' })
   expect(JSON.stringify(line)).not.toContain('ada@example.test')
   expect(JSON.stringify(line)).not.toContain('example.test')
+})
+
+it('writes the reset link for the e2e server only while NODE_ENV is test', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'transferpro-reset-'))
+  const file = join(directory, 'outbox.jsonl')
+  const previousEnv = process.env.NODE_ENV
+  const previousFile = process.env.E2E_PASSWORD_RESET_OUTBOX
+  process.env.E2E_PASSWORD_RESET_OUTBOX = file
+  try {
+    process.env.NODE_ENV = 'development'
+    await createFakeMailer().sendPasswordReset({ to: 'ada@example.test', resetUrl, locale: 'hr' })
+    expect(() => readFileSync(file, 'utf8')).toThrow()
+
+    process.env.NODE_ENV = 'test'
+    await createFakeMailer().sendPasswordReset({ to: 'ada@example.test', resetUrl, locale: 'hr' })
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
+      to: 'ada@example.test',
+      resetUrl,
+    })
+  }
+  finally {
+    if (previousEnv === undefined)
+      delete process.env.NODE_ENV
+    else
+      process.env.NODE_ENV = previousEnv
+    if (previousFile === undefined)
+      delete process.env.E2E_PASSWORD_RESET_OUTBOX
+    else
+      process.env.E2E_PASSWORD_RESET_OUTBOX = previousFile
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 it('records one password changed mail on the fake mailer', async () => {

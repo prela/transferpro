@@ -7,3 +7,8 @@ export function resetPasswordLink(baseURL: string, token: string): string {
   url.hash = token
   return url.href
 }
+
+/** The fragment of a reset link is the token. */
+export function resetTokenFromLink(resetUrl: string): string {
+  return new URL(resetUrl).hash.slice(1)
+}

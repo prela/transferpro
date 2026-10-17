@@ -4,7 +4,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
 import { closeTenantRuntime, readSessionShell } from '..'
-import { resetPasswordLink } from '../../../../shared'
+import { resetPasswordLink, resetTokenFromLink } from '../../../../shared'
 import { parseAppEnv } from '../../../core/index'
 import { captureLogs } from '../../../core/testing'
 import { createSuperadmin } from '../../platform'
@@ -237,7 +237,7 @@ it('sends the hash link in the user locale, then the fourth mail in an hour logs
   const before = resets.length
   const first = await answered(handle, email)
   await waitFor(() => resets.length === before + 1)
-  const token = await latestToken(id)
+  const token = await latestToken(id, email)
   expect(resets.at(-1)).toEqual({
     to: email,
     locale: 'en',
@@ -260,6 +260,51 @@ it('sends the hash link in the user locale, then the fourth mail in an hour logs
   const text = JSON.stringify(logs.lines())
   expect(text).not.toContain(email)
   expect(text).not.toContain(token.token)
+})
+
+it('stores a hashed reset identifier and not the mailed token', async () => {
+  const email = 'slice241-hashed@example.com'
+  const id = await provision(email, 'admin', 'hr')
+  const before = resets.length
+  await answered(handle, email)
+  await waitFor(() => resets.length === before + 1)
+  const token = resetTokenFromMail(resets.at(-1)?.resetUrl)
+  const rows = await handle.authPool.query(
+    `select identifier from auth.verification
+     where value = $1 and identifier like 'reset-password-hash:%'`,
+    [id],
+  )
+  const identifiers = z.array(z.object({ identifier: z.string() })).parse(rows.rows)
+  expect(identifiers.length).toBeGreaterThan(0)
+  for (const row of identifiers) {
+    expect(row.identifier.startsWith('reset-password-hash:')).toBe(true)
+    expect(row.identifier).not.toContain(token)
+  }
+  const response = await resetPassword(handle, token, nextPassword)
+  expect(response.status).toBe(200)
+  await response.arrayBuffer()
+})
+
+it('refuses the stored hash suffix as a reset token and keeps the password', async () => {
+  const email = 'slice241-suffix@example.com'
+  const id = await provision(email, 'admin', 'hr')
+  const before = resets.length
+  await answered(handle, email)
+  await waitFor(() => resets.length === before + 1)
+  const rows = await handle.authPool.query(
+    `select identifier from auth.verification
+     where value = $1 and identifier like 'reset-password-hash:%'`,
+    [id],
+  )
+  const identifier = z.object({ identifier: z.string() }).parse(rows.rows[0]).identifier
+  const prefix = 'reset-password-hash:'
+  expect(identifier.startsWith(prefix)).toBe(true)
+  const suffix = identifier.slice(prefix.length)
+  const response = await resetPassword(handle, suffix, nextPassword)
+  expect(response.status).toBe(400)
+  await response.arrayBuffer()
+  const signedIn = await signIn(handle, currentPassword, email)
+  expect(signedIn.cookie).toBeTruthy()
 })
 
 it('mails an archived Driver and does not resend an invitation that has no account', async () => {
@@ -332,11 +377,20 @@ it('answers GET /api/auth/reset-password/<token> with 404', async () => {
 it('uses a link once, drops the older link, and refuses an expired one', async () => {
   const email = 'slice241-once@example.com'
   const id = await provision(email, 'admin', 'hr')
+  const before = resets.filter(mail => mail.to === email).length
   await answered(handle, email)
-  const older = await latestToken(id)
+  await waitFor(() => resets.filter(mail => mail.to === email).length === before + 1)
+  const older = await latestToken(id, email)
   await answered(handle, email)
-  const newer = await latestToken(id)
+  await waitFor(() => resets.filter(mail => mail.to === email).length === before + 2)
+  const newer = await latestToken(id, email)
   expect(newer.token).not.toBe(older.token)
+  const keptId = crypto.randomUUID()
+  await handle.authPool.query(
+    `insert into auth.verification (id, identifier, value, expires_at, created_at, updated_at)
+     values ($1, 'keep-verification:not-a-reset', $2, now() + interval '1 hour', now(), now())`,
+    [keptId, id],
+  )
 
   const first = await resetPassword(handle, newer.token, nextPassword)
   expect(first.status).toBe(200)
@@ -347,6 +401,18 @@ it('uses a link once, drops the older link, and refuses an expired one', async (
   const stale = await resetPassword(handle, older.token, 'slice241-stale-password')
   expect(stale.status).toBe(400)
   await stale.arrayBuffer()
+  const kept = await handle.authPool.query(
+    'select identifier from auth.verification where id = $1',
+    [keptId],
+  )
+  expect(kept.rows).toEqual([{ identifier: 'keep-verification:not-a-reset' }])
+  const leftover = await handle.authPool.query(
+    `select identifier from auth.verification
+     where value = $1
+       and (identifier like 'reset-password-hash:%' or identifier like 'reset-password:%')`,
+    [id],
+  )
+  expect(leftover.rows).toEqual([])
 
   const expired = 'ExpiredTokenExpiredToken'
   await handle.authPool.query(
@@ -366,7 +432,7 @@ it('refuses a password outside the shared length rule', async () => {
   const id = await provision(email, 'admin', 'hr')
   await answered(handle, email)
   await waitFor(() => resets.some(mail => mail.to === email))
-  const token = await latestToken(id)
+  const token = await latestToken(id, email)
   const response = await resetPassword(handle, token.token, 'short')
   expect(response.status).toBe(400)
   await response.arrayBuffer()
@@ -383,7 +449,7 @@ it('ends every session, including a browser signed in as someone else, and still
   await answered(handle, email)
   await answered(handle, email)
   await waitFor(() => resets.filter(mail => mail.to === email).length === 3)
-  const token = await latestToken(id)
+  const token = await latestToken(id, email)
   const first = await signIn(handle, currentPassword, email)
   const second = await signIn(handle, currentPassword, email)
   const other = await signIn(handle, currentPassword, otherEmail)
@@ -502,20 +568,28 @@ async function resetPassword(
   }))
 }
 
-async function latestToken(userId: string): Promise<{ token: string, expiresAt: Date }> {
+function resetTokenFromMail(resetUrl: string | undefined): string {
+  const token = resetUrl === undefined ? '' : resetTokenFromLink(resetUrl)
+  if (token.length < 8)
+    throw new Error('reset mail has no token')
+  return token
+}
+
+async function latestToken(userId: string, email: string): Promise<{ token: string, expiresAt: Date }> {
+  const mail = [...resets].reverse().find(row => row.to === email)
+  const token = resetTokenFromMail(mail?.resetUrl)
   const result = await handle.authPool.query(
-    `select identifier, expires_at from auth.verification
-     where value = $1 and identifier like 'reset-password:%'
+    `select expires_at from auth.verification
+     where value = $1 and identifier like 'reset-password-hash:%'
      order by created_at desc
      limit 1`,
     [userId],
   )
   const row = z.object({
-    identifier: z.string(),
     expires_at: z.coerce.date(),
   }).parse(result.rows[0])
   return {
-    token: row.identifier.slice('reset-password:'.length),
+    token,
     expiresAt: row.expires_at,
   }
 }
