@@ -25,6 +25,7 @@ test.describe('@phone', () => {
 
       await page.goto('/reset-password#not-a-real-token')
       await hydrated(page)
+      await expect.poll(() => new URL(page.url()).hash).toBe('')
       await page.getByLabel('Nova lozinka').fill(nextPassword)
       await page.getByLabel('Potvrda lozinke').fill(nextPassword)
       await page.getByRole('button', { name: 'Spremi lozinku', exact: true }).click()
@@ -55,6 +56,7 @@ test.describe('@phone', () => {
       const token = await resetToken(tenant.adminEmail)
       await page.goto(`/reset-password#${token}`)
       await hydrated(page)
+      await expect.poll(() => new URL(page.url()).hash).toBe('')
       await expect(page.getByRole('heading', { level: 2, name: 'Nova lozinka' })).toBeVisible()
       await checkAxe(page)
 

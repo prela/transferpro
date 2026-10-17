@@ -34,6 +34,15 @@ onMounted(() => {
   token.value = decodeURIComponent(window.location.hash.replace(/^#/, ''))
   invalid.value = token.value === ''
   ready.value = true
+  // The token is a bearer. Once it is in memory, the address bar must not
+  // keep it. history.state stays so this remains the same router entry.
+  if (window.location.hash !== '') {
+    history.replaceState(
+      history.state,
+      '',
+      `${window.location.pathname}${window.location.search}`,
+    )
+  }
 })
 
 async function chooseLocale(next: 'hr' | 'en') {
