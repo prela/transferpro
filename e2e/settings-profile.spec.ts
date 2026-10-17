@@ -133,10 +133,10 @@ test('an admin, a dispatcher, and a driver save locale and theme on profile and 
 
   await signIn(page, driver.email, driver.password, tenant.name)
   await switchLocale(page, 'en')
-  await expect(page.getByRole('heading', { name: 'My rides' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Next ride' })).toBeVisible()
   await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
-  await expect(page.getByRole('heading', { name: 'My rides' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Next ride' })).toBeVisible()
 })
 
 test('a failed locale save shows the existing failure message', async ({ page }) => {

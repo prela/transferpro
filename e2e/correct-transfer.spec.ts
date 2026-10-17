@@ -144,7 +144,7 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   await signOut(page)
   await signIn(page, driver.email, driver.password, tenant.name)
   await expect(page.getByText('Čeka na prihvat')).toBeVisible()
-  await page.getByRole('button', { name: 'Odbi vožnju', exact: true }).click()
+  await page.getByRole('button', { name: 'Odbij', exact: true }).click()
   const declineDialog = page.getByRole('dialog')
   const declineResponse = page.waitForResponse(response =>
     response.url().includes('/decline') && response.request().method() === 'POST',

@@ -1,4 +1,8 @@
+import type { DisplayLocale } from './display-locale'
 import type { RideState } from './transfer'
+import { calendarDateInTimeZone } from './date'
+import { formatInstant } from './format-instant'
+import { clockLabel } from './live-refresh'
 
 const MINUTE_MS = 60_000
 
@@ -27,12 +31,35 @@ export interface NoShowClock {
 /**
  * ADR-0007. Elsewhere starts at the scheduled pickup and uses the elsewhere
  * wait. An airport uses the airport wait: from the recorded landing when
- * one is stored, and from the scheduled pickup when it is not. The wait has
- * elapsed at that instant, so the Driver may mark a No-show then. A landing
- * or an airport mark that is already stored is what this call uses.
+ * one is stored, and from the scheduled pickup when it is not. `until` is
+ * the first instant the wait has elapsed, which is what "Nedolazak" names.
+ * A landing or an airport mark that is already stored is what this call uses.
  */
-export function noShowWaitElapsed(clock: NoShowClock, now: Date): boolean {
-  const start = clock.airport && clock.landingAt !== null ? clock.landingAt : clock.pickupAt
+export function noShowWaitBounds(clock: NoShowClock): { from: Date, until: Date } {
+  const from = clock.airport && clock.landingAt !== null ? clock.landingAt : clock.pickupAt
   const minutes = clock.airport ? clock.airportWaitMinutes : clock.elsewhereWaitMinutes
-  return now.getTime() >= start.getTime() + minutes * MINUTE_MS
+  return { from, until: new Date(from.getTime() + minutes * MINUTE_MS) }
+}
+
+/** The Driver may mark a No-show once `until` is reached. The office is not gated here. */
+export function noShowWaitElapsed(clock: NoShowClock, now: Date): boolean {
+  return now.getTime() >= noShowWaitBounds(clock).until.getTime()
+}
+
+/**
+ * The button names the window (ADR-0007). Both ends are the clock when they
+ * fall on the same calendar day in the Tenant zone ("od 10:00 do 10:25").
+ * A window that reaches the next day names each end with the full date.
+ */
+export function noShowWindowLabels(
+  from: Date,
+  until: Date,
+  timeZone: string,
+  locale: DisplayLocale,
+): { from: string, until: string } {
+  const sameDay = calendarDateInTimeZone(timeZone, from) === calendarDateInTimeZone(timeZone, until)
+  const label = (instant: Date) => sameDay
+    ? clockLabel(instant, timeZone, locale)
+    : formatInstant(instant, timeZone, locale)
+  return { from: label(from), until: label(until) }
 }

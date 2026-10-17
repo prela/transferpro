@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { signInErrorKey } from '../../shared'
+import { calendarDateInTimeZone, formatCalendarDate, signInErrorKey } from '../../shared'
 
 // Layout only. A Driver stays on the phone layout. Office staff get the
 // dashboard layout. Sign-in, no-access, and the firm list stay on this page.
@@ -36,6 +36,15 @@ const documents = ref<{ reload: () => Promise<void> } | null>(null)
 function refreshDocuments() {
   return documents.value?.reload() ?? Promise.resolve()
 }
+
+/** The Driver header names today in the Tenant zone (ADR-0038). */
+const driverToday = computed(() => {
+  const current = session.value
+  if (!current)
+    return null
+  const iso = calendarDateInTimeZone(current.timeZone, new Date())
+  return { iso, label: formatCalendarDate(iso, current.locale) }
+})
 
 useHead({
   title: () => session.value?.tenantName ?? t('signIn.title'),
@@ -172,8 +181,8 @@ function httpStatus(error: unknown): number | undefined {
 
     <section v-else-if="session">
       <!--
-        The Driver header is the Tenant name and the profile menu. Today's
-        date is step 12. The large Profile and sign-out buttons left this list.
+        The Driver header is the Tenant name, today's date, and the profile
+        menu. The large Profile and sign-out buttons left this list.
       -->
       <div
         v-if="session.role === 'driver'"
@@ -186,13 +195,30 @@ function httpStatus(error: unknown): number | undefined {
           <h1 class="text-2xl font-semibold">
             {{ session.tenantName }}
           </h1>
+          <time
+            v-if="driverToday"
+            class="text-sm text-muted tabular-nums"
+            :datetime="driverToday.iso"
+          >
+            {{ driverToday.label }}
+          </time>
         </div>
         <OfficeUserMenu />
       </div>
+      <!--
+        One notice row, and only when a document expires. It sits above the
+        next Ride (ADR-0038). The list refresh reloads it.
+      -->
+      <ExpiringDocuments
+        v-if="session.role === 'driver'"
+        ref="documents"
+        variant="notice"
+      />
       <DriverRides
         v-if="session.role === 'driver'"
         :time-zone="session.timeZone"
         :locale="session.locale"
+        :refresh-documents="refreshDocuments"
       />
       <!--
         Office Home is the balance, Pozornost, and the three lists. The
@@ -212,11 +238,6 @@ function httpStatus(error: unknown): number | undefined {
           />
         </template>
       </OfficeHome>
-      <ExpiringDocuments
-        v-if="session.role === 'driver'"
-        ref="documents"
-        :show-refresh="true"
-      />
       <!--
         Tenant settings, Members, invitations, and the audit log live on
         their own screens.

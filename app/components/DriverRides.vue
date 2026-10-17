@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import type { DisplayLocale, DriverUpcomingRide } from '../../shared'
-import { canDeclineRide, canMarkNoShow, canMarkRideDone, canRecordLandingTime, driverUpcomingListSchema, formatInstant, noShowWaitElapsed, rideSchema } from '../../shared'
+import type { DisplayLocale, DriverUpcomingRide, LiveRefreshOutcome } from '../../shared'
+import { canDeclineRide, canMarkNoShow, canMarkRideDone, clockLabel, driverUpcomingListSchema, leadDriverRide, noShowWaitElapsed, rideSchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
   locale: DisplayLocale
+  refreshDocuments: () => Promise<void>
 }>()
 
 const { t } = useI18n()
-const titleId = useId()
 
 const rides = ref<DriverUpcomingRide[]>([])
+/**
+ * Later Rides the Driver opened. A tap opens that row and leaves the others
+ * as they were. A refresh keeps every row that is still on the list (ADR-0039).
+ */
+const expandedIds = ref<Set<string>>(new Set())
 const airportWaitMinutes = ref<number | null>(null)
 const elsewhereWaitMinutes = ref<number | null>(null)
 // Start true so the empty copy does not flash before the first read.
@@ -37,33 +42,38 @@ const conflict = ref(false)
 // A slower reload must not replace the rows from a newer one.
 let loadTicket = 0
 
-async function onLandingSaved() {
-  recordingLanding.value = null
-  await loadRides(true)
-}
-
-async function loadRides(refresh = false) {
+/**
+ * The shared minute loop (ADR-0039). A failed refresh keeps the rows.
+ * The first failure is the only one that replaces the list with the alert.
+ * Documents follow the same read so the notice row does not go stale alone.
+ */
+async function reload(): Promise<LiveRefreshOutcome> {
   const ticket = ++loadTicket
-  // A refresh keeps the cards on screen. The first read still shows loading
-  // so the empty copy does not flash.
-  if (!refresh)
+  const first = rides.value.length === 0 && !loadError.value
+  if (first)
     loading.value = true
-  loadError.value = false
   try {
     const list = driverUpcomingListSchema.parse(await $fetch('/api/rides/upcoming'))
     if (ticket !== loadTicket)
-      return
+      return 'stale'
     rides.value = list.rides
     airportWaitMinutes.value = list.airportWaitMinutes
     elsewhereWaitMinutes.value = list.elsewhereWaitMinutes
+    loadError.value = false
+    const live = new Set(list.rides.map(ride => ride.rideId))
+    expandedIds.value = new Set([...expandedIds.value].filter(id => live.has(id)))
+    await props.refreshDocuments()
+    return 'ok'
   }
   catch {
     if (ticket !== loadTicket)
-      return
+      return 'stale'
     // The alert is a fixed sentence. The response body is not shown, so a
     // failed load cannot reveal a Client, an address, a note, a tabla, a
-    // plate, or a guest name.
-    loadError.value = true
+    // plate, or a guest name. A later failure keeps the cards.
+    if (rides.value.length === 0)
+      loadError.value = true
+    return 'fail'
   }
   finally {
     if (ticket === loadTicket)
@@ -71,13 +81,33 @@ async function loadRides(refresh = false) {
   }
 }
 
-/**
- * The copied flag and `assigned` are both required. An accepted Ride still
- * has the flag, and an assigned Ride that does not require acceptance has
- * no control.
- */
-function canAccept(ride: DriverUpcomingRide): boolean {
-  return ride.state === 'assigned' && ride.mustAccept
+const { automatic, refreshing, updatedAt, failed, refresh } = useLiveRefresh({
+  reload,
+  // The Driver list has no urgent tier, so a refresh never announces one.
+  urgentKeys: () => [],
+  onAnnounce() {},
+})
+
+const phoneRides = computed(() => leadDriverRide(rides.value))
+const shownTime = computed(() =>
+  updatedAt.value === null ? '' : clockLabel(updatedAt.value, props.timeZone, props.locale),
+)
+const actionsLocked = computed(() =>
+  acceptingId.value !== null || markDonePending.value || markNoShowPending.value || declinePending.value || recordingLanding.value !== null,
+)
+
+function toggleRide(rideId: string) {
+  const next = new Set(expandedIds.value)
+  if (next.has(rideId))
+    next.delete(rideId)
+  else
+    next.add(rideId)
+  expandedIds.value = next
+}
+
+async function onLandingSaved() {
+  recordingLanding.value = null
+  await refresh()
 }
 
 /**
@@ -89,7 +119,7 @@ function canFinish(ride: DriverUpcomingRide): boolean {
 }
 
 /**
- * The same source state as done. The button stays hidden until the wait
+ * The same source state as done. The button stays disabled until the wait
  * the list just read has elapsed. The server still refuses an early mark.
  */
 function canNoShow(ride: DriverUpcomingRide): boolean {
@@ -139,7 +169,7 @@ async function accept(rideId: string) {
     }))
     // A tap is not success. The message stays until this accept succeeds.
     conflict.value = false
-    await loadRides(true)
+    await refresh()
   }
   catch (error) {
     // 409 is ride_not_acceptable on a Ride this Driver still holds.
@@ -147,7 +177,7 @@ async function accept(rideId: string) {
     const status = httpStatus(error)
     if (status === 409 || status === 404) {
       conflict.value = true
-      await loadRides(true)
+      await refresh()
     }
   }
   finally {
@@ -195,13 +225,13 @@ async function confirmMarkDone() {
     }))
     conflict.value = false
     markingDone.value = null
-    await loadRides(true)
+    await refresh()
   }
   catch (error) {
     const status = httpStatus(error)
     if (status === 409 || status === 404) {
       markDoneErrorKey.value = 'driverRides.doneConflict'
-      await loadRides(true)
+      await refresh()
     }
     else {
       markDoneErrorKey.value = 'driverRides.doneFailed'
@@ -261,7 +291,7 @@ async function confirmMarkNoShow() {
     }))
     conflict.value = false
     markingNoShow.value = null
-    await loadRides(true)
+    await refresh()
   }
   catch (error) {
     const status = httpStatus(error)
@@ -272,7 +302,7 @@ async function confirmMarkNoShow() {
     else
       markNoShowErrorKey.value = 'driverRides.noShowFailed'
     if (status === 409 || status === 404)
-      await loadRides(true)
+      await refresh()
   }
   finally {
     markNoShowPending.value = false
@@ -319,13 +349,13 @@ async function confirmDecline() {
     }))
     conflict.value = false
     declining.value = null
-    await loadRides(true)
+    await refresh()
   }
   catch (error) {
     const status = httpStatus(error)
     if (status === 409 || status === 404) {
       declineErrorKey.value = 'driverRides.declineConflict'
-      await loadRides(true)
+      await refresh()
     }
     else {
       declineErrorKey.value = 'driverRides.declineFailed'
@@ -335,33 +365,50 @@ async function confirmDecline() {
     declinePending.value = false
   }
 }
-
-function pickupLabel(pickupAt: string): string {
-  return formatInstant(new Date(pickupAt), props.timeZone, props.locale)
-}
-
-/** EUR, two decimals. Croatian uses a comma. The stored value stays a dot. */
-function priceLabel(price: string): string {
-  const shown = props.locale === 'hr' ? price.replace('.', ',') : price
-  return `${shown} EUR`
-}
-
-onMounted(loadRides)
 </script>
 
 <template>
-  <section
-    class="mt-2"
-    :aria-labelledby="titleId"
-  >
-    <h2
-      :id="titleId"
-      class="mb-3 text-xl font-semibold"
+  <section class="mt-2">
+    <!--
+      The time is not a live region. The Driver list has no urgent item to
+      announce (ADR-0039). The button stays enabled so a refresh does not
+      drop focus. A failed refresh keeps the cards.
+    -->
+    <div
+      class="mb-4 flex flex-wrap items-center gap-3"
+      :aria-busy="refreshing"
     >
-      {{ t('driverRides.title') }}
-    </h2>
+      <UButton
+        type="button"
+        color="neutral"
+        variant="outline"
+        size="xl"
+        class="min-h-12"
+        @click="refresh()"
+      >
+        {{ t('liveRefresh.refresh') }}
+      </UButton>
+      <p
+        v-if="updatedAt !== null"
+        class="text-sm text-muted"
+      >
+        {{ failed ? t('liveRefresh.failed', { time: shownTime }) : t('liveRefresh.updatedAt', { time: shownTime }) }}
+      </p>
+      <UIcon
+        v-if="refreshing"
+        name="i-lucide-loader-circle"
+        class="size-5 animate-spin text-muted motion-reduce:animate-none"
+        aria-hidden="true"
+      />
+      <USwitch
+        v-model="automatic"
+        size="sm"
+        class="min-h-12"
+        :label="t('liveRefresh.automatic')"
+      />
+    </div>
     <UAlert
-      v-if="loadError"
+      v-if="loadError && rides.length === 0"
       color="error"
       variant="subtle"
       role="alert"
@@ -376,281 +423,67 @@ onMounted(loadRides)
       :description="t('driverRides.conflict')"
     />
     <p
-      v-if="!loadError && loading"
+      v-if="loading && rides.length === 0 && !loadError"
       role="status"
     >
       {{ t('driverRides.loading') }}
     </p>
-    <p v-else-if="!loadError && rides.length === 0">
-      {{ t('driverRides.empty') }}
-    </p>
-    <ul
-      v-else-if="!loadError"
-      class="flex flex-col gap-3"
-    >
-      <li
-        v-for="ride in rides"
-        :key="ride.rideId"
+    <template v-else-if="!loadError || rides.length > 0">
+      <h2
+        v-if="!phoneRides.next"
+        class="mb-3 text-xl font-semibold"
       >
-        <article class="rounded-lg border border-default bg-default p-4 text-base">
-          <h3 class="text-lg font-semibold">
-            {{ ride.guestName }}
-          </h3>
-          <!--
-            Accepted uses the office label. Waiting is only an assigned Ride
-            that still requires acceptance. A Ride that does not require
-            acceptance has no status line. The control uses the same pair:
-            `assigned` and the copied flag.
-          -->
-          <p
-            v-if="ride.state === 'accepted'"
-            class="mt-1"
-          >
-            {{ t('transfers.states.accepted') }}
-          </p>
-          <p
-            v-else-if="ride.mustAccept"
-            class="mt-1"
-          >
-            {{ t('driverRides.waiting') }}
-          </p>
-          <time
-            class="mt-1 block"
-            :datetime="ride.pickupAt"
-          >
-            {{ pickupLabel(ride.pickupAt) }}
-          </time>
-          <dl class="mt-3 grid grid-cols-1 gap-2">
-            <div>
-              <dt class="text-sm text-muted">
-                {{ t('transfers.client') }}
-              </dt>
-              <dd class="break-words">
-                {{ ride.clientName }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm text-muted">
-                {{ t('clients.kind') }}
-              </dt>
-              <dd>{{ t(`clients.kinds.${ride.clientKind}`) }}</dd>
-            </div>
-            <div>
-              <dt class="text-sm text-muted">
-                {{ t('driverRides.from') }}
-              </dt>
-              <dd class="break-words">
-                {{ ride.from }}
-              </dd>
-              <dd>
-                <UButton
-                  :to="ride.fromMapsUrl"
-                  target="_blank"
-                  external
-                  :locale="false"
-                  variant="link"
-                  color="primary"
-                  size="xl"
-                  class="px-0"
-                  :label="t('driverRides.openInMaps')"
-                />
-              </dd>
-            </div>
-            <!-- A missing address is not a blank line. An archived Location still has its line. -->
-            <div v-if="ride.fromAddress">
-              <dt class="text-sm text-muted">
-                {{ t('locations.address') }}
-              </dt>
-              <dd class="break-words">
-                {{ ride.fromAddress }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm text-muted">
-                {{ t('driverRides.to') }}
-              </dt>
-              <dd class="break-words">
-                {{ ride.to }}
-              </dd>
-              <dd>
-                <UButton
-                  :to="ride.toMapsUrl"
-                  target="_blank"
-                  external
-                  :locale="false"
-                  variant="link"
-                  color="primary"
-                  size="xl"
-                  class="px-0"
-                  :label="t('driverRides.openInMaps')"
-                />
-              </dd>
-            </div>
-            <div v-if="ride.toAddress">
-              <dt class="text-sm text-muted">
-                {{ t('locations.address') }}
-              </dt>
-              <dd class="break-words">
-                {{ ride.toAddress }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm text-muted">
-                {{ t('driverRides.passengers') }}
-              </dt>
-              <dd class="tabular-nums">
-                {{ ride.passengerCount }}
-              </dd>
-            </div>
-            <!-- Zero is a fact: the Driver still needs to see that there is no bag and no seat. -->
-            <div>
-              <dt class="text-sm text-muted">
-                {{ t('transfers.luggage') }}
-              </dt>
-              <dd class="tabular-nums">
-                {{ ride.luggageCount }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm text-muted">
-                {{ t('transfers.childSeats') }}
-              </dt>
-              <dd class="tabular-nums">
-                {{ ride.childSeatCount }}
-              </dd>
-            </div>
-            <div v-if="ride.flightNumber">
-              <dt class="text-sm text-muted">
-                {{ t('driverRides.flight') }}
-              </dt>
-              <dd class="font-mono">
-                {{ ride.flightNumber }}
-              </dd>
-            </div>
-            <div v-if="ride.landingAt">
-              <dt class="text-sm text-muted">
-                {{ t('driverRides.landing') }}
-              </dt>
-              <dd>
-                <time :datetime="ride.landingAt">
-                  {{ pickupLabel(ride.landingAt) }}
-                </time>
-              </dd>
-            </div>
-            <div v-if="ride.expectedArrival">
-              <dt class="text-sm text-muted">
-                {{ t('driverRides.expectedArrival') }}
-              </dt>
-              <dd>
-                <time :datetime="ride.expectedArrival">
-                  {{ pickupLabel(ride.expectedArrival) }}
-                </time>
-              </dd>
-            </div>
-            <div v-if="ride.note">
-              <dt class="text-sm text-muted">
-                {{ t('transfers.note') }}
-              </dt>
-              <dd class="break-words whitespace-pre-wrap">
-                {{ ride.note }}
-              </dd>
-            </div>
-            <div>
-              <dt class="text-sm text-muted">
-                {{ t('vehicles.registrationPlate') }}
-              </dt>
-              <dd class="font-mono">
-                {{ ride.registrationPlate }}
-              </dd>
-            </div>
-            <div v-if="ride.tabla">
-              <dt class="text-sm text-muted">
-                {{ t('transfers.tabla') }}
-              </dt>
-              <dd class="break-words whitespace-pre-wrap">
-                {{ ride.tabla }}
-              </dd>
-            </div>
-            <!--
-              Cash only. Card and invoice to agency render neither the price
-              nor a method, including as hidden text (ADR-0009, ADR-0020).
-            -->
-            <div v-if="ride.payment === 'cash' && ride.price">
-              <dt class="text-sm text-muted">
-                {{ t('driverRides.price') }}
-              </dt>
-              <dd class="tabular-nums">
-                {{ priceLabel(ride.price) }}
-              </dd>
-              <dd>{{ t('driverRides.cash') }}</dd>
-            </div>
-          </dl>
-          <p
-            v-if="ride.airportMark"
-            class="mt-2"
-          >
-            {{ t('driverRides.airport') }}
-          </p>
-          <UButton
-            v-if="canRecordLandingTime(ride.state)"
-            type="button"
-            color="neutral"
-            variant="outline"
-            size="xl"
-            class="mt-4 w-full justify-center"
-            :disabled="acceptingId !== null || markDonePending || markNoShowPending || declinePending || recordingLanding !== null"
-            @click="recordingLanding = ride"
-          >
-            {{ t('ride.recordLanding') }}
-          </UButton>
-          <UButton
-            v-if="canAccept(ride)"
-            type="button"
-            size="xl"
-            class="mt-4 w-full justify-center"
-            :loading="acceptingId === ride.rideId"
-            :disabled="acceptingId !== null || markDonePending || markNoShowPending || declinePending"
-            @click="accept(ride.rideId)"
-          >
-            {{ acceptingId === ride.rideId ? t('driverRides.accepting') : t('driverRides.accept') }}
-          </UButton>
-          <UButton
-            v-if="canDecline(ride)"
-            type="button"
-            color="neutral"
-            variant="outline"
-            size="xl"
-            class="mt-4 w-full justify-center"
-            :disabled="acceptingId !== null || markDonePending || markNoShowPending || declinePending"
-            @click="openDecline(ride)"
-          >
-            {{ t('driverRides.decline') }}
-          </UButton>
-          <UButton
-            v-if="canFinish(ride)"
-            type="button"
-            size="xl"
-            class="mt-4 w-full justify-center"
-            :disabled="acceptingId !== null || markDonePending || markNoShowPending || declinePending"
-            @click="openMarkDone(ride)"
-          >
-            {{ t('driverRides.done') }}
-          </UButton>
-          <UButton
-            v-if="canNoShow(ride)"
-            type="button"
-            color="neutral"
-            variant="outline"
-            size="xl"
-            class="mt-4 w-full justify-center"
-            :disabled="acceptingId !== null || markDonePending || markNoShowPending || declinePending"
-            @click="openMarkNoShow(ride)"
-          >
-            {{ t('driverRides.noShow') }}
-          </UButton>
-        </article>
-      </li>
-    </ul>
+        {{ t('driverRides.title') }}
+      </h2>
+      <p v-if="!loading && !phoneRides.next && !loadError">
+        {{ t('driverRides.empty') }}
+      </p>
+      <DriverRideCard
+        v-if="phoneRides.next && airportWaitMinutes !== null && elsewhereWaitMinutes !== null"
+        :ride="phoneRides.next"
+        :time-zone="timeZone"
+        :locale="locale"
+        lead
+        :expanded="true"
+        :airport-wait-minutes="airportWaitMinutes"
+        :elsewhere-wait-minutes="elsewhereWaitMinutes"
+        :actions-locked="actionsLocked"
+        :accepting="acceptingId === phoneRides.next.rideId"
+        @accept="accept(phoneRides.next.rideId)"
+        @decline="openDecline(phoneRides.next)"
+        @done="openMarkDone(phoneRides.next)"
+        @no-show="openMarkNoShow(phoneRides.next)"
+        @landing="recordingLanding = phoneRides.next"
+      />
+      <ul
+        v-if="phoneRides.rest.length > 0"
+        class="mt-3 flex flex-col gap-3"
+      >
+        <li
+          v-for="ride in phoneRides.rest"
+          :key="ride.rideId"
+        >
+          <DriverRideCard
+            v-if="airportWaitMinutes !== null && elsewhereWaitMinutes !== null"
+            :ride="ride"
+            :time-zone="timeZone"
+            :locale="locale"
+            :lead="false"
+            :expanded="expandedIds.has(ride.rideId)"
+            :airport-wait-minutes="airportWaitMinutes"
+            :elsewhere-wait-minutes="elsewhereWaitMinutes"
+            :actions-locked="actionsLocked"
+            :accepting="acceptingId === ride.rideId"
+            @toggle="toggleRide(ride.rideId)"
+            @accept="accept(ride.rideId)"
+            @decline="openDecline(ride)"
+            @done="openMarkDone(ride)"
+            @no-show="openMarkNoShow(ride)"
+            @landing="recordingLanding = ride"
+          />
+        </li>
+      </ul>
+    </template>
     <UModal
       v-model:open="markDoneOpen"
       :title="t('driverRides.doneTitle')"
@@ -791,6 +624,7 @@ onMounted(loadRides)
       :guest-name="recordingLanding.guestName"
       :landing-at="recordingLanding.landingAt"
       :time-zone="timeZone"
+      phone
       @saved="onLandingSaved"
       @cancel="recordingLanding = null"
     />

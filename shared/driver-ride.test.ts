@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { presentDriverRide } from './driver-ride'
+import { leadDriverRide, presentDriverRide } from './driver-ride'
 
 const ride = {
   rideId: 'e1e1e1e1-2222-4222-8222-222222222222',
@@ -140,4 +140,22 @@ it('hides the price and the method when the Ride is invoiced to the agency', () 
   expect(invoiced.payment).toBeNull()
   expect(JSON.stringify(invoiced)).not.toContain('80.00')
   expect(JSON.stringify(invoiced)).not.toContain('invoice_to_agency')
+})
+
+function shown(rideId: string, pickupAt: string) {
+  return presentDriverRide({ ...ride, rideId, pickupAt })
+}
+
+it('leads with the earliest pickup and keeps the later Rides in that order', () => {
+  const early = shown('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-10-06T08:00:00.000Z')
+  const mid = shown('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '2026-10-06T12:00:00.000Z')
+  const late = shown('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '2026-10-06T18:00:00.000Z')
+  expect(leadDriverRide([late, early, mid])).toEqual({ next: early, rest: [mid, late] })
+})
+
+it('breaks a tied pickup by ride id and returns nothing when the list is empty', () => {
+  const first = shown('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-10-06T08:00:00.000Z')
+  const second = shown('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '2026-10-06T08:00:00.000Z')
+  expect(leadDriverRide([second, first])).toEqual({ next: first, rest: [second] })
+  expect(leadDriverRide([])).toEqual({ next: null, rest: [] })
 })

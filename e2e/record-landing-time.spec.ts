@@ -84,7 +84,7 @@ test('the office and the Driver record a landing time in both languages and both
   await page.getByRole('menuitem', { name: 'Odjava', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
   await signIn(page, driver.email, driver.password, tenant.name)
-  await page.getByRole('button', { name: 'Zabilježi slijetanje', exact: true }).click()
+  await page.getByRole('button', { name: 'Vrijeme slijetanja', exact: true }).click()
   await page.locator('#landing-time').fill(driverWall)
   await page.getByRole('button', { name: 'Spremi vrijeme slijetanja', exact: true }).click()
   await expect(page.getByText(driverHr)).toBeVisible()
@@ -105,4 +105,63 @@ test('the office and the Driver record a landing time in both languages and both
   await page.getByRole('menuitem', { name: 'Record landing', exact: true }).click()
   await page.getByRole('button', { name: 'Clear landing time', exact: true }).click()
   await expect(page.getByText(driverEn)).toHaveCount(0)
+})
+
+test('@phone a driver records a landing time from the next ride', async ({ page }) => {
+  const tenant = await seedTenant('record-landing-phone')
+  const driver = await seedMember(tenant.tenantId, 'driver', 'Vozac')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+
+  const licence = '2031-01-01'
+  const driverId = await createdId(page, '/api/drivers', {
+    name: 'Marko Slijetanje',
+    kind: 'own',
+    phone: '+385911110127',
+    drivingLicenceExpiresOn: licence,
+    transportLicenceExpiresOn: licence,
+    memberUserId: driver.userId,
+  })
+  const vehicleId = await createdId(page, '/api/vehicles', {
+    registrationPlate: 'DU127AA',
+    kind: 'fixed',
+    registrationExpiresOn: licence,
+    technicalInspectionExpiresOn: licence,
+    insuranceExpiresOn: licence,
+  })
+  const clientId = await createdId(page, '/api/clients', { name: 'Klijent Slijetanje', kind: 'agency' })
+  const startLocationId = await createdId(page, '/api/locations', { name: 'Zracna Slijetanje', kind: 'airport' })
+  const endLocationId = await createdId(page, '/api/locations', { name: 'Hotel Slijetanje', kind: 'hotel' })
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const recorded = await page.request.post('/api/transfers', {
+    data: {
+      clientId,
+      pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
+      startLocationId,
+      endLocationId,
+      passengerCount: 1,
+      guestName: guest,
+      price: 10,
+      payment: 'cash',
+      airportMark: true,
+      luggageCount: 0,
+      childSeatCount: 0,
+    },
+  })
+  expect(recorded.ok()).toBeTruthy()
+  const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
+  const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
+    data: { driverId, vehicleId },
+  })
+  expect(assigned.ok()).toBeTruthy()
+
+  await signOut(page)
+  await signIn(page, driver.email, driver.password, tenant.name)
+  await page.getByRole('button', { name: 'Vrijeme slijetanja', exact: true }).click()
+  await page.locator('#landing-time').fill(driverWall)
+  await page.getByRole('button', { name: 'Spremi vrijeme slijetanja', exact: true }).click()
+  await expect(page.getByText(driverHr)).toBeVisible()
+
+  await switchLocale(page, 'en')
+  await expect(page.getByRole('button', { name: 'Landing time', exact: true })).toBeVisible()
+  await expect(page.getByText(driverEn)).toBeVisible()
 })

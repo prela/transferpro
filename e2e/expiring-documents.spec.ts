@@ -100,7 +100,9 @@ test('a driver sees only their own licences', async ({ page }) => {
   })
 
   await signIn(page, linked.email, linked.password, tenant.name)
-  const items = page.getByRole('region', { name: 'Dokumenti koji istječu' }).getByRole('listitem')
+  const notice = page.getByRole('region', { name: 'Dokumenti koji istječu' })
+  await notice.getByRole('button', { name: 'Dokumenti koji istječu' }).click()
+  const items = notice.getByRole('listitem')
   await expect(items).toHaveCount(2)
   await expect(items.nth(0)).toContainText('Ana Horvat')
   await expect(items.nth(0)).toContainText('Isteklo')
@@ -112,7 +114,9 @@ test('a driver sees only their own licences', async ({ page }) => {
 
   await signOut(page)
   await signIn(page, unlinked.email, unlinked.password, tenant.name)
-  await expect(page.getByText('Nema isteklih dokumenata ni dokumenata koji istječu u sljedećih 30 dana.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sljedeća vožnja' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Dokumenti koji istječu' })).toHaveCount(0)
+  await expect(page.getByText('Nema isteklih dokumenata ni dokumenata koji istječu u sljedećih 30 dana.')).toHaveCount(0)
   await expect(page.getByText('Ana Horvat')).toHaveCount(0)
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
