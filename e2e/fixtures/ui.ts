@@ -109,11 +109,25 @@ export async function openUserMenu(page: Page, tenantName: string) {
 }
 
 /**
+ * The invitation result stays in a modal. That overlay sits above the menu
+ * and the sidebar, so a later Odjava or Revizija click never lands.
+ * Other dialogs stay: Escape on those is not this helper's job.
+ */
+async function dismissInviteDialog(page: Page) {
+  const dialog = page.getByRole('dialog', { name: /^(Pozovi člana|Invite a member)$/ })
+  if (await dialog.count() > 0 && await dialog.first().isVisible()) {
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+  }
+}
+
+/**
  * Odjava lives in the profile menu for office staff, the Driver, and a
  * Superadmin. The invitation accept screen still shows that control on the
  * page. Open the menu only when Odjava is not already on screen, then click it.
  */
 export async function signOut(page: Page) {
+  await dismissInviteDialog(page)
   const onPage = page.getByRole('button', { name: 'Odjava', exact: true })
   const inMenu = page.getByRole('menuitem', { name: 'Odjava', exact: true })
   if (!(await onPage.isVisible()) && !(await inMenu.isVisible()))
@@ -241,6 +255,7 @@ export async function openRideMenu(page: Page, guest: string) {
 
 /** The audit log. Opening it reads the rows already written. */
 export async function openAudit(page: Page) {
+  await dismissInviteDialog(page)
   await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Revizija', exact: true }).click()
   await expect(page).toHaveURL(/\/audit$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Revizijski zapisnik' })).toBeVisible()
