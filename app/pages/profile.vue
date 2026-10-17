@@ -2,9 +2,10 @@
 /**
  * Profile for every Tenant role, the Driver included. The page enforces a
  * signed-in member itself, as well as the member middleware. Email is read
- * only. Locale uses the existing locale save. Theme uses the existing device
- * toggle. Language and theme are small pickers. This page does not read
- * Tenant settings, Members, invitations, or the audit log.
+ * only. The password form changes this account and signs out every other
+ * session. Locale uses the existing locale save. Theme uses the existing
+ * device toggle. Language and theme are small pickers. This page does not
+ * read Tenant settings, Members, invitations, or the audit log.
  */
 definePageMeta({
   middleware: 'member',
@@ -111,6 +112,7 @@ const member = computed(() => session.value)
         <span class="block text-sm text-muted">{{ t('shell.tenant') }}</span>
         <span>{{ member.tenantName }}</span>
       </p>
+      <ChangePasswordForm />
       <!--
         Small on every layout. The large language and theme buttons left
         this page (ADR-0038). The menu has the same choice in one click.

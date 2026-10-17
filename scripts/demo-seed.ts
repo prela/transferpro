@@ -11,9 +11,7 @@
 import process from 'node:process'
 import { z } from 'zod'
 import { decideDemoSeed, DemoSeedError, demoSeedRefusalMessage, seedDemoTenant } from '../server/modules/tenancy/index'
-import { passwordLengthRule } from '../shared/index'
-
-const PASSWORD_LIMITS = { minPasswordLength: 8, maxPasswordLength: 128 } as const
+import { passwordLengthLimits, passwordLengthRule } from '../shared/index'
 
 const guardEnvSchema = z.object({
   DEMO_SEED: z.string().optional(),
@@ -45,8 +43,8 @@ async function main(): Promise<void> {
   const { AUTH_DATABASE_URL: authDatabaseUrl, DATABASE_MIGRATE_URL: migrateDatabaseUrl } = databaseEnv.data
 
   const chosen = choosePassword()
-  if (passwordLengthRule(chosen.password, PASSWORD_LIMITS) !== null)
-    throw new DemoSeedError('Password must be 8 to 128 characters.')
+  if (passwordLengthRule(chosen.password, passwordLengthLimits) !== null)
+    throw new DemoSeedError(`Password must be ${passwordLengthLimits.minPasswordLength} to ${passwordLengthLimits.maxPasswordLength} characters.`)
 
   await seedDemoTenant({
     password: chosen.password,

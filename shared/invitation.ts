@@ -10,6 +10,16 @@ export interface PasswordLengthLimits {
   readonly maxPasswordLength: number
 }
 
+/**
+ * The one length bound for accept-invite, change, and reset.
+ * Better Auth receives these same numbers as minPasswordLength and maxPasswordLength.
+ * 8 and 128 are that library's own defaults, so accept-invite does not get stricter.
+ */
+export const passwordLengthLimits = {
+  minPasswordLength: 8,
+  maxPasswordLength: 128,
+} as const satisfies PasswordLengthLimits
+
 export function passwordLengthRule(password: string, limits: PasswordLengthLimits): 'too-short' | 'too-long' | null {
   if (password.length < limits.minPasswordLength)
     return 'too-short'

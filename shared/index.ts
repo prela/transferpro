@@ -22,7 +22,7 @@ export type { ExpiringDocument, ExpiringDocumentKind, ExpiringDocumentList, Expi
 export { ARRIVAL_MOVED_MS, chooseFlightArrival, FLIGHT_ASK_EVERY_MINUTES, FLIGHT_ASK_LEAD_MS, FLIGHT_MATCH_WINDOW_MS, flightAskDates, flightDesignator, flightNumberChangeClearsLanding, landingTimeInFuture, parseFlightArrivals, rememberWillNotArrive, sameFlightDesignator, storeExpectedArrival } from './flight-landing'
 export type { FlightArrival, FlightArrivalChoice, FlightStatusName } from './flight-landing'
 export { formatCalendarDate, formatInstant } from './format-instant'
-export { acceptErrorKey, invitationAcceptBodySchema, invitationIdSchema, invitationPreviewBodySchema, invitationPreviewSchema, inviteInputSchema, inviteResultSchema, passwordLengthRule, pendingInvitationListSchema, pendingInvitationSchema } from './invitation'
+export { acceptErrorKey, invitationAcceptBodySchema, invitationIdSchema, invitationPreviewBodySchema, invitationPreviewSchema, inviteInputSchema, inviteResultSchema, passwordLengthLimits, passwordLengthRule, pendingInvitationListSchema, pendingInvitationSchema } from './invitation'
 export type { InvitationPreview, InviteResult, PasswordLengthLimits, PendingInvitation, PendingInvitationList } from './invitation'
 export { inviteLink } from './invite-link'
 export { landingAlarmOn, rideIsInProgress } from './landing-alarm'

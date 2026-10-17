@@ -1,7 +1,7 @@
 import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { z } from 'zod'
-import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT, RELOCATION_GAP_DEFAULT_MINUTES, TENANT_TIME_ZONE_DEFAULT, tenantNameSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../../../shared'
+import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT, passwordLengthLimits, RELOCATION_GAP_DEFAULT_MINUTES, TENANT_TIME_ZONE_DEFAULT, tenantNameSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../../../shared'
 
 /**
  * Creates one Tenant and its admin.
@@ -47,7 +47,7 @@ const inputSchema = z.object({
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   adminEmail: z.email(),
   adminName: z.string().trim().min(1).max(120),
-  password: z.string().min(8).max(128),
+  password: z.string().min(passwordLengthLimits.minPasswordLength).max(passwordLengthLimits.maxPasswordLength),
   authDatabaseUrl: z.url(),
   migrateDatabaseUrl: z.url(),
 })
@@ -61,7 +61,7 @@ export async function createTenant(input: CreateTenantInput): Promise<CreatedTen
   if (!parsed.success) {
     const fields = new Set(parsed.error.issues.map(issue => String(issue.path[0])))
     if (fields.has('password'))
-      throw new TenantProvisionError('Password must be 8 to 128 characters.')
+      throw new TenantProvisionError(`Password must be ${passwordLengthLimits.minPasswordLength} to ${passwordLengthLimits.maxPasswordLength} characters.`)
     if (fields.has('authDatabaseUrl') || fields.has('migrateDatabaseUrl'))
       throw new TenantProvisionError('AUTH_DATABASE_URL and DATABASE_MIGRATE_URL must be set.')
     throw new TenantProvisionError('Name, slug, and admin email must be valid. The slug is lowercase letters, digits, and hyphens.')
