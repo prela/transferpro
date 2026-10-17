@@ -533,7 +533,7 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
   await expect(plain.getByText('Waiting on acceptance')).toHaveCount(0)
 })
 
-test('a driver accepts a waiting ride, and a conflict reloads the list', async ({ page }) => {
+test('@phone a driver accepts a waiting ride, and a conflict reloads the list', async ({ page }) => {
   const tenant = await seedTenant('driver-accept')
   const driver = await seedMember(tenant.tenantId, 'driver', 'Prihvat')
   const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
@@ -742,7 +742,7 @@ test('a driver accepts a waiting ride, and a conflict reloads the list', async (
   await expect(accepted.getByText('Accepted')).toBeVisible()
 })
 
-test('a driver marks a ride done and it leaves the upcoming list', async ({ page }) => {
+test('@phone a driver marks a ride done and it leaves the upcoming list', async ({ page }) => {
   const tenant = await seedTenant('driver-mark-done')
   const driver = await seedMember(tenant.tenantId, 'driver', 'Kraj')
   const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
@@ -837,7 +837,7 @@ test('a driver marks a ride done and it leaves the upcoming list', async ({ page
   expect(mail).toEqual([])
 })
 
-test('a driver declines an assigned ride and the board names them', async ({ page }) => {
+test('@phone a driver declines an assigned ride and the board names them', async ({ page }) => {
   const tenant = await seedTenant('driver-decline')
   const driver = await seedMember(tenant.tenantId, 'driver', 'Odbij')
   const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
@@ -968,7 +968,7 @@ test('a driver with no linked Driver sees an empty list', async ({ page }) => {
   await expect(page.getByText('You have no upcoming rides.')).toBeVisible()
 })
 
-test('a driver marks a no-show after the wait and it leaves the upcoming list', async ({ page }) => {
+test('@phone a driver marks a no-show after the wait and it leaves the upcoming list', async ({ page }) => {
   const tenant = await seedTenant('driver-mark-noshow')
   const driver = await seedMember(tenant.tenantId, 'driver', 'Nedo')
   const mail: string[] = []
@@ -1124,9 +1124,66 @@ test.describe('@phone', () => {
       const tenant = await seedTenant(`driver-axe-${theme}`)
       const driver = await seedMember(tenant.tenantId, 'driver', 'Tema')
       await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      const licence = '2031-01-01'
+      const driverId = await createdId(await page.request.post('/api/drivers', {
+        data: {
+          name: 'Marko Tema',
+          kind: 'own',
+          phone: theme === 'dark' ? '+385911110267' : '+385911110266',
+          drivingLicenceExpiresOn: licence,
+          transportLicenceExpiresOn: licence,
+          memberUserId: driver.userId,
+        },
+      }))
+      const vehicleId = await createdId(await page.request.post('/api/vehicles', {
+        data: {
+          registrationPlate: theme === 'dark' ? 'DU267AA' : 'DU266AA',
+          kind: 'fixed',
+          registrationExpiresOn: licence,
+          technicalInspectionExpiresOn: licence,
+          insuranceExpiresOn: licence,
+        },
+      }))
+      const clientId = await createdId(await page.request.post('/api/clients', {
+        data: { name: 'Klijent Tema', kind: 'individual' },
+      }))
+      const startLocationId = await createdId(await page.request.post('/api/locations', {
+        data: { name: 'Polazak Tema', kind: 'address' },
+      }))
+      const endLocationId = await createdId(await page.request.post('/api/locations', {
+        data: { name: 'Hotel Tema', kind: 'hotel' },
+      }))
+      const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
+      const recorded = await page.request.post('/api/transfers', {
+        data: {
+          clientId,
+          pickupAt: instantFromWallClock(`${day}T11:00`, 'Europe/Zagreb').toISOString(),
+          startLocationId,
+          endLocationId,
+          passengerCount: 1,
+          guestName: 'Nika Tema',
+          price: 12.5,
+          payment: 'cash',
+          airportMark: false,
+          luggageCount: 0,
+          childSeatCount: 0,
+        },
+      })
+      if (!recorded.ok())
+        throw new Error(`${recorded.status()} ${await recorded.text()}`)
+      const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
+      const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
+        data: { driverId, vehicleId },
+      })
+      if (!assigned.ok())
+        throw new Error(`${assigned.status()} ${await assigned.text()}`)
+      await signOut(page)
       await signIn(page, driver.email, driver.password, tenant.name)
       await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
       await expect(page.getByRole('heading', { name: 'Sljedeća vožnja' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Nika Tema' })).toBeVisible()
+      await expect(page.getByText('12,50 EUR')).toBeVisible()
       await expect(page.getByRole('switch', { name: 'Automatsko osvježavanje' })).toBeChecked()
       await expect(page.getByRole('button', { name: 'Profil', exact: true })).toHaveCount(0)
       await expect(page.getByRole('button', { name: 'Odjava', exact: true })).toHaveCount(0)
@@ -1134,6 +1191,7 @@ test.describe('@phone', () => {
       if (theme === 'light') {
         await switchLocale(page, 'en')
         await expect(page.getByRole('heading', { name: 'Next ride' })).toBeVisible()
+        await expect(page.getByText('12.50 EUR')).toBeVisible()
         await expectNoAxeViolations(page)
       }
     })

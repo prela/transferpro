@@ -78,16 +78,14 @@ async function reload(): Promise<LiveRefreshOutcome> {
   }
 }
 
-const announcedCount = ref(0)
 const { automatic, refreshing, updatedAt, failed, refresh } = useLiveRefresh({
   reload,
+  // The Driver list has no urgent tier, so a refresh never announces one.
   urgentKeys: () => [],
-  onAnnounce(count) {
-    announcedCount.value = count
-  },
+  onAnnounce() {},
 })
 
-const split = computed(() => leadDriverRide(rides.value))
+const phoneRides = computed(() => leadDriverRide(rides.value))
 const shownTime = computed(() =>
   updatedAt.value === null ? '' : clockLabel(updatedAt.value, props.timeZone, props.locale),
 )
@@ -401,13 +399,6 @@ async function confirmDecline() {
         :label="t('liveRefresh.automatic')"
       />
     </div>
-    <p
-      class="sr-only"
-      aria-live="polite"
-      aria-atomic="true"
-    >
-      {{ announcedCount > 0 ? t('liveRefresh.newUrgent') : '' }}
-    </p>
     <UAlert
       v-if="loadError && rides.length === 0"
       color="error"
@@ -431,17 +422,17 @@ async function confirmDecline() {
     </p>
     <template v-else-if="!loadError || rides.length > 0">
       <h2
-        v-if="!split.next"
+        v-if="!phoneRides.next"
         class="mb-3 text-xl font-semibold"
       >
         {{ t('driverRides.title') }}
       </h2>
-      <p v-if="!loading && !split.next && !loadError">
+      <p v-if="!loading && !phoneRides.next && !loadError">
         {{ t('driverRides.empty') }}
       </p>
       <DriverRideCard
-        v-if="split.next && airportWaitMinutes !== null && elsewhereWaitMinutes !== null"
-        :ride="split.next"
+        v-if="phoneRides.next && airportWaitMinutes !== null && elsewhereWaitMinutes !== null"
+        :ride="phoneRides.next"
         :time-zone="timeZone"
         :locale="locale"
         lead
@@ -449,19 +440,19 @@ async function confirmDecline() {
         :airport-wait-minutes="airportWaitMinutes"
         :elsewhere-wait-minutes="elsewhereWaitMinutes"
         :actions-locked="actionsLocked"
-        :accepting="acceptingId === split.next.rideId"
-        @accept="accept(split.next.rideId)"
-        @decline="openDecline(split.next)"
-        @done="openMarkDone(split.next)"
-        @no-show="openMarkNoShow(split.next)"
-        @landing="recordingLanding = split.next"
+        :accepting="acceptingId === phoneRides.next.rideId"
+        @accept="accept(phoneRides.next.rideId)"
+        @decline="openDecline(phoneRides.next)"
+        @done="openMarkDone(phoneRides.next)"
+        @no-show="openMarkNoShow(phoneRides.next)"
+        @landing="recordingLanding = phoneRides.next"
       />
       <ul
-        v-if="split.rest.length > 0"
+        v-if="phoneRides.rest.length > 0"
         class="mt-3 flex flex-col gap-3"
       >
         <li
-          v-for="ride in split.rest"
+          v-for="ride in phoneRides.rest"
           :key="ride.rideId"
         >
           <DriverRideCard

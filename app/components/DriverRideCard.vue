@@ -66,7 +66,54 @@ const noShowClock = computed(() => ({
 }))
 
 const showNoShow = computed(() => canMarkNoShow(props.ride.state, props.ride.mustAccept))
-const noShowReady = computed(() => showNoShow.value && noShowWaitElapsed(noShowClock.value, new Date()))
+// A computed does not re-read the clock. This moves once, when the wait ends.
+const nowMs = ref(Date.now())
+let waitTimer: ReturnType<typeof setTimeout> | undefined
+
+function clearWaitTimer() {
+  if (waitTimer !== undefined)
+    clearTimeout(waitTimer)
+  waitTimer = undefined
+}
+
+/**
+ * Enable "Nedolazak" at the named end of the wait, even when the list has
+ * not been refreshed yet (ADR-0007).
+ */
+function armWaitTimer() {
+  clearWaitTimer()
+  if (!showNoShow.value)
+    return
+  const remaining = noShowWaitBounds(noShowClock.value).until.getTime() - nowMs.value
+  if (remaining <= 0)
+    return
+  // setTimeout delays are capped at 2^31-1 ms. A later Ride waits in steps.
+  waitTimer = setTimeout(() => {
+    nowMs.value = Date.now()
+    armWaitTimer()
+  }, Math.min(remaining, 2_147_483_647))
+}
+
+watch(
+  () => [
+    props.ride.pickupAt,
+    props.ride.landingAt,
+    props.ride.airportMark,
+    props.ride.state,
+    props.ride.mustAccept,
+    props.airportWaitMinutes,
+    props.elsewhereWaitMinutes,
+  ] as const,
+  () => {
+    nowMs.value = Date.now()
+    armWaitTimer()
+  },
+  { immediate: true },
+)
+
+onScopeDispose(clearWaitTimer)
+
+const noShowReady = computed(() => showNoShow.value && noShowWaitElapsed(noShowClock.value, new Date(nowMs.value)))
 
 /**
  * The control stays on the card before the wait, disabled, and names the

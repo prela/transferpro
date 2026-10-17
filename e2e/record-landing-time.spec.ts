@@ -19,7 +19,7 @@ async function createdId(page: Page, path: string, data: unknown): Promise<strin
   return body.id
 }
 
-test('the office and the Driver record a landing time in both languages and both themes', async ({ page }) => {
+test('@phone the office and the Driver record a landing time in both languages and both themes', async ({ page }) => {
   const tenant = await seedTenant('record-landing')
   const driver = await seedMember(tenant.tenantId, 'driver', 'Vozac')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
