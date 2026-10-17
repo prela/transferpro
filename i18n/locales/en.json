@@ -75,7 +75,9 @@
     "emailFailed": "The email was not sent. Copy the link and send it yourself.",
     "link": "Invite link",
     "copy": "Copy link",
-    "copied": "Link copied"
+    "copied": "Link copied",
+    "open": "+ Invite a member",
+    "sent": "The invitation was sent."
   },
   "acceptInvite": {
     "title": "Accept invite",
@@ -100,8 +102,14 @@
     "loading": "Loading members",
     "loadFailed": "Members could not be loaded. Try again.",
     "name": "Name",
+    "email": "Email",
     "role": "Role",
-    "remove": "Remove member",
+    "actions": "Actions",
+    "actionsFor": "Actions: {name}",
+    "changeRole": "Change role",
+    "newRole": "New role",
+    "confirmChangeRole": "The new role applies at once. {name} loses the access of the previous role.",
+    "remove": "Remove",
     "confirmRemove": "Are you sure you want to remove this member? They will lose access immediately.",
     "confirmRemoveButton": "Yes, remove",
     "cancel": "Cancel",
@@ -109,7 +117,15 @@
     "removeFailed": "The member was not removed. Try again.",
     "lastAdmin": "Cannot remove or demote the last admin.",
     "cannotModifySelf": "Cannot change your own role or remove yourself. Another admin can do this.",
-    "you": "you"
+    "you": "you",
+    "pendingTitle": "Pending invitations",
+    "pendingEmpty": "No pending invitations. Invite a member with the button above.",
+    "pendingLoading": "Loading invitations",
+    "pendingLoadFailed": "Pending invitations could not be loaded. Try again.",
+    "pendingExpiry": "Expires",
+    "revoke": "Revoke",
+    "revokeFor": "Revoke {email}",
+    "revokeFailed": "The invitation was not revoked. Try again."
   },
   "audit": {
     "nav": "Audit",
@@ -195,6 +211,7 @@
   },
   "settings": {
     "title": "Settings",
+    "operations": "Operations",
     "intro": "These are the No-show waits, how long a ride occupies a driver and a vehicle, and the gap that warns. Times on the screen use the time zone.",
     "airportWait": "Airport wait (minutes)",
     "elsewhereWait": "Wait elsewhere (minutes)",
@@ -847,6 +864,14 @@
   "platform": {
     "title": "Companies",
     "empty": "No companies yet.",
+    "search": "Name or slug",
+    "searchSubmit": "Search",
+    "noMatches": "No companies match that search.",
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page {page} of {pages}",
+    "pages": "Pages",
+    "queryInvalid": "That page or search is not valid.",
     "back": "Companies",
     "name": "Name",
     "slug": "Slug",

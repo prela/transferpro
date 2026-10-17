@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { tenantNameSchema } from './tenant-name'
+import { TENANT_NAME_MAX_LENGTH, tenantNameSchema } from './tenant-name'
 
 /**
  * Eight hours, from the moment the session row is created.
@@ -31,11 +31,40 @@ export const companyAccountSchema = z.strictObject({
 
 export type CompanyAccount = z.infer<typeof companyAccountSchema>
 
+/**
+ * One screen of firms. The client cannot ask for a larger page:
+ * the whole directory is what made `/admin/tenants` fail to paint.
+ */
+export const PLATFORM_TENANT_PAGE_SIZE = 20
+
 export const companyAccountListSchema = z.strictObject({
   accounts: z.array(companyAccountSchema),
+  page: z.number().int().min(1),
+  pageSize: z.literal(PLATFORM_TENANT_PAGE_SIZE),
+  total: z.number().int().nonnegative(),
 })
 
 export type CompanyAccountList = z.infer<typeof companyAccountListSchema>
+
+/**
+ * `page` is 1-based and at most four digits. `q` matches a name or a slug.
+ * An unknown key is refused so an email cannot ride along. The value is
+ * trimmed and never echoed in the error.
+ */
+const platformTenantListQuerySchema = z.strictObject({
+  page: z.string().regex(/^[1-9]\d{0,3}$/).optional(),
+  q: z.string().trim().max(TENANT_NAME_MAX_LENGTH).optional(),
+})
+
+export function parsePlatformTenantListQuery(raw: unknown): { page: number, q: string } {
+  const parsed = platformTenantListQuerySchema.safeParse(raw)
+  if (!parsed.success)
+    throw new PlatformInputError()
+  return {
+    page: parsed.data.page === undefined ? 1 : Number(parsed.data.page),
+    q: parsed.data.q ?? '',
+  }
+}
 
 /** `{ name }` only. An unknown key is refused so a slug cannot ride along. */
 export const renameTenantAccountSchema = z.strictObject({

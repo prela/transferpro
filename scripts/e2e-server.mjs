@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import process from 'node:process'
+import { assertE2eDatabaseEnv, E2E_APP_DATABASE_ENV } from './e2e-database.mjs'
 
 /**
  * Playwright starts the built app through this script.
@@ -13,10 +14,18 @@ if (process.env.NODE_ENV !== 'test' || (key !== undefined && key !== '')) {
   process.exit(1)
 }
 
-if (process.env.PLATFORM_DATABASE_URL === undefined || process.env.PLATFORM_DATABASE_URL === '') {
-  console.error('E2E refused to start: PLATFORM_DATABASE_URL is required (the transferpro_platform role).')
+try {
+  assertE2eDatabaseEnv(process.env, E2E_APP_DATABASE_ENV)
+  if (process.env.DATABASE_MIGRATE_URL !== undefined && process.env.DATABASE_MIGRATE_URL !== '')
+    assertE2eDatabaseEnv(process.env, ['DATABASE_MIGRATE_URL'])
+}
+catch (error) {
+  console.error(error instanceof Error ? error.message : 'E2E refused to start.')
   process.exit(1)
 }
+
+// The owner URL migrates and seeds. The app process must not see it.
+delete process.env.DATABASE_MIGRATE_URL
 
 const child = spawn(process.execPath, ['.output/server/index.mjs'], {
   stdio: 'inherit',

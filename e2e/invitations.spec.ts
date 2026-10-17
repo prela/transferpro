@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { memberPassword, seedTenant } from './fixtures/seed'
-import { chooseOption, expectNoInvitationCookie, invite, openMembers, signIn, signOut, switchLocale } from './fixtures/ui'
+import { chooseOption, expectNoInvitationCookie, invite, openInvite, openMembers, signIn, signOut, switchLocale } from './fixtures/ui'
 
 test('a failed send shows the message and the copyable invite link', async ({ page }) => {
   const tenant = await seedTenant('invite-mail-fail')
@@ -20,10 +20,12 @@ test('a failed send shows the message and the copyable invite link', async ({ pa
   const value = await invite(page, `e2e-mail-fail-${crypto.randomUUID()}@example.test`, 'Vozač')
   expect(value).toBe(inviteUrl)
   await expect(page.getByRole('alert')).toContainText('E-pošta nije poslana. Kopirajte poveznicu i pošaljite je sami.')
-  const region = page.getByRole('region', { name: 'Pozovi člana' })
+  const region = page.getByRole('dialog', { name: 'Pozovi člana' })
   await expect(region.getByLabel('Poveznica pozivnice')).toHaveValue(inviteUrl)
+  await page.keyboard.press('Escape')
   await switchLocale(page, 'en')
-  const english = page.getByRole('region', { name: 'Invite a member' })
+  await page.getByRole('button', { name: '+ Invite a member', exact: true }).click()
+  const english = page.getByRole('dialog', { name: 'Invite a member' })
   await english.getByLabel('Email').fill(`e2e-mail-fail-en-${crypto.randomUUID()}@example.test`)
   await chooseOption(page, english.getByRole('combobox', { name: 'Role' }), 'Driver')
   await english.getByRole('button', { name: 'Send invite', exact: true }).click()
@@ -34,7 +36,7 @@ test('invite without a role shows the role message', async ({ page }) => {
   const tenant = await seedTenant('invite-role')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await openMembers(page)
-  const region = page.getByRole('region', { name: 'Pozovi člana' })
+  const region = await openInvite(page)
   await region.getByLabel('E-pošta').fill(`e2e-norole-${crypto.randomUUID()}@example.test`)
   await region.getByRole('button', { name: 'Pošalji pozivnicu', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('Odaberite ulogu prije slanja pozivnice.')
@@ -44,7 +46,7 @@ test('inviting an existing member shows the already-member message', async ({ pa
   const tenant = await seedTenant('invite-member')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await openMembers(page)
-  const region = page.getByRole('region', { name: 'Pozovi člana' })
+  const region = await openInvite(page)
   await region.getByLabel('E-pošta').fill(tenant.adminEmail)
   // This path never shows an invite link, so invite() cannot wait for one.
   await chooseOption(page, region.getByRole('combobox', { name: 'Uloga' }), 'Vozač')
@@ -79,9 +81,11 @@ test('accepts a new account after sign-out, then remove and invite again succeed
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await openMembers(page)
   const row = page.getByRole('row', { name: invitee })
-  await row.getByRole('button', { name: 'Ukloni člana', exact: true }).click()
+  await row.getByRole('button', { name: `Radnje: ${invitee}` }).click()
+  await page.getByRole('menuitem', { name: 'Ukloni', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('Jeste li sigurni da želite ukloniti ovog člana?')
+  await expect(dialog).toContainText('Odmah će izgubiti pristup.')
   await dialog.getByRole('button', { name: 'Da, ukloni', exact: true }).click()
   await expect(page.getByRole('row', { name: invitee })).toHaveCount(0)
 

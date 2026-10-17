@@ -6,8 +6,8 @@ import { chooseOption, openListbox, signIn, switchLocale, switchTheme } from './
 test('admin changes the waits and the time zone, and the audit log updates', async ({ page }) => {
   const tenant = await seedTenant('settings')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await openSettingsTab(page, 'Tvrtka')
-  const settings = page.getByRole('region', { name: 'Postavke' })
+  await openSettingsTab(page, 'Operativa')
+  const settings = page.getByRole('region', { name: 'Operativa' })
 
   await settings.getByLabel('Čekanje na aerodromu (minute)').fill('45')
   await settings.getByLabel('Čekanje izvan aerodroma (minute)').fill('30')
@@ -30,9 +30,10 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
   await expect(page.getByRole('cell', { name: 'Promijenjena vremenska zona', exact: true })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'Europe/Zagreb → Europe/London', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Osvježi', exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Operativa' })).toHaveCount(0)
 
   await page.goto('/settings/tenant')
+  await expect(page).toHaveURL(/\/settings$/)
   await expect(settings.getByLabel('Čekanje na aerodromu (minute)')).toHaveValue('45')
   await expect(settings.getByLabel('Čekanje izvan aerodroma (minute)')).toHaveValue('30')
   await expect(settings.getByLabel('Vremenska zona')).toContainText('Europe/London')
@@ -41,8 +42,8 @@ test('admin changes the waits and the time zone, and the audit log updates', asy
 test('admin sets the operational-day start and sees it after reload, in light and in dark', async ({ page }) => {
   const tenant = await seedTenant('settings-hour')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  await openSettingsTab(page, 'Tvrtka')
-  const settings = page.getByRole('region', { name: 'Postavke' })
+  await openSettingsTab(page, 'Operativa')
+  const settings = page.getByRole('region', { name: 'Operativa' })
   const hour = settings.getByLabel('Sat početka operativnog dana')
 
   await expect(hour).toContainText('05:00')
@@ -55,6 +56,7 @@ test('admin sets the operational-day start and sees it after reload, in light an
   await expect(page.getByRole('cell', { name: '05:00 → 06:00', exact: true })).toBeVisible()
 
   await page.goto('/settings/tenant')
+  await expect(page).toHaveURL(/\/settings$/)
   await expect(hour).toContainText('06:00')
   await expect(settings.getByLabel('Čekanje na aerodromu (minute)')).toHaveValue('90')
   await expect(settings.getByLabel('Čekanje izvan aerodroma (minute)')).toHaveValue('25')
@@ -73,5 +75,5 @@ test('admin sets the operational-day start and sees it after reload, in light an
 /** Settings in the sidebar, then the named tab. */
 async function openSettingsTab(page: Page, name: string) {
   await page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Postavke tvrtke', exact: true }).click()
-  await page.getByRole('navigation', { name: 'Postavke' }).getByRole('link', { name, exact: true }).click()
+  await page.getByRole('navigation', { name: 'Postavke tvrtke' }).getByRole('link', { name, exact: true }).click()
 }

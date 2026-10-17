@@ -1,8 +1,13 @@
 import process from 'node:process'
 import pg from 'pg'
+import { assertE2eDatabaseEnv } from '../../scripts/e2e-database.mjs'
 import { createSuperadmin } from '../../server/modules/platform'
 import { createTenant } from '../../server/modules/tenancy'
 import { insertCredentialMemberConnecting, insertCredentialUserConnecting } from '../../server/modules/tenancy/testing'
+
+// node-pg prefers ?host and ?hostaddr over the host in the URL.
+// Refuse before any seed function opens a connection.
+assertE2eDatabaseEnv(process.env)
 
 /** Shared by every seeded account. Inside the auth password bounds. */
 export const memberPassword = 'e2e-member-password'

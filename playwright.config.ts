@@ -1,8 +1,12 @@
 import process, { loadEnvFile } from 'node:process'
 import { defineConfig, devices } from '@playwright/test'
+import { applyE2eDatabaseEnv } from './scripts/e2e-database.mjs'
 
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
+
+// In memory only. `.env` still names the dev database `transferpro`.
+applyE2eDatabaseEnv(process.env)
 
 /**
  * Default port 3000. `E2E_PORT` is the escape hatch when `pnpm dev` already
@@ -16,14 +20,15 @@ const baseURL = `http://127.0.0.1:${port}`
  * The built server inherits this env. The Resend key is omitted on purpose:
  * `scripts/e2e-server.mjs` exits if it is present, and the app selects the
  * fake mailer when NODE_ENV is test. `DATABASE_MIGRATE_URL` is the owner
- * role; the Playwright worker loads it for seeding, and the app must not
- * see it. `BETTER_AUTH_URL` matches the URL the browser uses, so the
+ * role on `transferpro_e2e`. `e2e/prepare-database.ts` uses it to migrate. `e2e-server.mjs`
+ * deletes it before the app starts. The Playwright worker keeps it for
+ * seeding. `BETTER_AUTH_URL` matches the URL the browser uses, so the
  * session cookie is for this server.
  */
 function e2eServerEnv(): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [name, value] of Object.entries(process.env)) {
-    if (value === undefined || name === 'RESEND_API_KEY' || name === 'DATABASE_MIGRATE_URL')
+    if (value === undefined || name === 'RESEND_API_KEY')
       continue
     env[name] = value
   }
@@ -32,9 +37,8 @@ function e2eServerEnv(): Record<string, string> {
   env.PORT = port
   env.BETTER_AUTH_URL = baseURL
   // Playwright merges this object over the parent env, so omitting a key
-  // would leave the parent's value in place. Empty clears both.
+  // would leave the parent's value in place. Empty clears the Resend key.
   env.RESEND_API_KEY = ''
-  env.DATABASE_MIGRATE_URL = ''
   return env
 }
 
@@ -71,7 +75,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'node ./scripts/e2e-server.mjs',
+    command: 'node --import ./scripts/register-ts.mjs ./e2e/prepare-database.ts && node ./scripts/e2e-server.mjs',
     url: baseURL,
     // Never reuse whatever is already listening. A local `pnpm dev` has the
     // Resend key, and attaching to it would send real mail.

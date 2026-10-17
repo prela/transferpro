@@ -3,11 +3,14 @@ import { tenantRoleSchema } from './tenant-role'
 
 /**
  * List of members visible to the current Tenant session.
- * The email stays on auth.user and is not returned.
+ * The sign-in address is only on an Admin read, for the Članovi table.
+ * A Dispatcher list (the Drivers catalog) does not include it.
+ * The app view still hides it; the auth role reads it for ids that view already returned.
  */
 export const memberSchema = z.object({
   userId: z.string().min(1),
   name: z.string().min(1),
+  email: z.email().optional(),
   role: tenantRoleSchema,
 })
 

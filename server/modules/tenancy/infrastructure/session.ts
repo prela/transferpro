@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
-import { operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
+import { memberListSchema, operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
 import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
@@ -251,9 +251,12 @@ export async function repairInvitationRequest(headers: Headers) {
  * List all members of the current Tenant. Visible to admin and dispatcher only.
  * Drivers get 403. The role is the one in the session's active Tenant, so a
  * driver there is refused even when another Tenant made them a dispatcher.
- * The email is not returned (it stays on auth.user).
+ * Names and roles come from the app view, which has no email. An Admin read
+ * then loads the sign-in address from the auth role, and only for those user
+ * ids. A Dispatcher list stays without it: the Drivers catalog does not show it.
  */
 export async function listMembers(headers: Headers) {
+  const { handle } = tenantRuntime()
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     if (actor.role === 'driver')
       throw new TenantAccessError(403)
@@ -268,13 +271,25 @@ export async function listMembers(headers: Headers) {
       select user_id, name, role from app.tenant_member
       order by name
     `))
-    return {
-      members: selected.rows.map(row => ({
-        userId: row.user_id,
-        name: row.name,
-        role: row.role,
-      })),
-    }
+    const emails = actor.role === 'admin'
+      ? await handle.emailsByUserId(selected.rows.map(row => row.user_id))
+      : null
+    return memberListSchema.parse({
+      members: selected.rows.map((row) => {
+        const member = {
+          userId: row.user_id,
+          name: row.name,
+          role: row.role,
+        }
+        if (emails === null)
+          return member
+        const email = emails.get(row.user_id)
+        // A member row without an account cannot be shown. The message has no address.
+        if (email === undefined)
+          throw new Error('Member email is missing.')
+        return { ...member, email }
+      }),
+    })
   })
 }
 

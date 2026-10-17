@@ -46,7 +46,7 @@ Cloud-agent git writes stay as they were, including `git branch -D`. `git commit
 
 Every tenant table has `tenant_id`, `FORCE ROW LEVEL SECURITY`, a `tenant_isolation` policy with `USING` and `WITH CHECK`, and `REVOKE ALL FROM PUBLIC`. No `DELETE` grant unless an ADR says so. The tenant id comes from the session, never the request. Every route and every loader or helper that returns tenant data enforces the role allow-list itself; do not rely on the caller. A test proves Tenant A cannot read or write Tenant B's rows. No exceptions without an ADR.
 
-No production access. Never connect to, deploy to, or read secrets of production. No destructive DB operations (drop, truncate, mass delete/update, destructive migrations). Every migration goes in the PR for owner review; never apply it outside local or test databases.
+No production access. Never connect to, deploy to, or read secrets of production. No destructive DB operations (drop, truncate, mass delete/update, destructive migrations). One exception: `pnpm test:e2e` may drop and recreate only the localhost database `transferpro_e2e`. It must not drop, truncate, or delete rows in any other database. Every migration goes in the PR for owner review; never apply it outside local or test databases.
 
 Zod at every runtime boundary (env, request bodies, query params, imported bookings).
 

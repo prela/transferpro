@@ -38,7 +38,8 @@ const ownerPool = new pg.Pool({ connectionString: migrateDatabaseUrl })
 
 const platform = createApp()
 platform.use('/api/platform', (event) => {
-  const path = event.path.replace(/^\/api\/platform/, '')
+  // event.path keeps the query string. Routing compares the path only.
+  const path = event.path.replace(/^\/api\/platform/, '').split('?')[0] ?? ''
   if (path === '/session' || path === '/session/')
     return getPlatformSession(event)
   if (path === '/tenants' || path === '/tenants/')
@@ -274,9 +275,64 @@ it('audits a real rename and skips a no-op', async () => {
   ])
   expect(JSON.stringify(rows)).not.toContain('Same Name Hpl')
 
-  const listed = await call('GET', '/api/platform/tenants', session)
-  const accounts = ((await listed.json()) as { accounts: Array<{ name: string, slug: string }> }).accounts.filter(account => account.slug.startsWith('hpl-order-'))
-  expect(accounts.map(account => account.slug)).toEqual(['hpl-order-a', 'hpl-order-b'])
+  const listed = await call('GET', '/api/platform/tenants?q=hpl-order', session)
+  const body = await listed.json() as { accounts: Array<{ name: string, slug: string }>, page: number, pageSize: number, total: number }
+  expect(body.page).toBe(1)
+  expect(body.pageSize).toBe(20)
+  expect(body.total).toBe(2)
+  expect(body.accounts.map(account => account.slug)).toEqual(['hpl-order-a', 'hpl-order-b'])
+  expect(JSON.stringify(body)).not.toContain('memberCount')
+})
+
+it('returns one page of a search and treats % and _ as letters', async () => {
+  const session = await superadmin('hpl-owner-page@example.test')
+  for (let index = 1; index <= 21; index += 1) {
+    const suffix = String(index).padStart(2, '0')
+    await authPool.query(
+      `insert into auth.organization (id, name, slug, created_at)
+       values ($1, $2, $3, now())`,
+      [crypto.randomUUID(), `Hpl Page ${suffix}`, `hpl-page-${suffix}`],
+    )
+  }
+  await authPool.query(
+    `insert into auth.organization (id, name, slug, created_at)
+     values ($1, 'Hpl Literal', 'hpl-literal', now())`,
+    [crypto.randomUUID()],
+  )
+
+  const first = await call('GET', '/api/platform/tenants?q=hpl-page', session)
+  expect(first.status).toBe(200)
+  const page1 = await first.json() as { accounts: Array<{ slug: string }>, page: number, pageSize: number, total: number }
+  expect(page1.page).toBe(1)
+  expect(page1.pageSize).toBe(20)
+  expect(page1.total).toBe(21)
+  expect(page1.accounts).toHaveLength(20)
+  expect(page1.accounts.map(account => account.slug)).toEqual(
+    Array.from({ length: 20 }, (_, index) => `hpl-page-${String(index + 1).padStart(2, '0')}`),
+  )
+
+  const second = await call('GET', '/api/platform/tenants?q=hpl-page&page=2', session)
+  const page2 = await second.json() as { accounts: Array<{ slug: string }>, page: number, total: number }
+  expect(page2.page).toBe(2)
+  expect(page2.total).toBe(21)
+  expect(page2.accounts.map(account => account.slug)).toEqual(['hpl-page-21'])
+
+  const literal = await call('GET', '/api/platform/tenants?q=hpl-literal', session)
+  const found = await literal.json() as { accounts: Array<{ slug: string }>, total: number }
+  expect(found.total).toBe(1)
+  expect(found.accounts.map(account => account.slug)).toEqual(['hpl-literal'])
+
+  // `_` and `%` are letters in the search, not LIKE wildcards.
+  const underscore = await call('GET', '/api/platform/tenants?q=hpl-litera_', session)
+  expect((await underscore.json() as { total: number }).total).toBe(0)
+  const percent = await call('GET', '/api/platform/tenants?q=hpl%literal', session)
+  expect((await percent.json() as { total: number }).total).toBe(0)
+
+  const bad = await call('GET', '/api/platform/tenants?page=0', session)
+  expect(bad.status).toBe(400)
+  expect(await bad.text()).not.toContain('page')
+  const outsider = await call('GET', '/api/platform/tenants?page=0')
+  expect(outsider.status).toBe(401)
 })
 
 async function audit(tenantId: string) {

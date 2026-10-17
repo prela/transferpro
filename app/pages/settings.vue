@@ -1,25 +1,26 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
+import { barePath, companySettingsRedirect, companySettingsTab } from '../../shared'
 
 /**
- * Settings is Admin only. `/settings` redirects an Admin to the Tenant tab.
- * A Dispatcher or a Driver is sent to /profile. The old profile address
- * redirects there too. Office staff get the dashboard; the layout is set
- * here as well as in the middleware, because a sidebar jump can drop the
- * middleware call and this layout is not constant (it cannot live in
- * `definePageMeta`).
+ * Company settings is Admin only (ADR-0038). The page is `/settings`, with
+ * Operativa and Članovi as tabs. Old addresses redirect. A Dispatcher or a
+ * Driver is sent to /profile by the admin middleware on the child route, and
+ * again here when that read failed open. Office staff get the dashboard.
  */
 definePageMeta({
   middleware: 'authenticated',
 })
 
 const route = useRoute()
-const { t } = useI18n()
 const {
+  t,
   session,
   loadError,
   pending,
+  refresh,
   signOut,
+  shellError,
   loadMessage,
 } = await useSessionShell()
 
@@ -31,68 +32,65 @@ applyLayout()
 watch(() => session.value?.role, applyLayout)
 
 /**
- * `/settings` has no screen of its own. Setup covers the first load, including
- * the server redirect. A later choice of Settings, from the sidebar or the
- * user menu, keeps this parent mounted, so the guard returns the same
- * redirect or the empty child stays on screen.
+ * Setup covers the first load. A later visit keeps this parent mounted, so
+ * the guard on the next route returns the same redirect.
  */
-function barePath(path: string) {
-  return path.replace(/\/$/, '') || '/'
-}
-
-function redirectTarget(path: string) {
-  if (!session.value && !loadError.value)
-    return '/'
+async function leaveIfNeeded(path: string) {
+  if (!session.value && !loadError.value) {
+    await navigateTo('/', { replace: true })
+    return
+  }
   if (!session.value)
-    return null
-  // Profile left the tabs. The old address still resolves, then leaves.
-  if (path === '/settings/profile')
-    return '/profile'
-  if (path === '/settings')
-    return session.value.role === 'admin' ? '/settings/tenant' : '/profile'
-  return null
+    return
+  const target = companySettingsRedirect(path, session.value.role)
+  if (target)
+    await navigateTo(target, { replace: true })
 }
 
-const initialTarget = redirectTarget(barePath(route.path))
-if (initialTarget)
-  await navigateTo(initialTarget, { replace: true })
+await leaveIfNeeded(barePath(route.path))
 
 onBeforeRouteUpdate((to) => {
-  const target = redirectTarget(barePath(to.path))
+  if (!session.value)
+    return
+  const target = companySettingsRedirect(barePath(to.path), session.value.role)
   if (target)
     return navigateTo(target, { replace: true })
 })
 
-// Tenant and Members. Profile is /profile, so it is not a tab.
-const tabs = computed<NavigationMenuItem[]>(() => {
-  if (session.value?.role !== 'admin')
-    return []
-  return [
-    {
-      label: t('shell.tenant'),
-      icon: 'i-lucide-building-2',
-      to: '/settings/tenant',
-      exact: true,
-    },
-    {
-      label: t('members.title'),
-      icon: 'i-lucide-users',
-      to: '/settings/members',
-      exact: true,
-    },
-  ]
+const onSettings = computed(() =>
+  barePath(route.path) === '/settings' && session.value?.role === 'admin',
+)
+const tab = computed(() => companySettingsTab(route.query.tab))
+const pendingGeneration = ref(0)
+
+/**
+ * exact and exactQuery keep Operativa from staying current once `?tab=members`
+ * is set. A prefix match would mark both links as this page.
+ */
+const tabs = computed<NavigationMenuItem[]>(() => [
+  {
+    label: t('settings.operations'),
+    to: '/settings',
+    exact: true,
+    exactQuery: true,
+  },
+  {
+    label: t('members.title'),
+    to: { path: '/settings', query: { tab: 'members' } },
+    exact: true,
+    exactQuery: true,
+  },
+])
+
+useHead({
+  title: () => t('shell.companySettings'),
 })
+
+bindScreenTitle(() => onSettings.value ? t('shell.companySettings') : '')
 </script>
 
 <template>
-  <!--
-    Office staff fill the dashboard panel. A Driver stays at most 28rem,
-    the same phone column as Driver Home (ADR-0016).
-  -->
-  <main
-    class="box-border w-full p-4"
-    :class="isOfficeMember(session?.role) ? undefined : 'mx-auto max-w-md'"
-  >
+  <main class="box-border w-full p-4">
     <section v-if="loadError">
       <UAlert
         color="error"
@@ -111,17 +109,41 @@ const tabs = computed<NavigationMenuItem[]>(() => {
       </UButton>
     </section>
 
-    <template v-else-if="session">
+    <template v-else-if="onSettings && session">
       <UNavigationMenu
         as="nav"
-        class="mb-4"
-        color="neutral"
-        highlight
-        :aria-label="t('shell.settings')"
+        :aria-label="t('shell.companySettings')"
         :items="tabs"
-        :ui="{ link: 'min-h-11 px-3 py-2 text-base' }"
+        class="mb-6 border-b border-default"
+        :ui="{ link: 'h-7 min-h-7 max-lg:h-11 max-lg:min-h-11' }"
       />
-      <NuxtPage />
+
+      <TenantSettings
+        v-if="tab === 'operations'"
+        :is-admin="session.role === 'admin'"
+        @saved="refresh()"
+      />
+      <section v-else>
+        <MemberInvite @sent="pendingGeneration += 1" />
+        <MemberList
+          :is-admin="session.role === 'admin'"
+          :current-user-id="session.userId"
+        />
+        <PendingInvitations
+          :time-zone="session.timeZone"
+          :generation="pendingGeneration"
+        />
+      </section>
+      <UAlert
+        v-if="shellError"
+        color="error"
+        variant="subtle"
+        role="alert"
+        class="mt-4"
+        :description="t(shellError)"
+      />
     </template>
+    <!-- Old addresses redirect from their own pages. This keeps that setup running. -->
+    <NuxtPage />
   </main>
 </template>

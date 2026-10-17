@@ -24,7 +24,7 @@ test('a driver who opens an office address lands on Driver Home before office da
   await expect(page.getByRole('navigation')).toHaveCount(0)
   await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Postavke', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Postavke tvrtke', exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Naručitelji' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Lokacije' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Vozila' })).toHaveCount(0)
@@ -33,7 +33,7 @@ test('a driver who opens an office address lands on Driver Home before office da
   await expect(page.getByRole('button', { name: 'Spremi', exact: true })).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Dokumenti koji istječu' })).toHaveCount(0)
   await expect(page.getByText('Samo administrator može ovo promijeniti.')).toHaveCount(0)
-  await expect(page.getByRole('region', { name: 'Postavke' })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Operativa' })).toHaveCount(0)
 
   for (const visit of officeVisits)
     await expectOfficeAddressReturnsHome(page, visit.path, visit.collection, tenant.name)
@@ -43,10 +43,11 @@ test('a driver who opens tenant settings or members lands on profile', async ({ 
   const tenant = await seedTenant('driver-settings')
   const driver = await seedMember(tenant.tenantId, 'driver', 'Vozač')
   await signIn(page, driver.email, driver.password, tenant.name)
-  await expectSettingsRedirect(page, '/settings/tenant')
+  await expectSettingsRedirect(page, '/settings')
   await expect(page.getByRole('navigation', { name: 'Odjeljci' })).toHaveCount(0)
+  await expectSettingsRedirect(page, '/settings/tenant')
   await expectSettingsRedirect(page, '/settings/members')
-  await expect(page.getByRole('navigation', { name: 'Postavke' })).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Postavke tvrtke' })).toHaveCount(0)
 })
 
 /** Home, with the Tenant name as the only h1, and no request for that page's collection. */
