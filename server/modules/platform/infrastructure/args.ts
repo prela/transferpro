@@ -19,7 +19,7 @@ const createSchema = z.object({
   email: z.email(),
 })
 
-const revokeSchema = z.object({
+const emailOnlySchema = z.object({
   email: z.email(),
 })
 
@@ -39,9 +39,20 @@ export function parseSuperadminCreateArgs(argv: readonly string[]): { name: stri
 
 export function parseSuperadminRevokeArgs(argv: readonly string[]): { email: string } {
   const values = readFlags(argv, ['email'], 'pnpm superadmin:revoke --email <email>')
-  const parsed = revokeSchema.safeParse({ email: values.get('email') })
+  const parsed = emailOnlySchema.safeParse({ email: values.get('email') })
   if (!parsed.success)
     throw new PlatformArgsError('Usage: pnpm superadmin:revoke --email <email>')
+  return parsed.data
+}
+
+const passwordUsage = 'pnpm superadmin:password --email <email>\nThe password is read from the prompt, or from stdin when there is no terminal.'
+
+/** Email only. `--password` is refused in `readFlags` before this returns. */
+export function parseSuperadminPasswordArgs(argv: readonly string[]): { email: string } {
+  const values = readFlags(argv, ['email'], passwordUsage)
+  const parsed = emailOnlySchema.safeParse({ email: values.get('email') })
+  if (!parsed.success)
+    throw new PlatformArgsError(`Usage: ${passwordUsage}`)
   return parsed.data
 }
 
