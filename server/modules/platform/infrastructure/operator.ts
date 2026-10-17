@@ -35,7 +35,7 @@ const emailSchema = z.object({
 
 const passwordSchema = z.object({
   email: z.email(),
-  password: z.string().min(8).max(128),
+  password: z.string().min(passwordLengthLimits.minPasswordLength).max(passwordLengthLimits.maxPasswordLength),
   migrateDatabaseUrl: z.url(),
 })
 
@@ -128,7 +128,7 @@ export async function setSuperadminPassword(input: SetSuperadminPasswordInput): 
   if (!parsed.success) {
     const fields = new Set(parsed.error.issues.map(issue => String(issue.path[0])))
     if (fields.has('password'))
-      throw new PlatformOperatorError('Password must be 8 to 128 characters.')
+      throw new PlatformOperatorError(`Password must be ${passwordLengthLimits.minPasswordLength} to ${passwordLengthLimits.maxPasswordLength} characters.`)
     if (fields.has('migrateDatabaseUrl'))
       throw new PlatformOperatorError('DATABASE_MIGRATE_URL must be set. It is the transferpro_owner role.')
     throw new PlatformOperatorError('Email must be valid.')
