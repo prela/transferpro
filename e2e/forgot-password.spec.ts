@@ -1,14 +1,16 @@
 import type { Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
-import pg from 'pg'
+import { z } from 'zod'
+import { e2ePasswordResetOutboxPath } from '../scripts/e2e-reset-outbox.mjs'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, useTheme } from './fixtures/ui'
 
 /**
- * The reset link is not on a screen. The newest verification row for this
- * account is the token Better Auth stored. The fake mailer only: the e2e
- * server refuses to boot when Resend is selected.
+ * The reset link is not on a screen. The verification row stores a hash,
+ * so the token comes from the fake mailer's e2e outbox. The e2e server
+ * refuses to boot when Resend is selected.
  */
 // @phone: the phone project runs this file as well as the desktop project.
 test.describe('@phone', () => {
@@ -97,28 +99,49 @@ async function checkAxe(page: Page) {
   await expectNoAxeViolations(page)
 }
 
+const resetOutboxLine = z.object({
+  to: z.string(),
+  resetUrl: z.string(),
+})
+
+/**
+ * Delivery is not awaited, so the line can land after the form's answer.
+ * The last line for this address is the link the screen is about to open.
+ */
 async function resetToken(email: string): Promise<string> {
-  const connectionString = process.env.AUTH_DATABASE_URL
-  if (!connectionString)
-    throw new Error('AUTH_DATABASE_URL is required')
-  const pool = new pg.Pool({ connectionString, max: 1 })
+  let token = ''
+  await expect.poll(() => {
+    token = tokenFromOutbox(email)
+    return token
+  }, { timeout: 10_000 }).not.toBe('')
+  return token
+}
+
+function tokenFromOutbox(email: string): string {
+  let text = ''
   try {
-    const result = await pool.query<{ identifier: string }>(
-      `select v.identifier
-       from auth.verification v
-       join auth."user" u on u.id = v.value
-       where lower(u.email) = lower($1)
-         and v.identifier like 'reset-password:%'
-       order by v.created_at desc
-       limit 1`,
-      [email],
-    )
-    const identifier = result.rows[0]?.identifier
-    if (!identifier?.startsWith('reset-password:'))
-      throw new Error('No reset token row.')
-    return identifier.slice('reset-password:'.length)
+    text = readFileSync(e2ePasswordResetOutboxPath, 'utf8')
   }
-  finally {
-    await pool.end()
+  catch {
+    return ''
   }
+  let token = ''
+  for (const line of text.split('\n')) {
+    if (line === '')
+      continue
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(line)
+    }
+    catch {
+      continue
+    }
+    const row = resetOutboxLine.safeParse(parsed)
+    if (!row.success || row.data.to.toLowerCase() !== email.toLowerCase())
+      continue
+    const hash = new URL(row.data.resetUrl).hash.slice(1)
+    if (hash !== '')
+      token = hash
+  }
+  return token
 }

@@ -14,7 +14,7 @@ import { inviteLink, passwordLengthLimits, SUPERADMIN_SESSION_SECONDS, tenantRol
 import { getLogger, nodeEnv } from '../../../core/index'
 import { deliverInvitationEmail, inviteSendState } from './invite-send'
 import { noticePasswordChanged, passwordMailAccount, queuePasswordChangedMail } from './password-changed'
-import { createResetMailLimiter, deleteRemainingResetTokens, queuePasswordReset, RESET_PASSWORD_TOKEN_SECONDS } from './password-reset'
+import { createResetMailLimiter, deleteRemainingResetTokens, hashResetPasswordIdentifier, queuePasswordReset, RESET_PASSWORD_IDENTIFIER_PREFIX, RESET_PASSWORD_TOKEN_SECONDS } from './password-reset'
 import { invitationExpiresInSeconds, organizationRoles } from './tenant-roles'
 
 /**
@@ -285,6 +285,18 @@ export function createAuth(
       database: {
         // Organization id is text, and app.current_tenant_id() is a uuid.
         generateId: () => crypto.randomUUID(),
+      },
+    },
+    // Reset rows keep the prefix and replace the token with a hash.
+    // Everything else, including the unknown-address dummy lookup, stays plain.
+    verification: {
+      storeIdentifier: {
+        default: 'plain',
+        overrides: {
+          [RESET_PASSWORD_IDENTIFIER_PREFIX]: {
+            hash: hashResetPasswordIdentifier,
+          },
+        },
       },
     },
     database: drizzleAdapter(db, {

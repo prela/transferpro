@@ -1,5 +1,7 @@
 import type { DisplayLocale, TenantRole } from '../../../../shared'
 import type { Logger } from '../../../core/index'
+import { appendFileSync } from 'node:fs'
+import process from 'node:process'
 import { getLogger, nodeEnv } from '../../../core/index'
 import { INVITATION_EXPIRES_DAYS } from './tenant-roles'
 
@@ -116,8 +118,23 @@ export function createFakeMailer(
     },
     async sendPasswordReset(mail) {
       passwordResets.push({ ...mail })
+      // The verification row stores a hash. E2e reads the mailed token from this file.
+      rememberResetForE2e(mail)
     },
   }
+}
+
+/**
+ * Only the e2e server sets the path, and only while `NODE_ENV` is `test`.
+ * A development or production process must not write the bearer to disk.
+ */
+function rememberResetForE2e(mail: PasswordResetMail): void {
+  // Bracket access so a Nitro build does not bake an empty path into the server.
+  // eslint-disable-next-line dot-notation
+  const file = process.env['E2E_PASSWORD_RESET_OUTBOX']
+  if (nodeEnv() !== 'test' || file === undefined || file === '')
+    return
+  appendFileSync(file, `${JSON.stringify({ to: mail.to, resetUrl: mail.resetUrl })}\n`)
 }
 
 export function isResendMailer(mailer: Mailer | undefined): boolean {
