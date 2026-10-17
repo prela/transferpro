@@ -547,7 +547,9 @@
     "declineConfirm": "Decline",
     "declineConfirming": "Declining",
     "declineConflict": "This ride can no longer be declined.",
-    "declineFailed": "The ride was not declined. Try again."
+    "declineFailed": "The ride was not declined. Try again.",
+    "showTabla": "Show the meet sign",
+    "closeTabla": "Close"
   },
   "drivers": {
     "nav": "Drivers",

@@ -297,6 +297,8 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(cardCard.getByText('Adresa', { exact: true })).toHaveCount(2)
   await expect(cardCard.getByText('Voucher fare 99.00')).toBeVisible()
   await expect(cardCard.getByText('GOSPOĐA HORVAT')).toBeVisible()
+  await expect(cardCard.getByRole('button', { name: 'Prikaži tablu' })).toBeVisible()
+  await expect(cashCard.getByRole('button', { name: 'Prikaži tablu' })).toHaveCount(0)
   await expect(cardCard.locator('div').filter({ hasText: /^Prtljaga/ }).locator('dd')).toHaveText('0')
   await expect(cardCard.locator('div').filter({ hasText: /^Dječje sjedalice/ }).locator('dd')).toHaveText('0')
   await expect(cardCard.getByText('DU300AA')).toBeVisible()
@@ -340,7 +342,9 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(cashCard.getByText('Meet sign')).toHaveCount(0)
   await expect(cardCard.getByText('Address', { exact: true })).toHaveCount(2)
   await expect(cardCard.getByText('99.00 EUR')).toHaveCount(0)
-  await expect(cardCard.getByText('Meet sign')).toBeVisible()
+  await expect(cardCard.getByText('Meet sign', { exact: true })).toBeVisible()
+  await expect(cardCard.getByRole('button', { name: 'Show the meet sign' })).toBeVisible()
+  await expect(cashCard.getByRole('button', { name: 'Show the meet sign' })).toHaveCount(0)
   await expect(cardCard.getByText('Note')).toBeVisible()
   await expect(cardCard.getByText('GOSPOĐA HORVAT')).toBeVisible()
   await expect(cardCard.getByText('Price', { exact: true })).toHaveCount(0)
@@ -1213,7 +1217,198 @@ test.describe('@phone', () => {
       }
     })
   }
+
+  test('@phone opening and closing the meet sign returns to the same ride and the text fits portrait and landscape', async ({ page }) => {
+    await installWakeLock(page)
+    await page.setViewportSize({ width: 390, height: 844 })
+    const { later } = await seedMeetSign(page, 'driver-tabla-fit', '+385911110401', 'DU401AA', true)
+    const article = await showRide(page, later)
+    await article.scrollIntoViewIfNeeded()
+    const scrollBefore = await page.evaluate(() => window.scrollY)
+    await article.getByRole('button', { name: 'Prikaži tablu' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText('GOSPOĐA HORVAT', { exact: true })).toBeVisible()
+    await expectSignFits(page, 'GOSPOĐA HORVAT')
+    expect(await wakeProbe(page)).toEqual({ requests: ['screen'], releases: 0 })
+
+    await page.setViewportSize({ width: 844, height: 390 })
+    await expectSignFits(page, 'GOSPOĐA HORVAT')
+    expect(await wakeProbe(page)).toEqual({ requests: ['screen'], releases: 0 })
+
+    await dialog.getByRole('button', { name: 'Zatvori', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(article.getByRole('heading', { name: later, exact: true })).toBeVisible()
+    const scrollAfter = await page.evaluate(() => window.scrollY)
+    expect(Math.abs(scrollAfter - scrollBefore)).toBeLessThanOrEqual(1)
+    expect(await wakeProbe(page)).toEqual({ requests: ['screen'], releases: 1 })
+  })
+
+  test('@phone a browser without a wake lock still shows the meet sign', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'wakeLock', {
+        configurable: true,
+        get() {
+          return undefined
+        },
+      })
+    })
+    await seedMeetSign(page, 'driver-tabla-unsupported', '+385911110402', 'DU402AA')
+    await page.getByRole('button', { name: 'Prikaži tablu' }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText('GOSPOĐA HORVAT', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '500' })).toHaveCount(0)
+    await dialog.getByRole('button', { name: 'Zatvori', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'Nika Tabla', exact: true })).toBeVisible()
+  })
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`@phone the meet sign follows ${theme} and passes axe`, async ({ page }) => {
+      await useTheme(page, theme)
+      await seedMeetSign(page, `driver-tabla-axe-${theme}`, theme === 'dark' ? '+385911110404' : '+385911110403', theme === 'dark' ? 'DU404AA' : 'DU403AA')
+      await page.getByRole('button', { name: 'Prikaži tablu' }).click()
+      await expect(page.getByRole('dialog').getByText('GOSPOĐA HORVAT', { exact: true })).toBeVisible()
+      await expectNoAxeViolations(page)
+      if (theme === 'light') {
+        await page.getByRole('dialog').getByRole('button', { name: 'Zatvori', exact: true }).click()
+        await switchLocale(page, 'en')
+        await page.getByRole('button', { name: 'Show the meet sign' }).click()
+        await expect(page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true })).toBeVisible()
+        await expect(page.getByRole('dialog').getByText('GOSPOĐA HORVAT', { exact: true })).toBeVisible()
+        await expectNoAxeViolations(page)
+      }
+    })
+  }
 })
+
+interface WakeProbe {
+  requests: string[]
+  releases: number
+}
+
+/** Counts Screen Wake Lock requests in this browser. Installed before navigation. */
+async function installWakeLock(page: Page) {
+  await page.addInitScript(() => {
+    const probe = { requests: [] as string[], releases: 0 }
+    Object.assign(window, { __tpWakeLock: probe })
+    Object.defineProperty(navigator, 'wakeLock', {
+      configurable: true,
+      value: {
+        async request(type: string) {
+          probe.requests.push(type)
+          let released = false
+          return {
+            get released() {
+              return released
+            },
+            async release() {
+              released = true
+              probe.releases += 1
+            },
+          }
+        },
+      },
+    })
+  })
+}
+
+async function wakeProbe(page: Page): Promise<WakeProbe> {
+  return page.evaluate(() => {
+    const probe = Reflect.get(window, '__tpWakeLock') as WakeProbe | undefined
+    if (!probe)
+      throw new Error('wake lock probe is missing')
+    return { requests: [...probe.requests], releases: probe.releases }
+  })
+}
+
+/** The sign's box stays inside the viewport, and the line itself is not clipped. */
+async function expectSignFits(page: Page, text: string) {
+  const sign = page.getByRole('dialog').getByText(text, { exact: true })
+  await expect(sign).toBeVisible()
+  const box = await sign.boundingBox()
+  const viewport = page.viewportSize()
+  if (!box || !viewport)
+    throw new Error('meet sign box is missing')
+  expect(box.x).toBeGreaterThanOrEqual(-1)
+  expect(box.y).toBeGreaterThanOrEqual(-1)
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1)
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1)
+  const clipped = await sign.evaluate(element => element.scrollHeight > element.clientHeight + 1 || element.scrollWidth > element.clientWidth + 1)
+  expect(clipped).toBe(false)
+}
+
+/**
+ * One Driver, and a Ride whose meet sign is GOSPOĐA HORVAT.
+ * `later` adds an earlier Ride so the sign sits on a row below the lead.
+ */
+async function seedMeetSign(page: Page, slug: string, phone: string, plate: string, later = false) {
+  const tenant = await seedTenant(slug)
+  const driver = await seedMember(tenant.tenantId, 'driver', 'Tabla')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const licence = '2031-01-01'
+  const driverId = await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Marko Tabla',
+      kind: 'own',
+      phone,
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+      memberUserId: driver.userId,
+    },
+  }))
+  const vehicleId = await createdId(await page.request.post('/api/vehicles', {
+    data: {
+      registrationPlate: plate,
+      kind: 'fixed',
+      registrationExpiresOn: licence,
+      technicalInspectionExpiresOn: licence,
+      insuranceExpiresOn: licence,
+    },
+  }))
+  const clientId = await createdId(await page.request.post('/api/clients', {
+    data: { name: 'Klijent Tabla', kind: 'individual' },
+  }))
+  const startLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Polazak Tabla', kind: 'address' },
+  }))
+  const endLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Hotel Tabla', kind: 'hotel' },
+  }))
+  const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
+  async function record(guest: string, hour: string, tabla: string) {
+    const recorded = await page.request.post('/api/transfers', {
+      data: {
+        clientId,
+        pickupAt: instantFromWallClock(`${day}T${hour}`, 'Europe/Zagreb').toISOString(),
+        startLocationId,
+        endLocationId,
+        passengerCount: 1,
+        guestName: guest,
+        price: 12.5,
+        payment: 'cash',
+        airportMark: false,
+        luggageCount: 0,
+        childSeatCount: 0,
+        tabla,
+      },
+    })
+    if (!recorded.ok())
+      throw new Error(`${recorded.status()} ${await recorded.text()}`)
+    const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
+    const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
+      data: { driverId, vehicleId },
+    })
+    if (!assigned.ok())
+      throw new Error(`${assigned.status()} ${await assigned.text()}`)
+  }
+  if (later)
+    await record('Nika Prva', '09:00', '')
+  await record('Nika Tabla', later ? '18:00' : '11:00', 'GOSPOĐA HORVAT')
+  await signOut(page)
+  await signIn(page, driver.email, driver.password, tenant.name)
+  await expect(page.getByRole('heading', { name: 'Sljedeća vožnja' })).toBeVisible()
+  return { later: 'Nika Tabla' }
+}
 
 async function setTabVisibility(page: Page, state: 'visible' | 'hidden') {
   await page.evaluate((next) => {

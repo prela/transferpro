@@ -62,7 +62,7 @@ function expectedPairs(): string[] {
     }
     for (const badge of badges)
       names.push(`${theme}:badge:${badge}`)
-    names.push(`${theme}:text:primary-button`)
+    names.push(`${theme}:text:primary-button`, `${theme}:text:tabla`)
   }
   return names
 }
