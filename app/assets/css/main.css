@@ -51,11 +51,14 @@
   --tp-working: #f8fafc;
   --tp-panel: #ffffff;
   --tp-hover: #e2e8f0;
+  /* Solid primary hover label. White in both themes: dark text-inverted is slate-900. */
+  --tp-on-primary: #ffffff;
 }
 
 /*
  * White label on blue-600 is 5.17:1. blue-500 is 3.68:1.
  * Dark keeps blue-500: its label is slate-900, 4.85:1 there and 3.45:1 on blue-600.
+ * Solid hover uses Tailwind primary-600 and --tp-on-primary (app.config.ts).
  */
 .light {
   --ui-primary: #2563eb;
@@ -79,6 +82,7 @@
   --tp-working: #10192a;
   --tp-panel: #1c283c;
   --tp-hover: #263246;
+  --tp-on-primary: #ffffff;
 }
 
 html {

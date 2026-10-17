@@ -5,6 +5,20 @@ export default defineAppConfig({
       primary: 'blue',
       neutral: 'slate',
     },
+    button: {
+      compoundVariants: [
+        {
+          // Nuxt UI's solid primary hover and active are `bg-primary/75`.
+          // White on that wash is under 4.5:1. primary-600 is Tailwind
+          // blue-600 (#155dfc), 5.25:1 with --tp-on-primary. Dark rest
+          // keeps text-inverted (slate-900) on blue-500; that label is
+          // 3.4:1 on this shade. Active is the same wash, so it matches.
+          color: 'primary',
+          variant: 'solid',
+          class: 'hover:bg-primary-600 hover:text-[var(--tp-on-primary)] active:bg-primary-600 active:text-[var(--tp-on-primary)]',
+        },
+      ],
+    },
     table: {
       slots: {
         // The list wraps the table in a focusable region. This root must not

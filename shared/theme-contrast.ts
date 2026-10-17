@@ -111,6 +111,17 @@ export function themeContrastPairs(): ContrastPair[] {
     pairs.push(theme === 'light'
       ? { theme, kind: 'text', name: 'primary-button', foreground: '#ffffff', background: '#2563eb', minimum: 4.5 }
       : { theme, kind: 'text', name: 'primary-button', foreground: '#0f172a', background: '#3b82f6', minimum: 4.5 })
+    // Solid hover is Tailwind blue-600, not the resting token and not
+    // bg-primary/75. White on #155dfc is 5.25:1. Slate-900 on it is 3.4:1,
+    // so the hover label is white in both themes (app.config.ts).
+    pairs.push({
+      theme,
+      kind: 'text',
+      name: 'primary-button-hover',
+      foreground: '#ffffff',
+      background: '#155dfc',
+      minimum: 4.5,
+    })
     // The full-screen meet sign uses the text token on the working surface
     // (modal content is bg-default, the sign is text-highlighted). ADR-0040.
     pairs.push({
