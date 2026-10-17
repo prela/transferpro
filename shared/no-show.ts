@@ -1,4 +1,8 @@
+import type { DisplayLocale } from './display-locale'
 import type { RideState } from './transfer'
+import { calendarDateInTimeZone } from './date'
+import { formatInstant } from './format-instant'
+import { clockLabel } from './live-refresh'
 
 const MINUTE_MS = 60_000
 
@@ -40,4 +44,22 @@ export function noShowWaitBounds(clock: NoShowClock): { from: Date, until: Date 
 /** The Driver may mark a No-show once `until` is reached. The office is not gated here. */
 export function noShowWaitElapsed(clock: NoShowClock, now: Date): boolean {
   return now.getTime() >= noShowWaitBounds(clock).until.getTime()
+}
+
+/**
+ * The button names the window (ADR-0007). Both ends are the clock when they
+ * fall on the same calendar day in the Tenant zone ("od 10:00 do 10:25").
+ * A window that reaches the next day names each end with the full date.
+ */
+export function noShowWindowLabels(
+  from: Date,
+  until: Date,
+  timeZone: string,
+  locale: DisplayLocale,
+): { from: string, until: string } {
+  const sameDay = calendarDateInTimeZone(timeZone, from) === calendarDateInTimeZone(timeZone, until)
+  const label = (instant: Date) => sameDay
+    ? clockLabel(instant, timeZone, locale)
+    : formatInstant(instant, timeZone, locale)
+  return { from: label(from), until: label(until) }
 }

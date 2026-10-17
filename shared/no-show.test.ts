@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { canMarkNoShow, noShowWaitBounds, noShowWaitElapsed } from './no-show'
+import { canMarkNoShow, noShowWaitBounds, noShowWaitElapsed, noShowWindowLabels } from './no-show'
 
 const pickup = new Date('2026-10-13T10:00:00.000Z')
 const landing = new Date('2026-10-13T12:00:00.000Z')
@@ -59,6 +59,42 @@ it('counts an elsewhere wait from the scheduled pickup', () => {
   }
   expect(noShowWaitElapsed(clock, new Date('2026-10-13T10:24:59.999Z'))).toBe(false)
   expect(noShowWaitElapsed(clock, new Date('2026-10-13T10:25:00.000Z'))).toBe(true)
+})
+
+it('names a same-day No-show window by the clock, and a window that crosses midnight by the full date', () => {
+  // 08:00Z is 10:00 in Europe/Zagreb (CEST). Twenty-five minutes stays on that day.
+  const sameDay = noShowWindowLabels(
+    new Date('2026-10-13T08:00:00.000Z'),
+    new Date('2026-10-13T08:25:00.000Z'),
+    'Europe/Zagreb',
+    'hr',
+  )
+  expect(sameDay).toEqual({ from: '10:00', until: '10:25' })
+
+  const sameDayEnglish = noShowWindowLabels(
+    new Date('2026-10-13T08:00:00.000Z'),
+    new Date('2026-10-13T08:25:00.000Z'),
+    'Europe/Zagreb',
+    'en',
+  )
+  expect(sameDayEnglish).toEqual({ from: '10:00', until: '10:25' })
+
+  // 21:50Z is 23:50, and 22:15Z is 00:15 the next calendar day.
+  const nextDay = noShowWindowLabels(
+    new Date('2026-10-13T21:50:00.000Z'),
+    new Date('2026-10-13T22:15:00.000Z'),
+    'Europe/Zagreb',
+    'hr',
+  )
+  expect(nextDay).toEqual({ from: '13. 10. 2026. 23:50', until: '14. 10. 2026. 00:15' })
+
+  const nextDayEnglish = noShowWindowLabels(
+    new Date('2026-10-13T21:50:00.000Z'),
+    new Date('2026-10-13T22:15:00.000Z'),
+    'Europe/Zagreb',
+    'en',
+  )
+  expect(nextDayEnglish).toEqual({ from: '13/10/2026, 23:50', until: '14/10/2026, 00:15' })
 })
 
 it('counts an airport wait from the landing, or from the pickup when the landing is empty', () => {

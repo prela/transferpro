@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayLocale, DriverUpcomingRide } from '../../shared'
-import { canDeclineRide, canMarkNoShow, canMarkRideDone, canRecordLandingTime, formatInstant, noShowWaitBounds, noShowWaitElapsed } from '../../shared'
+import { canDeclineRide, canMarkNoShow, canMarkRideDone, canRecordLandingTime, formatInstant, noShowWaitBounds, noShowWaitElapsed, noShowWindowLabels } from '../../shared'
 
 const props = defineProps<{
   ride: DriverUpcomingRide
@@ -121,10 +121,8 @@ const noShowReady = computed(() => showNoShow.value && noShowWaitElapsed(noShowC
  */
 const noShowLabel = computed(() => {
   const bounds = noShowWaitBounds(noShowClock.value)
-  return t('driverRides.noShowWindow', {
-    from: pickupLabel(bounds.from.toISOString()),
-    until: pickupLabel(bounds.until.toISOString()),
-  })
+  const labels = noShowWindowLabels(bounds.from, bounds.until, props.timeZone, props.locale)
+  return t('driverRides.noShowWindow', labels)
 })
 
 const showLanding = computed(() => props.ride.airportMark && canRecordLandingTime(props.ride.state))

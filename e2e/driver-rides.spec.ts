@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 import pg from 'pg'
 import { calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { formatInstant } from '../shared/format-instant'
-import { noShowWaitBounds } from '../shared/no-show'
+import { noShowWaitBounds, noShowWindowLabels } from '../shared/no-show'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
@@ -14,6 +14,9 @@ import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures
  */
 async function showRide(page: Page, guest: string): Promise<Locator> {
   const article = page.locator('article').filter({ hasText: guest })
+  // The next Ride has no expand button. Wait until the row is on the page
+  // before deciding, or a lead card still loading looks like a closed row.
+  await expect(article).toBeVisible()
   const heading = article.getByRole('heading', { name: guest, exact: true })
   if (await heading.count() === 0)
     await article.getByRole('button', { expanded: false }).click()
@@ -320,6 +323,8 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   expect(overflow).toBe(false)
 
   await switchLocale(page, 'en')
+  await showRide(page, 'Nika Sunce')
+  await showRide(page, 'Nika Agencija')
   await expect(page.getByRole('heading', { name: 'Next ride' })).toBeVisible()
   await expect(cashCard.getByRole('link', { name: 'Open in maps' })).toHaveCount(2)
   await expect(invoiceCard.getByRole('link', { name: 'Open in maps' })).toHaveCount(2)
@@ -351,6 +356,8 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(invoiceCard.getByText('Waiting on acceptance')).toHaveCount(0)
 
   await switchTheme(page, 'dark')
+  await showRide(page, 'Nika Sunce')
+  await showRide(page, 'Nika Agencija')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(cashCard.getByRole('heading', { name: 'Nika Sunce' })).toBeVisible()
   await expect(cashCard.getByText('Masarykov put 1')).toBeVisible()
@@ -494,6 +501,8 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
   await expect(plain.getByRole('button', { name: 'Obavljeno', exact: true })).toBeVisible()
 
   await switchTheme(page, 'dark')
+  await showRide(page, 'Nika Da')
+  await showRide(page, 'Nika Ne')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(waiting.getByText('Čeka na prihvat')).toBeVisible()
   await expect(waiting.getByRole('button', { name: 'Prihvati', exact: true })).toBeVisible()
@@ -503,6 +512,8 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
   await expect(plain.getByText('Prihvaćeno')).toHaveCount(0)
 
   await switchLocale(page, 'en')
+  await showRide(page, 'Nika Da')
+  await showRide(page, 'Nika Ne')
   await expect(waiting.getByText('Waiting on acceptance')).toBeVisible()
   await expect(waiting.getByText('Accepted')).toHaveCount(0)
   await expect(waiting.getByText('33.00')).toHaveCount(0)
@@ -525,6 +536,8 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
   expect(overflow).toBe(false)
 
   await switchTheme(page, 'light')
+  await showRide(page, 'Nika Da')
+  await showRide(page, 'Nika Ne')
   await expect(page.locator('html')).not.toHaveClass(/dark/)
   await expect(waiting.getByText('Waiting on acceptance')).toBeVisible()
   await expect(waiting.getByRole('button', { name: 'Accept', exact: true })).toBeVisible()
@@ -722,6 +735,7 @@ test('@phone a driver accepts a waiting ride, and a conflict reloads the list', 
   // Ride again so the English screen shows the failure in the saved Locale.
   await setCopiedMustAccept(conflictRide, true)
   await switchLocale(page, 'en')
+  await showRide(page, 'Nika Sukob')
   await expect(accepted.getByText('Accepted')).toBeVisible()
   await expect(conflicted.getByRole('button', { name: 'Accept', exact: true })).toBeVisible()
   await setCopiedMustAccept(conflictRide, false)
@@ -1055,8 +1069,9 @@ test('@phone a driver marks a no-show after the wait and it leaves the upcoming 
   const earlyNoShow = early.getByRole('button', { name: /^Nedolazak/ })
   await expect(readyNoShow).toBeEnabled()
   await expect(earlyNoShow).toBeDisabled()
-  await expect(earlyNoShow).toContainText(formatInstant(earlyWindow.from, 'Europe/Zagreb', 'hr'))
-  await expect(earlyNoShow).toContainText(formatInstant(earlyWindow.until, 'Europe/Zagreb', 'hr'))
+  const earlyLabels = noShowWindowLabels(earlyWindow.from, earlyWindow.until, 'Europe/Zagreb', 'hr')
+  await expect(earlyNoShow).toContainText(earlyLabels.from)
+  await expect(earlyNoShow).toContainText(earlyLabels.until)
   await readyNoShow.click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('Ovo zatvara vožnju. Naknada se ne bilježi.')
@@ -1066,11 +1081,13 @@ test('@phone a driver marks a no-show after the wait and it leaves the upcoming 
 
   await switchLocale(page, 'en')
   await switchTheme(page, 'dark')
+  await showRide(page, 'Gost Rano')
   await expect(page.locator('html')).toHaveClass(/dark/)
   const earlyEnglish = early.getByRole('button', { name: /^No-show/ })
   await expect(earlyEnglish).toBeDisabled()
-  await expect(earlyEnglish).toContainText(formatInstant(earlyWindow.from, 'Europe/Zagreb', 'en'))
-  await expect(earlyEnglish).toContainText(formatInstant(earlyWindow.until, 'Europe/Zagreb', 'en'))
+  const earlyEnglishLabels = noShowWindowLabels(earlyWindow.from, earlyWindow.until, 'Europe/Zagreb', 'en')
+  await expect(earlyEnglish).toContainText(earlyEnglishLabels.from)
+  await expect(earlyEnglish).toContainText(earlyEnglishLabels.until)
   await ready.getByRole('button', { name: /^No-show/ }).click()
   await expect(dialog).toContainText('This closes the ride. No fee is recorded.')
   const marked = page.waitForResponse(response =>

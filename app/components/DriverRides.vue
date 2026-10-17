@@ -11,8 +11,11 @@ const props = defineProps<{
 const { t } = useI18n()
 
 const rides = ref<DriverUpcomingRide[]>([])
-/** A later Ride the Driver opened. A refresh leaves it open (ADR-0039). */
-const expandedId = ref<string | null>(null)
+/**
+ * Later Rides the Driver opened. A tap opens that row and leaves the others
+ * as they were. A refresh keeps every row that is still on the list (ADR-0039).
+ */
+const expandedIds = ref<Set<string>>(new Set())
 const airportWaitMinutes = ref<number | null>(null)
 const elsewhereWaitMinutes = ref<number | null>(null)
 // Start true so the empty copy does not flash before the first read.
@@ -57,8 +60,8 @@ async function reload(): Promise<LiveRefreshOutcome> {
     airportWaitMinutes.value = list.airportWaitMinutes
     elsewhereWaitMinutes.value = list.elsewhereWaitMinutes
     loadError.value = false
-    if (expandedId.value !== null && !list.rides.some(ride => ride.rideId === expandedId.value))
-      expandedId.value = null
+    const live = new Set(list.rides.map(ride => ride.rideId))
+    expandedIds.value = new Set([...expandedIds.value].filter(id => live.has(id)))
     await props.refreshDocuments()
     return 'ok'
   }
@@ -94,7 +97,12 @@ const actionsLocked = computed(() =>
 )
 
 function toggleRide(rideId: string) {
-  expandedId.value = expandedId.value === rideId ? null : rideId
+  const next = new Set(expandedIds.value)
+  if (next.has(rideId))
+    next.delete(rideId)
+  else
+    next.add(rideId)
+  expandedIds.value = next
 }
 
 async function onLandingSaved() {
@@ -461,7 +469,7 @@ async function confirmDecline() {
             :time-zone="timeZone"
             :locale="locale"
             :lead="false"
-            :expanded="expandedId === ride.rideId"
+            :expanded="expandedIds.has(ride.rideId)"
             :airport-wait-minutes="airportWaitMinutes"
             :elsewhere-wait-minutes="elsewhereWaitMinutes"
             :actions-locked="actionsLocked"

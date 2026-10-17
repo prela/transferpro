@@ -33,7 +33,7 @@ export { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_FIELDS, LOCATION_KINDS, LOCATION_
 export type { AddressSuggestion, CreateLocation, Location, LocationAddressError, LocationField, LocationKind, LocationKindError, LocationList, LocationNameError, LocationPatch, LocationPlace, PlaceProvider, SuggestAddressesInput, SuggestAddressesResponse } from './location'
 export { changeMemberRoleBodySchema, memberErrorKey, memberErrorMessage, memberListSchema, memberSchema } from './member'
 export type { ChangeMemberRoleBody, Member, MemberErrorKey, MemberList } from './member'
-export { canMarkNoShow, noShowWaitBounds, noShowWaitElapsed } from './no-show'
+export { canMarkNoShow, noShowWaitBounds, noShowWaitElapsed, noShowWindowLabels } from './no-show'
 export type { NoShowClock } from './no-show'
 export { occupationStripStorageKey, placeOccupationStrip, readOccupationStripCollapsed, writeOccupationStripCollapsed } from './occupation-strip'
 export type { OccupationStrip, OccupationStripBlock, OccupationStripRide, OccupationStripRow, OccupationStripTick, OccupationWarning } from './occupation-strip'
