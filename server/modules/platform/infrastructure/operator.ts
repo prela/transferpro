@@ -33,6 +33,12 @@ const emailSchema = z.object({
   migrateDatabaseUrl: z.url(),
 })
 
+const passwordSchema = z.object({
+  email: z.email(),
+  password: z.string().min(8).max(128),
+  migrateDatabaseUrl: z.url(),
+})
+
 const accountSchema = z.object({
   slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   active: z.boolean(),
@@ -90,6 +96,73 @@ export async function createSuperadmin(input: CreateSuperadminInput): Promise<vo
         'insert into platform.superadmin (user_id) values ($1)',
         [userId],
       )
+      await client.query('commit')
+    }
+    catch (error) {
+      await client.query('rollback')
+      throw operatorFailure(error)
+    }
+    finally {
+      client.release()
+    }
+  }
+  finally {
+    await pool.end()
+  }
+}
+
+export interface SetSuperadminPasswordInput {
+  readonly email: string
+  readonly password: string
+  readonly migrateDatabaseUrl: string
+}
+
+/**
+ * Recovery for a platform owner only. The hash update and the deletion of
+ * every session of that user commit together, so a failed hash leaves the
+ * old sessions usable. A member, a user without the grant, and an unknown
+ * email get the same sentence, and that sentence omits the email.
+ */
+export async function setSuperadminPassword(input: SetSuperadminPasswordInput): Promise<void> {
+  const parsed = passwordSchema.safeParse(input)
+  if (!parsed.success) {
+    const fields = new Set(parsed.error.issues.map(issue => String(issue.path[0])))
+    if (fields.has('password'))
+      throw new PlatformOperatorError('Password must be 8 to 128 characters.')
+    if (fields.has('migrateDatabaseUrl'))
+      throw new PlatformOperatorError('DATABASE_MIGRATE_URL must be set. It is the transferpro_owner role.')
+    throw new PlatformOperatorError('Email must be valid.')
+  }
+  const email = parsed.data.email.toLowerCase()
+  const pool = new pg.Pool({ connectionString: parsed.data.migrateDatabaseUrl, max: 1 })
+  try {
+    await assertOwner(pool)
+    const client = await pool.connect()
+    try {
+      await client.query('begin')
+      const existing = await client.query<{ id: string, superadmin: boolean, member: boolean }>(
+        `select id,
+                exists(select 1 from platform.superadmin where user_id = auth."user".id) as superadmin,
+                exists(select 1 from auth.member where user_id = auth."user".id) as member
+         from auth."user"
+         where lower(email) = $1`,
+        [email],
+      )
+      const account = existing.rows[0]
+      if (!account?.superadmin || account.member)
+        throw new PlatformOperatorError('No platform owner matches that account.')
+      const passwordHash = await hashPassword(parsed.data.password)
+      // Delete first. A missing credential throws before commit, and rollback
+      // puts the sessions back. The old cookie keeps working.
+      await client.query('delete from auth.session where user_id = $1', [account.id])
+      const updated = await client.query(
+        `update auth.account
+         set password = $1, updated_at = now()
+         where user_id = $2 and provider_id = 'credential'`,
+        [passwordHash, account.id],
+      )
+      if ((updated.rowCount ?? 0) !== 1)
+        throw new PlatformOperatorError('No platform owner matches that account.')
       await client.query('commit')
     }
     catch (error) {

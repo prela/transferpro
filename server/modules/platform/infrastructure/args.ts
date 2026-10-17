@@ -45,6 +45,17 @@ export function parseSuperadminRevokeArgs(argv: readonly string[]): { email: str
   return parsed.data
 }
 
+const passwordUsage = 'pnpm superadmin:password --email <email>\nThe password is read from the prompt, or from stdin when there is no terminal.'
+
+/** Email only. `--password` is refused in `readFlags` before this returns. */
+export function parseSuperadminPasswordArgs(argv: readonly string[]): { email: string } {
+  const values = readFlags(argv, ['email'], passwordUsage)
+  const parsed = revokeSchema.safeParse({ email: values.get('email') })
+  if (!parsed.success)
+    throw new PlatformArgsError(`Usage: ${passwordUsage}`)
+  return parsed.data
+}
+
 export function parseTenantAccountArgs(argv: readonly string[]): { slug: string, active: boolean } {
   const values = readFlags(
     argv,

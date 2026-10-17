@@ -5,10 +5,10 @@ import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { configureLogger } from '../../../core/index'
 import { assertPlatformRole } from '../../../core/infrastructure'
-import { closeTenantRuntime, createTenant, handleAuthRequest, readSessionShell, TenantAccessError } from '../../tenancy'
+import { closeTenantRuntime, createTenant, handleAuthRequest, platformActorFromSession, readSessionShell, TenantAccessError } from '../../tenancy'
 import { createAuth } from '../../tenancy/infrastructure/auth'
 import { acceptInvitation, InvitationAccessError } from '../../tenancy/infrastructure/invitation'
-import { createSuperadmin, PlatformOperatorError, revokeSuperadmin, setTenantActive } from '../index'
+import { createSuperadmin, PlatformOperatorError, revokeSuperadmin, setSuperadminPassword, setTenantActive } from '../index'
 
 /**
  * The platform role's grants, the exclusion triggers, the emergency lever,
@@ -150,15 +150,24 @@ async function addMember(tenantId: string, email: string, name: string, role: Te
   )
 }
 
-async function signIn(email: string): Promise<Headers> {
+async function signIn(email: string, secret = password): Promise<Headers> {
   const response = await handleAuthRequest(new Request(new URL('/api/auth/sign-in/email', authUrl), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password: secret }),
   }))
   if (!response.ok)
     throw new Error(`sign-in status ${response.status}`)
   return new Headers({ cookie: response.headers.getSetCookie().map(part => part.split(';')[0]).join('; ') })
+}
+
+async function signInStatus(email: string, secret: string): Promise<number> {
+  const response = await handleAuthRequest(new Request(new URL('/api/auth/sign-in/email', authUrl), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password: secret }),
+  }))
+  return response.status
 }
 
 async function sessionLife(email: string): Promise<number> {
@@ -486,6 +495,146 @@ it('signing out a superadmin the way the platform page does clears the session c
   }))
   expect(leftover.status).toBe(200)
   expect(await leftover.json()).toBeNull()
+})
+
+it('replaces a superadmin password and signs out every old session', async () => {
+  const email = 'plt-owner-password@example.test'
+  const next = 'platform-next-password'
+  await createSuperadmin({
+    name: 'Platform Password',
+    email,
+    password,
+    migrateDatabaseUrl,
+  })
+  const first = await signIn(email)
+  const second = await signIn(email)
+  expect((await platformActorFromSession(first)).userId).toBeTruthy()
+  expect((await platformActorFromSession(second)).userId).toBeTruthy()
+
+  await setSuperadminPassword({ email, password: next, migrateDatabaseUrl })
+
+  for (const headers of [first, second]) {
+    const error = await platformActorFromSession(headers).then(() => null, caught => caught)
+    expect(error).toBeInstanceOf(TenantAccessError)
+    expect((error as TenantAccessError).statusCode).toBe(401)
+  }
+  const sessions = await ownerPool.query<{ n: number }>(
+    `select count(*)::int as n from auth.session
+     where user_id = (select id from auth."user" where lower(email) = $1)`,
+    [email],
+  )
+  expect(sessions.rows[0]?.n).toBe(0)
+  expect(await signInStatus(email, password)).toBe(401)
+  const signedIn = await signIn(email, next)
+  expect((await platformActorFromSession(signedIn)).userId).toBeTruthy()
+})
+
+it('refuses password recovery for an unknown email, a user without a grant, and a tenant member', async () => {
+  const email = 'plt-owner-password-keep@example.test'
+  const next = 'platform-next-password'
+  await createSuperadmin({
+    name: 'Platform Password Keep',
+    email,
+    password,
+    migrateDatabaseUrl,
+  })
+  const session = await signIn(email)
+
+  const unknownEmail = 'plt-missing-password@example.test'
+  const unknown = await setSuperadminPassword({
+    email: unknownEmail,
+    password: next,
+    migrateDatabaseUrl,
+  }).then(() => null, caught => caught)
+  expect(unknown).toBeInstanceOf(PlatformOperatorError)
+  expect((unknown as Error).message).toBe('No platform owner matches that account.')
+  expect((unknown as Error).message).not.toContain(unknownEmail)
+  expect((unknown as Error).message).not.toContain(next)
+
+  const plain = 'plt-plain-password@example.test'
+  const plainId = crypto.randomUUID()
+  await authPool.query(
+    `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
+     values ($1, 'Plain', $2, true, now(), now())`,
+    [plainId, plain],
+  )
+  await authPool.query(
+    `insert into auth.account (id, account_id, provider_id, user_id, password, created_at, updated_at)
+     values ($1, $2, 'credential', $2, $3, now(), now())`,
+    [crypto.randomUUID(), plainId, await hashPassword(password)],
+  )
+  const noGrant = await setSuperadminPassword({
+    email: plain,
+    password: next,
+    migrateDatabaseUrl,
+  }).then(() => null, caught => caught)
+  expect(noGrant).toBeInstanceOf(PlatformOperatorError)
+  expect((noGrant as Error).message).toBe('No platform owner matches that account.')
+  expect((noGrant as Error).message).not.toContain(plain)
+  await signIn(plain)
+
+  const member = await tenant('plt-password-member')
+  const memberRefused = await setSuperadminPassword({
+    email: member.adminEmail,
+    password: next,
+    migrateDatabaseUrl,
+  }).then(() => null, caught => caught)
+  expect(memberRefused).toBeInstanceOf(PlatformOperatorError)
+  expect((memberRefused as Error).message).toBe('No platform owner matches that account.')
+  expect((memberRefused as Error).message).not.toContain(member.adminEmail)
+  await signIn(member.adminEmail)
+
+  for (const bad of ['short', 'a'.repeat(129)]) {
+    const length = await setSuperadminPassword({
+      email,
+      password: bad,
+      migrateDatabaseUrl,
+    }).then(() => null, caught => caught)
+    expect(length).toBeInstanceOf(PlatformOperatorError)
+    expect((length as Error).message).toBe('Password must be 8 to 128 characters.')
+    expect((length as Error).message).not.toContain(email)
+  }
+
+  const wrongRole = await setSuperadminPassword({
+    email,
+    password: next,
+    migrateDatabaseUrl: authDatabaseUrl,
+  }).then(() => null, caught => caught)
+  expect(wrongRole).toBeInstanceOf(PlatformOperatorError)
+  expect((wrongRole as Error).message).toMatch(/It must be transferpro_owner/)
+  expect((wrongRole as Error).message).not.toContain(next)
+  expect((wrongRole as Error).message).not.toContain(email)
+
+  expect((await platformActorFromSession(session)).userId).toBeTruthy()
+  await signIn(email)
+  expect(await signInStatus(email, next)).toBe(401)
+})
+
+it('keeps the old session when the credential update cannot be committed', async () => {
+  const email = 'plt-owner-password-rollback@example.test'
+  const next = 'platform-next-password'
+  await createSuperadmin({
+    name: 'Platform Password Rollback',
+    email,
+    password,
+    migrateDatabaseUrl,
+  })
+  const session = await signIn(email)
+  await ownerPool.query(
+    `delete from auth.account
+     where provider_id = 'credential'
+       and user_id = (select id from auth."user" where lower(email) = $1)`,
+    [email],
+  )
+  const failed = await setSuperadminPassword({
+    email,
+    password: next,
+    migrateDatabaseUrl,
+  }).then(() => null, caught => caught)
+  expect(failed).toBeInstanceOf(PlatformOperatorError)
+  expect((failed as Error).message).not.toContain(email)
+  expect((failed as Error).message).not.toContain(next)
+  expect((await platformActorFromSession(session)).userId).toBeTruthy()
 })
 
 it('deactivates the next request and refuses an invitation before a user exists', async () => {
