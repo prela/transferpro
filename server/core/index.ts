@@ -47,9 +47,16 @@ export interface AppEnv {
   /**
    * Addresses that may reach Resend, lowercased. Unset means the selected
    * transport is unchanged. A set list sends everyone else as the console
-   * line. ADR-0042.
+   * line. ADR-0042. Required when `DEPLOY_ENV` is `preview`.
    */
   readonly MAIL_ALLOWLIST: readonly string[] | undefined
+  /**
+   * Which deployment this process is. `preview` and `production` both keep
+   * `NODE_ENV=production`; this field is how boot tells them apart.
+   * Unset and blank stay unset, and then `MAIL_ALLOWLIST` is optional,
+   * the same as an explicit `production`. Any other value fails boot.
+   */
+  readonly DEPLOY_ENV: 'preview' | 'production' | undefined
   /**
    * Which maps adapter runs. `none` is the default in every environment,
    * so a fresh process never calls the provider. `google` requires the key.
@@ -103,6 +110,21 @@ function blankEnv(value: string | undefined): string | undefined {
  */
 function consoleMailerAllowed(source: NodeJS.ProcessEnv): boolean {
   return source.ALLOW_CONSOLE_MAILER === '1'
+}
+
+/**
+ * Unset and blank are unset. `preview` and `production` are the only
+ * other values. Zod parses the enum; a failure throws a fixed sentence
+ * so the raw value is not written into the boot error.
+ */
+function parseDeployEnv(source: NodeJS.ProcessEnv): 'preview' | 'production' | undefined {
+  const raw = blankEnv(source.DEPLOY_ENV)
+  if (raw === undefined)
+    return undefined
+  const parsed = z.enum(['preview', 'production']).safeParse(raw)
+  if (!parsed.success)
+    throw new Error('DEPLOY_ENV must be preview, production, or unset.')
+  return parsed.data
 }
 
 /**
@@ -218,6 +240,12 @@ export function nodeEnv(): string | undefined {
 export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
   const MAPS = parseMaps(source)
   const MAILER = parseMailer(source)
+  const DEPLOY_ENV = parseDeployEnv(source)
+  const MAIL_ALLOWLIST = parseMailAllowlist(source)
+  // Preview cannot fall through to an open Resend path (ADR-0043).
+  // Production and an unset deploy still boot without the list (ADR-0037, ADR-0042).
+  if (DEPLOY_ENV === 'preview' && MAIL_ALLOWLIST === undefined)
+    throw new Error('MAIL_ALLOWLIST is required when DEPLOY_ENV is preview.')
   return {
     ...appEnvSchema.parse({
       DATABASE_URL: source.DATABASE_URL,
@@ -230,7 +258,8 @@ export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
     LOG_LEVEL: parseLogLevel(source),
     MAILER,
     RESEND_API_KEY: parseResendApiKey(source, MAILER),
-    MAIL_ALLOWLIST: parseMailAllowlist(source),
+    MAIL_ALLOWLIST,
+    DEPLOY_ENV,
     MAPS,
     MAPS_API_KEY: parseMapsApiKey(source, MAPS),
     SENTRY_DSN: parseSentryDsn(source),
