@@ -66,13 +66,15 @@ onScopeDispose(() => {
 <template>
   <!--
     Full-screen meet sign (ADR-0038). UModal is the Reka dialog. The content
-    slot is the sign itself: text on the working surface, one close control.
+    slot is the sign itself. The description is a fixed sentence: with the
+    content slot, Nuxt UI puts it in VisuallyHidden, so it must not repeat
+    the tabla or the screen reader and the e2e locator see the text twice.
   -->
   <UModal
     v-model:open="open"
     fullscreen
     :title="t('transfers.tabla')"
-    :description="props.tabla"
+    :description="t('driverRides.tablaDescription')"
     :close="false"
     :ui="{ content: 'bg-default text-highlighted' }"
     @after:enter="fitSign"
