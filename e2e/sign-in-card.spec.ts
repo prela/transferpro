@@ -78,6 +78,24 @@ test.describe('@phone', () => {
       await expectNoAxeViolations(page)
     })
   }
+
+  // The solid primary submit is the sign-in form's action. Hover must keep
+  // the white label at 4.5:1; the default wash (bg-primary/75) does not.
+  // Inside @phone so the phone project runs this axe check too.
+  for (const theme of ['light', 'dark'] as const) {
+    test(`the sign-in primary button passes axe while hovered in ${theme}`, async ({ page }) => {
+      await useTheme(page, theme)
+      await page.goto('/')
+      const submit = page.getByRole('button', { name: 'Prijavi se', exact: true })
+      await expect(submit).toBeVisible()
+      if (theme === 'dark')
+        await expect(page.locator('html')).toHaveClass(/dark/)
+      else
+        await expect(page.locator('html')).not.toHaveClass(/dark/)
+      await submit.hover()
+      await expectNoAxeViolations(page)
+    })
+  }
 })
 
 /** The card column is at most 28rem and sits in the middle of the frame. */
