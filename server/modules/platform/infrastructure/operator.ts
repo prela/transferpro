@@ -1,7 +1,7 @@
 import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { z } from 'zod'
-import { tenantNameSchema } from '../../../../shared'
+import { passwordLengthLimits, tenantNameSchema } from '../../../../shared'
 import { appendPlatformAudit } from './audit'
 
 /**
@@ -24,7 +24,7 @@ const OPERATOR_ACTOR = 'transferpro_owner'
 const createSchema = z.object({
   name: tenantNameSchema,
   email: z.email(),
-  password: z.string().min(8).max(128),
+  password: z.string().min(passwordLengthLimits.minPasswordLength).max(passwordLengthLimits.maxPasswordLength),
   migrateDatabaseUrl: z.url(),
 })
 
@@ -52,7 +52,7 @@ export async function createSuperadmin(input: CreateSuperadminInput): Promise<vo
   if (!parsed.success) {
     const fields = new Set(parsed.error.issues.map(issue => String(issue.path[0])))
     if (fields.has('password'))
-      throw new PlatformOperatorError('Password must be 8 to 128 characters.')
+      throw new PlatformOperatorError(`Password must be ${passwordLengthLimits.minPasswordLength} to ${passwordLengthLimits.maxPasswordLength} characters.`)
     if (fields.has('migrateDatabaseUrl'))
       throw new PlatformOperatorError('DATABASE_MIGRATE_URL must be set. It is the transferpro_owner role.')
     throw new PlatformOperatorError('Name and email must be valid.')

@@ -31,6 +31,18 @@
     "more": "More",
     "newTransfer": "New transfer"
   },
+  "profile": {
+    "changePassword": "Change password",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "submit": "Save password",
+    "submitting": "Saving password",
+    "currentPasswordWrong": "The current password is not correct.",
+    "passwordMismatch": "The new password and the confirmation do not match.",
+    "passwordChanged": "Your password was changed",
+    "passwordChangeFailed": "The password was not changed. Try again."
+  },
   "palette": {
     "open": "Search",
     "title": "Search",

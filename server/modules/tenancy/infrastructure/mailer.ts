@@ -47,11 +47,21 @@ export interface FlightWillNotArriveNotice {
   readonly driverId: string
 }
 
+/**
+ * Someone changed this account's password. No Tenant, no person, no link.
+ * The address is the recipient only. Callers must not log it.
+ */
+export interface PasswordChangedMail {
+  readonly to: string
+  readonly locale: DisplayLocale
+}
+
 export interface Mailer {
   sendInvitation: (mail: InvitationMail) => Promise<void>
   sendWorkOrder: (mail: WorkOrderMail) => Promise<void>
   notifyArrivalMoved: (notice: ArrivalMovedNotice) => Promise<void>
   notifyFlightWillNotArrive: (notice: FlightWillNotArriveNotice) => Promise<void>
+  sendPasswordChanged: (mail: PasswordChangedMail) => Promise<void>
 }
 
 /**
@@ -74,6 +84,7 @@ export function createFakeMailer(
   workOrders: WorkOrderMail[] = [],
   arrivalMoves: ArrivalMovedNotice[] = [],
   willNotArrive: FlightWillNotArriveNotice[] = [],
+  passwordChanged: PasswordChangedMail[] = [],
 ): Mailer {
   return {
     async sendInvitation(mail) {
@@ -87,6 +98,9 @@ export function createFakeMailer(
     },
     async notifyFlightWillNotArrive(notice) {
       willNotArrive.push({ ...notice })
+    },
+    async sendPasswordChanged(mail) {
+      passwordChanged.push({ ...mail })
     },
   }
 }
@@ -141,6 +155,14 @@ export function createConsoleMailer(log?: Logger): Mailer {
         kind: 'will-not-arrive',
         rideId: notice.rideId,
         driverId: notice.driverId,
+      })
+    },
+    async sendPasswordChanged() {
+      // The address stays off the log. The mail names no Tenant and no person.
+      const logger = log ?? getLogger()
+      logger.info({
+        event: 'mail.console',
+        kind: 'password-changed',
       })
     },
   }
@@ -219,6 +241,26 @@ export function invitationEmail(mail: InvitationMail): InvitationEmail {
     `The link is valid for ${days} days.`,
   ].join('\n')
   const html = `<p>You are invited to ${safeTenant} as ${safeRole}.</p><p><a href="${safeUrl}">Open the link</a> and set a password.</p><p>The link is valid for ${days} days.</p>`
+  return { subject, text, html }
+}
+
+/** The user's locale, or Croatian. No name, no Tenant, no link. */
+export function passwordChangedEmail(mail: PasswordChangedMail): InvitationEmail {
+  if (mail.locale === 'hr') {
+    const subject = 'Lozinka je promijenjena'
+    const text = [
+      'Lozinka je promijenjena.',
+      'Ako ovu promjenu niste napravili vi, javite se administratoru tvrtke.',
+    ].join('\n')
+    const html = '<p>Lozinka je promijenjena.</p><p>Ako ovu promjenu niste napravili vi, javite se administratoru tvrtke.</p>'
+    return { subject, text, html }
+  }
+  const subject = 'Your password was changed'
+  const text = [
+    'Your password was changed.',
+    'If you did not make this change, contact your company\'s administrator.',
+  ].join('\n')
+  const html = '<p>Your password was changed.</p><p>If you did not make this change, contact your company\'s administrator.</p>'
   return { subject, text, html }
 }
 
@@ -311,6 +353,14 @@ export function createResendMailer(
     // is posted. When one is, it goes through `send`, the only Resend call.
     async notifyArrivalMoved() {},
     async notifyFlightWillNotArrive() {},
+    async sendPasswordChanged(mail) {
+      const message = passwordChangedEmail(mail)
+      await send(
+        { to: mail.to, ...message },
+        'Password changed email was not sent.',
+        async () => { await consoleMailer?.sendPasswordChanged(mail) },
+      )
+    },
   }
   resendMailers.add(mailer)
   return mailer

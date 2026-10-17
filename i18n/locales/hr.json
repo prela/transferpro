@@ -31,6 +31,18 @@
     "more": "Više",
     "newTransfer": "Novi transfer"
   },
+  "profile": {
+    "changePassword": "Promjena lozinke",
+    "currentPassword": "Trenutna lozinka",
+    "newPassword": "Nova lozinka",
+    "confirmPassword": "Potvrda lozinke",
+    "submit": "Spremi lozinku",
+    "submitting": "Spremanje lozinke",
+    "currentPasswordWrong": "Trenutna lozinka nije točna",
+    "passwordMismatch": "Nova lozinka i potvrda nisu iste.",
+    "passwordChanged": "Lozinka je promijenjena",
+    "passwordChangeFailed": "Lozinka nije promijenjena. Pokušajte ponovno."
+  },
   "palette": {
     "open": "Traži",
     "title": "Traži",
