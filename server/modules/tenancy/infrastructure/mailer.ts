@@ -160,8 +160,8 @@ export function assertTestMailer(mailer: Mailer | undefined): void {
  * both set. Development otherwise uses the console mailer so a local
  * process does not spend the shared daily quota. Any other selection of
  * the Resend adapter is refused in test.
- * `log` is the console line for a recipient the allowlist turns away.
- * Boot omits it and the process logger is used.
+ * `log` is the logger for the console line when the allowlist turns a
+ * recipient away. Boot omits it and the process logger is used.
  */
 export function mailerForApp(env: {
   readonly RESEND_API_KEY: string | undefined
@@ -251,7 +251,20 @@ export function createResendMailer(
   // Built only when the list is set. Unset keeps every send on Resend.
   const consoleMailer = allowlist === undefined ? undefined : createConsoleMailer(options?.log)
 
-  async function post(message: ResendMessage, failure: string): Promise<void> {
+  /**
+   * The only call to Resend. The allowlist sees `message.to`, the address
+   * this call would post, so a notice that resolves its recipient and then
+   * calls here is gated the same way as a caller-supplied `to`.
+   */
+  async function send(
+    message: ResendMessage,
+    failure: string,
+    consoleSend: () => Promise<void>,
+  ): Promise<void> {
+    if (allowlist !== undefined && !allowlist.has(message.to.trim().toLowerCase())) {
+      await consoleSend()
+      return
+    }
     // The default fetch is the real transport. A unit test passes its own
     // fetch and never leaves the process. Test mode must not reach Resend.
     if (nodeEnv() === 'test' && fetchImpl === globalThis.fetch)
@@ -278,41 +291,24 @@ export function createResendMailer(
     }
   }
 
-  /**
-   * The allowlist sees `message.to`, the address this call would post.
-   * Callers that already know the recipient, and a notice that looks one
-   * up before calling this, share this gate.
-   */
-  async function deliver(
-    message: ResendMessage,
-    failure: string,
-    consoleSend: () => Promise<void>,
-  ): Promise<void> {
-    if (allowlist !== undefined && !allowlist.has(message.to.trim().toLowerCase())) {
-      await consoleSend()
-      return
-    }
-    await post(message, failure)
-  }
-
   const mailer: Mailer = {
     async sendInvitation(mail) {
       const message = invitationEmail(mail)
-      await deliver(
+      await send(
         { to: mail.to, ...message },
         'Invitation email was not sent.',
         async () => { await consoleMailer?.sendInvitation(mail) },
       )
     },
     async sendWorkOrder(mail) {
-      await deliver(
+      await send(
         mail,
         'Work order email was not sent.',
         async () => { await consoleMailer?.sendWorkOrder(mail) },
       )
     },
     // The message text is a later ticket. No address is resolved, so nothing
-    // is posted. When one is, it must go through `deliver`.
+    // is posted. When one is, it goes through `send`, the only Resend call.
     async notifyArrivalMoved() {},
     async notifyFlightWillNotArrive() {},
   }
