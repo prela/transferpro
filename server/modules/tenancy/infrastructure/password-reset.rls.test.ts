@@ -4,7 +4,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
 import { closeTenantRuntime, readSessionShell } from '..'
-import { resetPasswordLink } from '../../../../shared'
+import { resetPasswordLink, resetTokenFromLink } from '../../../../shared'
 import { parseAppEnv } from '../../../core/index'
 import { captureLogs } from '../../../core/testing'
 import { createSuperadmin } from '../../platform'
@@ -271,18 +271,40 @@ it('stores a hashed reset identifier and not the mailed token', async () => {
   const token = resetTokenFromMail(resets.at(-1)?.resetUrl)
   const rows = await handle.authPool.query(
     `select identifier from auth.verification
-     where value = $1 and identifier like 'reset-password:%'`,
+     where value = $1 and identifier like 'reset-password-hash:%'`,
     [id],
   )
   const identifiers = z.array(z.object({ identifier: z.string() })).parse(rows.rows)
   expect(identifiers.length).toBeGreaterThan(0)
   for (const row of identifiers) {
-    expect(row.identifier.startsWith('reset-password:')).toBe(true)
+    expect(row.identifier.startsWith('reset-password-hash:')).toBe(true)
     expect(row.identifier).not.toContain(token)
   }
   const response = await resetPassword(handle, token, nextPassword)
   expect(response.status).toBe(200)
   await response.arrayBuffer()
+})
+
+it('refuses the stored hash suffix as a reset token and keeps the password', async () => {
+  const email = 'slice241-suffix@example.com'
+  const id = await provision(email, 'admin', 'hr')
+  const before = resets.length
+  await answered(handle, email)
+  await waitFor(() => resets.length === before + 1)
+  const rows = await handle.authPool.query(
+    `select identifier from auth.verification
+     where value = $1 and identifier like 'reset-password-hash:%'`,
+    [id],
+  )
+  const identifier = z.object({ identifier: z.string() }).parse(rows.rows[0]).identifier
+  const prefix = 'reset-password-hash:'
+  expect(identifier.startsWith(prefix)).toBe(true)
+  const suffix = identifier.slice(prefix.length)
+  const response = await resetPassword(handle, suffix, nextPassword)
+  expect(response.status).toBe(400)
+  await response.arrayBuffer()
+  const signedIn = await signIn(handle, currentPassword, email)
+  expect(signedIn.cookie).toBeTruthy()
 })
 
 it('mails an archived Driver and does not resend an invitation that has no account', async () => {
@@ -386,7 +408,8 @@ it('uses a link once, drops the older link, and refuses an expired one', async (
   expect(kept.rows).toEqual([{ identifier: 'keep-verification:not-a-reset' }])
   const leftover = await handle.authPool.query(
     `select identifier from auth.verification
-     where value = $1 and identifier like 'reset-password:%'`,
+     where value = $1
+       and (identifier like 'reset-password-hash:%' or identifier like 'reset-password:%')`,
     [id],
   )
   expect(leftover.rows).toEqual([])
@@ -546,7 +569,7 @@ async function resetPassword(
 }
 
 function resetTokenFromMail(resetUrl: string | undefined): string {
-  const token = resetUrl === undefined ? '' : new URL(resetUrl).hash.slice(1)
+  const token = resetUrl === undefined ? '' : resetTokenFromLink(resetUrl)
   if (token.length < 8)
     throw new Error('reset mail has no token')
   return token
@@ -557,7 +580,7 @@ async function latestToken(userId: string, email: string): Promise<{ token: stri
   const token = resetTokenFromMail(mail?.resetUrl)
   const result = await handle.authPool.query(
     `select expires_at from auth.verification
-     where value = $1 and identifier like 'reset-password:%'
+     where value = $1 and identifier like 'reset-password-hash:%'
      order by created_at desc
      limit 1`,
     [userId],

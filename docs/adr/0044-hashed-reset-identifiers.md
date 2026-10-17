@@ -10,9 +10,9 @@ Better Auth 1.7.9 can hash a verification identifier (`verification.storeIdentif
 
 ## Decision
 
-We will store a reset identifier as `reset-password:` plus the base64url SHA-256 of the original `reset-password:<token>` string. The Better Auth override applies only to that prefix. Other verification identifiers stay plain. Invitations stay in `auth.invitation`.
+We will store a reset identifier as `reset-password-hash:` plus the base64url SHA-256 of the original `reset-password:<token>` string. The Better Auth override stays on the input prefix `reset-password:`. The stored prefix is a different string. Other verification identifiers stay plain. Invitations stay in `auth.invitation`.
 
-`deleteRemainingResetTokens` keeps `identifier like 'reset-password:%'`. That still matches hashed rows and plaintext rows written before this change. Better Auth still finds a plaintext identifier when the hashed lookup misses, so a link issued before the deploy works until it expires or is used.
+`deleteRemainingResetTokens` deletes `reset-password-hash:%` and plain `reset-password:%` for that user. The stored prefix must not be `reset-password:`. After a hashed lookup misses, Better Auth 1.7.9 looks the presented identifier up again as plain text. A row stored as `reset-password:<digest>` makes that digest a working token. `reset-password-hash:` is not the string that fallback looks up. A plaintext row from before this change still matches the fallback, so an old link works until it expires or is used.
 
 E2e no longer reads the token from `auth.verification`. The test server's fake mailer appends `{ to, resetUrl }` to the file named by `E2E_PASSWORD_RESET_OUTBOX`, and only while `NODE_ENV` is `test`. The spec reads the token from that file. The e2e server truncates the file when it starts. Development and production do not set the variable and do not write it. The address and the link stay off the log, as ADR-0042 already requires.
 

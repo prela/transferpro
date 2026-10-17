@@ -287,8 +287,8 @@ export function createAuth(
         generateId: () => crypto.randomUUID(),
       },
     },
-    // Reset rows keep the prefix and replace the token with a hash.
-    // Everything else, including the unknown-address dummy lookup, stays plain.
+    // The override key is the identifier Better Auth builds. The hasher
+    // stores reset-password-hash: so the plain fallback cannot replay the row.
     verification: {
       storeIdentifier: {
         default: 'plain',
