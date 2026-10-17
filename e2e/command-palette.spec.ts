@@ -64,6 +64,11 @@ test.describe('@phone', () => {
     const box = page.getByRole('dialog', { name: 'Traži' }).getByRole('textbox', { name: 'Zaslon, naredba ili transfer' })
 
     async function findAndOpen(query: string) {
+      // The phone detail covers the top bar, so the magnifier is not a
+      // target until Back returns to the list.
+      const back = page.getByRole('button', { name: 'Natrag', exact: true })
+      if (isPhone(page) && await back.isVisible())
+        await back.click()
       await openPalette(page, 'Traži')
       await box.fill(query)
       const option = page.getByRole('option', { name: guest })
@@ -71,7 +76,7 @@ test.describe('@phone', () => {
       await option.click()
       await expect(page).toHaveURL(new RegExp(`[?&]day=${day}`))
       await expect(page).toHaveURL(new RegExp(`[?&]ride=${rideId}`))
-      await expect(page.getByRole('heading', { level: 2, name: guest, exact: true })).toBeVisible()
+      await expect(page.getByRole('article', { name: guest, exact: true })).toBeVisible()
       await expect(page.getByRole('dialog', { name: 'Traži' })).toHaveCount(0)
     }
 
@@ -110,7 +115,7 @@ test.describe('@phone', () => {
     await typed.fill('3.11.2026')
     await page.getByRole('option', { name: 'Idi na dan 03. 11. 2026.', exact: true }).click()
     await expect(page).toHaveURL(/day=2026-11-03/)
-    await expect(page.getByLabel('Dan')).toHaveValue('2026-11-03')
+    await expect(page.getByRole('textbox', { name: 'Dan', exact: true })).toHaveValue('2026-11-03')
 
     await signOut(page)
     await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
@@ -132,7 +137,7 @@ test.describe('@phone', () => {
     await typed.fill('3.11.2026')
     await page.getByRole('option', { name: /Idi na dan 03\. 11\. 2026/ }).click()
     await expect(page).toHaveURL(/day=2026-11-03/)
-    await expect(page.getByLabel('Dan')).toHaveValue('2026-11-03')
+    await expect(page.getByRole('textbox', { name: 'Dan', exact: true })).toHaveValue('2026-11-03')
   })
 })
 

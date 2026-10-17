@@ -45,10 +45,19 @@ function stopSearch() {
   searching.value = false
 }
 
-watch(open, (isOpen) => {
-  if (!isOpen)
+watch([open, locale], () => {
+  if (!open.value) {
     searchTerm.value = ''
-})
+    return
+  }
+  // UDashboardSearch does not name its listbox. axe treats that listbox as an
+  // input. The name is set after the dialog renders.
+  if (!import.meta.client)
+    return
+  const listbox = document.querySelector('[role="dialog"] [role="listbox"]')
+  if (listbox instanceof HTMLElement)
+    listbox.setAttribute('aria-label', t('palette.placeholder'))
+}, { flush: 'post' })
 
 watch([open, searchTerm], () => {
   stopSearch()
@@ -232,6 +241,8 @@ const groups = computed(() => {
   <!--
     meta_k is Ctrl+K on Linux and Windows, and Cmd+K on macOS, including
     while a field is focused. Esc is the dialog's own dismiss.
+    The default modal is a fixed 28rem, so the result list scrolls and axe
+    rejects that region. Growing with the list keeps the rows on screen.
   -->
   <UDashboardSearch
     v-model:open="open"
@@ -246,5 +257,6 @@ const groups = computed(() => {
     :input="searchInput"
     :fuse="searchFuse"
     :preserve-group-order="true"
+    :ui="{ modal: 'sm:!h-auto sm:max-h-[calc(100vh-2rem)]' }"
   />
 </template>
