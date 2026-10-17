@@ -1,6 +1,7 @@
 import type pg from 'pg'
 import type { Logger } from '../../../core/index'
 import type { Mailer } from './mailer'
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { resetPasswordLink } from '../../../../shared'
 import { passwordMailAccount } from './password-changed'
@@ -15,6 +16,31 @@ const RESET_MAIL_WINDOW_MS = 60 * 60 * 1000
 
 /** The link lifetime Better Auth stores on the verification row. */
 export const RESET_PASSWORD_TOKEN_SECONDS = 60 * 60
+
+/**
+ * Better Auth builds `reset-password:<token>`. The override key is this
+ * prefix, so only reset rows are hashed. Invitations live in
+ * `auth.invitation` and never take this path.
+ */
+export const RESET_PASSWORD_IDENTIFIER_PREFIX = 'reset-password:'
+
+/**
+ * Stored form is `reset-password-hash:<sha256>`. It must not share the
+ * plain prefix. After a hashed lookup misses, Better Auth 1.7.9 looks up
+ * `reset-password:<presented>` as plain text, so a suffix read from a
+ * `reset-password:` row is itself a working token.
+ */
+const RESET_PASSWORD_STORED_PREFIX = 'reset-password-hash:'
+
+/**
+ * The digest is of the whole identifier, so the mailed token is not a
+ * substring of the row. The stored prefix is what
+ * `deleteRemainingResetTokens` matches for new rows.
+ */
+export async function hashResetPasswordIdentifier(identifier: string): Promise<string> {
+  const digest = createHash('sha256').update(identifier).digest('base64url')
+  return `${RESET_PASSWORD_STORED_PREFIX}${digest}`
+}
 
 export function createResetMailLimiter(now: () => number = Date.now) {
   const hits = new Map<string, number[]>()
@@ -53,13 +79,16 @@ export function queuePasswordReset(input: PasswordResetDelivery): void {
 
 /**
  * A successful reset already consumed its token. Any earlier link of this
- * user must fail too. The identifier prefix keeps other verification rows.
+ * user must fail too. New rows use `reset-password-hash:`. Plain
+ * `reset-password:` rows are links issued before that prefix. Either
+ * prefix keeps every other verification row.
  */
 export async function deleteRemainingResetTokens(pool: pg.Pool, userId: string): Promise<void> {
   await pool.query(
     `delete from auth.verification
-     where value = $1 and identifier like 'reset-password:%'`,
-    [userId],
+     where value = $1
+       and (identifier like $2 or identifier like $3)`,
+    [userId, `${RESET_PASSWORD_STORED_PREFIX}%`, `${RESET_PASSWORD_IDENTIFIER_PREFIX}%`],
   )
 }
 

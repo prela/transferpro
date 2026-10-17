@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
 import process from 'node:process'
 import { assertE2eDatabaseEnv, E2E_APP_DATABASE_ENV } from './e2e-database.mjs'
 
@@ -26,6 +27,11 @@ catch (error) {
 
 // The owner URL migrates and seeds. The app process must not see it.
 delete process.env.DATABASE_MIGRATE_URL
+
+// A previous run can leave a token. The spec must see only this server's mail.
+const resetOutbox = process.env.E2E_PASSWORD_RESET_OUTBOX
+if (resetOutbox !== undefined && resetOutbox !== '')
+  writeFileSync(resetOutbox, '')
 
 const child = spawn(process.execPath, ['.output/server/index.mjs'], {
   stdio: 'inherit',

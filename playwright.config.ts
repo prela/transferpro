@@ -1,6 +1,7 @@
 import process, { loadEnvFile } from 'node:process'
 import { defineConfig, devices } from '@playwright/test'
 import { applyE2eDatabaseEnv } from './scripts/e2e-database.mjs'
+import { e2ePasswordResetOutboxPath } from './scripts/e2e-reset-outbox.mjs'
 
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
@@ -36,6 +37,7 @@ function e2eServerEnv(): Record<string, string> {
   env.HOST = '127.0.0.1'
   env.PORT = port
   env.BETTER_AUTH_URL = baseURL
+  env.E2E_PASSWORD_RESET_OUTBOX = e2ePasswordResetOutboxPath
   // Playwright merges this object over the parent env, so omitting a key
   // would leave the parent's value in place. Empty clears the Resend key.
   env.RESEND_API_KEY = ''

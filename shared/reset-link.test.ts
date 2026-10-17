@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { resetPasswordLink } from './reset-link'
+import { resetPasswordLink, resetTokenFromLink } from './reset-link'
 
 const token = 'AbCdEfGhIjKlMnOpQrStUvWx'
 
@@ -8,4 +8,5 @@ it('puts the reset token in the hash and not the query', () => {
   expect(link.pathname).toBe('/reset-password')
   expect(link.search).toBe('')
   expect(link.hash).toBe(`#${token}`)
+  expect(resetTokenFromLink(link.href)).toBe(token)
 })
