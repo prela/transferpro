@@ -15,8 +15,9 @@ Set these names in the preview environment. Values stay in Coolify.
 | `BETTER_AUTH_SECRET` | Yes |
 | `BETTER_AUTH_URL` | Yes |
 | `MAILER` | Yes |
-| `ALLOW_CONSOLE_MAILER` | Yes on preview |
-| `RESEND_API_KEY` | Only when `MAILER` is `resend` |
+| `RESEND_API_KEY` | Yes on preview |
+| `MAIL_ALLOWLIST` | Yes on preview |
+| `ALLOW_CONSOLE_MAILER` | Only for a console-only deployment |
 | `LOG_LEVEL` | No |
 | `MAPS` | No |
 | `MAPS_API_KEY` | Only when `MAPS` is `google` |
@@ -27,4 +28,4 @@ Set these names in the preview environment. Values stay in Coolify.
 
 `DATABASE_MIGRATE_URL` is not an app variable. Do not put it on the container.
 
-Preview sets `MAILER` to `console` and `ALLOW_CONSOLE_MAILER` to `1` (ADR-0037). Production leaves `ALLOW_CONSOLE_MAILER` unset and sets `MAILER` to `resend` with `RESEND_API_KEY`.
+Preview sets `MAILER` to `resend`, `RESEND_API_KEY`, and `MAIL_ALLOWLIST` (ADR-0042). Only addresses on that list are sent; every other recipient is the console line. Production leaves `MAIL_ALLOWLIST` unset and sets `MAILER` to `resend` with `RESEND_API_KEY`. A deployment that wants console only sets `ALLOW_CONSOLE_MAILER` to `1` and `MAILER` to `console` (ADR-0037).

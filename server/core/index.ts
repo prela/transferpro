@@ -32,17 +32,24 @@ export interface AppEnv {
   readonly LOG_LEVEL: LogLevel
   /**
    * Which transport `mailerForApp` may select. Production is `resend`
-   * unless preview sets `ALLOW_CONSOLE_MAILER=1` and `MAILER=console`
-   * (ADR-0037). Local and test leave this unset unless the operator opts in.
+   * unless a deployment sets `ALLOW_CONSOLE_MAILER=1` and `MAILER=console`
+   * (ADR-0037). Preview uses `resend` plus `MAIL_ALLOWLIST` (ADR-0042).
+   * Local and test leave this unset unless the operator opts in.
    */
   readonly MAILER: 'resend' | 'console' | undefined
   /**
    * Resend API key. Required in production together with `MAILER=resend`.
-   * Omitted when preview opts into the console mailer. Optional in
-   * development and test so `pnpm dev` does not share the daily quota.
+   * Omitted when the console mailer is selected. Optional in development
+   * and test so `pnpm dev` does not share the daily quota.
    * The name is redacted (`apikey`). ADR-0013, ADR-0037.
    */
   readonly RESEND_API_KEY: string | undefined
+  /**
+   * Addresses that may reach Resend, lowercased. Unset means the selected
+   * transport is unchanged. A set list sends everyone else as the console
+   * line. ADR-0042.
+   */
+  readonly MAIL_ALLOWLIST: readonly string[] | undefined
   /**
    * Which maps adapter runs. `none` is the default in every environment,
    * so a fresh process never calls the provider. `google` requires the key.
@@ -89,16 +96,33 @@ function blankEnv(value: string | undefined): string | undefined {
 }
 
 /**
- * Preview is a production process that must not send mail. The flag is
+ * A deployment that wants the console transport in production. The flag is
  * the string `1` only. `true`, `yes`, and blank do not opt in, so a
- * production deploy cannot pick up a leftover truthy value.
+ * production deploy cannot pick up a leftover truthy value. Preview does
+ * not set this; it sends through Resend to `MAIL_ALLOWLIST` (ADR-0042).
  */
 function consoleMailerAllowed(source: NodeJS.ProcessEnv): boolean {
   return source.ALLOW_CONSOLE_MAILER === '1'
 }
 
 /**
- * Production cannot boot without `MAILER=resend`, except the preview
+ * Comma-separated emails. Blank and unset leave the transport alone.
+ * Each entry is trimmed. A blank entry or a value Zod rejects as an email
+ * fails boot. The thrown text is fixed so the value is not echoed.
+ */
+function parseMailAllowlist(source: NodeJS.ProcessEnv): readonly string[] | undefined {
+  const raw = blankEnv(source.MAIL_ALLOWLIST)
+  if (raw === undefined)
+    return undefined
+  const entries = raw.split(',').map(entry => entry.trim())
+  const parsed = z.array(z.email()).safeParse(entries)
+  if (!parsed.success)
+    throw new Error('MAIL_ALLOWLIST has a blank or invalid email.')
+  return parsed.data.map(entry => entry.toLowerCase())
+}
+
+/**
+ * Production cannot boot without `MAILER=resend`, except the console
  * opt-in (ADR-0037). Anywhere else the value is optional: unset means
  * the console mailer in development and the fake mailer in test.
  */
@@ -206,6 +230,7 @@ export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
     LOG_LEVEL: parseLogLevel(source),
     MAILER,
     RESEND_API_KEY: parseResendApiKey(source, MAILER),
+    MAIL_ALLOWLIST: parseMailAllowlist(source),
     MAPS,
     MAPS_API_KEY: parseMapsApiKey(source, MAPS),
     SENTRY_DSN: parseSentryDsn(source),
