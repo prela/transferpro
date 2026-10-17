@@ -1,46 +1,15 @@
 <script setup lang="ts">
 /**
- * The Admin invitation form plus role change and removal. The shared admin
- * middleware sends a Dispatcher or a Driver to Profile before this page
- * loads. A Dispatcher has no read-only Member list.
+ * The old Members address. An Admin lands on the Članovi tab. The middleware
+ * sends every other Tenant role to Profile before this redirect.
  */
 definePageMeta({
   middleware: 'admin',
 })
 
-const {
-  t,
-  session,
-  shellError,
-} = await useSessionShell()
-
-// The middleware is the gate. If that read failed and this one then finds
-// a Dispatcher or a Driver, leave before the forms mount, so the browser
-// does not request Members, invitations, role change, or removal.
-if (session.value && session.value.role !== 'admin')
-  await navigateTo('/profile', { replace: true })
-
-useHead({
-  title: () => t('members.title'),
-})
-
-bindScreenTitle(() => t('members.title'))
+await navigateTo('/settings?tab=members', { replace: true })
 </script>
 
 <template>
-  <section v-if="session?.role === 'admin'">
-    <MemberInvite />
-    <MemberList
-      :is-admin="session.role === 'admin'"
-      :current-user-id="session.userId"
-    />
-    <UAlert
-      v-if="shellError"
-      color="error"
-      variant="subtle"
-      role="alert"
-      class="mt-4"
-      :description="t(shellError)"
-    />
-  </section>
+  <div />
 </template>

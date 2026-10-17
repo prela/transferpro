@@ -437,12 +437,15 @@ it('a driver in tenant A who is a dispatcher in tenant B gets 403 from listMembe
 
     // The same session with tenant B active is a dispatcher there, and sees only B.
     await setActiveTenant(headers, tenantB.tenantId)
-    await expect(listMembers(headers)).resolves.toEqual({
+    const listed = await listMembers(headers)
+    expect(listed).toEqual({
       members: [
         { userId: tenantB.adminUserId, name: 'Admin B', role: 'admin' },
         { userId, name: 'Two Roles', role: 'dispatcher' },
       ],
     })
+    // Tenant A's admin is the same person nowhere in this list.
+    expect(JSON.stringify(listed)).not.toContain('mm-admin-role-a@example.test')
   }
   finally {
     await closeTenantRuntime()

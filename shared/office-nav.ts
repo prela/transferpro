@@ -71,7 +71,7 @@ export function officeNav(
       label: labels.management,
       links: [
         link('audit', labels.audit, '/audit', true),
-        link('companySettings', labels.companySettings, '/settings/tenant', false),
+        link('companySettings', labels.companySettings, '/settings', false),
       ],
     },
   ]

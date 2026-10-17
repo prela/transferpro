@@ -137,10 +137,7 @@ onMounted(loadSettings)
 </script>
 
 <template>
-  <section :aria-label="t('settings.title')">
-    <h2 class="mt-6 mb-4 text-xl font-semibold">
-      {{ t('settings.title') }}
-    </h2>
+  <section :aria-label="t('settings.operations')">
     <p class="mb-4">
       {{ t('settings.intro') }}
     </p>
@@ -177,105 +174,103 @@ onMounted(loadSettings)
         class="mb-4"
         :description="t('settings.saved')"
       />
-      <UFormField
-        :label="t('settings.airportWait')"
-        class="mb-4"
-        size="xl"
-      >
-        <UInput
-          :id="airportId"
-          v-model.number="airportWaitMinutes"
-          type="number"
-          inputmode="numeric"
-          :min="WAIT_MINUTES_MIN"
-          :max="WAIT_MINUTES_MAX"
-          step="1"
-          required
-          class="w-full"
-        />
-      </UFormField>
-      <UFormField
-        :label="t('settings.elsewhereWait')"
-        class="mb-4"
-        size="xl"
-      >
-        <UInput
-          :id="elsewhereId"
-          v-model.number="elsewhereWaitMinutes"
-          type="number"
-          inputmode="numeric"
-          :min="WAIT_MINUTES_MIN"
-          :max="WAIT_MINUTES_MAX"
-          step="1"
-          required
-          class="w-full"
-        />
-      </UFormField>
-      <UFormField
-        :label="t('settings.operationalDayStart')"
-        class="mb-4"
-        size="xl"
-      >
-        <USelect
-          :id="operationalDayStartId"
-          v-model="operationalDayStartHour"
-          :items="hourItems"
-          class="w-full"
-        />
-      </UFormField>
-      <UFormField
-        :label="t('settings.transferDuration')"
-        class="mb-4"
-        size="xl"
-      >
-        <UInput
-          :id="transferDurationId"
-          v-model.number="transferDurationMinutes"
-          type="number"
-          inputmode="numeric"
-          :min="WAIT_MINUTES_MIN"
-          :max="WAIT_MINUTES_MAX"
-          step="1"
-          required
-          class="w-full"
-        />
-      </UFormField>
-      <UFormField
-        :label="t('settings.relocationGap')"
-        class="mb-4"
-        size="xl"
-      >
-        <UInput
-          :id="relocationGapId"
-          v-model.number="relocationGapMinutes"
-          type="number"
-          inputmode="numeric"
-          :min="WAIT_MINUTES_MIN"
-          :max="WAIT_MINUTES_MAX"
-          step="1"
-          required
-          class="w-full"
-        />
-      </UFormField>
-      <UFormField
-        :label="t('settings.timeZone')"
-        class="mb-4"
-        size="xl"
-      >
-        <USelectMenu
-          :id="timeZoneId"
-          v-model="timeZone"
-          value-key="value"
-          :items="zoneItems"
-          :search-input="timeZoneSearchInput"
-          virtualize
-          required
-          class="w-full"
-        />
-      </UFormField>
+      <!-- Desktop is two columns. The phone stays one column (ADR-0038). -->
+      <div class="grid gap-4 lg:grid-cols-2">
+        <UFormField
+          :label="t('settings.airportWait')"
+          size="xl"
+        >
+          <UInput
+            :id="airportId"
+            v-model.number="airportWaitMinutes"
+            type="number"
+            inputmode="numeric"
+            :min="WAIT_MINUTES_MIN"
+            :max="WAIT_MINUTES_MAX"
+            step="1"
+            required
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          :label="t('settings.elsewhereWait')"
+          size="xl"
+        >
+          <UInput
+            :id="elsewhereId"
+            v-model.number="elsewhereWaitMinutes"
+            type="number"
+            inputmode="numeric"
+            :min="WAIT_MINUTES_MIN"
+            :max="WAIT_MINUTES_MAX"
+            step="1"
+            required
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          :label="t('settings.operationalDayStart')"
+          size="xl"
+        >
+          <USelect
+            :id="operationalDayStartId"
+            v-model="operationalDayStartHour"
+            :items="hourItems"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          :label="t('settings.transferDuration')"
+          size="xl"
+        >
+          <UInput
+            :id="transferDurationId"
+            v-model.number="transferDurationMinutes"
+            type="number"
+            inputmode="numeric"
+            :min="WAIT_MINUTES_MIN"
+            :max="WAIT_MINUTES_MAX"
+            step="1"
+            required
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          :label="t('settings.relocationGap')"
+          size="xl"
+        >
+          <UInput
+            :id="relocationGapId"
+            v-model.number="relocationGapMinutes"
+            type="number"
+            inputmode="numeric"
+            :min="WAIT_MINUTES_MIN"
+            :max="WAIT_MINUTES_MAX"
+            step="1"
+            required
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField
+          :label="t('settings.timeZone')"
+          size="xl"
+        >
+          <USelectMenu
+            :id="timeZoneId"
+            v-model="timeZone"
+            value-key="value"
+            :items="zoneItems"
+            :search-input="timeZoneSearchInput"
+            virtualize
+            required
+            class="w-full"
+          />
+        </UFormField>
+      </div>
       <UButton
         type="submit"
         size="xl"
+        class="mt-4"
         :disabled="pending"
       >
         {{ pending ? t('settings.saving') : t('settings.save') }}

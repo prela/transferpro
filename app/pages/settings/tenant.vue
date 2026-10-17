@@ -1,46 +1,15 @@
 <script setup lang="ts">
 /**
- * The Admin form for the waits and the time zone. The shared admin
- * middleware sends a Dispatcher or a Driver to Profile before this page
- * loads, so the read-only settings note is not shown here.
+ * The old Tenant tab. An Admin lands on Operativa. The middleware sends
+ * every other Tenant role to Profile before this redirect.
  */
 definePageMeta({
   middleware: 'admin',
 })
 
-const {
-  t,
-  session,
-  refresh,
-  shellError,
-} = await useSessionShell()
-
-// The middleware is the gate. If that read failed and this one then finds
-// a Dispatcher or a Driver, leave before the form mounts, so the browser
-// does not request the settings write.
-if (session.value && session.value.role !== 'admin')
-  await navigateTo('/profile', { replace: true })
-
-useHead({
-  title: () => t('shell.companySettings'),
-})
-
-bindScreenTitle(() => t('shell.companySettings'))
+await navigateTo('/settings', { replace: true })
 </script>
 
 <template>
-  <section v-if="session?.role === 'admin'">
-    <TenantSettings
-      :is-admin="session.role === 'admin'"
-      @saved="refresh()"
-    />
-    <UAlert
-      v-if="shellError"
-      color="error"
-      variant="subtle"
-      role="alert"
-      class="mt-4"
-      :description="t(shellError)"
-    />
-  </section>
+  <div />
 </template>
