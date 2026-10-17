@@ -63,7 +63,7 @@ Sign-in and sign-out are Better Auth at `/api/auth/*`. Keep the session cookie `
 
 ## Superadmin
 
-ADR-0019. A superadmin is a Better Auth user with a row in `platform.superadmin` and no membership. `pnpm superadmin:create --name --email` and `pnpm superadmin:revoke --email` are the only writers of that row. The password is read like `tenant:create`. `--password` is refused. A duplicate email, an existing membership, or an existing grant exits 1 with a fixed sentence that omits the email.
+ADR-0019. A superadmin is a Better Auth user with a row in `platform.superadmin` and no membership. `pnpm superadmin:create --name --email` and `pnpm superadmin:revoke --email` are the only writers of that row. `pnpm superadmin:password --email` sets a new password for that grant and deletes every session of that user in the same transaction (ADR-0042). It is not a recovery path for a Member, a user without the grant, or an unknown email: each exits 1 with one fixed sentence that omits the email. The password is read like `tenant:create`. `--password` is refused. A duplicate email, an existing membership, or an existing grant exits 1 with a fixed sentence that omits the email.
 
 `pnpm tenant:account --slug <slug> --deactivate` and `--reactivate` are the emergency lever. There is no suspend UI or API in v1. A deactivated firm's members get the ordinary 403 on the next request. Invitation accept for that firm is refused and creates no user. Sessions are not deleted.
 
