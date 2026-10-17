@@ -56,3 +56,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0040 | Theme tokens and contrast rules | accepted |
 | ADR-0041 | Revoke a pending invitation | accepted |
 | ADR-0042 | Password change and password reset | accepted |
+| ADR-0043 | Preview is `DEPLOY_ENV`, not a second `NODE_ENV` | proposed |
