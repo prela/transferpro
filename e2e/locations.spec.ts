@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { expectNoAxeViolations } from './fixtures/axe'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, openAudit, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
@@ -107,15 +108,15 @@ test('an airport code is stored, and a hotel has no code field, in both language
   const tenant = await seedTenant('locations-iata')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.getByRole('link', { name: 'Lokacije' }).click()
-  await expect(page.getByLabel('IATA oznaka')).toHaveCount(0)
+  await expect(page.getByLabel('IATA kod (aerodrom)')).toHaveCount(0)
 
   await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   let dialog = page.getByRole('dialog')
-  await expect(dialog.getByLabel('IATA oznaka')).toHaveCount(0)
+  await expect(dialog.getByLabel('IATA kod (aerodrom)')).toHaveCount(0)
   await dialog.getByLabel('Ime').fill(place)
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Aerodrom')
-  await expect(dialog.getByLabel('IATA oznaka')).toBeVisible()
-  await dialog.getByLabel('IATA oznaka').fill('db')
+  await expect(dialog.getByLabel('IATA kod (aerodrom)')).toBeVisible()
+  await dialog.getByLabel('IATA kod (aerodrom)').fill('db')
   await dialog.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText('Unesite troslovnu oznaku aerodroma.')
 
@@ -124,8 +125,8 @@ test('an airport code is stored, and a hotel has no code field, in both language
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Name').fill(place)
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Kind' }), 'Airport')
-  await expect(dialog.getByLabel('IATA code')).toBeVisible()
-  await dialog.getByLabel('IATA code').fill('DB1')
+  await expect(dialog.getByLabel('IATA code (airport)')).toBeVisible()
+  await dialog.getByLabel('IATA code (airport)').fill('DB1')
   await dialog.getByRole('button', { name: 'Add location', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText('Enter a three-letter airport code.')
 
@@ -135,7 +136,8 @@ test('an airport code is stored, and a hotel has no code field, in both language
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Name').fill(place)
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Kind' }), 'Airport')
-  await dialog.getByLabel('IATA code').fill('dbv')
+  await dialog.getByLabel('IATA code (airport)').fill('dbv')
+  await expectNoAxeViolations(page)
   await dialog.getByRole('button', { name: 'Add location', exact: true }).click()
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('cell', { name: 'DBV', exact: true })).toBeVisible()
@@ -149,16 +151,32 @@ test('an airport code is stored, and a hotel has no code field, in both language
   dialog = page.getByRole('dialog')
   await dialog.getByLabel('Ime').fill(nextPlace)
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
-  await expect(dialog.getByLabel('IATA oznaka')).toHaveCount(0)
+  await expect(dialog.getByLabel('IATA kod (aerodrom)')).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('button', { name: `Radnje: ${nextPlace}` })).toBeVisible()
 
   await page.getByRole('button', { name: place, exact: true }).click()
   dialog = page.getByRole('dialog')
-  await expect(dialog.getByLabel('IATA oznaka')).toBeVisible()
+  await expect(dialog.getByLabel('IATA kod (aerodrom)')).toHaveValue('DBV')
+  await expectNoAxeViolations(page)
+  await dialog.getByLabel('IATA kod (aerodrom)').fill('')
+  await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('cell', { name: 'DBV', exact: true })).toHaveCount(0)
+
+  await page.getByRole('button', { name: place, exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await dialog.getByLabel('IATA kod (aerodrom)').fill('dbv')
+  await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('cell', { name: 'DBV', exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: place, exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await expect(dialog.getByLabel('IATA kod (aerodrom)')).toBeVisible()
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
-  await expect(dialog.getByLabel('IATA oznaka')).toHaveCount(0)
+  await expect(dialog.getByLabel('IATA kod (aerodrom)')).toHaveCount(0)
   await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('cell', { name: 'DBV', exact: true })).toHaveCount(0)
@@ -249,5 +267,49 @@ test('the office picks a suggestion, a hand edit drops it, and a typed address s
   }
   finally {
     await page.request.post('/api/locations/suggestions-mode', { data: { unavailable: false } })
+  }
+})
+
+test.describe('@phone', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`an office user sets and clears an airport code in ${theme}`, async ({ page }) => {
+      const tenant = await seedTenant(`locations-iata-phone-${theme}`)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      await switchTheme(page, theme)
+      // Phone keeps catalogs behind Više. The sidebar link is not on this width.
+      const sidebar = page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Lokacije', exact: true })
+      if (await sidebar.isVisible()) {
+        await sidebar.click()
+      }
+      else {
+        await page.getByRole('button', { name: 'Više', exact: true }).click()
+        await page.getByRole('dialog').getByRole('link', { name: 'Lokacije', exact: true }).click()
+      }
+      await expect(page.getByRole('heading', { level: 1, name: 'Lokacije' })).toBeVisible()
+      await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
+      let dialog = page.getByRole('dialog')
+      await dialog.getByLabel('Ime').fill('Zračna luka Zadar')
+      await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Aerodrom')
+      await dialog.getByLabel('IATA kod (aerodrom)').fill('zad')
+      await expectNoAxeViolations(page)
+      await dialog.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
+      await expect(dialog).toBeHidden()
+
+      const stored = await page.request.get('/api/locations')
+      const storedBody = await stored.json() as { locations: { name: string, iata: string | null }[] }
+      expect(storedBody.locations.find(location => location.name === 'Zračna luka Zadar')?.iata).toBe('ZAD')
+
+      await page.getByRole('button', { name: 'Zračna luka Zadar', exact: true }).click()
+      dialog = page.getByRole('dialog')
+      await expect(dialog.getByLabel('IATA kod (aerodrom)')).toHaveValue('ZAD')
+      await expectNoAxeViolations(page)
+      await dialog.getByLabel('IATA kod (aerodrom)').fill('')
+      await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
+      await expect(dialog).toBeHidden()
+
+      const cleared = await page.request.get('/api/locations')
+      const clearedBody = await cleared.json() as { locations: { name: string, iata: string | null }[] }
+      expect(clearedBody.locations.find(location => location.name === 'Zračna luka Zadar')?.iata).toBeNull()
+    })
   }
 })

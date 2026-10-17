@@ -46,7 +46,7 @@ const suggestionsUnavailable = ref(false)
 let suggestTimer: number | undefined
 let suggestGeneration = 0
 
-type LocationFailure = 'locations.loadFailed' | 'locations.rejected' | 'locations.notFound' | 'locations.forbidden' | 'locations.signedOut' | 'locations.saveFailed' | 'locations.archivedLocked'
+type LocationFailure = 'locations.loadFailed' | 'locations.rejected' | 'locations.notFound' | 'locations.forbidden' | 'locations.signedOut' | 'locations.saveFailed' | 'locations.archivedLocked' | 'locations.iataTaken'
 interface LocationForm {
   name: string
   kind: LocationKind
@@ -131,6 +131,8 @@ const submitLabel = computed(() => {
 function failureKey(error: unknown): LocationFailure {
   if (locationErrorCode(error) === 'location_archived')
     return 'locations.archivedLocked'
+  if (locationErrorCode(error) === 'location_iata_taken')
+    return 'locations.iataTaken'
   switch (httpStatus(error)) {
     case 400: return 'locations.rejected'
     case 401: return 'locations.signedOut'
@@ -192,6 +194,15 @@ function dropPendingSuggestions() {
   window.clearTimeout(suggestTimer)
   suggestions.value = []
   attribution.value = null
+}
+
+/**
+ * Three ASCII letters become uppercase as they are typed. Anything else
+ * stays as typed so `ß` cannot turn into a code that then passes.
+ */
+function onIataInput(value: string) {
+  const trimmed = value.trim()
+  state.iata = /^[a-z]{3}$/i.test(trimmed) ? trimmed.toUpperCase() : value
 }
 
 function resetForm() {
@@ -625,12 +636,13 @@ onMounted(loadLocations)
             :size="phone ? 'xl' : 'sm'"
           >
             <UInput
-              v-model="state.iata"
+              :model-value="state.iata"
               name="iata"
               type="text"
               autocomplete="off"
               class="w-full"
               :disabled="archivedView"
+              @update:model-value="onIataInput"
             />
             <template #error="{ error }">
               <span

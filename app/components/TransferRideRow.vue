@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, DisplayLocale, Driver, Location, RideAttentionItem, TransferDayRide, Vehicle } from '../../shared'
-import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, clockLabel, formatInstant, pickupNeedsCalendarDate, rideStateMark } from '../../shared'
+import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, clockLabel, formatInstant, locationLabel, pickupNeedsCalendarDate, rideStateMark } from '../../shared'
 import { driverDisplayName } from '../transfer-day-labels'
 import { canCallOff, canChangeAssignment, canNoShow } from '../transfer-ride-guards'
 
@@ -61,7 +61,8 @@ function place(id: string): Location | undefined {
 }
 
 function placeLabel(id: string): string {
-  return place(id)?.name ?? t('transfers.unknownPlace')
+  const found = place(id)
+  return found ? locationLabel(found) : t('transfers.unknownPlace')
 }
 
 function attention(): RideAttentionItem[] {

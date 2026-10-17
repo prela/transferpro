@@ -124,8 +124,19 @@ it('reads the tenant locale from the row, and a database failure drops the guest
         return { rows: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }] }
       if (text.includes('from app.locations')) {
         const id = String(dialect.sqlToQuery(query).params[0])
-        const name = id === endLocationId ? dropOffPlace : pickupPlace
-        return { rows: [{ id, name, kind: 'hotel', address: null, iata: null, placeProvider: null, placeRef: null, archivedAt: null }] }
+        const end = id === endLocationId
+        return {
+          rows: [{
+            id,
+            name: end ? dropOffPlace : pickupPlace,
+            kind: end ? 'hotel' : 'airport',
+            address: null,
+            iata: end ? null : 'DBV',
+            placeProvider: null,
+            placeRef: null,
+            archivedAt: null,
+          }],
+        }
       }
       if (text.includes('from app.vehicles')) {
         return {
@@ -171,6 +182,8 @@ it('reads the tenant locale from the row, and a database failure drops the guest
   expect(snapshot.email).toBe(email)
   expect(snapshot.price).toBe('77.50')
   expect(snapshot.pickupAt.toISOString()).toBe(pickup.toISOString())
+  expect(snapshot.pickupPlace).toBe('Zračna luka Dubrovnik (DBV)')
+  expect(snapshot.dropOffPlace).toBe(dropOffPlace)
   expect(snapshot).not.toHaveProperty('phone')
 
   const failing = {

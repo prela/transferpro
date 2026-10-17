@@ -2,7 +2,7 @@
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, DisplayLocale, Driver, Location, TransferDayRide, Vehicle } from '../../shared'
 import type { RideDetailCommand } from '../ride-detail'
-import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant } from '../../shared'
+import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel } from '../../shared'
 import { useKeptWorkOrders } from '../composables/kept-work-orders'
 import { rideFormStamp } from '../ride-detail'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -88,7 +88,8 @@ const notices = computed(() => kept.value.filter(entry =>
 const attention = computed(() => classifyRideAttention(props.ride, props.declines, props.nowMs))
 
 function place(id: string): string {
-  return locations.value.find(location => location.id === id)?.name ?? t('transfers.unknownPlace')
+  const found = locations.value.find(location => location.id === id)
+  return found ? locationLabel(found) : t('transfers.unknownPlace')
 }
 
 function plate(id: string | null): string {

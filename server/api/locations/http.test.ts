@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LocationArchivedError } from '../../modules/locations'
+import { LocationArchivedError, LocationIataTakenError } from '../../modules/locations'
 import { locationHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -20,5 +20,14 @@ describe('locationHttpError', () => {
       data: { code: 'location_archived' },
     })
     expect(JSON.stringify(error)).not.toContain('Dobrota')
+  })
+
+  it('returns a conflict when the airport code is already on an active Location, without the code', () => {
+    const error = thrown(() => locationHttpError(new LocationIataTakenError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'location_iata_taken' },
+    })
+    expect(JSON.stringify(error)).not.toContain('DBV')
   })
 })

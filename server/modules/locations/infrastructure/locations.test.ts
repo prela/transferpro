@@ -6,7 +6,7 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
 import { LocationInputError } from '../../../../shared'
 import { createLogger, handleLoggedError } from '../../../core/index'
-import { addLocation, archiveStoredLocation, correctLocation, loadLocation, loadLocations, LocationArchivedError, LocationNotFoundError } from './locations'
+import { addLocation, archiveStoredLocation, correctLocation, loadLocation, loadLocations, LocationArchivedError, LocationIataTakenError, LocationNotFoundError } from './locations'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const locationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -42,7 +42,7 @@ function asRow(location: Location) {
 
 function fakeTransaction(
   locations: Location[],
-  fail?: { code: string, message: string },
+  fail?: { code: string, message: string, constraint?: string },
 ) {
   const queries: Array<{ sql: string, params: unknown[] }> = []
   const transaction: TenantTransaction = {
@@ -50,8 +50,13 @@ function fakeTransaction(
       const compiled = dialect.sqlToQuery(query)
       queries.push(compiled)
       const text = compiled.sql
-      if (fail && (text.includes('insert') || (text.includes('update') && !text.includes('for update'))))
-        throw Object.assign(new Error(fail.message), { code: fail.code, cause: new Error(fail.message) })
+      if (fail && (text.includes('insert') || (text.includes('update') && !text.includes('for update')))) {
+        throw Object.assign(new Error(fail.message), {
+          code: fail.code,
+          constraint: fail.constraint,
+          cause: new Error(fail.message),
+        })
+      }
       if (text.includes('insert into app.locations')) {
         return {
           rows: [{
@@ -136,6 +141,19 @@ it('omits address from the created fields when the line is blank', async () => {
   expect(auditPayloads(queries)).toEqual([
     JSON.stringify({ locationId, fields: ['name', 'kind'] }),
   ])
+})
+
+it('refuses a second active Location with the same airport code, and the message does not keep the code', async () => {
+  const code = 'DBV'
+  const { transaction } = fakeTransaction([], {
+    code: '23505',
+    constraint: 'locations_iata_active',
+    message: `duplicate key ${code} locations_iata_active`,
+  })
+  const error = await addLocation(transaction, actorUserId, { ...input, iata: code }).catch(caught => caught)
+  expect(error).toBeInstanceOf(LocationIataTakenError)
+  expect(String(error)).not.toContain(code)
+  expect(logLine(error)).not.toContain(code)
 })
 
 it('replaces a write failure so the log line does not keep the address', async () => {

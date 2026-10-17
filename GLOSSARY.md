@@ -168,7 +168,7 @@ The person who travels, named on the Transfer by one name, the lead of the group
 _Avoid_: passenger, customer, client
 
 **Location**:
-A place a Ride starts or ends. An airport Location may carry an optional IATA code of three letters. A hotel, an address, or any other kind does not. A Location may carry a reference to its place on a map, set when the office picks a suggested address. Changing the address by hand removes that reference.
+A place a Ride starts or ends. An airport Location may carry an optional IATA code of three letters. At most one active Location in a Tenant holds a given code. A Ride shows that code beside the Location name when the code is set. A hotel, an address, or any other kind does not carry a code. A Location may carry a reference to its place on a map, set when the office picks a suggested address. Changing the address by hand removes that reference.
 _Avoid_: place, stop
 
 **Landing time**:

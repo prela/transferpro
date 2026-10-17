@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH, locationAddressError, locationIataError, LocationInputError, locationKindError, locationListSchema, locationNameError, parseCreateLocation, parseLocationPatch, parseSuggestAddresses } from './location'
+import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH, locationAddressError, locationIataError, LocationInputError, locationKindError, locationLabel, locationListSchema, locationNameError, parseCreateLocation, parseLocationPatch, parseSuggestAddresses } from './location'
 
 const name = 'Zračna luka Dubrovnik'
 const address = 'Dobrota bb, Čilipi'
@@ -37,6 +37,11 @@ it('refuses an empty name, a long name, an unknown kind, and a key that is not a
   expect(() => parseCreateLocation({ ...createBody, archivedAt: '2026-10-05T00:00:00.000Z' })).toThrow(LocationInputError)
   const { name: _name, ...withoutName } = createBody
   expect(() => parseCreateLocation(withoutName)).toThrow(LocationInputError)
+})
+
+it('shows an airport code beside the name, and a Location with no code by name alone', () => {
+  expect(locationLabel({ name, iata: 'DBV' })).toBe('Zračna luka Dubrovnik (DBV)')
+  expect(locationLabel({ name, iata: null })).toBe(name)
 })
 
 it('stores an airport code in uppercase and treats a blank as no code', () => {

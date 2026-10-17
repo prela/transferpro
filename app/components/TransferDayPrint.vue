@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayLocale, Location, TransferDayRide, Vehicle } from '../../shared'
-import { formatInstant, groupDayPrint } from '../../shared'
+import { formatInstant, groupDayPrint, locationLabel } from '../../shared'
 
 const props = defineProps<{
   day: string
@@ -61,7 +61,8 @@ function vehicleLabel(vehicleId: string | null): string {
 }
 
 function place(id: string): string {
-  return props.locations.find(location => location.id === id)?.name ?? t('transfers.unknownPlace')
+  const found = props.locations.find(location => location.id === id)
+  return found ? locationLabel(found) : t('transfers.unknownPlace')
 }
 
 function clock(instant: string): string {

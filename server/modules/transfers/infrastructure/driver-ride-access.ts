@@ -1,6 +1,6 @@
 import type { ClientKind, DriverUpcomingList, DriverUpcomingRide, LocationPlace } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
-import { presentDriverRide } from '../../../../shared'
+import { locationLabel, presentDriverRide } from '../../../../shared'
 import { loadAppEnv } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadDriverLinkedToMember } from '../../drivers'
@@ -19,6 +19,7 @@ function driverOnly(role: string): void {
 
 interface LocationLine {
   readonly name: string
+  readonly iata: string | null
   readonly address: string | null
   readonly place: LocationPlace | null
 }
@@ -40,6 +41,7 @@ async function locationLine(transaction: TenantTransaction, locationId: string, 
   const location = await loadLocation(transaction, locationId)
   const line: LocationLine = {
     name: location.name,
+    iata: location.iata,
     address: location.address,
     place: location.place,
   }
@@ -108,8 +110,8 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
           rideId: row.rideId,
           pickupAt: row.pickupAt,
           guestName: row.guestName,
-          from: from.name,
-          to: to.name,
+          from: locationLabel(from),
+          to: locationLabel(to),
           passengerCount: row.passengerCount,
           flightNumber: row.flightNumber,
           landingAt: row.landingAt,
