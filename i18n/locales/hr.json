@@ -8,7 +8,9 @@
     "submit": "Prijavi se",
     "submitting": "Prijava u tijeku",
     "failed": "Prijava nije uspjela. Provjerite e-poštu i lozinku pa pokušajte ponovno.",
-    "limited": "Previše pokušaja. Pričekajte i pokušajte ponovno."
+    "limited": "Previše pokušaja. Pričekajte i pokušajte ponovno.",
+    "forgot": "Zaboravljena lozinka?",
+    "passwordChanged": "Lozinka je promijenjena, prijavite se."
   },
   "shell": {
     "tenant": "Tvrtka",
@@ -42,6 +44,22 @@
     "passwordMismatch": "Nova lozinka i potvrda nisu iste.",
     "passwordChanged": "Lozinka je promijenjena",
     "passwordChangeFailed": "Lozinka nije promijenjena. Pokušajte ponovno."
+  },
+  "forgotPassword": {
+    "title": "Zaboravljena lozinka",
+    "submit": "Pošalji poveznicu",
+    "submitting": "Slanje u tijeku",
+    "sent": "Ako postoji račun za tu e-poštu, poslali smo poveznicu za novu lozinku.",
+    "failed": "Poveznica se nije mogla zatražiti. Pokušajte ponovno."
+  },
+  "resetPassword": {
+    "title": "Nova lozinka",
+    "submit": "Spremi lozinku",
+    "submitting": "Spremanje u tijeku",
+    "loading": "Učitavanje",
+    "invalid": "Poveznica je istekla ili je već iskorištena.",
+    "requestAgain": "Zatražite novu poveznicu",
+    "failed": "Lozinka nije spremljena. Pokušajte ponovno."
   },
   "palette": {
     "open": "Traži",

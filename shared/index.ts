@@ -45,6 +45,7 @@ export type { OfficeNavGroup, OfficeNavLabels, OfficeNavLink, OfficeNavRole } fr
 export { companyAccountListSchema, companyAccountSchema, parsePlatformTenantListQuery, parseRenameTenantAccount, PLATFORM_TENANT_PAGE_SIZE, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './platform-account'
 export type { CompanyAccount, CompanyAccountList, PlatformActor, PlatformShell } from './platform-account'
 export { includeArchivedQuerySchema, parseIncludeArchivedQuery, QueryParamError } from './query'
+export { resetPasswordLink } from './reset-link'
 export { ASSIGNMENT_REFUSED_STATES, AssignRideInputError, assignRideSchema, assignTransitionAllowed, parseAssignRide, parseChangeRideVehicle, parseClearRide, parseReassignRide, parseRosterVehicleRead, RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideAssignmentFieldSchema, rideChangeAllowed, RideCommandInputError, rideVehicleChangeFieldSchema, rosterVehicleSuggestionSchema } from './ride-assignment'
 export type { AssignRide, ChangeRideVehicle, ReassignRide, RideAssignmentField, RosterVehicleSuggestion } from './ride-assignment'
 export { classifyRideAttention, homeRowNamesTheDate, parseTransferDayFilter, pickupNeedsCalendarDate, rideAttentionTier, rideStateMark, rideUrgentKeys, TRANSFER_DAY_FILTERS, transferDayFilterCounts, transferDayFilterMatches } from './ride-attention'

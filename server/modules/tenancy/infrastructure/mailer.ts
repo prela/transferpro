@@ -56,12 +56,23 @@ export interface PasswordChangedMail {
   readonly locale: DisplayLocale
 }
 
+/**
+ * A link that sets a new password. No Tenant and no person.
+ * The address and the link are bearer material. Callers must not log either.
+ */
+export interface PasswordResetMail {
+  readonly to: string
+  readonly resetUrl: string
+  readonly locale: DisplayLocale
+}
+
 export interface Mailer {
   sendInvitation: (mail: InvitationMail) => Promise<void>
   sendWorkOrder: (mail: WorkOrderMail) => Promise<void>
   notifyArrivalMoved: (notice: ArrivalMovedNotice) => Promise<void>
   notifyFlightWillNotArrive: (notice: FlightWillNotArriveNotice) => Promise<void>
   sendPasswordChanged: (mail: PasswordChangedMail) => Promise<void>
+  sendPasswordReset: (mail: PasswordResetMail) => Promise<void>
 }
 
 /**
@@ -85,6 +96,7 @@ export function createFakeMailer(
   arrivalMoves: ArrivalMovedNotice[] = [],
   willNotArrive: FlightWillNotArriveNotice[] = [],
   passwordChanged: PasswordChangedMail[] = [],
+  passwordResets: PasswordResetMail[] = [],
 ): Mailer {
   return {
     async sendInvitation(mail) {
@@ -101,6 +113,9 @@ export function createFakeMailer(
     },
     async sendPasswordChanged(mail) {
       passwordChanged.push({ ...mail })
+    },
+    async sendPasswordReset(mail) {
+      passwordResets.push({ ...mail })
     },
   }
 }
@@ -163,6 +178,15 @@ export function createConsoleMailer(log?: Logger): Mailer {
       logger.info({
         event: 'mail.console',
         kind: 'password-changed',
+      })
+    },
+    async sendPasswordReset() {
+      // The link is a bearer secret and the address is the account.
+      // Neither is on this line, on any environment.
+      const logger = log ?? getLogger()
+      logger.info({
+        event: 'mail.console',
+        kind: 'password-reset',
       })
     },
   }
@@ -241,6 +265,31 @@ export function invitationEmail(mail: InvitationMail): InvitationEmail {
     `The link is valid for ${days} days.`,
   ].join('\n')
   const html = `<p>You are invited to ${safeTenant} as ${safeRole}.</p><p><a href="${safeUrl}">Open the link</a> and set a password.</p><p>The link is valid for ${days} days.</p>`
+  return { subject, text, html }
+}
+
+/** The user's locale, or Croatian. No name and no Tenant. The link is the only secret. */
+export function passwordResetEmail(mail: PasswordResetMail): InvitationEmail {
+  const safeUrl = escapeHtml(mail.resetUrl)
+  if (mail.locale === 'hr') {
+    const subject = 'Nova lozinka'
+    const text = [
+      'Zatražili ste novu lozinku.',
+      'Otvorite poveznicu i postavite je:',
+      mail.resetUrl,
+      'Poveznica vrijedi 60 minuta i može se iskoristiti jednom.',
+    ].join('\n')
+    const html = `<p>Zatražili ste novu lozinku.</p><p><a href="${safeUrl}">Otvorite poveznicu</a> i postavite je.</p><p>Poveznica vrijedi 60 minuta i može se iskoristiti jednom.</p>`
+    return { subject, text, html }
+  }
+  const subject = 'Reset your password'
+  const text = [
+    'You asked for a new password.',
+    'Open the link and set it:',
+    mail.resetUrl,
+    'The link lasts 60 minutes and works once.',
+  ].join('\n')
+  const html = `<p>You asked for a new password.</p><p><a href="${safeUrl}">Open the link</a> and set it.</p><p>The link lasts 60 minutes and works once.</p>`
   return { subject, text, html }
 }
 
@@ -359,6 +408,14 @@ export function createResendMailer(
         { to: mail.to, ...message },
         'Password changed email was not sent.',
         async () => { await consoleMailer?.sendPasswordChanged(mail) },
+      )
+    },
+    async sendPasswordReset(mail) {
+      const message = passwordResetEmail(mail)
+      await send(
+        { to: mail.to, ...message },
+        'Password reset email was not sent.',
+        async () => { await consoleMailer?.sendPasswordReset(mail) },
       )
     },
   }

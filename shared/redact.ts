@@ -69,6 +69,17 @@ function scrubInviteBearer(value: string): string {
   )
 }
 
+/**
+ * A reset token is a bearer secret, same as an invitation id (ADR-0042).
+ * Better Auth's token is 24 letters and digits. The hash form is the one we send.
+ * The path form is the callback we answer with 404, scrubbed if it is ever logged.
+ */
+function scrubResetBearer(value: string): string {
+  return value
+    .replace(/reset-password#[A-Za-z0-9]{24}/g, 'reset-password#[Redacted]')
+    .replace(/reset-password\/[A-Za-z0-9]{24}/g, 'reset-password/[Redacted]')
+}
+
 function normalizeKey(key: string): string {
   return key.toLowerCase().replaceAll('_', '').replaceAll('-', '')
 }
@@ -110,7 +121,7 @@ export function redact(value: unknown, parentKey?: string): unknown {
   }
 
   if (typeof value === 'string')
-    return scrubInviteBearer(value)
+    return scrubResetBearer(scrubInviteBearer(value))
 
   return value
 }

@@ -10,6 +10,8 @@ definePageMeta({
 const email = ref('')
 const password = ref('')
 const formError = ref<'signIn.failed' | 'signIn.limited' | null>(null)
+const route = useRoute()
+const passwordChanged = computed(() => route.query.passwordChanged === '1')
 
 const {
   t,
@@ -100,6 +102,15 @@ function httpStatus(error: unknown): number | undefined {
     @choose="chooseLocale"
   >
     <form @submit.prevent="signIn">
+      <UAlert
+        v-if="passwordChanged"
+        color="success"
+        variant="subtle"
+        role="status"
+        class="mb-4"
+        :description="t('signIn.passwordChanged')"
+        :ui="{ description: 'text-sm text-default opacity-100' }"
+      />
       <UFormField
         :label="t('signIn.email')"
         name="email"
@@ -132,6 +143,14 @@ function httpStatus(error: unknown): number | undefined {
           class="w-full"
         />
       </UFormField>
+      <p class="mb-4">
+        <NuxtLink
+          to="/forgot-password"
+          class="inline-flex min-h-11 items-center text-sm text-default underline underline-offset-2"
+        >
+          {{ t('signIn.forgot') }}
+        </NuxtLink>
+      </p>
       <UButton
         type="submit"
         size="xl"

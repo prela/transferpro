@@ -186,7 +186,9 @@ export function useShellSignOut() {
     shellError.value = null
   })
 
-  async function signOut() {
+  async function signOut(destination?: unknown): Promise<boolean> {
+    // A click handler passes the event. Only a string is a destination.
+    const target = typeof destination === 'string' ? destination : '/'
     pending.value = true
     shellError.value = null
     try {
@@ -202,14 +204,16 @@ export function useShellSignOut() {
       // refetch would leave that Tenant up until the response arrived.
       clearSharedShell()
       await setLocale('hr')
-      if (route.path !== '/')
-        await navigateTo('/')
+      if (route.fullPath !== target)
+        await navigateTo(target)
+      return true
     }
     catch {
       // A failed request keeps the shell. A throw after the shell was cleared
       // (locale or navigation) is not the sign-out failure message.
       if (session.value)
         shellError.value = 'shell.signOutFailed'
+      return false
     }
     finally {
       pending.value = false

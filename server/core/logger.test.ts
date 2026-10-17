@@ -109,6 +109,20 @@ it('redacts an invitation id and an invite link', () => {
   expect(text).toContain('pending')
 })
 
+it('redacts a reset token in the hash and in the callback path', () => {
+  const logs = captureLogs()
+  const token = 'AbCdEfGhIjKlMnOpQrStUvWx'
+  logs.logger.info({
+    path: `http://localhost:3000/reset-password#${token}`,
+    callback: `http://localhost:3000/api/auth/reset-password/${token}`,
+  }, `opened reset-password#${token} reset-password/${token}`)
+
+  const text = JSON.stringify(logs.lines()[0])
+  expect(text).not.toContain(token)
+  expect(text).toContain('reset-password#[Redacted]')
+  expect(text).toContain('reset-password/[Redacted]')
+})
+
 it('redacts secret-like keys by substring and a postgres detail field', () => {
   const logs = captureLogs()
   const duplicate = new Error('duplicate key')
