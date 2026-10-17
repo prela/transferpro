@@ -24,10 +24,22 @@ test('axe on an opening dialog waits out the enter fade', async ({ page }) => {
   const dialog = await openInvite(page)
   const primary = dialog.getByRole('button', { name: 'Pošalji pozivnicu', exact: true })
   await expect(primary).toBeVisible()
-  // The stretched fade is still running. The helper has to wait it out.
-  const fading = await page.evaluate(() =>
-    document.getAnimations().some(animation => animation.playState === 'running'),
+  // scale-in itself, still running: opacity 0 → 1 on the dialog. A spinner
+  // elsewhere would not prove the washed primary button.
+  const dialogFading = await dialog.evaluate(element =>
+    element.getAnimations().some((animation) => {
+      if (animation.playState !== 'running')
+        return false
+      const effect = animation.effect
+      const getKeyframes: unknown = effect !== null && 'getKeyframes' in effect ? effect.getKeyframes : undefined
+      if (typeof getKeyframes !== 'function')
+        return false
+      const frames = getKeyframes.call(effect) as ReadonlyArray<{ opacity?: unknown }>
+      return frames.some(frame => frame.opacity != null)
+    }),
   )
-  expect(fading).toBe(true)
+  expect(dialogFading).toBe(true)
+  // A hovered primary button uses the /75 fill, which is below 4.5:1.
+  await page.mouse.move(0, 0)
   await expectNoAxeViolations(page)
 })
