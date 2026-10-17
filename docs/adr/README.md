@@ -55,6 +55,6 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0039 | Urgent and warning tiers, and live refresh | accepted |
 | ADR-0040 | Theme tokens and contrast rules | accepted |
 | ADR-0041 | Revoke a pending invitation | accepted |
-| ADR-0042 | Password change and password reset | accepted |
+| ADR-0042 | Password change and password reset | accepted; partially superseded by ADR-0044 |
 | ADR-0043 | Preview is `DEPLOY_ENV`, not a second `NODE_ENV` | accepted |
-| ADR-0044 | Hashed reset identifiers | proposed |
+| ADR-0044 | Hashed reset identifiers | accepted |

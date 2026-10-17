@@ -1,6 +1,8 @@
 # Hashed reset identifiers
 
-Status: proposed
+Status: accepted
+
+Damir accepted this on 18 October 2026, in QC of #320.
 
 ## Context
 
