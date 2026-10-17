@@ -106,6 +106,32 @@ it('uses the fake mailer in test even when a Resend key is present', async () =>
   }
 })
 
+it('keeps the fake mailer in test when the allowlist and a Resend key are set', async () => {
+  const previous = process.env.NODE_ENV
+  process.env.NODE_ENV = 'test'
+  const calls: string[] = []
+  const original = globalThis.fetch
+  globalThis.fetch = async (input) => {
+    calls.push(String(input))
+    return new Response('sent', { status: 200 })
+  }
+  try {
+    const mailer = mailerForApp({
+      RESEND_API_KEY: 're_live_key',
+      MAILER: 'resend',
+      MAIL_ALLOWLIST: ['dora@example.com'],
+    })
+    expect(isResendMailer(mailer)).toBe(false)
+    expect(isConsoleMailer(mailer)).toBe(false)
+    await mailer.sendInvitation(mail)
+    expect(calls).toEqual([])
+  }
+  finally {
+    globalThis.fetch = original
+    restoreNodeEnv(previous)
+  }
+})
+
 it('uses the console mailer in development unless MAILER=resend and the key are both set', () => {
   const previous = process.env.NODE_ENV
   process.env.NODE_ENV = 'development'
@@ -178,6 +204,88 @@ it('does not call Resend from the default transport when NODE_ENV is test', asyn
   try {
     await expect(createResendMailer('re_live_key', globalThis.fetch).sendInvitation(mail)).rejects.toBeInstanceOf(ResendTransportError)
     expect(calls).toEqual([])
+  }
+  finally {
+    globalThis.fetch = original
+    restoreNodeEnv(previous)
+  }
+})
+
+it('sends only allowlisted recipients through Resend', async () => {
+  const previous = process.env.NODE_ENV
+  process.env.NODE_ENV = 'development'
+  const logs = captureLogs()
+  const calls: string[] = []
+  const original = globalThis.fetch
+  globalThis.fetch = async (_input, init) => {
+    calls.push(String(init?.body))
+    return new Response('sent', { status: 200 })
+  }
+  const workOrder = {
+    to: 'other@example.com',
+    subject: 'Dodijeljeno · Zračna luka',
+    text: 'Gost: Ana Tajna',
+    html: '<p>Gost: Ana Tajna</p>',
+  }
+  try {
+    const mailer = mailerForApp({
+      RESEND_API_KEY: 're_live_key',
+      MAILER: 'resend',
+      MAIL_ALLOWLIST: ['owner@example.com'],
+    }, logs.logger)
+    expect(isResendMailer(mailer)).toBe(true)
+    await mailer.sendInvitation({ ...mail, to: ' Owner@Example.com ' })
+    await mailer.sendInvitation({ ...mail, to: 'other@example.com' })
+    await mailer.sendWorkOrder({ ...workOrder, to: 'owner@example.com' })
+    await mailer.sendWorkOrder(workOrder)
+    await mailer.notifyArrivalMoved({
+      rideId: 'ride-1',
+      driverId: 'driver-1',
+      previous: '2026-10-17T08:00:00.000Z',
+      next: '2026-10-17T09:00:00.000Z',
+    })
+    await mailer.notifyFlightWillNotArrive({ rideId: 'ride-1', driverId: 'driver-1' })
+  }
+  finally {
+    globalThis.fetch = original
+    restoreNodeEnv(previous)
+  }
+  const bodies = calls.map(body => JSON.parse(body) as { to: string[] })
+  expect(bodies.map(body => body.to)).toEqual([
+    [' Owner@Example.com '],
+    ['owner@example.com'],
+  ])
+  const lines = logs.lines()
+  expect(lines[0]).toMatchObject({
+    event: 'mail.console',
+    subject: 'Pozivnica u Prijevoz <Dubrovnik>',
+    domain: 'example.com',
+  })
+  expect(lines[1]).toMatchObject({
+    event: 'mail.console',
+    kind: 'work-order',
+  })
+  expect(lines).toHaveLength(2)
+  const text = JSON.stringify(lines)
+  expect(text).not.toContain('other@example.com')
+  expect(text).not.toContain('Ana Tajna')
+  expect(text).not.toContain('Zračna luka')
+  expect(text).not.toContain(inviteUrl)
+})
+
+it('still sends every recipient when MAIL_ALLOWLIST is unset', async () => {
+  const previous = process.env.NODE_ENV
+  process.env.NODE_ENV = 'development'
+  const calls: string[] = []
+  const original = globalThis.fetch
+  globalThis.fetch = async (_input, init) => {
+    calls.push(String(init?.body))
+    return new Response('sent', { status: 200 })
+  }
+  try {
+    const mailer = mailerForApp({ RESEND_API_KEY: 're_live_key', MAILER: 'resend' })
+    await mailer.sendInvitation(mail)
+    expect(calls).toHaveLength(1)
   }
   finally {
     globalThis.fetch = original

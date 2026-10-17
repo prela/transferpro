@@ -118,6 +118,36 @@ it('leaves MAILER unset in development and test', () => {
   expect(parseAppEnv({ ...base, NODE_ENV: 'development', MAILER: 'resend' }).MAILER).toBe('resend')
 })
 
+/**
+ * Preview names the only addresses that may reach Resend. Unset and blank
+ * leave the selection alone. A blank entry or a bad email fails boot, and
+ * the message does not repeat the value (ADR-0042).
+ */
+it('parses MAIL_ALLOWLIST as trimmed, case-insensitive emails', () => {
+  expect(parseAppEnv(base).MAIL_ALLOWLIST).toBeUndefined()
+  expect(parseAppEnv({ ...base, MAIL_ALLOWLIST: '' }).MAIL_ALLOWLIST).toBeUndefined()
+  expect(parseAppEnv({
+    ...base,
+    NODE_ENV: 'production',
+    MAILER: 'resend',
+    MAIL_ALLOWLIST: ' Owner@Example.COM , second@example.com ',
+  }).MAIL_ALLOWLIST).toEqual(['owner@example.com', 'second@example.com'])
+  const listed = 'owner@example.com'
+  const invalid = 'not-an-email'
+  expect(() => parseAppEnv({ ...base, MAIL_ALLOWLIST: `${listed},` })).toThrow('MAIL_ALLOWLIST has a blank or invalid email.')
+  expect(() => parseAppEnv({ ...base, MAIL_ALLOWLIST: invalid })).toThrow('MAIL_ALLOWLIST has a blank or invalid email.')
+  expect(() => parseAppEnv({ ...base, MAIL_ALLOWLIST: '   ' })).toThrow('MAIL_ALLOWLIST has a blank or invalid email.')
+  expect(() => parseAppEnv({ ...base, MAIL_ALLOWLIST: `${listed}, ${invalid}` })).toThrow('MAIL_ALLOWLIST has a blank or invalid email.')
+  try {
+    parseAppEnv({ ...base, MAIL_ALLOWLIST: `${listed}, ${invalid}` })
+  }
+  catch (error) {
+    const text = String(error)
+    expect(text).not.toContain(listed)
+    expect(text).not.toContain(invalid)
+  }
+})
+
 it('defaults MAPS to none and refuses google without a key', () => {
   expect(parseAppEnv(base).MAPS).toBe('none')
   expect(parseAppEnv(base).MAPS_API_KEY).toBeUndefined()

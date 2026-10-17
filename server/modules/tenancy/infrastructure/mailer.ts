@@ -155,24 +155,31 @@ export function assertTestMailer(mailer: Mailer | undefined): void {
 }
 
 /**
- * Test always gets the fake, even when a Resend key is present.
- * Resend is used only when `MAILER=resend` and the key are both set.
- * Development otherwise uses the console mailer so a local process
- * does not spend the shared daily quota. Any other selection of the
- * Resend adapter is refused in test.
+ * Test always gets the fake, even when a Resend key or `MAIL_ALLOWLIST`
+ * is present. Resend is used only when `MAILER=resend` and the key are
+ * both set. Development otherwise uses the console mailer so a local
+ * process does not spend the shared daily quota. Any other selection of
+ * the Resend adapter is refused in test.
+ * `log` is the console line for a recipient the allowlist turns away.
+ * Boot omits it and the process logger is used.
  */
 export function mailerForApp(env: {
   readonly RESEND_API_KEY: string | undefined
   readonly MAILER?: 'resend' | 'console' | undefined
-}): Mailer {
+  readonly MAIL_ALLOWLIST?: readonly string[]
+}, log?: Logger): Mailer {
   if (nodeEnv() === 'test') {
     const mailer = createFakeMailer()
     assertTestMailer(mailer)
     return mailer
   }
-  if (env.MAILER === 'resend' && env.RESEND_API_KEY !== undefined)
-    return createResendMailer(env.RESEND_API_KEY)
-  return createConsoleMailer()
+  if (env.MAILER === 'resend' && env.RESEND_API_KEY !== undefined) {
+    return createResendMailer(env.RESEND_API_KEY, fetch, {
+      allowlist: env.MAIL_ALLOWLIST,
+      log,
+    })
+  }
+  return createConsoleMailer(log)
 }
 
 const ROLE_LABEL: Record<DisplayLocale, Record<TenantRole, string>> = {
@@ -215,12 +222,36 @@ export function invitationEmail(mail: InvitationMail): InvitationEmail {
   return { subject, text, html }
 }
 
+interface ResendMessage {
+  readonly to: string
+  readonly subject: string
+  readonly text: string
+  readonly html: string
+}
+
 /**
  * Sends through https://api.resend.com. EU dispatch is the domain region
  * eu-west-1 on the Resend side, not a different API host. ADR-0013.
+ * `allowlist`, when set, is the only set of recipients that may be posted.
+ * Everyone else gets today's console line. The check reads the address
+ * about to be posted, so a notice that resolves its recipient inside this
+ * adapter is gated the same way as a caller-supplied `to`. ADR-0042.
  */
-export function createResendMailer(apiKey: string, fetchImpl: typeof fetch = fetch): Mailer {
-  async function post(message: { to: string, subject: string, text: string, html: string }, failure: string): Promise<void> {
+export function createResendMailer(
+  apiKey: string,
+  fetchImpl: typeof fetch = fetch,
+  options?: {
+    readonly allowlist?: readonly string[]
+    readonly log?: Logger
+  },
+): Mailer {
+  const allowlist = options?.allowlist === undefined
+    ? undefined
+    : new Set(options.allowlist.map(address => address.trim().toLowerCase()))
+  // Built only when the list is set. Unset keeps every send on Resend.
+  const consoleMailer = allowlist === undefined ? undefined : createConsoleMailer(options?.log)
+
+  async function post(message: ResendMessage, failure: string): Promise<void> {
     // The default fetch is the real transport. A unit test passes its own
     // fetch and never leaves the process. Test mode must not reach Resend.
     if (nodeEnv() === 'test' && fetchImpl === globalThis.fetch)
@@ -247,15 +278,41 @@ export function createResendMailer(apiKey: string, fetchImpl: typeof fetch = fet
     }
   }
 
+  /**
+   * The allowlist sees `message.to`, the address this call would post.
+   * Callers that already know the recipient, and a notice that looks one
+   * up before calling this, share this gate.
+   */
+  async function deliver(
+    message: ResendMessage,
+    failure: string,
+    consoleSend: () => Promise<void>,
+  ): Promise<void> {
+    if (allowlist !== undefined && !allowlist.has(message.to.trim().toLowerCase())) {
+      await consoleSend()
+      return
+    }
+    await post(message, failure)
+  }
+
   const mailer: Mailer = {
     async sendInvitation(mail) {
       const message = invitationEmail(mail)
-      await post({ to: mail.to, ...message }, 'Invitation email was not sent.')
+      await deliver(
+        { to: mail.to, ...message },
+        'Invitation email was not sent.',
+        async () => { await consoleMailer?.sendInvitation(mail) },
+      )
     },
     async sendWorkOrder(mail) {
-      await post(mail, 'Work order email was not sent.')
+      await deliver(
+        mail,
+        'Work order email was not sent.',
+        async () => { await consoleMailer?.sendWorkOrder(mail) },
+      )
     },
-    // The message text is a later ticket. The fact is accepted and no mail is sent.
+    // The message text is a later ticket. No address is resolved, so nothing
+    // is posted. When one is, it must go through `deliver`.
     async notifyArrivalMoved() {},
     async notifyFlightWillNotArrive() {},
   }
