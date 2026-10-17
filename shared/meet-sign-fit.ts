@@ -1,8 +1,9 @@
 /**
- * Below this the sign is no longer a sign. The rest scrolls inside the frame
- * instead of being clipped (ADR-0038).
+ * The meet sign stays at least this large. 28px is still readable when the
+ * phone is held up. A tabla that does not fit at 28px stays there and
+ * scrolls inside the frame (ADR-0038).
  */
-export const MEET_SIGN_MIN_PX = 8
+export const MEET_SIGN_MIN_PX = 28
 
 /**
  * Largest whole-pixel size at or under `startPx` for which `fits` is true.

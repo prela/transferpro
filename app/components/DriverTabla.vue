@@ -31,8 +31,8 @@ function restoreScroll() {
 }
 
 /**
- * Shrink the type until the whole sign sits in the frame. A sign that still
- * overflows at the minimum scrolls inside the frame instead of being clipped.
+ * Shrink the type until the whole sign sits in the frame, but not below
+ * 28px. A sign that still overflows scrolls inside the frame.
  * Rotation changes the frame, so this runs again on resize (ADR-0038).
  */
 function fitSign() {
