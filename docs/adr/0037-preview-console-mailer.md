@@ -1,6 +1,8 @@
 # Console mailer on preview
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0042
+
+ADR-0042 amends "Preview sets both `ALLOW_CONSOLE_MAILER=1` and `MAILER=console`." Preview now sets `MAILER=resend`, `RESEND_API_KEY`, and `MAIL_ALLOWLIST`, and sends real mail only to the listed addresses. The flag stays valid for a deployment that wants console only. The rest of this decision stands.
 
 ## Context
 
