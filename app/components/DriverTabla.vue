@@ -97,6 +97,8 @@ function onResize() {
     slot is the sign itself. The description is a fixed sentence: with the
     content slot, Nuxt UI puts it in VisuallyHidden, so it must not repeat
     the tabla or the screen reader and the e2e locator see the text twice.
+    No enter animation: scale-in fades the close button, and white on a
+    partly faded primary fails 4.5:1 before the 200ms animation ends.
   -->
   <div
     ref="root"
@@ -105,6 +107,7 @@ function onResize() {
     <UModal
       v-model:open="open"
       fullscreen
+      :transition="false"
       :title="t('transfers.tabla')"
       :description="t('driverRides.tablaDescription')"
       :close="false"
