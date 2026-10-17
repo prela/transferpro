@@ -3,6 +3,11 @@
  * The dev database `transferpro` stays untouched, including audit rows
  * left behind by older runs. A remote host is refused, so this never
  * rewrites a production URL.
+ *
+ * node-pg copies query keys onto the config after the host in the URL.
+ * `postgres://u:p@127.0.0.1/transferpro_e2e?host=prod.example` connects
+ * to prod.example. `hostaddr` does the same. Only `sslmode` is allowed,
+ * on the URL we were given and on the URL after the database rename.
  */
 import { z } from 'zod'
 import { databaseIdentity } from './backup-target.mjs'
@@ -20,10 +25,33 @@ export const E2E_APP_DATABASE_ENV = [
 const E2E_DATABASE_ENV = [...E2E_APP_DATABASE_ENV, 'DATABASE_MIGRATE_URL']
 
 /**
+ * node-pg prefers query keys over the host written in the URL.
+ * The message names `name` and never includes the URL.
+ *
  * @param {string} raw
+ * @param {string} name
+ */
+function assertE2eQuery(raw, name) {
+  let url
+  try {
+    url = new URL(raw)
+  }
+  catch {
+    throw new Error(`E2E refused to start: ${name} is not a valid database URL.`)
+  }
+  for (const key of url.searchParams.keys()) {
+    if (key !== 'sslmode')
+      throw new Error(`E2E refused to start: ${name} may only set sslmode.`)
+  }
+}
+
+/**
+ * @param {string} raw
+ * @param {string} name Env variable. Errors name it and never the URL.
  * @returns {string} Same URL, with the database name replaced. The secret stays.
  */
-export function e2eDatabaseUrl(raw) {
+export function e2eDatabaseUrl(raw, name) {
+  assertE2eQuery(raw, name)
   const identity = databaseIdentity(raw)
   if (identity.host !== '127.0.0.1')
     throw new Error('E2E refused to start: the database host must be localhost.')
@@ -31,6 +59,7 @@ export function e2eDatabaseUrl(raw) {
     /^(postgres(?:ql)?:\/\/[^/?#]+)\/[^/?#]*/,
     `$1/${E2E_DATABASE_NAME}`,
   )
+  assertE2eQuery(rewritten, name)
   const checked = databaseIdentity(rewritten)
   if (checked.host !== '127.0.0.1' || checked.database !== E2E_DATABASE_NAME)
     throw new Error(`E2E refused to start: the database must be ${E2E_DATABASE_NAME} on localhost.`)
@@ -47,7 +76,7 @@ export function applyE2eDatabaseEnv(env) {
     const value = env[name]
     if (value === undefined || value === '')
       throw new Error(`E2E refused to start: ${name} is required.`)
-    env[name] = e2eDatabaseUrl(value)
+    env[name] = e2eDatabaseUrl(value, name)
   }
 }
 
@@ -86,6 +115,7 @@ export function assertE2eDatabaseEnv(env, names = E2E_DATABASE_ENV) {
     const value = env[name]
     if (value === undefined || value === '')
       throw new Error(`E2E refused to start: ${name} is required.`)
+    assertE2eQuery(value, name)
     let identity
     try {
       identity = databaseIdentity(value)

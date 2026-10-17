@@ -17,7 +17,7 @@ it('rewrites a local dev database to the e2e database and keeps the secret', () 
   assert.equal(env.DATABASE_URL, 'postgres://transferpro_app:app-secret@127.0.0.1:5432/transferpro_e2e')
   assert.equal(env.AUTH_DATABASE_URL, 'postgres://transferpro_auth:auth-secret@localhost:5432/transferpro_e2e')
   assert.equal(env.DATABASE_MIGRATE_URL, 'postgres://transferpro_owner:owner-secret@127.0.0.1:5432/transferpro_e2e?sslmode=disable')
-  assert.equal(e2eDatabaseUrl(env.DATABASE_URL), env.DATABASE_URL)
+  assert.equal(e2eDatabaseUrl(env.DATABASE_URL, 'DATABASE_URL'), env.DATABASE_URL)
   assert.doesNotThrow(() => assertE2eDatabaseEnv(env))
 })
 
@@ -42,6 +42,37 @@ it('refuses a remote host even when the database is named transferpro_e2e', () =
     assert.equal(error.message.includes('app-secret'), false)
     return true
   })
+})
+
+it('refuses host and hostaddr query keys and does not echo the URL', () => {
+  const local = 'postgres://transferpro_app:app-secret@127.0.0.1:5432/transferpro_e2e'
+  const ready = { ...dev }
+  applyE2eDatabaseEnv(ready)
+  for (const query of ['host=db.example', 'hostaddr=10.0.0.1']) {
+    const url = `${local}?${query}`
+    const env = { ...ready, DATABASE_URL: url }
+    for (const run of [applyE2eDatabaseEnv, assertE2eDatabaseEnv]) {
+      assert.throws(() => run({ ...env }), (error) => {
+        assert.equal(error instanceof Error, true)
+        assert.match(error.message, /^E2E refused to start: DATABASE_URL /)
+        assert.equal(error.message.includes(url), false)
+        assert.equal(error.message.includes('db.example'), false)
+        assert.equal(error.message.includes('10.0.0.1'), false)
+        assert.equal(error.message.includes('app-secret'), false)
+        return true
+      })
+    }
+  }
+})
+
+it('allows a database URL whose only query key is sslmode', () => {
+  const env = {
+    ...dev,
+    DATABASE_URL: 'postgres://transferpro_app:app-secret@127.0.0.1:5432/transferpro?sslmode=disable',
+  }
+  applyE2eDatabaseEnv(env)
+  assert.equal(env.DATABASE_URL, 'postgres://transferpro_app:app-secret@127.0.0.1:5432/transferpro_e2e?sslmode=disable')
+  assert.doesNotThrow(() => assertE2eDatabaseEnv(env))
 })
 
 it('refuses to start when a database URL is missing', () => {
