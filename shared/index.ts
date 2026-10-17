@@ -39,7 +39,7 @@ export { buildOfficeHome, HOME_ATTENTION_KINDS, OFFICE_HOME_COUNT_KEYS, officeHo
 export type { HomeAttentionKind, OfficeHome, OfficeHomeAttentionGroup, OfficeHomeBlockRide, OfficeHomeBlocks, OfficeHomeCountKey, OfficeHomeDecline, OfficeHomeMark, OfficeHomeRide } from './office-home'
 export { accountInitials, officeNav, officePhoneBar } from './office-nav'
 export type { OfficeNavGroup, OfficeNavLabels, OfficeNavLink, OfficeNavRole } from './office-nav'
-export { companyAccountListSchema, companyAccountSchema, parseRenameTenantAccount, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './platform-account'
+export { companyAccountListSchema, companyAccountSchema, parsePlatformTenantListQuery, parseRenameTenantAccount, PLATFORM_TENANT_PAGE_SIZE, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './platform-account'
 export type { CompanyAccount, CompanyAccountList, PlatformActor, PlatformShell } from './platform-account'
 export { includeArchivedQuerySchema, parseIncludeArchivedQuery, QueryParamError } from './query'
 export { ASSIGNMENT_REFUSED_STATES, AssignRideInputError, assignRideSchema, assignTransitionAllowed, parseAssignRide, parseChangeRideVehicle, parseClearRide, parseReassignRide, parseRosterVehicleRead, RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideAssignmentFieldSchema, rideChangeAllowed, RideCommandInputError, rideVehicleChangeFieldSchema, rosterVehicleSuggestionSchema } from './ride-assignment'

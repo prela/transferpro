@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { companyAccountListSchema, companyAccountSchema, parseRenameTenantAccount, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './index'
+import { companyAccountListSchema, companyAccountSchema, parsePlatformTenantListQuery, parseRenameTenantAccount, PLATFORM_TENANT_PAGE_SIZE, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './index'
 
 const account = {
   id: '6b1e0c3a-2222-4222-8222-222222222222',
@@ -17,8 +17,32 @@ it('shows only the firm metadata', () => {
   expect(companyAccountSchema.parse(account)).toEqual(account)
   expect(companyAccountSchema.safeParse({ ...account, memberCount: 3 }).success).toBe(false)
   expect(companyAccountSchema.safeParse({ ...account, email: 'ana@example.test' }).success).toBe(false)
-  expect(companyAccountListSchema.parse({ accounts: [account] })).toEqual({ accounts: [account] })
+  const list = {
+    accounts: [account],
+    page: 1,
+    pageSize: PLATFORM_TENANT_PAGE_SIZE,
+    total: 1,
+  }
+  expect(companyAccountListSchema.parse(list)).toEqual(list)
   expect(companyAccountListSchema.safeParse({ accounts: [account], memberCount: 1 }).success).toBe(false)
+  expect(companyAccountListSchema.safeParse({ ...list, memberCount: 1 }).success).toBe(false)
+})
+
+it('reads a firm-list page and a name or slug search', () => {
+  expect(PLATFORM_TENANT_PAGE_SIZE).toBe(20)
+  expect(parsePlatformTenantListQuery({})).toEqual({ page: 1, q: '' })
+  expect(parsePlatformTenantListQuery({ page: '2', q: '  Mora  ' })).toEqual({ page: 2, q: 'Mora' })
+  expect(parsePlatformTenantListQuery({ q: 'hpl-order' })).toEqual({ page: 1, q: 'hpl-order' })
+})
+
+it('refuses a firm-list query that is not one page and one search', () => {
+  expect(() => parsePlatformTenantListQuery({ page: '0' })).toThrow(PlatformInputError)
+  expect(() => parsePlatformTenantListQuery({ page: '1.5' })).toThrow(PlatformInputError)
+  expect(() => parsePlatformTenantListQuery({ page: '10000' })).toThrow(PlatformInputError)
+  expect(() => parsePlatformTenantListQuery({ page: ['1', '2'] })).toThrow(PlatformInputError)
+  expect(() => parsePlatformTenantListQuery({ q: 'A'.repeat(121) })).toThrow(PlatformInputError)
+  expect(() => parsePlatformTenantListQuery({ email: 'ana@example.test' })).toThrow(PlatformInputError)
+  expect(() => parsePlatformTenantListQuery(null)).toThrow(PlatformInputError)
 })
 
 it('accepts a rename name and refuses any other key', () => {

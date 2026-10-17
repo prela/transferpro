@@ -38,6 +38,7 @@ const infrastructureAndTests = [
   'server/**/infrastructure/**',
   '**/*.test.ts',
   // Playwright seeds rows the same way the RLS tests do.
+  // e2e/prepare-database.ts creates transferpro_e2e before the suite.
   'e2e/**/*.ts',
 ]
 

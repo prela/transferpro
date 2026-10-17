@@ -21,6 +21,8 @@ test('superadmin lists, opens, and renames a firm in Croatian and English, light
   for (const marker of [planted.clientName, planted.driverName, planted.vehicleDescription, 'E2EVH01'])
     await expect(page.getByText(marker)).toHaveCount(0)
 
+  await page.getByLabel('Naziv ili oznaka').fill(tenant.name)
+  await page.getByLabel('Naziv ili oznaka').press('Enter')
   await page.getByRole('link', { name: tenant.name, exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
   await expect(page.getByText(tenant.slug, { exact: true })).toBeVisible()
