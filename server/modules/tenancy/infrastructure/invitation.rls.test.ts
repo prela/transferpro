@@ -54,6 +54,7 @@ const mailer = {
   async sendWorkOrder() {},
   async notifyArrivalMoved() {},
   async notifyFlightWillNotArrive() {},
+  async sendPasswordChanged() {},
 }
 
 const appPool = new pg.Pool({ connectionString: databaseUrl })

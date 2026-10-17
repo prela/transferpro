@@ -1282,6 +1282,7 @@ function workOrderMailer(sent: SentWorkOrder[]) {
     },
     async notifyArrivalMoved() {},
     async notifyFlightWillNotArrive() {},
+    async sendPasswordChanged() {},
   }
 }
 
@@ -1558,6 +1559,7 @@ it('a rejected send leaves the correction, and the audit stays the correction', 
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(failed.workOrders).toEqual([{ driverId: driver.id, outcome: 'failed' }])

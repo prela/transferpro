@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { acceptErrorKey, invitationPreviewSchema, passwordLengthRule } from './invitation'
+import { acceptErrorKey, invitationPreviewSchema, passwordLengthLimits, passwordLengthRule } from './invitation'
 import { inviteLink } from './invite-link'
 
 const invitationId = '6b1e0c3a-2222-4222-8222-222222222222'
@@ -9,6 +9,14 @@ it('puts the invitation id in the hash and not the query', () => {
   expect(link.pathname).toBe('/accept-invite')
   expect(link.search).toBe('')
   expect(link.hash).toBe(`#${invitationId}`)
+})
+
+it('keeps the one password length bound at 8 and 128', () => {
+  expect(passwordLengthLimits).toEqual({ minPasswordLength: 8, maxPasswordLength: 128 })
+  expect(passwordLengthRule('a'.repeat(7), passwordLengthLimits)).toBe('too-short')
+  expect(passwordLengthRule('a'.repeat(8), passwordLengthLimits)).toBeNull()
+  expect(passwordLengthRule('a'.repeat(128), passwordLengthLimits)).toBeNull()
+  expect(passwordLengthRule('a'.repeat(129), passwordLengthLimits)).toBe('too-long')
 })
 
 it('names a password that misses a length bound from the caller', () => {

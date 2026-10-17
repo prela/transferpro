@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { captureLogs } from '../../../core/testing'
-import { assertTestMailer, createConsoleMailer, createResendMailer, invitationEmail, isConsoleMailer, isResendMailer, mailerForApp, ResendTransportError } from './mailer'
+import { assertTestMailer, createConsoleMailer, createFakeMailer, createResendMailer, invitationEmail, isConsoleMailer, isResendMailer, mailerForApp, passwordChangedEmail, ResendTransportError } from './mailer'
 
 const invitationId = '6b1e0c3a-2222-4222-8222-222222222222'
 const inviteUrl = `http://localhost:3000/accept-invite#${invitationId}`
@@ -245,6 +245,8 @@ it('sends only allowlisted recipients through Resend', async () => {
       next: '2026-10-17T09:00:00.000Z',
     })
     await mailer.notifyFlightWillNotArrive({ rideId: 'ride-1', driverId: 'driver-1' })
+    await mailer.sendPasswordChanged({ to: 'other@example.com', locale: 'hr' })
+    await mailer.sendPasswordChanged({ to: 'owner@example.com', locale: 'en' })
   }
   finally {
     globalThis.fetch = original
@@ -254,7 +256,12 @@ it('sends only allowlisted recipients through Resend', async () => {
   expect(bodies.map(body => body.to)).toEqual([
     [' Owner@Example.com '],
     ['owner@example.com'],
+    ['owner@example.com'],
   ])
+  const changed = JSON.parse(calls[2] ?? '{}') as { subject: string, text: string, html: string }
+  expect(changed.subject).toBe('Your password was changed')
+  expect(changed.text).not.toMatch(/https?:\/\//)
+  expect(changed.html).not.toContain('href')
   const lines = logs.lines()
   expect(lines[0]).toMatchObject({
     event: 'mail.console',
@@ -265,7 +272,11 @@ it('sends only allowlisted recipients through Resend', async () => {
     event: 'mail.console',
     kind: 'work-order',
   })
-  expect(lines).toHaveLength(2)
+  expect(lines[2]).toMatchObject({
+    event: 'mail.console',
+    kind: 'password-changed',
+  })
+  expect(lines).toHaveLength(3)
   const text = JSON.stringify(lines)
   expect(text).not.toContain('other@example.com')
   expect(text).not.toContain('Ana Tajna')
@@ -291,6 +302,36 @@ it('still sends every recipient when MAIL_ALLOWLIST is unset', async () => {
     globalThis.fetch = original
     restoreNodeEnv(previous)
   }
+})
+
+it('writes the password changed notice in Croatian and English, with no link and no person', () => {
+  const croatian = passwordChangedEmail({ to: 'ada@example.test', locale: 'hr' })
+  expect(croatian.subject).toBe('Lozinka je promijenjena')
+  expect(croatian.text).toContain('administratoru tvrtke')
+  expect(croatian.text).not.toMatch(/https?:\/\//)
+  expect(croatian.html).not.toContain('href')
+  expect(croatian.text).not.toContain('ada@example.test')
+  const english = passwordChangedEmail({ to: 'ada@example.test', locale: 'en' })
+  expect(english.subject).toBe('Your password was changed')
+  expect(english.text).toContain('company\'s administrator')
+  expect(english.text).not.toContain('ada@example.test')
+})
+
+it('logs a password changed console line without the address', async () => {
+  const logs = captureLogs()
+  const mailer = createConsoleMailer(logs.logger)
+  await mailer.sendPasswordChanged({ to: 'ada@example.test', locale: 'hr' })
+  const [line] = logs.lines()
+  expect(line).toMatchObject({ event: 'mail.console', kind: 'password-changed' })
+  expect(JSON.stringify(line)).not.toContain('ada@example.test')
+  expect(JSON.stringify(line)).not.toContain('example.test')
+})
+
+it('records one password changed mail on the fake mailer', async () => {
+  const changed: { to: string, locale: 'hr' | 'en' }[] = []
+  const mailer = createFakeMailer([], [], [], [], changed)
+  await mailer.sendPasswordChanged({ to: 'ada@example.test', locale: 'en' })
+  expect(changed).toEqual([{ to: 'ada@example.test', locale: 'en' }])
 })
 
 function restoreNodeEnv(previous: string | undefined) {

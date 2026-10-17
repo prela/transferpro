@@ -1,18 +1,19 @@
 import type { account, invitation, member, organization, session, user, verification } from '../../../../db/auth-schema'
-import type { AppEnv } from '../../../core/index'
+import type { AppEnv, Logger } from '../../../core/index'
 import type { Mailer } from './mailer'
 import { drizzleAdapter } from '@better-auth/drizzle-adapter'
 import { betterAuth } from 'better-auth'
-import { APIError } from 'better-auth/api'
+import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api'
 import { hashPassword } from 'better-auth/crypto'
 import { organization as organizationPlugin } from 'better-auth/plugins'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
 import * as authSchema from '../../../../db/auth-schema'
-import { inviteLink, SUPERADMIN_SESSION_SECONDS, tenantRoleSchema } from '../../../../shared'
-import { nodeEnv } from '../../../core/index'
+import { displayLocaleSchema, inviteLink, passwordLengthLimits, SUPERADMIN_SESSION_SECONDS, tenantRoleSchema } from '../../../../shared'
+import { getLogger, nodeEnv } from '../../../core/index'
 import { deliverInvitationEmail, inviteSendState } from './invite-send'
+import { noticePasswordChanged } from './password-changed'
 import { invitationExpiresInSeconds, organizationRoles } from './tenant-roles'
 
 /**
@@ -215,7 +216,7 @@ async function capSuperadminSession(
 
 export function createAuth(
   env: Pick<AppEnv, 'AUTH_DATABASE_URL' | 'BETTER_AUTH_SECRET' | 'BETTER_AUTH_URL'>,
-  options?: { mailer?: Mailer, rateLimit?: ReturnType<typeof signInRateLimit> },
+  options?: { mailer?: Mailer, rateLimit?: ReturnType<typeof signInRateLimit>, logger?: Logger },
 ) {
   const pool = new pg.Pool({ connectionString: env.AUTH_DATABASE_URL })
   const db = drizzle(pool, { schema })
@@ -230,6 +231,9 @@ export function createAuth(
       enabled: true,
       // Decision 3.10.2026: no public signup. The operator script creates the admin.
       disableSignUp: true,
+      // The same numbers the accept, change, and reset forms check.
+      minPasswordLength: passwordLengthLimits.minPasswordLength,
+      maxPasswordLength: passwordLengthLimits.maxPasswordLength,
     },
     // Tests pass the production rule. The app uses NODE_ENV, which is off in test.
     rateLimit: options?.rateLimit ?? signInRateLimit(nodeEnv()),
@@ -257,6 +261,47 @@ export function createAuth(
           input: false,
         },
       },
+    },
+    hooks: {
+      // The password is already saved. This only notices the account.
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== '/change-password')
+          return
+        const returned = ctx.context.returned
+        if (returned == null || isAPIError(returned))
+          return
+        const session = z.object({
+          user: z.object({ id: z.string().min(1) }),
+        }).safeParse(ctx.context.session)
+        if (!session.success)
+          return
+        const userId = session.data.user.id
+        const logger = options?.logger ?? getLogger()
+        try {
+          const result = await pool.query(
+            'select email, locale from auth."user" where id = $1',
+            [userId],
+          )
+          const row = z.object({
+            email: z.string().min(1),
+            locale: z.string().nullable(),
+          }).safeParse(result.rows[0])
+          const chosen = row.success ? displayLocaleSchema.safeParse(row.data.locale) : null
+          noticePasswordChanged(
+            options?.mailer,
+            logger,
+            userId,
+            row.success
+              ? { to: row.data.email, locale: chosen?.success ? chosen.data : 'hr' }
+              : null,
+          )
+        }
+        catch {
+          // The lookup failed after the password was saved. Say so without
+          // the address, and do not fail the change.
+          noticePasswordChanged(undefined, logger, userId, null)
+        }
+      }),
     },
     databaseHooks: {
       session: {

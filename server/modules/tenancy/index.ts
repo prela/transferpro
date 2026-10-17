@@ -10,7 +10,7 @@ export { decideDemoSeed, demoSeedRefusalMessage } from './infrastructure/demo-se
 export type { DemoSeedDecisionInput, DemoSeedRefusal } from './infrastructure/demo-seed-guard'
 export { InvitationAccessError } from './infrastructure/invitation'
 export { mailerForApp, ResendTransportError } from './infrastructure/mailer'
-export type { ArrivalMovedNotice, FlightWillNotArriveNotice, Mailer } from './infrastructure/mailer'
+export type { ArrivalMovedNotice, FlightWillNotArriveNotice, Mailer, PasswordChangedMail } from './infrastructure/mailer'
 export { MemberAccessError } from './infrastructure/member-management'
 export { acceptMemberInvitation, changeMemberRole, closeTenantRuntime, handleAuthRequest, inviteMember, listMembers, listPendingInvitations, platformActorFromSession, previewMemberInvitation, readAccountIdentity, readAuditLog, readSessionShell, readSignInEmail, readTenantSettings, readUserLocale, removeTenantMember, repairInvitationRequest, revokePendingInvitation, TenantAccessError, updateTenantSettings, updateUserLocale, withTenantFromSession } from './infrastructure/session'
 export { parseTenantCreateArgs, TenantCreateArgsError } from './infrastructure/tenant-create-args'

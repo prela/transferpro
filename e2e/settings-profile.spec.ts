@@ -346,6 +346,100 @@ test('language and theme each change in one click from the menu', async ({ page 
   }
 })
 
+test.describe('@phone', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`an admin changes password in ${theme} mode`, async ({ page }) => {
+      const tenant = await seedTenant(`profile-password-${theme}`)
+      const nextPassword = 'e2e-changed-password'
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      await page.goto('/profile')
+      await expect(page.getByRole('heading', { level: 2, name: 'Promjena lozinke' })).toBeVisible()
+      await hydrated(page)
+      const current = page.getByLabel('Trenutna lozinka', { exact: true })
+      await expect(current).toBeVisible()
+      expect(await current.evaluate(element => getComputedStyle(element).fontSize)).toBe('16px')
+      await expect(page.getByRole('checkbox')).toHaveCount(0)
+      await expectNoAxeViolations(page)
+
+      await current.fill('not-the-password')
+      await page.getByLabel('Nova lozinka', { exact: true }).fill(nextPassword)
+      await page.getByLabel('Potvrda lozinke', { exact: true }).fill(nextPassword)
+      await page.getByLabel('Potvrda lozinke', { exact: true }).press('Enter')
+      const wrong = page.locator('#change-password-alert')
+      await expect(wrong).toContainText('Trenutna lozinka nije točna')
+      await expect(page.locator('#profile-current-password-error')).toHaveText('Trenutna lozinka nije točna')
+      await expect(current).toHaveValue('not-the-password')
+      await expect(page.getByLabel('Nova lozinka', { exact: true })).toHaveValue(nextPassword)
+      await expectNoAxeViolations(page)
+
+      await page.getByLabel('Nova lozinka', { exact: true }).fill('abc')
+      await page.getByLabel('Potvrda lozinke', { exact: true }).fill('abc')
+      await page.getByRole('button', { name: 'Spremi lozinku', exact: true }).click()
+      await expect(page.locator('#change-password-alert')).toContainText('Lozinka mora imati najmanje 8 znakova.')
+      await expect(page.locator('#profile-new-password-error')).toHaveText('Lozinka mora imati najmanje 8 znakova.')
+
+      await page.getByLabel('Nova lozinka', { exact: true }).fill(nextPassword)
+      await page.getByLabel('Potvrda lozinke', { exact: true }).fill('e2e-changed-passworx')
+      await page.getByRole('button', { name: 'Spremi lozinku', exact: true }).click()
+      await expect(page.locator('#change-password-alert')).toContainText('Nova lozinka i potvrda nisu iste.')
+      await expect(page.locator('#profile-confirm-password-error')).toHaveText('Nova lozinka i potvrda nisu iste.')
+
+      if (theme === 'light') {
+        await switchLocale(page, 'en')
+        await expect(page.getByRole('heading', { level: 2, name: 'Change password' })).toBeVisible()
+        await expect(page.getByLabel('Current password', { exact: true })).toBeVisible()
+        await expect(page.getByRole('button', { name: 'Save password', exact: true })).toBeVisible()
+        await page.getByLabel('Current password', { exact: true }).fill('not-the-password')
+        await page.getByLabel('New password', { exact: true }).fill(nextPassword)
+        await page.getByLabel('Confirm password', { exact: true }).fill(nextPassword)
+        await page.getByRole('button', { name: 'Save password', exact: true }).click()
+        await expect(page.locator('#change-password-alert')).toContainText('The current password is not correct.')
+        await expectNoAxeViolations(page)
+        await page.getByLabel('Current password', { exact: true }).fill(tenant.password)
+        await page.getByLabel('New password', { exact: true }).fill(nextPassword)
+        await page.getByLabel('Confirm password', { exact: true }).fill(nextPassword)
+        await page.getByRole('button', { name: 'Save password', exact: true }).click()
+        await expect(page.getByRole('status').filter({ hasText: 'Your password was changed' })).toBeVisible()
+        await switchLocale(page, 'hr')
+      }
+      else {
+        await current.fill(tenant.password)
+        await page.getByLabel('Nova lozinka', { exact: true }).fill(nextPassword)
+        await page.getByLabel('Potvrda lozinke', { exact: true }).fill(nextPassword)
+        await page.getByRole('button', { name: 'Spremi lozinku', exact: true }).click()
+        await expect(page.getByRole('status').filter({ hasText: 'Lozinka je promijenjena' })).toBeVisible()
+      }
+
+      await expect(page.getByLabel('E-pošta')).toHaveValue(tenant.adminEmail)
+      // The open toast is a list item that also carries role="status".
+      // Axe of the form and of the error alert already ran above.
+      await page.goto('/')
+      await hydrated(page)
+      await signOut(page)
+      await signIn(page, tenant.adminEmail, nextPassword, tenant.name)
+    })
+  }
+
+  test('a dispatcher and a driver can open the change password form', async ({ page }) => {
+    const tenant = await seedTenant('profile-password-roles')
+    const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
+    const driver = await seedMember(tenant.tenantId, 'driver', 'Vozac')
+    for (const member of [dispatcher, driver]) {
+      await signIn(page, member.email, member.password, tenant.name)
+      await page.goto('/profile')
+      await expect(page.getByRole('heading', { level: 2, name: 'Promjena lozinke' })).toBeVisible()
+      await expect(page.getByLabel('Trenutna lozinka', { exact: true })).toBeVisible()
+      await expect(page.getByLabel('Nova lozinka', { exact: true })).toBeVisible()
+      await expect(page.getByLabel('Potvrda lozinke', { exact: true })).toBeVisible()
+      await expect(page.getByRole('checkbox')).toHaveCount(0)
+      await page.goto('/')
+      await hydrated(page)
+      await signOut(page)
+    }
+  })
+})
+
 test('a superadmin who opens /profile does not see a member profile', async ({ page }) => {
   await seedTenant('profile-platform')
   const owner = await seedSuperadmin('profile-platform')

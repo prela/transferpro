@@ -496,6 +496,7 @@ it('emails an assigned work order in the tenant locale, and a rejected send leav
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(assigned.ride).toMatchObject({ state: 'assigned', driverId: driver.id, mustAccept: false })
@@ -547,6 +548,7 @@ it('emails an assigned work order in the tenant locale, and a rejected send leav
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(failed.workOrders).toEqual([{ driverId: driver.id, outcome: 'failed' }])
@@ -600,6 +602,7 @@ it('emails a changed work order with the cash price, and a rejected send leaves 
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(changed.ride).toMatchObject({ state: 'assigned', driverId: driver.id, vehicleId: next.id })
@@ -632,6 +635,7 @@ it('emails a changed work order with the cash price, and a rejected send leaves 
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(failed.workOrders).toEqual([{ driverId: driver.id, outcome: 'failed' }])
@@ -692,6 +696,7 @@ it('reports each Driver on a reassign, and a clear states no price even when the
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(moved.ride).toMatchObject({ state: 'assigned', driverId: next.id, vehicleId: newVehicle.id })
@@ -737,6 +742,7 @@ it('reports each Driver on a reassign, and a clear states no price even when the
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(cardMoved.workOrders).toEqual([
@@ -759,6 +765,7 @@ it('reports each Driver on a reassign, and a clear states no price even when the
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(cleared.ride).toMatchObject({ state: 'unassigned', driverId: null, vehicleId: null })
@@ -783,6 +790,7 @@ it('reports each Driver on a reassign, and a clear states no price even when the
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(lost.workOrders).toEqual([{ driverId: previous.id, outcome: 'failed' }])
@@ -2863,6 +2871,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(cancelled.ride).toMatchObject({
@@ -2905,6 +2914,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(none.ride).toMatchObject({ state: 'cancelled', driverId: null, vehicleId: null })
@@ -2928,6 +2938,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(noEmail.ride.state).toBe('cancelled')
@@ -2953,6 +2964,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
       },
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
+      async sendPasswordChanged() {},
     },
   })
   expect(failed.workOrders).toEqual([{ driverId: driver.id, outcome: 'failed' }])

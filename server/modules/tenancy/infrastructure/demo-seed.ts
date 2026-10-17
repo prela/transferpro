@@ -3,7 +3,7 @@ import type { DemoPicture, DemoRide, DemoVehicleKey } from './demo-seed-picture'
 import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { z } from 'zod'
-import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT, passwordLengthRule, RELOCATION_GAP_DEFAULT_MINUTES, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../../../shared'
+import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT, passwordLengthLimits, passwordLengthRule, RELOCATION_GAP_DEFAULT_MINUTES, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../../../shared'
 import { buildDemoPicture, DEMO_SLUG, DEMO_TENANT_NAME, DEMO_TIME_ZONE } from './demo-seed-picture'
 
 /**
@@ -15,8 +15,6 @@ import { buildDemoPicture, DEMO_SLUG, DEMO_TENANT_NAME, DEMO_TIME_ZONE } from '.
  * removed with the rest of that Tenant, then the append-only trigger is
  * turned back on before commit.
  */
-
-const PASSWORD_LIMITS = { minPasswordLength: 8, maxPasswordLength: 128 } as const
 
 export class DemoSeedError extends Error {
   constructor(message: string) {
@@ -34,8 +32,8 @@ export interface SeedDemoTenantInput {
 const roleRow = z.object({ role: z.string() })
 
 export async function seedDemoTenant(input: SeedDemoTenantInput): Promise<void> {
-  if (passwordLengthRule(input.password, PASSWORD_LIMITS) !== null)
-    throw new DemoSeedError('Password must be 8 to 128 characters.')
+  if (passwordLengthRule(input.password, passwordLengthLimits) !== null)
+    throw new DemoSeedError(`Password must be ${passwordLengthLimits.minPasswordLength} to ${passwordLengthLimits.maxPasswordLength} characters.`)
 
   const urls = z.object({
     authDatabaseUrl: z.url(),
