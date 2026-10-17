@@ -248,9 +248,10 @@ jobs:
 
       # Playwright sets NODE_ENV=test and clears RESEND_API_KEY.
       # scripts/e2e-server.mjs refuses to start if that is not true, so this
-      # job cannot send mail through Resend. The migrate URL stays in
-      # .env.migrate: the Playwright worker loads that file for seeding, and
-      # the app process does not receive DATABASE_MIGRATE_URL.
+      # job cannot send mail through Resend. The config rewrites every
+      # database URL to transferpro_e2e. e2e/prepare-database.ts creates and
+      # migrates that database. The app process does not receive
+      # DATABASE_MIGRATE_URL. The worker keeps it for seeding.
       - name: End-to-end
         run: pnpm exec playwright test --shard=${{ matrix.shard }}/3
 

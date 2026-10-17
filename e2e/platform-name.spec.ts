@@ -10,6 +10,8 @@ test('renaming a firm with an empty name shows the length message', async ({ pag
   await page.getByLabel('Lozinka').fill(owner.password)
   await page.getByRole('button', { name: 'Prijavi se', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Tvrtke' })).toBeVisible()
+  await page.getByLabel('Naziv ili oznaka').fill(tenant.name)
+  await page.getByRole('button', { name: 'Traži', exact: true }).click()
   await page.getByRole('link', { name: tenant.name, exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: tenant.name })).toBeVisible()
 

@@ -2,7 +2,7 @@ import type { CompanyAccount, CompanyAccountList, PlatformActor, PlatformShell }
 import type { PlatformLogEvent } from './log'
 import pg from 'pg'
 import { z } from 'zod'
-import { companyAccountListSchema, companyAccountSchema, parseRenameTenantAccount, PlatformInputError, platformShellSchema, resolveDisplayLocale, TENANT_TIME_ZONE_DEFAULT } from '../../../../shared'
+import { companyAccountListSchema, companyAccountSchema, parsePlatformTenantListQuery, parseRenameTenantAccount, PLATFORM_TENANT_PAGE_SIZE, PlatformInputError, platformShellSchema, resolveDisplayLocale, TENANT_TIME_ZONE_DEFAULT } from '../../../../shared'
 import { getLogger, loadAppEnv } from '../../../core/index'
 import { platformActorFromSession, readAccountIdentity, readUserLocale, TenantAccessError } from '../../tenancy'
 import { appendTenantRenamed } from './audit'
@@ -80,14 +80,55 @@ export async function readPlatformShell(headers: Headers): Promise<PlatformShell
   })
 }
 
-export async function listTenantAccounts(headers: Headers): Promise<CompanyAccountList> {
-  return platformCall(headers, 'platform.tenants.list', null, async () => {
-    const result = await platformPool().query(
-      `${accountSql} order by organization.name, organization.slug`,
-    )
-    const accounts = result.rows.map(row => toAccount(row))
-    return companyAccountListSchema.parse({ accounts })
+export async function listTenantAccounts(headers: Headers, rawQuery: unknown): Promise<CompanyAccountList> {
+  return platformCall(headers, 'platform.tenants.list', null, async (actor) => {
+    let query: { page: number, q: string }
+    try {
+      query = parsePlatformTenantListQuery(rawQuery)
+    }
+    catch (error) {
+      if (error instanceof PlatformInputError)
+        throw new PlatformAccessError(400, actor.userId)
+      throw error
+    }
+    return selectAccountPage(query)
   })
+}
+
+/**
+ * One page, ordered by name then slug. `q` is a literal substring of the
+ * name or the slug: `%` and `_` are escaped so they are not LIKE wildcards.
+ * The page size is fixed. A caller cannot ask for every firm.
+ */
+async function selectAccountPage(query: { page: number, q: string }): Promise<CompanyAccountList> {
+  const pattern = query.q === '' ? null : likeContains(query.q)
+  const where = pattern === null
+    ? ''
+    : `where organization.name ilike $1 escape '!' or organization.slug ilike $1 escape '!'`
+  const filter = pattern === null ? [] : [pattern]
+  const count = await platformPool().query(
+    `select count(organization.id)::int as total from auth.organization as organization ${where}`,
+    filter,
+  )
+  const total = z.object({ total: z.coerce.number().int().nonnegative() }).parse(count.rows[0]).total
+  const offset = (query.page - 1) * PLATFORM_TENANT_PAGE_SIZE
+  const params = [...filter, PLATFORM_TENANT_PAGE_SIZE, offset]
+  const limit = pattern === null ? 'limit $1 offset $2' : 'limit $2 offset $3'
+  const result = await platformPool().query(
+    `${accountSql} ${where} order by organization.name, organization.slug ${limit}`,
+    params,
+  )
+  return companyAccountListSchema.parse({
+    accounts: result.rows.map(row => toAccount(row)),
+    page: query.page,
+    pageSize: PLATFORM_TENANT_PAGE_SIZE,
+    total,
+  })
+}
+
+/** `%` and `_` are letters. `!` is the LIKE escape, so it is escaped too. */
+function likeContains(term: string): string {
+  return `%${term.replace(/[!%_]/g, char => `!${char}`)}%`
 }
 
 export async function readTenantAccount(headers: Headers, rawId: string): Promise<CompanyAccount> {
