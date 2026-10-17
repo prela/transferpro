@@ -159,6 +159,7 @@ test('an airport code is stored, and a hotel has no code field, in both language
   await page.getByRole('button', { name: place, exact: true }).click()
   dialog = page.getByRole('dialog')
   await expect(dialog.getByLabel('IATA kod (aerodrom)')).toHaveValue('DBV')
+  await expectNoAxeViolations(page)
   await dialog.getByLabel('IATA kod (aerodrom)').fill('')
   await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
   await expect(dialog).toBeHidden()
@@ -284,14 +285,22 @@ test.describe('@phone', () => {
       await expectNoAxeViolations(page)
       await dialog.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
       await expect(dialog).toBeHidden()
-      await expect(page.getByRole('cell', { name: 'ZAD', exact: true })).toBeVisible()
+
+      const stored = await page.request.get('/api/locations')
+      const storedBody = await stored.json() as { locations: { name: string, iata: string | null }[] }
+      expect(storedBody.locations.find(location => location.name === 'Zračna luka Zadar')?.iata).toBe('ZAD')
 
       await page.getByRole('button', { name: 'Zračna luka Zadar', exact: true }).click()
       dialog = page.getByRole('dialog')
+      await expect(dialog.getByLabel('IATA kod (aerodrom)')).toHaveValue('ZAD')
+      await expectNoAxeViolations(page)
       await dialog.getByLabel('IATA kod (aerodrom)').fill('')
       await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
       await expect(dialog).toBeHidden()
-      await expect(page.getByRole('cell', { name: 'ZAD', exact: true })).toHaveCount(0)
+
+      const cleared = await page.request.get('/api/locations')
+      const clearedBody = await cleared.json() as { locations: { name: string, iata: string | null }[] }
+      expect(clearedBody.locations.find(location => location.name === 'Zračna luka Zadar')?.iata).toBeNull()
     })
   }
 })
