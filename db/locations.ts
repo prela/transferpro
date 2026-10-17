@@ -28,6 +28,8 @@ export const locations = tenantTable('locations', {
   /**
    * Optional IATA code. Only kind airport may carry one (ADR-0028).
    * Three ASCII letters, already uppercased by the writer. Null is no code.
+   * One active Location per Tenant may hold a given code. An archived row
+   * keeps its code and does not block a new active Location.
    */
   iata: text('iata'),
   /**
@@ -74,5 +76,6 @@ export const locations = tenantTable('locations', {
     'locations_place_ref',
     sql`${table.placeRef} is null or (${table.placeRef} = btrim(${table.placeRef}) and length(${table.placeRef}) between 1 and ${placeRefMax})`,
   ),
+  uniqueIndex('locations_iata_active').on(table.tenantId, table.iata).where(sql`${table.archivedAt} is null and ${table.iata} is not null`),
   uniqueIndex('locations_tenant_id_id').on(table.tenantId, table.id),
 ], { oneRowPerTenant: false })

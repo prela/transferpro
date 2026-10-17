@@ -1,7 +1,7 @@
 import type { InjectionKey } from 'vue'
 import type { Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, TransferDayRide, TransferPrefill } from '../../shared'
 import { z } from 'zod'
-import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedTransferSchema, rememberTransferDraft, sameLocationError, tablaError, wallClockInTimeZone } from '../../shared'
+import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedTransferSchema, rememberTransferDraft, sameLocationError, tablaError, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -133,7 +133,7 @@ export function useTransferForm(options: {
 
   const locationItems = computed(() => options.locations.value
     .filter(location => location.archivedAt === null)
-    .map(location => ({ label: location.name, value: location.id })))
+    .map(location => ({ label: locationLabel(location), value: location.id })))
 
   const paymentItems = computed(() => [
     { label: t('transfers.payments.cash'), value: 'cash' as const },

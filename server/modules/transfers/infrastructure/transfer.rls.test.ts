@@ -651,7 +651,7 @@ it('tenant B cannot read or write Tenant A expected arrival', async () => {
       `insert into app.clients (name, kind) values ('Agencija Dolazak', 'agency') returning id`,
     )
     const start = await client.query<{ id: string }>(
-      `insert into app.locations (name, kind, iata) values ('Zracna luka Dolazak', 'airport', 'DBV') returning id`,
+      `insert into app.locations (name, kind, iata) values ('Zracna luka Dolazak', 'airport', 'ZAG') returning id`,
     )
     const end = await client.query<{ id: string }>(
       `insert into app.locations (name, kind) values ('Hotel Dolazak', 'hotel') returning id`,

@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { z } from 'zod'
 import { LocationInputError, parseIncludeArchivedQuery, QueryParamError } from '../../../shared'
-import { LocationArchivedError, LocationNotFoundError } from '../../modules/locations'
+import { LocationArchivedError, LocationIataTakenError, LocationNotFoundError } from '../../modules/locations'
 import { TenantAccessError } from '../../modules/tenancy'
 
 /**
@@ -12,7 +12,7 @@ export function locationHttpError(error: unknown): never {
   if (error instanceof LocationInputError || error instanceof LocationNotFoundError || error instanceof TenantAccessError) {
     throw createError({ statusCode: error.statusCode })
   }
-  if (error instanceof LocationArchivedError) {
+  if (error instanceof LocationArchivedError || error instanceof LocationIataTakenError) {
     throw createError({
       statusCode: error.statusCode,
       data: { code: error.code },

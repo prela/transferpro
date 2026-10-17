@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayLocale, Driver, Location, OccupationStripBlock, RosterAssignment, TransferDayRide, Vehicle } from '../../shared'
-import { clockLabel, formatInstant, occupationStripStorageKey, pickupNeedsCalendarDate, placeOccupationStrip, readOccupationStripCollapsed, rosterDaySchema, tenantSettingsGetSchema, writeOccupationStripCollapsed } from '../../shared'
+import { clockLabel, formatInstant, locationLabel, occupationStripStorageKey, pickupNeedsCalendarDate, placeOccupationStrip, readOccupationStripCollapsed, rosterDaySchema, tenantSettingsGetSchema, writeOccupationStripCollapsed } from '../../shared'
 import { driverDisplayName } from '../transfer-day-labels'
 
 const props = defineProps<{
@@ -78,7 +78,8 @@ function storageKey(): string {
 }
 
 function placeName(id: string): string {
-  return props.locations.find(location => location.id === id)?.name ?? t('transfers.unknownPlace')
+  const found = props.locations.find(location => location.id === id)
+  return found ? locationLabel(found) : t('transfers.unknownPlace')
 }
 
 function rowLabel(vehicleId: string, driverIds: readonly string[]): string {

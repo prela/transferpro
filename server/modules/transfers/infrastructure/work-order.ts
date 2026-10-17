@@ -3,7 +3,7 @@ import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { composeWorkOrder, paymentMethodSchema } from '../../../../shared'
+import { composeWorkOrder, locationLabel, paymentMethodSchema } from '../../../../shared'
 import { getLogger, hideDatabaseError } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadLocation } from '../../locations'
@@ -125,8 +125,8 @@ export async function readAssignedWorkOrder(
     locale: selected.locale,
     timeZone: selected.timeZone,
     pickupAt: toPickup(selected.pickupAt),
-    pickupPlace: pickup.name,
-    dropOffPlace: dropOff.name,
+    pickupPlace: locationLabel(pickup),
+    dropOffPlace: locationLabel(dropOff),
     guestName: selected.guestName,
     tabla: selected.tabla,
     passengerCount: selected.passengerCount,
