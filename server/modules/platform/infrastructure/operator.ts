@@ -167,7 +167,10 @@ export async function setSuperadminPassword(input: SetSuperadminPasswordInput): 
     }
     catch (error) {
       await client.query('rollback')
-      throw operatorFailure(error)
+      if (error instanceof PlatformOperatorError)
+        throw error
+      // Not the create sentence. A constraint here is still a failed recovery.
+      throw new PlatformOperatorError('Could not set the platform owner password.')
     }
     finally {
       client.release()
