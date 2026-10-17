@@ -31,6 +31,20 @@
     "more": "Više",
     "newTransfer": "Novi transfer"
   },
+  "palette": {
+    "open": "Traži",
+    "title": "Traži",
+    "description": "Zasloni, naredbe i transferi",
+    "placeholder": "Zaslon, naredba ili transfer",
+    "screens": "Zasloni",
+    "commands": "Naredbe",
+    "transfers": "Transferi",
+    "goToDay": "Idi na dan…",
+    "goToDayOn": "Idi na dan {date}",
+    "goToDayHint": "Upišite datum, na primjer 20.10.2026",
+    "result": "{day} · {start} → {end} · {client}",
+    "searchFailed": "Pretraga nije uspjela. Pokušajte ponovno."
+  },
   "locale": {
     "hr": "Hrvatski",
     "en": "English",

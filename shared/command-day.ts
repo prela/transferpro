@@ -1,0 +1,25 @@
+import { isCalendarDate } from './date'
+
+/**
+ * "Idi na dan…" (ADR-0038). The Transfers board reads `?day=` as YYYY-MM-DD
+ * only. The office also types the day the way it is written on screen:
+ * `20.10.2026` in Croatian and `20/10/2026` in English, with or without
+ * spaces, and with the trailing dot Croatian dates keep.
+ * Anything else stays a Transfer search, including a guest name that
+ * happens to contain a date.
+ */
+const officeDay = /^(\d{1,2})\s*[./]\s*(\d{1,2})\s*[./]\s*(\d{4})\.?$/
+
+export function parseCommandDay(raw: string): string | null {
+  const text = raw.trim()
+  if (isCalendarDate(text))
+    return text
+  const match = officeDay.exec(text)
+  if (!match)
+    return null
+  const day = match[1]?.padStart(2, '0')
+  const month = match[2]?.padStart(2, '0')
+  const year = match[3]
+  const iso = `${year}-${month}-${day}`
+  return isCalendarDate(iso) ? iso : null
+}

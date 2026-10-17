@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { formatInstant } from './format-instant'
+import { formatCalendarDate, formatInstant } from './format-instant'
 
 // 15 Jan 2026 23:30 UTC is 16 Jan 00:30 in Europe/Zagreb (CET, UTC+1).
 const winterUtc = new Date('2026-01-15T23:30:00.000Z')
@@ -15,4 +15,10 @@ it('shows a UTC instant in the tenant time zone', () => {
 
 it('refuses an invalid instant', () => {
   expect(() => formatInstant(new Date('not-a-time'), 'Europe/Zagreb', 'hr')).toThrow(RangeError)
+})
+
+it('writes a calendar date in the same order, without a clock', () => {
+  expect(formatCalendarDate('2026-10-20', 'hr')).toBe('20. 10. 2026.')
+  expect(formatCalendarDate('2026-10-06', 'en')).toBe('06/10/2026')
+  expect(() => formatCalendarDate('2026-02-31', 'hr')).toThrow(RangeError)
 })

@@ -104,6 +104,7 @@ function onPhoneNavigate() {
             />
           </template>
           <template #right>
+            <slot name="actions" />
             <UButton
               v-if="showNewTransfer"
               type="button"
