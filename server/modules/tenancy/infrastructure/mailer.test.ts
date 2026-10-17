@@ -1,9 +1,11 @@
 import { expect, it } from 'vitest'
 import { captureLogs } from '../../../core/testing'
-import { assertTestMailer, createConsoleMailer, createFakeMailer, createResendMailer, invitationEmail, isConsoleMailer, isResendMailer, mailerForApp, passwordChangedEmail, ResendTransportError } from './mailer'
+import { assertTestMailer, createConsoleMailer, createFakeMailer, createResendMailer, invitationEmail, isConsoleMailer, isResendMailer, mailerForApp, passwordChangedEmail, passwordResetEmail, ResendTransportError } from './mailer'
 
 const invitationId = '6b1e0c3a-2222-4222-8222-222222222222'
 const inviteUrl = `http://localhost:3000/accept-invite#${invitationId}`
+const resetToken = 'AbCdEfGhIjKlMnOpQrStUvWx'
+const resetUrl = `http://localhost:3000/reset-password#${resetToken}`
 
 const mail = {
   to: 'dora@example.com',
@@ -247,6 +249,8 @@ it('sends only allowlisted recipients through Resend', async () => {
     await mailer.notifyFlightWillNotArrive({ rideId: 'ride-1', driverId: 'driver-1' })
     await mailer.sendPasswordChanged({ to: 'other@example.com', locale: 'hr' })
     await mailer.sendPasswordChanged({ to: 'owner@example.com', locale: 'en' })
+    await mailer.sendPasswordReset({ to: 'other@example.com', resetUrl, locale: 'hr' })
+    await mailer.sendPasswordReset({ to: 'owner@example.com', resetUrl, locale: 'en' })
   }
   finally {
     globalThis.fetch = original
@@ -255,6 +259,7 @@ it('sends only allowlisted recipients through Resend', async () => {
   const bodies = calls.map(body => JSON.parse(body) as { to: string[] })
   expect(bodies.map(body => body.to)).toEqual([
     [' Owner@Example.com '],
+    ['owner@example.com'],
     ['owner@example.com'],
     ['owner@example.com'],
   ])
@@ -276,12 +281,18 @@ it('sends only allowlisted recipients through Resend', async () => {
     event: 'mail.console',
     kind: 'password-changed',
   })
-  expect(lines).toHaveLength(3)
+  expect(lines[3]).toMatchObject({
+    event: 'mail.console',
+    kind: 'password-reset',
+  })
+  expect(lines).toHaveLength(4)
   const text = JSON.stringify(lines)
   expect(text).not.toContain('other@example.com')
   expect(text).not.toContain('Ana Tajna')
   expect(text).not.toContain('Zračna luka')
   expect(text).not.toContain(inviteUrl)
+  expect(text).not.toContain(resetUrl)
+  expect(text).not.toContain(resetToken)
 })
 
 it('still sends every recipient when MAIL_ALLOWLIST is unset', async () => {
@@ -332,6 +343,32 @@ it('records one password changed mail on the fake mailer', async () => {
   const mailer = createFakeMailer([], [], [], [], changed)
   await mailer.sendPasswordChanged({ to: 'ada@example.test', locale: 'en' })
   expect(changed).toEqual([{ to: 'ada@example.test', locale: 'en' }])
+})
+
+it('writes the reset mail in the user locale with the hash link and no person', () => {
+  const croatian = passwordResetEmail({ to: 'ada@example.test', resetUrl, locale: 'hr' })
+  expect(croatian.subject).toBe('Nova lozinka')
+  expect(croatian.text).toContain(resetUrl)
+  expect(croatian.text).toContain('60 minuta')
+  expect(croatian.html).toContain(`href="${resetUrl}"`)
+  expect(croatian.text).not.toContain('ada@example.test')
+  expect(croatian.text).not.toContain('Quiet Tenant')
+  const english = passwordResetEmail({ to: 'ada@example.test', resetUrl, locale: 'en' })
+  expect(english.subject).toBe('Reset your password')
+  expect(english.text).toContain('60 minutes')
+  expect(english.text).toContain(resetUrl)
+})
+
+it('logs a password reset console line without the link or the address', async () => {
+  const logs = captureLogs()
+  const mailer = createConsoleMailer(logs.logger)
+  await mailer.sendPasswordReset({ to: 'ada@example.test', resetUrl, locale: 'hr' })
+  const [line] = logs.lines()
+  expect(line).toMatchObject({ event: 'mail.console', kind: 'password-reset' })
+  const text = JSON.stringify(line)
+  expect(text).not.toContain('ada@example.test')
+  expect(text).not.toContain(resetUrl)
+  expect(text).not.toContain(resetToken)
 })
 
 function restoreNodeEnv(previous: string | undefined) {

@@ -23,6 +23,7 @@ it('keeps the invite and reports a failed send without rethrowing', async () => 
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
       async sendPasswordChanged() {},
+      async sendPasswordReset() {},
     }, mail, logs.logger)
   })
   expect(state.emailSent).toBe(false)
@@ -40,6 +41,7 @@ it('warns on a failed send without the address or the invite link', async () => 
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
       async sendPasswordChanged() {},
+      async sendPasswordReset() {},
     }, mail, logs.logger)
   })
   expect(state.emailSent).toBe(false)
@@ -67,6 +69,7 @@ it('marks the send as delivered when the mailer succeeds', async () => {
       async notifyArrivalMoved() {},
       async notifyFlightWillNotArrive() {},
       async sendPasswordChanged() {},
+      async sendPasswordReset() {},
     }, mail)
   })
   expect(state.emailSent).toBe(true)
@@ -81,5 +84,6 @@ it('still fails the request when the Resend transport is selected in test', asyn
     async notifyArrivalMoved() {},
     async notifyFlightWillNotArrive() {},
     async sendPasswordChanged() {},
+    async sendPasswordReset() {},
   }, mail)).rejects.toBeInstanceOf(ResendTransportError)
 })

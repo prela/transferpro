@@ -8,7 +8,9 @@
     "submit": "Sign in",
     "submitting": "Signing in",
     "failed": "Sign-in failed. Check the email and password, then try again.",
-    "limited": "Too many attempts. Wait and try again."
+    "limited": "Too many attempts. Wait and try again.",
+    "forgot": "Forgot password?",
+    "passwordChanged": "Your password was changed. Sign in."
   },
   "shell": {
     "tenant": "Company",
@@ -42,6 +44,22 @@
     "passwordMismatch": "The new password and the confirmation do not match.",
     "passwordChanged": "Your password was changed",
     "passwordChangeFailed": "The password was not changed. Try again."
+  },
+  "forgotPassword": {
+    "title": "Forgot password",
+    "submit": "Send the link",
+    "submitting": "Sending",
+    "sent": "If an account exists for that email, we sent a link to set a new password.",
+    "failed": "The link could not be requested. Try again."
+  },
+  "resetPassword": {
+    "title": "New password",
+    "submit": "Save password",
+    "submitting": "Saving",
+    "loading": "Loading",
+    "invalid": "This link has expired or was already used.",
+    "requestAgain": "Request a new link",
+    "failed": "The password was not saved. Try again."
   },
   "palette": {
     "open": "Search",

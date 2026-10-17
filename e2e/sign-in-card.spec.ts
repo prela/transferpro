@@ -17,7 +17,7 @@ test.describe('@phone', () => {
       await expect(page.getByLabel('Lozinka')).toBeVisible()
       const submit = page.getByRole('button', { name: 'Prijavi se', exact: true })
       await expect(submit).toBeVisible()
-      await expect(page.getByText('Zaboravljena lozinka?')).toHaveCount(0)
+      await expect(page.getByRole('link', { name: 'Zaboravljena lozinka?' })).toBeVisible()
       await expect(page.getByRole('img')).toHaveCount(0)
       await expect(page.getByRole('button', { name: 'English', exact: true })).toBeVisible()
       await expect(page.getByRole('button', { name: 'Svijetla', exact: true })).toBeVisible()
@@ -57,7 +57,7 @@ test.describe('@phone', () => {
         await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible()
         await expect(page.getByRole('button', { name: 'Hrvatski', exact: true })).toBeVisible()
         await expect(page.getByRole('button', { name: 'Light', exact: true })).toBeVisible()
-        await expect(page.getByText('Forgot password?')).toHaveCount(0)
+        await expect(page.getByRole('link', { name: 'Forgot password?' })).toBeVisible()
         await expectNoAxeViolations(page)
       }
 

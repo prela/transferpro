@@ -51,6 +51,7 @@ const handle = createAuth(env, {
     async sendPasswordChanged(mail) {
       changed.push({ ...mail })
     },
+    async sendPasswordReset() {},
   },
 })
 
@@ -65,6 +66,7 @@ const failingHandle = createAuth(env, {
       failing.push({ ...mail })
       throw new Error('Password changed email was not sent.')
     },
+    async sendPasswordReset() {},
   },
 })
 

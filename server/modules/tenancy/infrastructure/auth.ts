@@ -10,10 +10,11 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
 import * as authSchema from '../../../../db/auth-schema'
-import { displayLocaleSchema, inviteLink, passwordLengthLimits, SUPERADMIN_SESSION_SECONDS, tenantRoleSchema } from '../../../../shared'
+import { inviteLink, passwordLengthLimits, SUPERADMIN_SESSION_SECONDS, tenantRoleSchema } from '../../../../shared'
 import { getLogger, nodeEnv } from '../../../core/index'
 import { deliverInvitationEmail, inviteSendState } from './invite-send'
-import { noticePasswordChanged } from './password-changed'
+import { noticePasswordChanged, passwordMailAccount, queuePasswordChangedMail } from './password-changed'
+import { createResetMailLimiter, deleteRemainingResetTokens, queuePasswordReset, RESET_PASSWORD_TOKEN_SECONDS } from './password-reset'
 import { invitationExpiresInSeconds, organizationRoles } from './tenant-roles'
 
 /**
@@ -223,6 +224,7 @@ export function createAuth(
   // Secure only in production, so a local http sign-in still sets a cookie.
   // The name prefix `__Secure-` is tied to that flag by Better Auth.
   const secureCookies = nodeEnv() === 'production'
+  const allowResetMail = createResetMailLimiter()
   const auth = betterAuth({
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
@@ -234,6 +236,43 @@ export function createAuth(
       // The same numbers the accept, change, and reset forms check.
       minPasswordLength: passwordLengthLimits.minPasswordLength,
       maxPasswordLength: passwordLengthLimits.maxPasswordLength,
+      // Sixty minutes. A new request does not cancel an older link.
+      resetPasswordTokenExpiresIn: RESET_PASSWORD_TOKEN_SECONDS,
+      // Every session of the account, including this browser when it is theirs.
+      revokeSessionsOnPasswordReset: true,
+      async sendResetPassword({ user, token }) {
+        // Better Auth awaits this callback. Return before eligibility, the
+        // hourly limit, and the send, so every address answers together.
+        queuePasswordReset({
+          pool,
+          mailer: options?.mailer,
+          logger: options?.logger ?? getLogger(),
+          allowResetMail,
+          baseURL: env.BETTER_AUTH_URL,
+          userId: user.id,
+          token,
+        })
+      },
+      async onPasswordReset({ user }) {
+        const logger = options?.logger ?? getLogger()
+        const userId = user.id
+        logger.info({ event: 'auth.password_reset', userId })
+        try {
+          // The used token is already consumed. This drops the older ones.
+          await deleteRemainingResetTokens(pool, userId)
+        }
+        catch {
+          // The password is saved. A leftover link expires in 60 minutes.
+        }
+        try {
+          const account = await passwordMailAccount(pool, userId)
+          // Not awaited, and not counted by the reset-mail limit.
+          queuePasswordChangedMail(options?.mailer, logger, userId, account)
+        }
+        catch {
+          queuePasswordChangedMail(undefined, logger, userId, null)
+        }
+      },
     },
     // Tests pass the production rule. The app uses NODE_ENV, which is off in test.
     rateLimit: options?.rateLimit ?? signInRateLimit(nodeEnv()),
@@ -265,42 +304,39 @@ export function createAuth(
     hooks: {
       // The password is already saved. This only notices the account.
       after: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== '/change-password')
+        if (ctx.path === '/change-password') {
+          const returned = ctx.context.returned
+          if (returned == null || isAPIError(returned))
+            return
+          const session = z.object({
+            user: z.object({ id: z.string().min(1) }),
+          }).safeParse(ctx.context.session)
+          if (!session.success)
+            return
+          const userId = session.data.user.id
+          const logger = options?.logger ?? getLogger()
+          try {
+            const account = await passwordMailAccount(pool, userId)
+            noticePasswordChanged(options?.mailer, logger, userId, account)
+          }
+          catch {
+            // The lookup failed after the password was saved. Say so without
+            // the address, and do not fail the change.
+            noticePasswordChanged(undefined, logger, userId, null)
+          }
+          return
+        }
+        if (ctx.path !== '/reset-password')
           return
         const returned = ctx.context.returned
         if (returned == null || isAPIError(returned))
           return
-        const session = z.object({
-          user: z.object({ id: z.string().min(1) }),
-        }).safeParse(ctx.context.session)
-        if (!session.success)
+        // The token decides the account. This cookie may belong to someone
+        // else on a shared browser, and that session has to end too.
+        const presented = await sessionToken(ctx)
+        if (!presented)
           return
-        const userId = session.data.user.id
-        const logger = options?.logger ?? getLogger()
-        try {
-          const result = await pool.query(
-            'select email, locale from auth."user" where id = $1',
-            [userId],
-          )
-          const row = z.object({
-            email: z.string().min(1),
-            locale: z.string().nullable(),
-          }).safeParse(result.rows[0])
-          const chosen = row.success ? displayLocaleSchema.safeParse(row.data.locale) : null
-          noticePasswordChanged(
-            options?.mailer,
-            logger,
-            userId,
-            row.success
-              ? { to: row.data.email, locale: chosen?.success ? chosen.data : 'hr' }
-              : null,
-          )
-        }
-        catch {
-          // The lookup failed after the password was saved. Say so without
-          // the address, and do not fail the change.
-          noticePasswordChanged(undefined, logger, userId, null)
-        }
+        await pool.query('delete from auth.session where token = $1', [presented])
       }),
     },
     databaseHooks: {
@@ -352,6 +388,14 @@ export function createAuth(
       }),
     ],
   })
+  // disabledPaths matches exact paths, so the token callback cannot be listed.
+  // The page posts the token. This GET must not redeem it.
+  const handleRequest = auth.handler.bind(auth)
+  auth.handler = (request: Request) => {
+    if (isResetPasswordCallback(request))
+      return Promise.resolve(new Response(null, { status: 404 }))
+    return handleRequest(request)
+  }
   return {
     auth,
     authPool: pool,
@@ -537,3 +581,18 @@ export function createAuth(
 }
 
 export type AuthHandle = ReturnType<typeof createAuth>
+
+/**
+ * Better Auth's reset callback puts the token in the path. The page uses
+ * the hash instead, and this GET is not a way to redeem the token.
+ */
+function isResetPasswordCallback(request: Request): boolean {
+  if (request.method !== 'GET')
+    return false
+  try {
+    return /\/reset-password\/[^/]+$/.test(new URL(request.url).pathname)
+  }
+  catch {
+    return false
+  }
+}
