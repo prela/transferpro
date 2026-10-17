@@ -547,7 +547,10 @@
     "declineConfirm": "Odbi",
     "declineConfirming": "Odbijanje",
     "declineConflict": "Ovu vožnju više nije moguće odbiti.",
-    "declineFailed": "Vožnja nije odbijena. Pokušajte ponovno."
+    "declineFailed": "Vožnja nije odbijena. Pokušajte ponovno.",
+    "showTabla": "Prikaži tablu",
+    "tablaDescription": "Pokažite ekran gostu.",
+    "closeTabla": "Zatvori"
   },
   "drivers": {
     "nav": "Vozači",

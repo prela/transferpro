@@ -321,6 +321,13 @@ const showLanding = computed(() => props.ride.airportMark && canRecordLandingTim
           <dd class="break-words text-2xl font-semibold whitespace-pre-wrap">
             {{ ride.tabla }}
           </dd>
+          <!--
+            "Prikaži tablu" covers the screen so the phone can be the sign.
+            Closing it does not move the list (ADR-0038).
+          -->
+          <dd>
+            <DriverTabla :tabla="ride.tabla" />
+          </dd>
         </div>
         <!--
           Cash only. Card and invoice to agency render neither the price
