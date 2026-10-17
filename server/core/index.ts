@@ -242,7 +242,7 @@ export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
   const MAILER = parseMailer(source)
   const DEPLOY_ENV = parseDeployEnv(source)
   const MAIL_ALLOWLIST = parseMailAllowlist(source)
-  // Preview cannot fall through to an open Resend path (proposed ADR-0043).
+  // Preview cannot fall through to an open Resend path (ADR-0043).
   // Production and an unset deploy still boot without the list (ADR-0037, ADR-0042).
   if (DEPLOY_ENV === 'preview' && MAIL_ALLOWLIST === undefined)
     throw new Error('MAIL_ALLOWLIST is required when DEPLOY_ENV is preview.')

@@ -1,6 +1,6 @@
 # Preview is `DEPLOY_ENV`, not a second `NODE_ENV`
 
-Status: proposed
+Status: accepted
 
 ## Context
 

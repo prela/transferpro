@@ -154,32 +154,64 @@ it('parses MAIL_ALLOWLIST as trimmed, case-insensitive emails', () => {
  * Unset, blank, and production leave the list optional, including the
  * ADR-0037 console opt-in. A typo fails boot and the message omits the value.
  */
-it('requires MAIL_ALLOWLIST when DEPLOY_ENV is preview', () => {
-  const preview = {
+it('boots preview when MAIL_ALLOWLIST is set', () => {
+  expect(parseAppEnv({
     ...base,
     NODE_ENV: 'production',
     MAILER: 'resend',
     DEPLOY_ENV: 'preview',
     MAIL_ALLOWLIST: 'owner@example.com',
-  }
-  expect(parseAppEnv(preview)).toMatchObject({
+  })).toMatchObject({
     DEPLOY_ENV: 'preview',
     MAILER: 'resend',
     MAIL_ALLOWLIST: ['owner@example.com'],
   })
+  // Preview still uses the production image, so the resend rule stays.
+  expect(() => parseAppEnv({
+    ...base,
+    NODE_ENV: 'production',
+    DEPLOY_ENV: 'preview',
+    MAIL_ALLOWLIST: 'owner@example.com',
+  })).toThrow('Invalid input: expected \\"resend\\"')
+})
+
+it('fails preview boot when MAIL_ALLOWLIST is unset', () => {
+  expect(() => parseAppEnv({
+    ...base,
+    NODE_ENV: 'production',
+    MAILER: 'resend',
+    DEPLOY_ENV: 'preview',
+  })).toThrow('MAIL_ALLOWLIST is required when DEPLOY_ENV is preview.')
+})
+
+it('fails preview boot when MAIL_ALLOWLIST is blank', () => {
+  expect(() => parseAppEnv({
+    ...base,
+    NODE_ENV: 'production',
+    MAILER: 'resend',
+    DEPLOY_ENV: 'preview',
+    MAIL_ALLOWLIST: '',
+  })).toThrow('MAIL_ALLOWLIST is required when DEPLOY_ENV is preview.')
+})
+
+it('leaves MAIL_ALLOWLIST optional when DEPLOY_ENV is unset, blank, or production', () => {
   expect(parseAppEnv(base).DEPLOY_ENV).toBeUndefined()
+  expect(parseAppEnv(base).MAIL_ALLOWLIST).toBeUndefined()
   expect(parseAppEnv({ ...base, DEPLOY_ENV: '' }).DEPLOY_ENV).toBeUndefined()
   expect(parseAppEnv({
     ...base,
     NODE_ENV: 'production',
     MAILER: 'resend',
-    DEPLOY_ENV: 'production',
-  }).DEPLOY_ENV).toBe('production')
+  }).MAIL_ALLOWLIST).toBeUndefined()
   expect(parseAppEnv({
     ...base,
     NODE_ENV: 'production',
     MAILER: 'resend',
-  }).MAIL_ALLOWLIST).toBeUndefined()
+    DEPLOY_ENV: 'production',
+  })).toMatchObject({
+    DEPLOY_ENV: 'production',
+    MAIL_ALLOWLIST: undefined,
+  })
 
   const { RESEND_API_KEY: _removed, ...withoutKey } = base
   expect(parseAppEnv({
@@ -193,28 +225,9 @@ it('requires MAIL_ALLOWLIST when DEPLOY_ENV is preview', () => {
     MAILER: 'console',
     MAIL_ALLOWLIST: undefined,
   })
+})
 
-  expect(() => parseAppEnv({
-    ...base,
-    NODE_ENV: 'production',
-    MAILER: 'resend',
-    DEPLOY_ENV: 'preview',
-  })).toThrow('MAIL_ALLOWLIST is required when DEPLOY_ENV is preview.')
-  expect(() => parseAppEnv({
-    ...base,
-    NODE_ENV: 'production',
-    MAILER: 'resend',
-    DEPLOY_ENV: 'preview',
-    MAIL_ALLOWLIST: '',
-  })).toThrow('MAIL_ALLOWLIST is required when DEPLOY_ENV is preview.')
-  // Preview still uses the production image: NODE_ENV=production keeps the resend rule.
-  expect(() => parseAppEnv({
-    ...base,
-    NODE_ENV: 'production',
-    DEPLOY_ENV: 'preview',
-    MAIL_ALLOWLIST: 'owner@example.com',
-  })).toThrow()
-
+it('rejects an unknown DEPLOY_ENV without echoing the value', () => {
   const unexpected = 'staging-not-a-deploy-env'
   expect(() => parseAppEnv({ ...base, DEPLOY_ENV: unexpected })).toThrow(
     'DEPLOY_ENV must be preview, production, or unset.',
