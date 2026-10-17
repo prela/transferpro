@@ -276,7 +276,16 @@ test.describe('@phone', () => {
       const tenant = await seedTenant(`locations-iata-phone-${theme}`)
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       await switchTheme(page, theme)
-      await page.getByRole('link', { name: 'Lokacije' }).click()
+      // Phone keeps catalogs behind Više. The sidebar link is not on this width.
+      const sidebar = page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Lokacije', exact: true })
+      if (await sidebar.isVisible()) {
+        await sidebar.click()
+      }
+      else {
+        await page.getByRole('button', { name: 'Više', exact: true }).click()
+        await page.getByRole('dialog').getByRole('link', { name: 'Lokacije', exact: true }).click()
+      }
+      await expect(page.getByRole('heading', { level: 1, name: 'Lokacije' })).toBeVisible()
       await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
       let dialog = page.getByRole('dialog')
       await dialog.getByLabel('Ime').fill('Zračna luka Zadar')
