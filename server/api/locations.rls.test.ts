@@ -384,6 +384,30 @@ it('sets an airport code, refuses a bad code and a code on a hotel, clears it wh
   ]))
 })
 
+it('refuses a second active airport code in the same Tenant and allows it in another', async () => {
+  await tenant('hlc-iata-a', 'Ana Kod')
+  await tenant('hlc-iata-b', 'Boris Kod')
+  const adminA = await signIn('hlc-iata-a-admin@example.test')
+  const adminB = await signIn('hlc-iata-b-admin@example.test')
+
+  const first = await call('POST', '/api/locations', adminA, { name: 'Zračna luka Zadar', kind: 'airport', iata: 'zad' })
+  expect(first.status).toBe(200)
+  const duplicate = await call('POST', '/api/locations', adminA, { name: 'Zračna luka Zadar 2', kind: 'airport', iata: 'ZAD' })
+  expect(duplicate.status).toBe(409)
+  const duplicateText = await duplicate.text()
+  expect(duplicateText).toContain('location_iata_taken')
+  expect(duplicateText).not.toContain('ZAD')
+  expect(duplicateText).not.toContain('Zadar')
+
+  const other = await call('POST', '/api/locations', adminB, { name: 'Zračna luka Zadar', kind: 'airport', iata: 'ZAD' })
+  expect(other.status).toBe(200)
+  expect((await other.json()).iata).toBe('ZAD')
+  expect(await (await call('GET', '/api/locations', adminB)).json()).toEqual({
+    locations: [expect.objectContaining({ name: 'Zračna luka Zadar', iata: 'ZAD' })],
+  })
+  expect(await (await call('GET', '/api/locations', adminA)).text()).not.toContain('Zračna luka Zadar 2')
+})
+
 it('suggests for the office in the Tenant language, refuses a driver, and does not audit the lookup', async () => {
   setTestMapsUnavailable(false)
   const created = await tenant('hlc-maps', 'Maja Admin')

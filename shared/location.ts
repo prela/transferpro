@@ -270,6 +270,16 @@ export function locationAddressError(value: string): LocationAddressError | null
   return value.trim().length > LOCATION_ADDRESS_MAX_LENGTH ? 'too-long' : null
 }
 
+/**
+ * The name a Ride shows or offers in a picker. A code is appended only when
+ * this Location has one, so a hotel stays its name.
+ */
+export function locationLabel(location: { readonly name: string, readonly iata: string | null }): string {
+  if (location.iata === null)
+    return location.name
+  return `${location.name} (${location.iata})`
+}
+
 /** Blank is allowed. Anything else must be three ASCII letters. */
 export function locationIataError(value: string): LocationIataError | null {
   const trimmed = value.trim()

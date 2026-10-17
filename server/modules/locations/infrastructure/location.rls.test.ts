@@ -208,3 +208,43 @@ it('refuses a place reference without its pair or without an address', async () 
   await expect(withTenant(tenantA, client =>
     client.query(`insert into app.locations (name, kind, address, place_provider, place_ref) values ('Hotel Park', 'hotel', 'Put 1', 'google', '')`))).rejects.toMatchObject({ code: '23514' })
 })
+
+// Last in this file. It leaves a Location on Tenant B, and an earlier test
+// updates every Location that Tenant can see.
+it('keeps one active airport code per Tenant, and another Tenant may use the same code', async () => {
+  await withTenant(tenantA, async (client) => {
+    await client.query(
+      `insert into app.locations (name, kind, iata) values ('Zračna luka Zadar', 'airport', 'ZAD')`,
+    )
+  })
+
+  await expect(withTenant(tenantA, client =>
+    client.query(`insert into app.locations (name, kind, iata) values ('Zračna luka Zadar 2', 'airport', 'ZAD')`))).rejects.toMatchObject({ code: '23505' })
+
+  await withTenant(tenantA, async (client) => {
+    await client.query(`update app.locations set archived_at = now() where iata = 'ZAD'`)
+  })
+  await withTenant(tenantA, async (client) => {
+    await client.query(
+      `insert into app.locations (name, kind, iata) values ('Zračna luka Zadar nova', 'airport', 'ZAD')`,
+    )
+  })
+
+  await withTenant(tenantB, async (client) => {
+    await client.query(
+      `insert into app.locations (name, kind, iata) values ('Zračna luka Zadar B', 'airport', 'ZAD')`,
+    )
+  })
+
+  const seenByB = await withTenant(tenantB, async (client) => {
+    return client.query(`select name from app.locations where iata = 'ZAD'`)
+  })
+  expect(seenByB.rows).toEqual([{ name: 'Zračna luka Zadar B' }])
+
+  const seenByA = await withTenant(tenantA, async (client) => {
+    return client.query(
+      `select name from app.locations where iata = 'ZAD' and archived_at is null`,
+    )
+  })
+  expect(seenByA.rows).toEqual([{ name: 'Zračna luka Zadar nova' }])
+})

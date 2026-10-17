@@ -31,6 +31,20 @@ export class LocationNotFoundError extends Error {
   }
 }
 
+/**
+ * Another active Location in this Tenant already holds this airport code.
+ * The message is a fixed phrase and does not include the code.
+ */
+export class LocationIataTakenError extends Error {
+  readonly statusCode = 409
+  readonly code = 'location_iata_taken'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'LocationIataTakenError'
+  }
+}
+
 /** The Location is archived and cannot be corrected. The message is a fixed phrase. */
 export class LocationArchivedError extends Error {
   readonly statusCode = 409
@@ -333,16 +347,40 @@ function toArchivedAt(value: unknown): string | null {
 }
 
 /**
- * Run one insert or update. Every failure becomes a fixed message.
+ * Run one insert or update. A duplicate live airport code is a conflict.
+ * Every other failure becomes a fixed message.
  * Drizzle copies the bound parameters into `Error.message`, and that text
- * is not redacted, so the original error is never rethrown. An address in
- * that text would otherwise land in the log.
+ * is not redacted, so the original error is never rethrown. An address or
+ * a code in that text would otherwise land in the log.
  */
 async function writeLocation(transaction: TenantTransaction, query: SQL): Promise<unknown> {
   try {
     return await transaction.execute(query)
   }
-  catch {
+  catch (error) {
+    // A duplicate live code is a conflict. The Postgres message can contain
+    // the code, so it is never rethrown.
+    if (isIataUniqueViolation(error))
+      throw new LocationIataTakenError()
     throw new Error('Location write failed')
   }
+}
+
+/**
+ * Drizzle wraps the Postgres error. The outer message includes the bound
+ * parameters, so it is never rethrown: a code in that text would be logged.
+ * Only the live-code unique index is a conflict. Any other unique failure
+ * is a write failure, not a 409.
+ */
+function isIataUniqueViolation(error: unknown): boolean {
+  let current: unknown = error
+  for (let depth = 0; depth < 5 && typeof current === 'object' && current !== null; depth++) {
+    const code = 'code' in current ? current.code : undefined
+    const constraint = 'constraint' in current && typeof current.constraint === 'string' ? current.constraint : ''
+    const message = 'message' in current && typeof current.message === 'string' ? current.message : ''
+    if (code === '23505' && (constraint === 'locations_iata_active' || message.includes('locations_iata_active')))
+      return true
+    current = 'cause' in current ? current.cause : undefined
+  }
+  return false
 }
