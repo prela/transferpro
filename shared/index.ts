@@ -31,6 +31,7 @@ export type { LiveRefreshDeps, LiveRefreshOutcome, PageVisibility } from './live
 export { LocaleChoiceError, saveDisplayLocale } from './locale-update'
 export { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_FIELDS, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, LOCATION_SUGGEST_MIN_LENGTH, locationAddressError, locationAddressSchema, locationFieldSchema, locationIataError, locationIataSchema, LocationInputError, locationKindError, locationKindSchema, locationListSchema, locationNameError, locationNameSchema, locationPatchSchema, locationPlaceSchema, locationSchema, parseCreateLocation, parseLocationPatch, parseSuggestAddresses, PLACE_PROVIDERS, PLACE_REF_MAX_LENGTH, suggestAddressesResponseSchema } from './location'
 export type { AddressSuggestion, CreateLocation, Location, LocationAddressError, LocationField, LocationKind, LocationKindError, LocationList, LocationNameError, LocationPatch, LocationPlace, PlaceProvider, SuggestAddressesInput, SuggestAddressesResponse } from './location'
+export { fittedMeetSign, MEET_SIGN_MIN_PX } from './meet-sign-fit'
 export { changeMemberRoleBodySchema, memberErrorKey, memberErrorMessage, memberListSchema, memberSchema } from './member'
 export type { ChangeMemberRoleBody, Member, MemberErrorKey, MemberList } from './member'
 export { canMarkNoShow, noShowWaitBounds, noShowWaitElapsed, noShowWindowLabels } from './no-show'

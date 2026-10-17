@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { fittedMeetSign } from '../../shared'
+
 const props = defineProps<{
   /** Meet-sign text. Blank lines never reach this component. */
   tabla: string
@@ -29,21 +31,24 @@ function restoreScroll() {
 }
 
 /**
- * Shrink the type until the whole sign sits in the frame. Rotation changes
- * the frame, so this runs again on resize (ADR-0038).
+ * Shrink the type until the whole sign sits in the frame. A sign that still
+ * overflows at the minimum scrolls inside the frame instead of being clipped.
+ * Rotation changes the frame, so this runs again on resize (ADR-0038).
  */
 function fitSign() {
   const box = frame.value
   const text = sign.value
   if (!box || !text)
     return
-  const max = Math.max(16, Math.floor(Math.min(box.clientWidth, box.clientHeight) * 0.45))
-  let size = max
-  text.style.fontSize = `${size}px`
-  while (size > 16 && (text.scrollHeight > box.clientHeight || text.scrollWidth > box.clientWidth)) {
-    size -= 2
+  const start = Math.floor(Math.min(box.clientWidth, box.clientHeight) * 0.45)
+  const fit = fittedMeetSign(start, (size) => {
     text.style.fontSize = `${size}px`
-  }
+    return text.scrollHeight <= box.clientHeight && text.scrollWidth <= box.clientWidth
+  })
+  text.style.fontSize = `${fit.sizePx}px`
+  text.style.maxHeight = '100%'
+  // Scrolling keeps a 200-character sign readable. Clipping would hide it.
+  text.style.overflowY = fit.scrolls ? 'auto' : 'hidden'
 }
 
 function onResize() {

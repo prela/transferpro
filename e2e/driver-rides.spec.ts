@@ -1221,8 +1221,8 @@ test.describe('@phone', () => {
   test('@phone opening and closing the meet sign returns to the same ride and the text fits portrait and landscape', async ({ page }) => {
     await installWakeLock(page)
     await page.setViewportSize({ width: 390, height: 844 })
-    const { later } = await seedMeetSign(page, 'driver-tabla-fit', '+385911110401', 'DU401AA', true)
-    const article = await showRide(page, later)
+    const { guest } = await seedMeetSign(page, 'driver-tabla-fit', '+385911110401', 'DU401AA', true)
+    const article = await showRide(page, guest)
     await article.scrollIntoViewIfNeeded()
     const scrollBefore = await page.evaluate(() => window.scrollY)
     await article.getByRole('button', { name: 'Prikaži tablu' }).click()
@@ -1237,7 +1237,7 @@ test.describe('@phone', () => {
 
     await dialog.getByRole('button', { name: 'Zatvori', exact: true }).click()
     await expect(dialog).toHaveCount(0)
-    await expect(article.getByRole('heading', { name: later, exact: true })).toBeVisible()
+    await expect(article.getByRole('heading', { name: guest, exact: true })).toBeVisible()
     const scrollAfter = await page.evaluate(() => window.scrollY)
     expect(Math.abs(scrollAfter - scrollBefore)).toBeLessThanOrEqual(1)
     expect(await wakeProbe(page)).toEqual({ requests: ['screen'], releases: 1 })
@@ -1407,7 +1407,7 @@ async function seedMeetSign(page: Page, slug: string, phone: string, plate: stri
   await signOut(page)
   await signIn(page, driver.email, driver.password, tenant.name)
   await expect(page.getByRole('heading', { name: 'Sljedeća vožnja' })).toBeVisible()
-  return { later: 'Nika Tabla' }
+  return { guest: 'Nika Tabla' }
 }
 
 async function setTabVisibility(page: Page, state: 'visible' | 'hidden') {
