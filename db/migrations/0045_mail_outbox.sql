@@ -20,6 +20,7 @@ CREATE TABLE "app"."mail_outbox" (
         and "app"."mail_outbox"."driver_id" is not null
         and "app"."mail_outbox"."work_order_status" in ('assigned', 'changed', 'cancelled', 'no_longer_yours')
         and "app"."mail_outbox"."invitation_id" is null
+        and ("app"."mail_outbox"."work_order_status" = 'no_longer_yours' or "app"."mail_outbox"."vehicle_id" is null)
     ) or (
       "app"."mail_outbox"."kind" = 'invitation'
         and "app"."mail_outbox"."invitation_id" is not null

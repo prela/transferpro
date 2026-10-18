@@ -406,6 +406,34 @@ it('stores the released vehicle on no longer yours and leaves the assigned row w
   expect(JSON.stringify(rows)).not.toContain('ZG9330EE')
 })
 
+it('refuses an assigned work order that names a vehicle', async () => {
+  const world = await office('mbox-shape')
+  const driver = await createDriver(world.dispatcher, {
+    name: 'Ana Shape',
+    kind: 'own',
+    phone: '+385911113306',
+    email: address,
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const vehicle = await createVehicle(world.dispatcher, {
+    registrationPlate: 'ZG9330FF',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const recorded = await createTransfer(world.dispatcher, transferBody(world))
+  await expect(withAppTenant(world.tenantId, client =>
+    client.query(
+      `insert into app.mail_outbox (
+         kind, ride_id, driver_id, vehicle_id, work_order_status, state
+       )
+       values ('work_order', $1, $2, $3, 'assigned', 'pending')`,
+      [recorded.ride.id, driver.id, vehicle.id],
+    ))).rejects.toMatchObject({ code: '23514' })
+})
+
 it('writes no entry when the Driver has no email', async () => {
   const world = await office('mbox-blank')
   const driver = await createDriver(world.dispatcher, {

@@ -11,8 +11,8 @@ import { vehicles } from './vehicles'
  * a subject, or a body: those are read from the current rows when the mail
  * is sent. `invitation_id` is room for an invitation. This ticket writes
  * only work orders. A work order names the Ride, the Driver, and the status.
- * `vehicle_id` is the Vehicle released by "no longer yours". It is null
- * on every other row, and an invitation may not set it.
+ * `vehicle_id` is the Vehicle released by "no longer yours". The shape
+ * check refuses it on every other work order, and an invitation may not set it.
  * An invitation will name only the invitation id.
  * States and the attempt columns are all here, so a later ticket adds no
  * column. `pending` is still being tried. `sent` went out. `failed` is
@@ -61,6 +61,7 @@ export const mailOutbox = tenantTable('mail_outbox', {
         and ${table.driverId} is not null
         and ${table.workOrderStatus} in ('assigned', 'changed', 'cancelled', 'no_longer_yours')
         and ${table.invitationId} is null
+        and (${table.workOrderStatus} = 'no_longer_yours' or ${table.vehicleId} is null)
     ) or (
       ${table.kind} = 'invitation'
         and ${table.invitationId} is not null
