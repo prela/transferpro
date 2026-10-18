@@ -32,6 +32,9 @@
  * number. Today and later come first, earliest pickup first. Past
  * operational days follow, newest first. It is office-only. The query
  * text is not logged and not audited.
+ * CSV export reads every Ride whose pickup falls on the chosen calendar
+ * days. It is office-only. The log names the member, the range, and the
+ * row count. It does not name a person or a place, and it writes no audit.
  */
 export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableError } from './infrastructure/accept'
 export { RideDriverArchivedError, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
@@ -47,6 +50,7 @@ export { RecordLandingInputError, recordRideLanding, RideLandingClosedError, Rid
 export { markNoShow, MarkNoShowInputError, NoShowTooEarlyError, RideNotNoShowError } from './infrastructure/no-show'
 export { readOfficeHome } from './infrastructure/office-home-access'
 export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './infrastructure/ride-change'
+export { exportRides } from './infrastructure/ride-export'
 export { RideOverlapError } from './infrastructure/ride-schedule'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'
 export { searchTransfers } from './infrastructure/transfer-search'
