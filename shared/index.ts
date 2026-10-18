@@ -50,6 +50,8 @@ export { ASSIGNMENT_REFUSED_STATES, AssignRideInputError, assignRideSchema, assi
 export type { AssignRide, ChangeRideVehicle, ReassignRide, RideAssignmentField, RosterVehicleSuggestion } from './ride-assignment'
 export { classifyRideAttention, homeRowNamesTheDate, parseTransferDayFilter, pickupNeedsCalendarDate, rideAttentionTier, rideStateMark, rideUrgentKeys, TRANSFER_DAY_FILTERS, transferDayFilterCounts, transferDayFilterMatches } from './ride-attention'
 export type { RideAttentionItem, RideAttentionKind, RideAttentionSource, RideAttentionTier, RideDecline, RideStateMark, TransferBoardFilter, TransferDayFilter, TransferDayFilterRide } from './ride-attention'
+export { buildRideExportCsv, calendarDayBounds, parseRideExportQuery, RIDE_EXPORT_MAX_DAYS, rideExportFilename, RideExportRangeError } from './ride-export'
+export type { RideExportRide } from './ride-export'
 export { judgeSchedule, occupiedEnd } from './ride-schedule'
 export type { ScheduleClash, ScheduleResource, ScheduleRide, ScheduleVerdict } from './ride-schedule'
 export { parseRosterDate, parseSetRoster, planRosterCopy, rosterAssignmentSchema, rosterDateSchema, rosterDaySchema, RosterInputError, setRosterResultSchema, setRosterSchema } from './roster'
