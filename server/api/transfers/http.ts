@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import { QueryParamError, TransferInputError } from '../../../shared'
+import { QueryParamError, RideExportRangeError, TransferInputError } from '../../../shared'
 import { ClientNotFoundError } from '../../modules/clients'
 import { LocationArchivedError, LocationNotFoundError } from '../../modules/locations'
 import { TenantAccessError } from '../../modules/tenancy'
@@ -16,6 +16,7 @@ export function transferHttpError(error: unknown): never {
   if (
     error instanceof TransferInputError
     || error instanceof QueryParamError
+    || error instanceof RideExportRangeError
     || error instanceof ClientNotFoundError
     || error instanceof LocationNotFoundError
     || error instanceof TenantAccessError

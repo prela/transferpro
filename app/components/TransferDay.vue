@@ -615,6 +615,7 @@ onUnmounted(() => {
       >
         {{ t('transfers.printDay') }}
       </UButton>
+      <RideCsvExport :time-zone="timeZone" />
       <p
         v-if="updatedAt"
         class="text-sm text-muted"
