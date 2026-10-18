@@ -213,9 +213,11 @@ export async function stageWorkOrder(
 
 /**
  * The first attempt, after the Ride transaction has committed. The action
- * waits for it. Success marks the entry sent. A rejection leaves it pending
- * with the attempt counted, so a later ticket can retry it. A blank email
- * never opened an entry.
+ * waits for it. The mail is the snapshot read on that transaction: a re-read
+ * now would drop the vehicle a "no longer yours" mail must name. Later
+ * retries re-read the current rows. Success marks the entry sent. A rejection
+ * leaves it pending with the attempt counted, so a later ticket can retry it.
+ * A blank email never opened an entry.
  */
 export async function deliverStagedWorkOrder(
   headers: Headers,
