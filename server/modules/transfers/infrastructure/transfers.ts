@@ -191,7 +191,11 @@ export async function loadRidesForDay(
       changed_by.name as "changedByName"
     from app.rides as r
     join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
-    left join app.tenant_member as changed_by on changed_by.user_id = t.data_changed_by
+    -- The view is already this session's tenant. The tenant predicate keeps
+    -- another tenant's name off the row if that filter is ever wider.
+    left join app.tenant_member as changed_by
+      on changed_by.user_id = t.data_changed_by
+     and changed_by.tenant_id = t.tenant_id
     where t.pickup_at >= ${bounds.start.toISOString()} and t.pickup_at < ${bounds.end.toISOString()}
     order by t.pickup_at, r.id
   `))

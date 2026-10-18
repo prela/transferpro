@@ -64,4 +64,4 @@ Nothing can hide an urgent item, which is the point, but a busy day with several
 
 Polling costs one office home read per open office tab per minute, and one upcoming-Rides read per open Driver tab. At the first Tenant's size that is negligible.
 
-The warning on a changed Ride is shown only in the browser. A save sent after it still writes over the other change, because the server does not refuse a stale save today. Refusing one is a decision about the write path and the strongest tier, not this record. ADR-0046 supersedes that sentence: the server refuses the stale save.
+The warning on a changed Ride is shown only in the browser. A save sent after it still writes over the other change, because the server does not refuse a stale save today. Refusing one is a decision about the write path and the strongest tier, not this record.

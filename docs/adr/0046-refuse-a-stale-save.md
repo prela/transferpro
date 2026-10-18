@@ -2,6 +2,8 @@
 
 Status: accepted
 
+Damir accepted this on 18 October 2026, in #333.
+
 Recorded with #333, from spec #326. It partially supersedes one consequence of ADR-0039, named below. ADR-0029 still refuses a true overlap with 409 `ride_overlap` and still writes nothing when a fresh save changes nothing.
 
 ## Context
@@ -31,8 +33,6 @@ The Transfer day read returns the version, the time, and the display name. The R
 A Dispatcher cannot overwrite a colleague's correction or decide a Driver from an old pickup. Two saves at the same instant cannot both pass. A Driver's phone never makes an office save stale, and neither does a flight fact.
 
 A row that has not changed since this column arrived has version 0 and no author. The refusal still works. The message that names the author is a later screen.
-
-Accepting this ADR updates ADR-0039's status line to name this partial supersession.
 
 ### Superseded
 

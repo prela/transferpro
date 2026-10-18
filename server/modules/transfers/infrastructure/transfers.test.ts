@@ -321,6 +321,7 @@ it('loads the Zagreb operational day as a half-open range of local 05:00 and map
   ])
   expect(queries[0]?.sql.toLowerCase()).not.toContain('::date')
   expect(queries[0]?.sql.toLowerCase()).not.toContain('at time zone')
+  expect(queries[0]?.sql).toContain('changed_by.tenant_id')
   expect(queries[0]?.params).toEqual(['2026-10-07T03:00:00.000Z', '2026-10-08T03:00:00.000Z'])
 
   // 28 March contains the spring-forward; 24 October contains the fall-back. Both still end at local 05:00.

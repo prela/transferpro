@@ -237,6 +237,8 @@ test.describe('@phone', () => {
           guestName: 'Iva Detalj',
           flightNumber: 'OU999',
           pickupAt: instantFromWallClock(`${day}T08:00`, 'Europe/Zagreb').toISOString(),
+          // Assign, reassign, and clear each claimed a version. This is the one the form holds.
+          version: 3,
         },
       })).ok()).toBeTruthy()
       const refreshed = page.waitForResponse(response =>
