@@ -175,6 +175,10 @@ _Avoid_: place, stop
 The actual time the aircraft landed, on an airport pickup. It stays empty until then. A live status writes it only while it is empty and the time is not still in the future. A time a person recorded stays until they clear it. The expected arrival is a different fact and does not start the airport wait.
 _Avoid_: expected arrival, ETA
 
+**Stale save**:
+An office save of a Transfer, its Ride, or a Client made from data that someone has changed since the form was opened. It is refused. A Driver's state action is not such a change. In Croatian it is Zastarjelo spremanje.
+_Avoid_: merge, lock
+
 **Expected arrival**:
 The live status's current estimate of when that aircraft will arrive, on an airport pickup. It is stored whenever the status reports one, including a change of less than 15 minutes. A change of at least 15 minutes from the last estimate the Driver was told, or from the first stored estimate when the Driver has been told nothing, is handed to the work-order port. A Ride with no Driver stores the movement and tells nobody until the next ask after a Driver is assigned. A cancelled flight, or one that will arrive at another airport, clears it and hands that port a different fact: the flight will not arrive here. That fact is handed at most once for the designator. It does not start the airport wait, and it does not return an accepted Ride to assigned. Changing the flight number to a different designator clears the expected arrival, the basis of what the Driver was told, the landing time, and that will-not-arrive memory, in the same change. Spacing or case of the same designator clears none of those.
 _Avoid_: landing time, ETA

@@ -69,7 +69,7 @@ async function acceptByPhone(page: Page): Promise<void> {
   expect(recorded.ok()).toBeTruthy()
   const body = await recorded.json() as { ride: { id: string } }
   const assigned = await page.request.post(`/api/rides/${body.ride.id}/assign`, {
-    data: { driverId, vehicleId },
+    data: { version: 0, driverId, vehicleId },
   })
   expect(assigned.ok()).toBeTruthy()
   const accepted = await page.request.post(`/api/rides/${body.ride.id}/accept-by-phone`, { data: {} })

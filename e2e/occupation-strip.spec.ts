@@ -69,10 +69,10 @@ test('a block names the ride, opens its detail, and the collapsed strip survives
   const first = await recordRide(page, 'Iva Traka', day, '12:00', spot)
   const second = await recordRide(page, 'Nika Traka', day, '12:30', spot)
   expect((await page.request.post(`/api/rides/${first}/assign`, {
-    data: { driverId, vehicleId },
+    data: { version: 0, driverId, vehicleId },
   })).ok()).toBeTruthy()
   expect((await page.request.post(`/api/rides/${second}/assign`, {
-    data: { driverId, vehicleId, confirm: true },
+    data: { version: 0, driverId, vehicleId, confirm: true },
   })).ok()).toBeTruthy()
   expect((await page.request.put('/api/roster', {
     data: { rosterDate: day, driverId, vehicleId },
@@ -142,7 +142,7 @@ test.describe('@phone', () => {
     const day = addCalendarDays(operationalDateInTimeZone('Europe/Zagreb', new Date()), 1)
     const rideId = await recordRide(page, 'Tea Telefon', day, '15:00', { clientId, startLocationId, endLocationId })
     expect((await page.request.post(`/api/rides/${rideId}/assign`, {
-      data: { driverId, vehicleId },
+      data: { version: 0, driverId, vehicleId },
     })).ok()).toBeTruthy()
 
     await page.setViewportSize({ width: 390, height: 844 })

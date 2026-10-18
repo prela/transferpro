@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LocationArchivedError } from '../../modules/locations'
-import { RideOverlapError, TransferNotCorrectableError } from '../../modules/transfers'
+import { RideOverlapError, StaleSaveError, TransferNotCorrectableError } from '../../modules/transfers'
 import { transferHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -28,6 +28,15 @@ describe('transferHttpError', () => {
     expect(error).toMatchObject({
       statusCode: 409,
       data: { code: 'ride_overlap' },
+    })
+    expect(JSON.stringify(error)).not.toContain('Ana Anić')
+  })
+
+  it('returns the stale-save code and does not keep the guest name', () => {
+    const error = thrown(() => transferHttpError(new StaleSaveError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'stale_save' },
     })
     expect(JSON.stringify(error)).not.toContain('Ana Anić')
   })

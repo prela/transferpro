@@ -52,9 +52,10 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0036 | The Transfer is the order, and who owns the v1 modules | accepted |
 | ADR-0037 | Console mailer on preview | accepted; partially superseded by ADR-0042 |
 | ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted; partially superseded by ADR-0041 and ADR-0042 |
-| ADR-0039 | Urgent and warning tiers, and live refresh | accepted |
+| ADR-0039 | Urgent and warning tiers, and live refresh | accepted; partially superseded by ADR-0046 |
 | ADR-0040 | Theme tokens and contrast rules | accepted |
 | ADR-0041 | Revoke a pending invitation | accepted |
 | ADR-0042 | Password change and password reset | accepted; partially superseded by ADR-0044 |
 | ADR-0043 | Preview is `DEPLOY_ENV`, not a second `NODE_ENV` | accepted |
 | ADR-0044 | Hashed reset identifiers | accepted |
+| ADR-0046 | Refuse a stale save | accepted |

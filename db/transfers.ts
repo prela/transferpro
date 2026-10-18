@@ -59,6 +59,14 @@ export const transfers = tenantTable('transfers', {
   tabla: text('tabla').notNull().default(''),
   // The Client's own booking number. Optional, not unique, and not an ExternalRef.
   clientReference: text('client_reference'),
+  // One version covers this Transfer and its Ride (ADR-0046). A constant
+  // default leaves existing rows at 0 without a table rewrite. The time and
+  // the member stay null until an office data save.
+  version: integer('version').notNull().default(0),
+  dataChangedAt: timestamp('data_changed_at', { withTimezone: true, mode: 'date' }),
+  // The member user id. Text, like audit actor ids. No foreign key: a member
+  // who has left must not block the row, and the name is read from app.tenant_member.
+  dataChangedBy: text('data_changed_by'),
 }, table => [
   uniqueIndex('transfers_tenant_id_id').on(table.tenantId, table.id),
   // The day list reads one Tenant's pickups in instant order.
@@ -88,6 +96,9 @@ export const transfers = tenantTable('transfers', {
   check('transfers_note', sql`${table.note} is null or (${table.note} = btrim(${table.note}) and length(${table.note}) between 1 and ${noteMax})`),
   check('transfers_tabla', sql`${table.tabla} = btrim(${table.tabla}) and length(${table.tabla}) <= ${tablaMax}`),
   check('transfers_client_reference', sql`${table.clientReference} is null or (${table.clientReference} = btrim(${table.clientReference}) and length(${table.clientReference}) between 1 and ${referenceMax})`),
+  check('transfers_version', sql`${table.version} >= 0`),
+  // Version 0 has no recorded change. A later version names when and who.
+  check('transfers_data_change', sql`(${table.version} = 0 and ${table.dataChangedAt} is null and ${table.dataChangedBy} is null) or (${table.version} >= 1 and ${table.dataChangedAt} is not null and ${table.dataChangedBy} <> '')`),
 ], { oneRowPerTenant: false })
 
 /**

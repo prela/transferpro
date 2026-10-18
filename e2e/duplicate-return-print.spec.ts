@@ -171,8 +171,8 @@ test('printing in the dark theme stays light and groups unassigned Rides last', 
   const earlyRide = await record('Rani Gost', '09:00', 'RANO', 'Rana napomena')
   const laterRide = await record('Kasni Gost', '11:00', 'KASNO', 'Kasna napomena')
   await record('Slobodni Gost', '08:00', 'SLOBODNO', 'Bez vozila')
-  expect((await page.request.post(`/api/rides/${earlyRide}/assign`, { data: { driverId, vehicleId: earlyVehicle } })).ok()).toBeTruthy()
-  expect((await page.request.post(`/api/rides/${laterRide}/assign`, { data: { driverId, vehicleId: laterVehicle } })).ok()).toBeTruthy()
+  expect((await page.request.post(`/api/rides/${earlyRide}/assign`, { data: { version: 0, driverId, vehicleId: earlyVehicle } })).ok()).toBeTruthy()
+  expect((await page.request.post(`/api/rides/${laterRide}/assign`, { data: { version: 0, driverId, vehicleId: laterVehicle } })).ok()).toBeTruthy()
 
   await page.goto(`/transfers?day=${day}`)
   await hydrated(page)

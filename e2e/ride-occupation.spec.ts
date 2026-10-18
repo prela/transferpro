@@ -87,7 +87,7 @@ test('a true overlap asks before it saves, and a tight gap warns without asking'
 
   const occupied = await recordRide(page, 'Iva Zauzeto', '12:00')
   const assigned = await page.request.post(`/api/rides/${occupied}/assign`, {
-    data: { driverId, vehicleId: firstVehicle },
+    data: { version: 0, driverId, vehicleId: firstVehicle },
   })
   expect(assigned.ok()).toBeTruthy()
 
@@ -156,7 +156,7 @@ test('the overlap question is in English in the dark theme', async ({ page }) =>
   }))
   const occupied = await recordRide(page, 'Iva Clash', '12:00')
   expect((await page.request.post(`/api/rides/${occupied}/assign`, {
-    data: { driverId, vehicleId },
+    data: { version: 0, driverId, vehicleId },
   })).ok()).toBeTruthy()
   await recordRide(page, 'Nika Clash', '12:30')
   await page.goto('/transfers')

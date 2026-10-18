@@ -212,7 +212,7 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
 
   async function assign(rideId: string, assignee: string, vehicle = vehicleId) {
     const response = await page.request.post(`/api/rides/${rideId}/assign`, {
-      data: { driverId: assignee, vehicleId: vehicle },
+      data: { version: 0, driverId: assignee, vehicleId: vehicle },
     })
     if (!response.ok())
       throw new Error(`${response.status()} ${await response.text()}`)
@@ -454,7 +454,7 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
 
   async function assign(rideId: string) {
     const response = await page.request.post(`/api/rides/${rideId}/assign`, {
-      data: { driverId: ownDriverId, vehicleId },
+      data: { version: 0, driverId: ownDriverId, vehicleId },
     })
     if (!response.ok())
       throw new Error(`${response.status()} ${await response.text()}`)
@@ -623,7 +623,7 @@ test('@phone a driver accepts a waiting ride, and a conflict reloads the list', 
 
   async function assign(rideId: string) {
     const response = await page.request.post(`/api/rides/${rideId}/assign`, {
-      data: { driverId: ownDriverId, vehicleId },
+      data: { version: 0, driverId: ownDriverId, vehicleId },
     })
     if (!response.ok())
       throw new Error(`${response.status()} ${await response.text()}`)
@@ -823,7 +823,7 @@ test('@phone a driver marks a ride done and it leaves the upcoming list', async 
     throw new Error(`${recorded.status()} ${await recorded.text()}`)
   const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
   const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
-    data: { driverId: ownDriverId, vehicleId },
+    data: { version: 0, driverId: ownDriverId, vehicleId },
   })
   if (!assigned.ok())
     throw new Error(`${assigned.status()} ${await assigned.text()}`)
@@ -918,7 +918,7 @@ test('@phone a driver declines an assigned ride and the board names them', async
     throw new Error(`${recorded.status()} ${await recorded.text()}`)
   const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
   const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
-    data: { driverId: ownDriverId, vehicleId },
+    data: { version: 0, driverId: ownDriverId, vehicleId },
   })
   if (!assigned.ok())
     throw new Error(`${assigned.status()} ${await assigned.text()}`)
@@ -1048,7 +1048,7 @@ test('@phone a driver marks a no-show after the wait and it leaves the upcoming 
       throw new Error(`${recorded.status()} ${await recorded.text()}`)
     const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
     const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
-      data: { driverId: ownDriverId, vehicleId },
+      data: { version: 0, driverId: ownDriverId, vehicleId },
     })
     if (!assigned.ok())
       throw new Error(`${assigned.status()} ${await assigned.text()}`)
@@ -1195,7 +1195,7 @@ test.describe('@phone', () => {
         throw new Error(`${recorded.status()} ${await recorded.text()}`)
       const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
       const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
-        data: { driverId, vehicleId },
+        data: { version: 0, driverId, vehicleId },
       })
       if (!assigned.ok())
         throw new Error(`${assigned.status()} ${await assigned.text()}`)
@@ -1396,7 +1396,7 @@ async function seedMeetSign(page: Page, slug: string, phone: string, plate: stri
       throw new Error(`${recorded.status()} ${await recorded.text()}`)
     const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
     const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
-      data: { driverId, vehicleId },
+      data: { version: 0, driverId, vehicleId },
     })
     if (!assigned.ok())
       throw new Error(`${assigned.status()} ${await assigned.text()}`)

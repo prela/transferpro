@@ -78,7 +78,7 @@ async function recordTodayRide(page: Page, guest: string, wall: string, places: 
 
 async function assignRide(page: Page, rideId: string, driverId: string, vehicleId: string) {
   const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
-    data: { driverId, vehicleId },
+    data: { version: 0, driverId, vehicleId },
   })
   expect(assigned.ok()).toBeTruthy()
 }

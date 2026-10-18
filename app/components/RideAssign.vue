@@ -18,6 +18,8 @@ const props = defineProps<{
   dayRides?: TransferDayRide[]
   pickupAt?: string
   landingAt?: string | null
+  /** The Transfer version this form was opened with. ADR-0046. */
+  version: number
   /** Phone uses the large targets. Desktop uses the office size. */
   phone?: boolean
 }>()
@@ -231,6 +233,7 @@ async function assign(confirm = false) {
       body: {
         driverId: chosenDriver,
         vehicleId: chosenVehicle,
+        version: props.version,
         ...(confirm ? { confirm: true } : {}),
       },
     }))

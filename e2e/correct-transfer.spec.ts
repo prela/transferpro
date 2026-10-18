@@ -64,7 +64,7 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   })
   expect(recorded.ok()).toBeTruthy()
   const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
-  expect((await page.request.post(`/api/rides/${rideId}/assign`, { data: { driverId, vehicleId } })).ok()).toBeTruthy()
+  expect((await page.request.post(`/api/rides/${rideId}/assign`, { data: { version: 0, driverId, vehicleId } })).ok()).toBeTruthy()
   expect((await page.request.post(`/api/rides/${rideId}/accept-by-phone`, { data: {} })).ok()).toBeTruthy()
 
   const finishedGuest = 'Leo Kraj'
@@ -213,8 +213,8 @@ test('a pickup correction that overlaps asks, and cancel leaves the slideover op
   }
   const held = await record(heldGuest, '12:00')
   const moving = await record(movingGuest, '14:00')
-  expect((await page.request.post(`/api/rides/${held}/assign`, { data: { driverId, vehicleId: heldVehicleId } })).ok()).toBeTruthy()
-  expect((await page.request.post(`/api/rides/${moving}/assign`, { data: { driverId, vehicleId: movingVehicleId } })).ok()).toBeTruthy()
+  expect((await page.request.post(`/api/rides/${held}/assign`, { data: { version: 0, driverId, vehicleId: heldVehicleId } })).ok()).toBeTruthy()
+  expect((await page.request.post(`/api/rides/${moving}/assign`, { data: { version: 0, driverId, vehicleId: movingVehicleId } })).ok()).toBeTruthy()
 
   await page.goto('/transfers')
   await page.getByRole('button', { name: `Radnje: ${movingGuest}` }).click()
@@ -298,8 +298,8 @@ test('the correction overlap question is in English in the dark theme', async ({
   }
   const held = await record('Iva Clash', '12:00')
   const moving = await record('Nika Clash', '14:00')
-  expect((await page.request.post(`/api/rides/${held}/assign`, { data: { driverId, vehicleId: heldVehicleId } })).ok()).toBeTruthy()
-  expect((await page.request.post(`/api/rides/${moving}/assign`, { data: { driverId, vehicleId: movingVehicleId } })).ok()).toBeTruthy()
+  expect((await page.request.post(`/api/rides/${held}/assign`, { data: { version: 0, driverId, vehicleId: heldVehicleId } })).ok()).toBeTruthy()
+  expect((await page.request.post(`/api/rides/${moving}/assign`, { data: { version: 0, driverId, vehicleId: movingVehicleId } })).ok()).toBeTruthy()
 
   await page.goto('/transfers')
   await page.getByRole('button', { name: 'Actions: Nika Clash' }).click()

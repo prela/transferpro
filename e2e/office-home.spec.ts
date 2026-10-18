@@ -154,7 +154,7 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
     payment: 'cash',
   })
   const assigned = await page.request.post(`/api/rides/${waiting}/assign`, {
-    data: { driverId, vehicleId },
+    data: { version: 0, driverId, vehicleId },
   })
   expect(assigned.ok()).toBeTruthy()
   const openRide = await record(page, 'Open Lara', new Date(now.getTime() - 90 * 60 * 1000), places, {
@@ -166,10 +166,10 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
     payment: 'cash',
   })
   const openAssigned = await page.request.post(`/api/rides/${openRide}/assign`, {
-    data: { driverId: plainDriverId, vehicleId },
+    data: { version: 0, driverId: plainDriverId, vehicleId },
   })
   const freshAssigned = await page.request.post(`/api/rides/${freshRide}/assign`, {
-    data: { driverId: plainDriverId, vehicleId },
+    data: { version: 0, driverId: plainDriverId, vehicleId },
   })
   expect(openAssigned.ok()).toBeTruthy()
   expect(freshAssigned.ok()).toBeTruthy()

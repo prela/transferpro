@@ -9,6 +9,8 @@ const props = defineProps<{
   guestName: string
   /** The Vehicle already on the Ride. It stays off the picker. */
   vehicleId: string
+  /** The Transfer version this form was opened with. ADR-0046. */
+  version: number
   drivers: Driver[]
   vehicles: Vehicle[]
   /** Phone uses the large targets. Desktop uses the office size. */
@@ -98,7 +100,7 @@ async function submit(confirm = false) {
   try {
     const saved = assignedRideSchema.parse(await $fetch(`/api/rides/${props.rideId}/vehicle`, {
       method: 'POST',
-      body: { vehicleId: chosen, ...(confirm ? { confirm: true } : {}) },
+      body: { vehicleId: chosen, version: props.version, ...(confirm ? { confirm: true } : {}) },
     }))
     overlapOpen.value = false
     notifyAuditChanged()

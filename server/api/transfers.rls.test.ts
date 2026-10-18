@@ -10,7 +10,7 @@ import { createClient } from '../modules/clients'
 import { createDriver, updateDriver } from '../modules/drivers'
 import { archiveLocation, createLocation } from '../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale } from '../modules/tenancy'
-import { acceptRide, assignRide, correctTransfer, declineRide, listTransferDay, listUpcomingRides, readOfficeHome } from '../modules/transfers'
+import { acceptRide, assignRide as assignRideRaw, correctTransfer as correctTransferRaw, declineRide, listTransferDay, listUpcomingRides, readOfficeHome } from '../modules/transfers'
 import { createVehicle } from '../modules/vehicles'
 import getTransfers from './transfers.get'
 import postTransfer from './transfers.post'
@@ -159,15 +159,74 @@ async function signIn(email: string): Promise<Headers> {
   return new Headers({ cookie: response.headers.getSetCookie().map(part => part.split(';')[0]).join('; ') })
 }
 
-function call(method: string, path: string, session?: Headers, body?: unknown) {
+/**
+ * The production body requires `version`. These tests chain commands, so a
+ * body that omits it sends the version stored now. An explicit `version`,
+ * including `undefined`, is the opened form and is left alone.
+ */
+async function versionForTransfer(transferId: string): Promise<number> {
+  const result = await ownerPool.query<{ version: number }>(
+    `select version from app.transfers where id = $1`,
+    [transferId],
+  )
+  return Number(result.rows[0]?.version ?? 0)
+}
+
+async function versionForRide(rideId: string): Promise<number> {
+  const result = await ownerPool.query<{ version: number }>(
+    `select t.version
+     from app.transfers as t
+     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
+     where r.id = $1`,
+    [rideId],
+  )
+  return Number(result.rows[0]?.version ?? 0)
+}
+
+async function bodyWithOpenedVersion(method: string, path: string, body: unknown): Promise<unknown> {
+  if (method !== 'PATCH' || body === null || typeof body !== 'object' || Array.isArray(body))
+    return body
+  const match = /^\/api\/transfers\/([^/]+)$/.exec(path)
+  if (!match)
+    return body
+  const record = body as Record<string, unknown>
+  if ('version' in record)
+    return body
+  // A path that is not a Transfer id is refused by the route. Do not ask Postgres to cast it.
+  const transferId = match[1] ?? ''
+  const version = /^[0-9a-f-]{36}$/i.test(transferId) ? await versionForTransfer(transferId) : 0
+  return { ...record, version }
+}
+
+async function call(method: string, path: string, session?: Headers, body?: unknown) {
+  const sent = await bodyWithOpenedVersion(method, path, body)
   const headers = new Headers(session)
-  if (body !== undefined)
+  if (sent !== undefined)
     headers.set('content-type', 'application/json')
   return callTransfers(new Request(`http://localhost${path}`, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: sent === undefined ? undefined : JSON.stringify(sent),
   }))
+}
+
+async function assignRide(
+  headers: Headers,
+  input: { rideId: string, driverId: string, vehicleId: string, confirm?: boolean, version?: number },
+  delivery?: Parameters<typeof assignRideRaw>[2],
+) {
+  const version = 'version' in input ? input.version : await versionForRide(input.rideId)
+  return assignRideRaw(headers, { ...input, version }, delivery)
+}
+
+async function correctTransfer(
+  headers: Headers,
+  transferId: string,
+  body: Record<string, unknown>,
+  delivery?: Parameters<typeof correctTransferRaw>[3],
+) {
+  const version = 'version' in body ? body.version : await versionForTransfer(transferId)
+  return correctTransferRaw(headers, transferId, { ...body, version }, delivery)
 }
 
 async function tenantCounts(tenantId: string) {
@@ -815,6 +874,23 @@ async function storedTransfer(transferId: string) {
     [transferId],
   )
   return result.rows[0]
+}
+
+async function transferStamp(transferId: string) {
+  const result = await ownerPool.query<{
+    version: number
+    data_changed_at: Date | null
+    data_changed_by: string | null
+    guest_name: string
+  }>(
+    `select version, data_changed_at, data_changed_by, guest_name
+     from app.transfers where id = $1`,
+    [transferId],
+  )
+  const row = result.rows[0]
+  if (!row)
+    throw new Error('missing transfer')
+  return { ...row, version: Number(row.version) }
 }
 
 /** The live-flight facts a designator change must clear or keep. */
@@ -2071,4 +2147,195 @@ it('refuses confirm on the record route and a non-boolean confirm on a correctio
   )
   expect((await call('POST', '/api/transfers', undefined, { ...body, confirm: true })).status).toBe(400)
   expect((await call('PATCH', '/api/transfers/9e4b3f6d-5555-4555-8555-555555555555', undefined, { ...body, confirm: 'yes' })).status).toBe(400)
+})
+
+async function correctionOffice(slug: string) {
+  const created = await tenant(slug, 'Hana Admin')
+  const dispatcherId = await addMember(created.tenantId, `${slug}-dispatcher@example.test`, 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn(`${slug}-dispatcher@example.test`)
+  const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  const pickupAt = pickupInsideWindow()
+  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt))
+  expect(recorded.status).toBe(200)
+  const body = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
+  return { created, dispatcherId, dispatcher, client, start, end, pickupAt, body }
+}
+
+it('refuses a stale correction, including one that would change nothing, and writes no audit entry', async () => {
+  const office = await correctionOffice('htr-ver-stale')
+  const same = correctionBody(office.client.id, office.start.id, office.end.id, office.pickupAt)
+  const before = await correctionAudits(office.created.tenantId)
+
+  const noOp = await call('PATCH', `/api/transfers/${office.body.transfer.id}`, office.dispatcher, { ...same, version: 0 })
+  expect(noOp.status).toBe(200)
+  expect(await transferStamp(office.body.transfer.id)).toMatchObject({
+    version: 0,
+    data_changed_at: null,
+    data_changed_by: null,
+    guest_name: guest,
+  })
+  expect(await correctionAudits(office.created.tenantId)).toEqual(before)
+
+  const staleSame = await call('PATCH', `/api/transfers/${office.body.transfer.id}`, office.dispatcher, { ...same, version: 4 })
+  expect(staleSame.status).toBe(409)
+  expect(await staleSame.text()).toContain('stale_save')
+  const staleChange = await call('PATCH', `/api/transfers/${office.body.transfer.id}`, office.dispatcher, {
+    ...same,
+    guestName: 'Skriveni Gost',
+    version: 4,
+  })
+  expect(staleChange.status).toBe(409)
+  const text = await staleChange.text()
+  expect(text).toContain('stale_save')
+  expect(text).not.toContain('Skriveni Gost')
+  expect(text).not.toContain(office.dispatcherId)
+  expect(await transferStamp(office.body.transfer.id)).toMatchObject({ version: 0, guest_name: guest, data_changed_by: null })
+  expect(await correctionAudits(office.created.tenantId)).toEqual(before)
+})
+
+it('a fresh correction bumps the version and the day read names that member', async () => {
+  const office = await correctionOffice('htr-ver-fresh')
+  const saved = await call('PATCH', `/api/transfers/${office.body.transfer.id}`, office.dispatcher, correctionBody(
+    office.client.id,
+    office.start.id,
+    office.end.id,
+    office.pickupAt,
+    { guestName: 'Nova Ana', version: 0 },
+  ))
+  expect(saved.status).toBe(200)
+  const stamp = await transferStamp(office.body.transfer.id)
+  expect(stamp.version).toBe(1)
+  expect(stamp.data_changed_by).toBe(office.dispatcherId)
+  expect(stamp.data_changed_at).toBeInstanceOf(Date)
+  expect(stamp.guest_name).toBe('Nova Ana')
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date(office.pickupAt))
+  const row = (await listTransferDay(office.dispatcher, day)).rides.find(ride => ride.rideId === office.body.ride.id)
+  expect(row).toMatchObject({ version: 1, changedByName: 'Dino Dispatcher' })
+  expect(row?.changedAt).toBe(stamp.data_changed_at?.toISOString())
+  expect(JSON.stringify(row)).not.toContain(office.dispatcherId)
+  expect(await correctionAudits(office.created.tenantId)).toHaveLength(1)
+})
+
+it('a wrong version on a finished Transfer is stale_save, and the current version is transfer_closed', async () => {
+  const office = await correctionOffice('htr-ver-closed')
+  const driver = await createDriver(office.dispatcher, {
+    name: 'Drago Driver',
+    kind: 'own',
+    phone: '+385911113001',
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const vehicle = await createVehicle(office.dispatcher, {
+    registrationPlate: 'ZG9401AA',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  await assignRide(office.dispatcher, { rideId: office.body.ride.id, driverId: driver.id, vehicleId: vehicle.id, version: 0 })
+  await ownerPool.query(`update app.rides set state = 'done' where id = $1`, [office.body.ride.id])
+  const before = await correctionAudits(office.created.tenantId)
+  const path = `/api/transfers/${office.body.transfer.id}`
+
+  const stale = await call('PATCH', path, office.dispatcher, correctionBody(
+    office.client.id,
+    office.start.id,
+    office.end.id,
+    office.pickupAt,
+    { guestName: 'Skriveni Gost', version: 99 },
+  ))
+  expect(stale.status).toBe(409)
+  expect(await stale.text()).toContain('stale_save')
+
+  const closed = await call('PATCH', path, office.dispatcher, correctionBody(
+    office.client.id,
+    office.start.id,
+    office.end.id,
+    office.pickupAt,
+    { guestName: 'Skriveni Gost', version: 1 },
+  ))
+  expect(closed.status).toBe(409)
+  const text = await closed.text()
+  expect(text).toContain('transfer_closed')
+  expect(text).not.toContain('stale_save')
+  expect(await transferStamp(office.body.transfer.id)).toMatchObject({ version: 1, guest_name: guest })
+  expect(await correctionAudits(office.created.tenantId)).toEqual(before)
+})
+
+it('lets exactly one of two corrections with the same version pass', async () => {
+  const office = await correctionOffice('htr-ver-race')
+  const path = `/api/transfers/${office.body.transfer.id}`
+  const left = correctionBody(office.client.id, office.start.id, office.end.id, office.pickupAt, { guestName: 'Lijeva Ana', version: 0 })
+  const right = correctionBody(office.client.id, office.start.id, office.end.id, office.pickupAt, { guestName: 'Desna Ana', version: 0 })
+  const [first, second] = await Promise.all([
+    call('PATCH', path, office.dispatcher, left),
+    call('PATCH', path, office.dispatcher, right),
+  ])
+  const statuses = [first.status, second.status].sort()
+  expect(statuses).toEqual([200, 409])
+  const loser = first.status === 409 ? first : second
+  expect(await loser.text()).toContain('stale_save')
+  const stamp = await transferStamp(office.body.transfer.id)
+  expect(stamp.version).toBe(1)
+  expect(['Lijeva Ana', 'Desna Ana']).toContain(stamp.guest_name)
+  expect(await correctionAudits(office.created.tenantId)).toHaveLength(1)
+})
+
+it('rejects a missing or fractional version on a correction before it writes', async () => {
+  const office = await correctionOffice('htr-ver-shape')
+  const same = correctionBody(office.client.id, office.start.id, office.end.id, office.pickupAt)
+  const headers = new Headers(office.dispatcher)
+  headers.set('content-type', 'application/json')
+  const missing = await callTransfers(new Request(`http://localhost/api/transfers/${office.body.transfer.id}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(same),
+  }))
+  expect(missing.status).toBe(400)
+  const fraction = await call('PATCH', `/api/transfers/${office.body.transfer.id}`, office.dispatcher, { ...same, version: 1.5 })
+  expect(fraction.status).toBe(400)
+  expect(await transferStamp(office.body.transfer.id)).toMatchObject({ version: 0, guest_name: guest, data_changed_by: null })
+  expect(await correctionAudits(office.created.tenantId)).toEqual([])
+})
+
+it('does not show another tenant author, and a member who left has no name', async () => {
+  const office = await correctionOffice('htr-ver-author')
+  const other = await tenant('htr-ver-author-b', 'Borna Stranac')
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date(office.pickupAt))
+  const fresh = (await listTransferDay(office.dispatcher, day)).rides.find(ride => ride.rideId === office.body.ride.id)
+  expect(fresh).toMatchObject({ version: 0, changedAt: null, changedByName: null })
+
+  const saved = await call('PATCH', `/api/transfers/${office.body.transfer.id}`, office.dispatcher, correctionBody(
+    office.client.id,
+    office.start.id,
+    office.end.id,
+    office.pickupAt,
+    { guestName: 'Nova Ana', version: 0 },
+  ))
+  expect(saved.status).toBe(200)
+
+  await ownerPool.query(
+    `update app.transfers set data_changed_by = $2 where id = $1`,
+    [office.body.transfer.id, other.adminUserId],
+  )
+  const foreign = (await listTransferDay(office.dispatcher, day)).rides.find(ride => ride.rideId === office.body.ride.id)
+  expect(foreign).toMatchObject({ version: 1, changedByName: null })
+  expect(foreign?.changedAt).toEqual(expect.any(String))
+  const foreignText = JSON.stringify(foreign)
+  expect(foreignText).not.toContain('Borna Stranac')
+  expect(foreignText).not.toContain(other.adminUserId)
+
+  const leftId = await addMember(office.created.tenantId, 'htr-ver-author-left@example.test', 'Bivši Član', 'dispatcher')
+  await ownerPool.query(
+    `update app.transfers set data_changed_by = $2 where id = $1`,
+    [office.body.transfer.id, leftId],
+  )
+  await authPool.query('delete from auth.member where user_id = $1', [leftId])
+  const former = (await listTransferDay(office.dispatcher, day)).rides.find(ride => ride.rideId === office.body.ride.id)
+  expect(former?.changedByName).toBeNull()
+  const formerText = JSON.stringify(await listTransferDay(office.dispatcher, day))
+  expect(formerText).not.toContain('Bivši Član')
+  expect(formerText).not.toContain(leftId)
 })

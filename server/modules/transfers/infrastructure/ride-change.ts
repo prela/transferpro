@@ -12,6 +12,7 @@ import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../te
 import { vehiclePresenceForAssign } from '../../vehicles'
 import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
 import { checkRideSchedule } from './ride-schedule'
+import { claimTransferVersion, lockTransferRide, refuseStaleVersion } from './transfer-version'
 import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
 
 /**
@@ -50,16 +51,6 @@ export class RideSameDriverError extends Error {
   }
 }
 
-const lockedRows = z.object({
-  rows: z.array(z.object({
-    id: z.uuid(),
-    state: z.string(),
-    driverId: z.uuid().nullable(),
-    vehicleId: z.uuid().nullable(),
-    mustAccept: z.boolean().nullable(),
-  })),
-})
-
 const keptRows = z.object({
   rows: z.array(z.object({
     id: z.uuid(),
@@ -93,8 +84,6 @@ const reassignedRows = z.object({
   })),
 })
 
-type LockedRide = z.infer<typeof lockedRows>['rows'][number]
-
 /** The Driver and Vehicle the command took off the Ride. The mail still names them. */
 interface ReleasedAssignment {
   readonly driverId: string
@@ -112,13 +101,14 @@ interface Delivery {
  * `ride.vehicle_changed` names the actor and the field `vehicleId`. It does
  * not store a plate, a phone, or the must-accept value. This statement does
  * not read `app.drivers`. The caller has already required a dispatcher or an admin.
+ * A stale version is refused before the unchanged-vehicle check, and writes nothing.
  */
 export async function changeRideVehicle(
   transaction: TenantTransaction,
   actorUserId: string,
   input: ChangeRideVehicle,
 ): Promise<{ ride: Ride, relocationWarnings: ScheduleClash[] }> {
-  const current = await lockOpenRide(transaction, input.rideId)
+  const current = await lockOpenRide(transaction, input.rideId, input.version)
   if (current.vehicleId === input.vehicleId)
     throw new RideVehicleUnchangedError()
 
@@ -135,6 +125,7 @@ export async function changeRideVehicle(
     confirm: input.confirm === true,
   })
 
+  await claimTransferVersion(transaction, current.transferId, input.version, actorUserId, 'Ride vehicle change failed')
   const updated = keptRows.parse(await runStep(transaction, sql`
     update app.rides
     set vehicle_id = ${input.vehicleId}
@@ -172,14 +163,16 @@ export async function changeRideVehicle(
  * Vehicle, and the copied flag are cleared together. `ride.cleared` names
  * the actor and the ids that were on the Ride. It does not store a plate,
  * a phone, or the must-accept value. The caller has already required a
- * dispatcher or an admin.
+ * dispatcher or an admin. A stale version writes nothing.
  */
 export async function clearAssignedRide(
   transaction: TenantTransaction,
   actorUserId: string,
   rideId: string,
+  version: number,
 ): Promise<{ ride: Ride, released: ReleasedAssignment }> {
-  const current = await lockOpenRide(transaction, rideId)
+  const current = await lockOpenRide(transaction, rideId, version)
+  await claimTransferVersion(transaction, current.transferId, version, actorUserId, 'Ride clear failed')
   const updated = clearedRows.parse(await runStep(transaction, sql`
     update app.rides
     set state = 'unassigned',
@@ -230,7 +223,7 @@ export async function reassignAssignedRide(
   actorUserId: string,
   input: ReassignRide,
 ): Promise<{ ride: Ride, released: ReleasedAssignment, relocationWarnings: ScheduleClash[] }> {
-  const current = await lockOpenRide(transaction, input.rideId)
+  const current = await lockOpenRide(transaction, input.rideId, input.version)
   if (current.driverId === input.driverId)
     throw new RideSameDriverError()
 
@@ -254,6 +247,7 @@ export async function reassignAssignedRide(
   })
 
   const mustAccept = driver.mustAccept
+  await claimTransferVersion(transaction, current.transferId, input.version, actorUserId, 'Ride reassignment failed')
   const updated = reassignedRows.parse(await runStep(transaction, sql`
     update app.rides
     set state = 'assigned',
@@ -325,10 +319,10 @@ export async function changeVehicle(headers: Headers, raw: unknown, delivery?: D
  * leaves the clear in place. Tests pass a mailer.
  */
 export async function clearRide(headers: Headers, rawRideId: unknown, rawBody: unknown, delivery?: Delivery): Promise<AssignedRide> {
-  const rideId = parseClearRide(rawRideId, rawBody)
+  const parsed = parseClearRide(rawRideId, rawBody)
   const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    const cleared = await clearAssignedRide(transaction, actor.userId, rideId)
+    const cleared = await clearAssignedRide(transaction, actor.userId, parsed.rideId, parsed.version)
     const order = await readAssignedWorkOrder(transaction, cleared.ride.id, cleared.released)
     return { ride: cleared.ride, order }
   })
@@ -364,19 +358,12 @@ function mailerFrom(delivery?: Delivery): Mailer {
   return delivery?.mailer ?? mailerForApp(loadAppEnv())
 }
 
-async function lockOpenRide(transaction: TenantTransaction, rideId: string): Promise<LockedRide & { driverId: string, vehicleId: string }> {
-  const current = lockedRows.parse(await runStep(transaction, sql`
-    select id,
-           state,
-           driver_id as "driverId",
-           vehicle_id as "vehicleId",
-           must_accept as "mustAccept"
-    from app.rides
-    where id = ${rideId}
-    for update
-  `)).rows[0]
+async function lockOpenRide(transaction: TenantTransaction, rideId: string, version: number) {
+  const current = await lockTransferRide(transaction, rideId, 'Ride change failed')
   if (!current)
     throw new RideNotFoundError()
+  // Stale before the state check, so a body that would change nothing is still refused.
+  refuseStaleVersion(current.version, version)
   if (!rideChangeAllowed(current.state) || current.driverId === null || current.vehicleId === null)
     throw new RideNotOpenError()
   return { ...current, driverId: current.driverId, vehicleId: current.vehicleId }

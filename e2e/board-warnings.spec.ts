@@ -102,7 +102,7 @@ test('the day board shows an expired document, a roster mismatch, and an overlap
       throw new Error(`${response.status()} ${await response.text()}`)
     const body = await response.json() as { ride: { id: string } }
     const assigned = await page.request.post(`/api/rides/${body.ride.id}/assign`, {
-      data: { driverId, vehicleId, ...(confirm ? { confirm: true } : {}) },
+      data: { version: 0, driverId, vehicleId, ...(confirm ? { confirm: true } : {}) },
     })
     if (!assigned.ok())
       throw new Error(`${assigned.status()} ${await assigned.text()}`)

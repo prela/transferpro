@@ -50,3 +50,4 @@ export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDrive
 export { RideOverlapError } from './infrastructure/ride-schedule'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'
 export { searchTransfers } from './infrastructure/transfer-search'
+export { StaleSaveError } from './infrastructure/transfer-version'

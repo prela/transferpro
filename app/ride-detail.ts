@@ -14,6 +14,8 @@ export function rideDetailLayout(width: number): RideDetailLayout {
 /**
  * The fields a refresh can change under an open form. The form keeps this
  * snapshot and shows "Vožnja je promijenjena" instead of taking the new row.
+ * `version` is here so a data save the other fields miss, such as the client
+ * reference, still raises that hint. A Driver action does not bump it.
  */
 export function rideFormStamp(ride: TransferDayRide): string {
   return [
@@ -37,6 +39,7 @@ export function rideFormStamp(ride: TransferDayRide): string {
     ride.price,
     ride.payment,
     ride.airportMark ? '1' : '0',
+    String(ride.version),
   ].join('\u001F')
 }
 

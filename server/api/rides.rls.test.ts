@@ -4,14 +4,14 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../../shared'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../../shared'
 import { captureLogs } from '../core/testing'
 import { createClient } from '../modules/clients'
 import { archiveDriver, createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
 import { setRosterDay } from '../modules/roster'
-import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale } from '../modules/tenancy'
-import { assignRide, cancelRide, changeVehicle, clearRide, createTransfer, listTransferDay, listUpcomingRides, readOfficeHome, reassignRide } from '../modules/transfers'
+import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale, withTenantFromSession } from '../modules/tenancy'
+import { assignRide as assignRideRaw, cancelRide, changeVehicle as changeVehicleRaw, clearRide as clearRideRaw, createTransfer, listTransferDay, listUpcomingRides, readOfficeHome, reassignRide as reassignRideRaw, refreshFlightLandings } from '../modules/transfers'
 import { archiveVehicle, createVehicle } from '../modules/vehicles'
 import postAcceptByPhone from './rides/[id]/accept-by-phone.post'
 import postAccept from './rides/[id]/accept.post'
@@ -194,15 +194,84 @@ async function signIn(email: string): Promise<Headers> {
   return new Headers({ cookie: response.headers.getSetCookie().map(part => part.split(';')[0]).join('; ') })
 }
 
-function call(method: string, path: string, session?: Headers, body?: unknown) {
+/**
+ * The production body requires `version`. These tests chain commands, so a
+ * body that omits it sends the version stored now. An explicit `version`,
+ * including `undefined`, is the opened form and is left alone.
+ */
+async function versionForRide(rideId: string): Promise<number> {
+  const result = await ownerPool.query<{ version: number }>(
+    `select t.version
+     from app.transfers as t
+     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
+     where r.id = $1`,
+    [rideId],
+  )
+  return Number(result.rows[0]?.version ?? 0)
+}
+
+async function bodyWithOpenedVersion(method: string, path: string, body: unknown): Promise<unknown> {
+  if (method !== 'POST' || body === null || typeof body !== 'object' || Array.isArray(body))
+    return body
+  const match = /^\/api\/rides\/([^/]+)\/(?:assign|reassign|vehicle|clear)$/.exec(path)
+  if (!match)
+    return body
+  const record = body as Record<string, unknown>
+  if ('version' in record)
+    return body
+  // A path that is not a Ride id is refused by the route. Do not ask Postgres to cast it.
+  const rideId = match[1] ?? ''
+  const version = /^[0-9a-f-]{36}$/i.test(rideId) ? await versionForRide(rideId) : 0
+  return { ...record, version }
+}
+
+async function call(method: string, path: string, session?: Headers, body?: unknown) {
+  const sent = await bodyWithOpenedVersion(method, path, body)
   const headers = new Headers(session)
-  if (body !== undefined)
+  if (sent !== undefined)
     headers.set('content-type', 'application/json')
   return callRides(new Request(`http://localhost${path}`, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: sent === undefined ? undefined : JSON.stringify(sent),
   }))
+}
+
+async function assignRide(
+  headers: Headers,
+  input: { rideId: string, driverId: string, vehicleId: string, confirm?: boolean, version?: number },
+  delivery?: Parameters<typeof assignRideRaw>[2],
+) {
+  const version = 'version' in input ? input.version : await versionForRide(input.rideId)
+  return assignRideRaw(headers, { ...input, version }, delivery)
+}
+
+async function changeVehicle(
+  headers: Headers,
+  input: { rideId: string, vehicleId: string, confirm?: boolean, version?: number },
+  delivery?: Parameters<typeof changeVehicleRaw>[2],
+) {
+  const version = 'version' in input ? input.version : await versionForRide(input.rideId)
+  return changeVehicleRaw(headers, { ...input, version }, delivery)
+}
+
+async function reassignRide(
+  headers: Headers,
+  input: { rideId: string, driverId: string, vehicleId: string, confirm?: boolean, version?: number },
+  delivery?: Parameters<typeof reassignRideRaw>[2],
+) {
+  const version = 'version' in input ? input.version : await versionForRide(input.rideId)
+  return reassignRideRaw(headers, { ...input, version }, delivery)
+}
+
+async function clearRide(
+  headers: Headers,
+  rideId: string,
+  body: { version?: number } = {},
+  delivery?: Parameters<typeof clearRideRaw>[3],
+) {
+  const version = 'version' in body ? body.version : await versionForRide(rideId)
+  return clearRideRaw(headers, rideId, { ...body, version }, delivery)
 }
 
 async function withAppTenant<T>(tenantId: string, run: (client: pg.PoolClient) => Promise<T>): Promise<T> {
@@ -252,6 +321,32 @@ async function rideRow(rideId: string) {
     [rideId],
   )
   return result.rows[0]
+}
+
+async function versionOf(rideId: string) {
+  const result = await ownerPool.query<{
+    version: number
+    data_changed_at: Date | null
+    data_changed_by: string | null
+  }>(
+    `select t.version, t.data_changed_at, t.data_changed_by
+     from app.transfers as t
+     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
+     where r.id = $1`,
+    [rideId],
+  )
+  const row = result.rows[0]
+  if (!row)
+    throw new Error('missing transfer')
+  return { ...row, version: Number(row.version) }
+}
+
+async function auditCount(tenantId: string) {
+  const result = await ownerPool.query<{ count: string }>(
+    `select count(*) from app.audit_entry where tenant_id = $1`,
+    [tenantId],
+  )
+  return Number(result.rows[0]?.count)
 }
 
 async function assignmentAudits(tenantId: string) {
@@ -3396,4 +3491,425 @@ it('lets the assigned Driver record a landing time, and refuses another Driver, 
   const refused = JSON.stringify(audits)
   expect(refused).not.toContain(laterLanding)
   expect(refused).not.toContain('+385911110862')
+})
+
+it('refuses a stale assign, writes nothing, and appends no audit entry', async () => {
+  const world = await office('hasg-ver-assign-stale')
+  const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911112001' })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9301AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString()))
+  const before = await auditCount(world.tenantId)
+
+  const refused = await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    version: 1,
+  })
+  expect(refused.status).toBe(409)
+  const text = await refused.text()
+  expect(text).toContain('stale_save')
+  expect(text).not.toContain(guest)
+  expect(text).not.toContain(world.dispatcherId)
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null, vehicle_id: null })
+  expect(await versionOf(recorded.ride.id)).toMatchObject({ version: 0, data_changed_at: null, data_changed_by: null })
+  expect(await auditCount(world.tenantId)).toBe(before)
+})
+
+it('a fresh assign bumps the version and the day read names that member', async () => {
+  const world = await office('hasg-ver-assign-fresh')
+  const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911112002' })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9302AA'))
+  const pickup = new Date(Date.now() + 5 * 60 * 60 * 1000)
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, pickup.toISOString()))
+  const day = operationalDateInTimeZone('Europe/Zagreb', pickup)
+  const opened = (await listTransferDay(world.dispatcher, day)).rides.find(ride => ride.rideId === recorded.ride.id)
+  expect(opened).toMatchObject({ version: 0, changedAt: null, changedByName: null })
+
+  const saved = await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    version: 0,
+  })
+  expect(saved.status).toBe(200)
+  const stamp = await versionOf(recorded.ride.id)
+  expect(stamp.version).toBe(1)
+  expect(stamp.data_changed_by).toBe(world.dispatcherId)
+  expect(stamp.data_changed_at).toBeInstanceOf(Date)
+  const row = (await listTransferDay(world.dispatcher, day)).rides.find(ride => ride.rideId === recorded.ride.id)
+  expect(row).toMatchObject({ version: 1, changedByName: 'Dino Dispatcher' })
+  expect(row?.changedAt).toBe(stamp.data_changed_at?.toISOString())
+  expect(JSON.stringify(row)).not.toContain(world.dispatcherId)
+})
+
+it('refuses a stale vehicle change even when the vehicle would stay, and a fresh one bumps', async () => {
+  const world = await office('hasg-ver-vehicle')
+  const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911112003' })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9303AA'))
+  const other = await createVehicle(world.dispatcher, vehicleBody('ZG9303BB'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    version: 0,
+  })).status).toBe(200)
+  const before = await auditCount(world.tenantId)
+
+  const unchanged = await call('POST', `/api/rides/${recorded.ride.id}/vehicle`, world.dispatcher, {
+    vehicleId: vehicle.id,
+    version: 0,
+  })
+  expect(unchanged.status).toBe(409)
+  expect(await unchanged.text()).toContain('stale_save')
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ vehicle_id: vehicle.id })
+  expect(await versionOf(recorded.ride.id)).toMatchObject({ version: 1 })
+  expect(await auditCount(world.tenantId)).toBe(before)
+
+  const saved = await call('POST', `/api/rides/${recorded.ride.id}/vehicle`, world.dispatcher, {
+    vehicleId: other.id,
+    version: 1,
+  })
+  expect(saved.status).toBe(200)
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ vehicle_id: other.id })
+  expect(await versionOf(recorded.ride.id)).toMatchObject({ version: 2, data_changed_by: world.dispatcherId })
+})
+
+it('refuses a stale reassignment and a fresh one bumps', async () => {
+  const world = await office('hasg-ver-reassign')
+  const first = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911112004' })
+  const second = await createDriver(world.dispatcher, { ...driverBody, name: 'Neda Neno', phone: '+385911112005' })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9304AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: first.id,
+    vehicleId: vehicle.id,
+    version: 0,
+  })).status).toBe(200)
+  const before = await auditCount(world.tenantId)
+
+  const stale = await call('POST', `/api/rides/${recorded.ride.id}/reassign`, world.dispatcher, {
+    driverId: second.id,
+    vehicleId: vehicle.id,
+    version: 0,
+  })
+  expect(stale.status).toBe(409)
+  expect(await stale.text()).toContain('stale_save')
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ driver_id: first.id })
+  expect(await auditCount(world.tenantId)).toBe(before)
+
+  const saved = await call('POST', `/api/rides/${recorded.ride.id}/reassign`, world.admin, {
+    driverId: second.id,
+    vehicleId: vehicle.id,
+    version: 1,
+  })
+  expect(saved.status).toBe(200)
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ driver_id: second.id, state: 'assigned' })
+  expect(await versionOf(recorded.ride.id)).toMatchObject({ version: 2, data_changed_by: world.adminUserId })
+})
+
+it('refuses a stale clear and a fresh one bumps', async () => {
+  const world = await office('hasg-ver-clear')
+  const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911112006' })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9305AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    version: 0,
+  })).status).toBe(200)
+  const before = await auditCount(world.tenantId)
+
+  const stale = await call('POST', `/api/rides/${recorded.ride.id}/clear`, world.dispatcher, { version: 0 })
+  expect(stale.status).toBe(409)
+  expect(await stale.text()).toContain('stale_save')
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'assigned', driver_id: driver.id })
+  expect(await auditCount(world.tenantId)).toBe(before)
+
+  const saved = await call('POST', `/api/rides/${recorded.ride.id}/clear`, world.dispatcher, { version: 1 })
+  expect(saved.status).toBe(200)
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null, vehicle_id: null })
+  expect(await versionOf(recorded.ride.id)).toMatchObject({ version: 2, data_changed_by: world.dispatcherId })
+})
+
+it('rejects a missing, fractional, or negative version before it writes', async () => {
+  const world = await office('hasg-ver-shape')
+  const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911112007' })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9306AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString()))
+  const before = await auditCount(world.tenantId)
+  const headers = new Headers(world.dispatcher)
+  headers.set('content-type', 'application/json')
+  const missing = await callRides(new Request(`http://localhost/api/rides/${recorded.ride.id}/assign`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ driverId: driver.id, vehicleId: vehicle.id }),
+  }))
+  expect(missing.status).toBe(400)
+
+  const fraction = await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    version: 1.5,
+  })
+  expect(fraction.status).toBe(400)
+  const negative = await call('POST', `/api/rides/${recorded.ride.id}/clear`, world.dispatcher, { version: -1 })
+  expect(negative.status).toBe(400)
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'unassigned' })
+  expect(await versionOf(recorded.ride.id)).toMatchObject({ version: 0 })
+  expect(await auditCount(world.tenantId)).toBe(before)
+})
+
+it('lets exactly one of two assigns with the same version pass', async () => {
+  const world = await office('hasg-ver-race')
+  const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911112008' })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9307AA'))
+  const other = await createVehicle(world.dispatcher, vehicleBody('ZG9307BB'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString()))
+  const [first, second] = await Promise.all([
+    call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+      version: 0,
+    }),
+    call('POST', `/api/rides/${recorded.ride.id}/assign`, world.admin, {
+      driverId: driver.id,
+      vehicleId: other.id,
+      version: 0,
+    }),
+  ])
+  const statuses = [first.status, second.status].sort()
+  expect(statuses).toEqual([200, 409])
+  const loser = first.status === 409 ? first : second
+  expect(await loser.text()).toContain('stale_save')
+  expect((await versionOf(recorded.ride.id)).version).toBe(1)
+  expect(await assignmentAudits(world.tenantId)).toHaveLength(1)
+})
+
+it('an overlap refusal leaves the version, and confirm with that same version passes', async () => {
+  const world = await office('hasg-ver-ovlp')
+  const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911112009' })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9308AA'))
+  const start = new Date(Date.now() + 10 * 60 * 60 * 1000)
+  const held = await createTransfer(world.dispatcher, transferBody(world, start.toISOString()))
+  const next = await createTransfer(world.dispatcher, transferBody(world, new Date(start.getTime() + 30 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${held.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    version: 0,
+  })).status).toBe(200)
+
+  const refused = await call('POST', `/api/rides/${next.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    version: 0,
+  })
+  expect(refused.status).toBe(409)
+  expect(await refused.text()).toContain('ride_overlap')
+  expect(await versionOf(next.ride.id)).toMatchObject({ version: 0, data_changed_by: null })
+  const before = await auditCount(world.tenantId)
+
+  const confirmed = await call('POST', `/api/rides/${next.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    version: 0,
+    confirm: true,
+  })
+  expect(confirmed.status).toBe(200)
+  expect((await versionOf(next.ride.id)).version).toBe(1)
+  expect(await auditCount(world.tenantId)).toBe(before + 1)
+})
+
+it('driver and office state actions leave the version, so the office save opened before them is not stale', async () => {
+  const world = await office('hasg-ver-states')
+  const pickup = (hours: number) => new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
+
+  const accepting = await linkedDriver(world, 'hasg-ver-states-acc@example.test', 'Drago Driver', '+385911112010')
+  await updateDriver(world.admin, accepting.driver.id, { mustAccept: true })
+  const declining = await linkedDriver(world, 'hasg-ver-states-dec@example.test', 'Neda Neno', '+385911112011')
+  const finishing = await linkedDriver(world, 'hasg-ver-states-done@example.test', 'Ivo Gotov', '+385911112012')
+  const absent = await linkedDriver(world, 'hasg-ver-states-ns@example.test', 'Tea Nema', '+385911112013')
+  const phoning = await createDriver(world.dispatcher, { ...driverBody, name: 'Marko Telefon', phone: '+385911112014' })
+  await updateDriver(world.admin, phoning.id, { mustAccept: true })
+  const early = await createDriver(world.dispatcher, { ...driverBody, name: 'Roko Rani', phone: '+385911112015' })
+  const cancelling = await createDriver(world.dispatcher, { ...driverBody, name: 'Luka Otkaz', phone: '+385911112016' })
+
+  const acceptVehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9310AA'))
+  const acceptNext = await createVehicle(world.dispatcher, vehicleBody('ZG9310BB'))
+  const declineVehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9311AA'))
+  const doneVehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9312AA'))
+  const doneNext = await createVehicle(world.dispatcher, vehicleBody('ZG9312BB'))
+  const noShowVehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9313AA'))
+  const noShowNext = await createVehicle(world.dispatcher, vehicleBody('ZG9313BB'))
+  const phoneVehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9314AA'))
+  const phoneNext = await createVehicle(world.dispatcher, vehicleBody('ZG9314BB'))
+  const earlyVehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9315AA'))
+  const earlyNext = await createVehicle(world.dispatcher, vehicleBody('ZG9315BB'))
+  const cancelVehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9316AA'))
+  const cancelNext = await createVehicle(world.dispatcher, vehicleBody('ZG9316BB'))
+
+  const accepted = await createTransfer(world.dispatcher, transferBody(world, pickup(12)))
+  const declined = await createTransfer(world.dispatcher, transferBody(world, pickup(15)))
+  const finished = await createTransfer(world.dispatcher, transferBody(world, pickup(18)))
+  const noShow = await createTransfer(world.dispatcher, transferBody(world, minutesAgo(120)))
+  const phoned = await createTransfer(world.dispatcher, transferBody(world, pickup(21)))
+  const earlyRide = await createTransfer(world.dispatcher, transferBody(world, pickup(24)))
+  const cancelled = await createTransfer(world.dispatcher, transferBody(world, pickup(27)))
+
+  const assignments: Array<[string, string, string]> = [
+    [accepted.ride.id, accepting.driver.id, acceptVehicle.id],
+    [declined.ride.id, declining.driver.id, declineVehicle.id],
+    [finished.ride.id, finishing.driver.id, doneVehicle.id],
+    [noShow.ride.id, absent.driver.id, noShowVehicle.id],
+    [phoned.ride.id, phoning.id, phoneVehicle.id],
+    [earlyRide.ride.id, early.id, earlyVehicle.id],
+    [cancelled.ride.id, cancelling.id, cancelVehicle.id],
+  ]
+  for (const [rideId, driverId, vehicleId] of assignments) {
+    expect((await call('POST', `/api/rides/${rideId}/assign`, world.dispatcher, {
+      driverId,
+      vehicleId,
+      version: 0,
+    })).status).toBe(200)
+    expect((await versionOf(rideId)).version).toBe(1)
+  }
+
+  expect((await call('POST', `/api/rides/${accepted.ride.id}/accept`, accepting.session, {})).status).toBe(200)
+  expect((await versionOf(accepted.ride.id)).version).toBe(1)
+  expect((await call('POST', `/api/rides/${accepted.ride.id}/vehicle`, world.dispatcher, {
+    vehicleId: acceptNext.id,
+    version: 1,
+  })).status).toBe(200)
+  expect((await versionOf(accepted.ride.id)).version).toBe(2)
+
+  expect((await call('POST', `/api/rides/${declined.ride.id}/decline`, declining.session, {})).status).toBe(200)
+  expect(await versionOf(declined.ride.id)).toMatchObject({ version: 1, data_changed_by: world.dispatcherId })
+  expect((await call('POST', `/api/rides/${declined.ride.id}/assign`, world.dispatcher, {
+    driverId: declining.driver.id,
+    vehicleId: declineVehicle.id,
+    version: 1,
+  })).status).toBe(200)
+  expect((await versionOf(declined.ride.id)).version).toBe(2)
+
+  expect((await call('POST', `/api/rides/${finished.ride.id}/done`, finishing.session, {})).status).toBe(200)
+  expect((await versionOf(finished.ride.id)).version).toBe(1)
+  const doneSave = await call('POST', `/api/rides/${finished.ride.id}/vehicle`, world.dispatcher, {
+    vehicleId: doneNext.id,
+    version: 1,
+  })
+  expect(doneSave.status).toBe(409)
+  expect(await doneSave.text()).toContain('ride_not_open')
+  expect((await versionOf(finished.ride.id)).version).toBe(1)
+
+  expect((await call('POST', `/api/rides/${noShow.ride.id}/no-show`, absent.session, {})).status).toBe(200)
+  expect((await versionOf(noShow.ride.id)).version).toBe(1)
+  const noShowSave = await call('POST', `/api/rides/${noShow.ride.id}/vehicle`, world.dispatcher, {
+    vehicleId: noShowNext.id,
+    version: 1,
+  })
+  expect(noShowSave.status).toBe(409)
+  const noShowText = await noShowSave.text()
+  expect(noShowText).toContain('ride_not_open')
+  expect(noShowText).not.toContain('stale_save')
+  expect((await versionOf(noShow.ride.id)).version).toBe(1)
+
+  expect((await call('POST', `/api/rides/${phoned.ride.id}/accept-by-phone`, world.dispatcher, {})).status).toBe(200)
+  expect((await versionOf(phoned.ride.id)).version).toBe(1)
+  expect((await call('POST', `/api/rides/${phoned.ride.id}/vehicle`, world.dispatcher, {
+    vehicleId: phoneNext.id,
+    version: 1,
+  })).status).toBe(200)
+
+  expect((await call('POST', `/api/rides/${earlyRide.ride.id}/no-show`, world.admin, {})).status).toBe(200)
+  expect((await versionOf(earlyRide.ride.id)).version).toBe(1)
+  const earlySave = await call('POST', `/api/rides/${earlyRide.ride.id}/vehicle`, world.dispatcher, {
+    vehicleId: earlyNext.id,
+    version: 1,
+  })
+  expect(earlySave.status).toBe(409)
+  expect(await earlySave.text()).not.toContain('stale_save')
+
+  expect((await call('POST', `/api/rides/${cancelled.ride.id}/cancel`, world.dispatcher, {})).status).toBe(200)
+  expect((await versionOf(cancelled.ride.id)).version).toBe(1)
+  const cancelSave = await call('POST', `/api/rides/${cancelled.ride.id}/vehicle`, world.dispatcher, {
+    vehicleId: cancelNext.id,
+    version: 1,
+  })
+  expect(cancelSave.status).toBe(409)
+  expect(await cancelSave.text()).toContain('ride_not_open')
+  expect((await versionOf(cancelled.ride.id)).version).toBe(1)
+})
+
+it('a landing time leaves the version and the office save after it passes', async () => {
+  const world = await office('hasg-ver-land')
+  const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911112020' })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9320AA'))
+  const other = await createVehicle(world.dispatcher, vehicleBody('ZG9320BB'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    version: 0,
+  })).status).toBe(200)
+  const landingAt = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/landing`, world.dispatcher, { landingAt })).status).toBe(200)
+  expect(await versionOf(recorded.ride.id)).toMatchObject({ version: 1, data_changed_by: world.dispatcherId })
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/vehicle`, world.dispatcher, {
+    vehicleId: other.id,
+    version: 1,
+  })).status).toBe(200)
+  expect((await versionOf(recorded.ride.id)).version).toBe(2)
+})
+
+it('a live flight status leaves the version and the office save after it passes', async () => {
+  const world = await office('hasg-ver-flight')
+  const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911112021' })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9321AA'))
+  const other = await createVehicle(world.dispatcher, vehicleBody('ZG9321BB'))
+  const airport = await createLocation(world.dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport', iata: 'DBV' })
+  const pickup = new Date(Date.now() + 2 * 60 * 60 * 1000)
+  const recorded = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup.toISOString()),
+    startLocationId: airport.id,
+    airportMark: true,
+    flightNumber: 'OU 384',
+  })
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    version: 0,
+  })).status).toBe(200)
+
+  const logs = captureLogs('error')
+  await withTenantFromSession(world.dispatcher, async ({ transaction }) => {
+    await refreshFlightLandings({
+      now: new Date(),
+      transaction,
+      status: {
+        async arrivals() {
+          return [{
+            arrivalAirport: 'DBV',
+            status: 'expected',
+            expectedArrival: pickup.toISOString(),
+            landedAt: null,
+          }]
+        },
+      },
+      notices: {
+        async notifyArrivalMoved() {},
+        async notifyFlightWillNotArrive() {},
+      },
+      log: logs.logger,
+    })
+  })
+
+  const stored = await ownerPool.query<{ expected_arrival_at: Date | null }>(
+    `select expected_arrival_at from app.transfers where id = $1`,
+    [recorded.transfer.id],
+  )
+  expect(stored.rows[0]?.expected_arrival_at).toBeInstanceOf(Date)
+  expect(await versionOf(recorded.ride.id)).toMatchObject({ version: 1, data_changed_by: world.dispatcherId })
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/vehicle`, world.dispatcher, {
+    vehicleId: other.id,
+    version: 1,
+  })).status).toBe(200)
+  expect((await versionOf(recorded.ride.id)).version).toBe(2)
 })

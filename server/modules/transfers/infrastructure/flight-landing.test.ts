@@ -218,6 +218,9 @@ it('stores the landing time when the aircraft has landed, leaves the Ride accept
     dates: ['2026-10-10', '2026-10-11', '2026-10-12'],
   }])
   expect(result.queries.some(query => query.includes('update app.rides'))).toBe(false)
+  const landingWrites = result.queries.filter(query => query.includes('update app.transfers'))
+  expect(landingWrites.length).toBeGreaterThan(0)
+  expect(landingWrites.every(query => !query.includes('version'))).toBe(true)
   expect(result.log).not.toContain(flight)
   expect(result.log).not.toContain('OU384')
   expect(result.log).not.toContain(iata)

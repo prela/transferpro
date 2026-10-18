@@ -104,8 +104,16 @@ function fakeTransaction(options: {
           }],
         }
       }
-      if (text.includes('from app.rides'))
-        return { rows: options.dayRows ?? [] }
+      if (text.includes('from app.rides')) {
+        return {
+          rows: (options.dayRows ?? []).map(row => ({
+            version: 0,
+            changedAt: null,
+            changedByName: null,
+            ...(typeof row === 'object' && row !== null ? row : {}),
+          })),
+        }
+      }
       return { rows: [] }
     }),
   }

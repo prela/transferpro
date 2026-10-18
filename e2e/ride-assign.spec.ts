@@ -247,7 +247,7 @@ test('assigning from the form after the ride is already assigned shows the not-u
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), driverName)
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), plate)
   const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
-    data: { driverId, vehicleId },
+    data: { version: 0, driverId, vehicleId },
   })
   expect(assigned.ok()).toBeTruthy()
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()

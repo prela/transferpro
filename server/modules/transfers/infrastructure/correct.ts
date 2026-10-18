@@ -11,6 +11,7 @@ import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
 import { loadTenantSettings, mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { checkRideSchedule } from './ride-schedule'
+import { refuseStaleVersion, StaleSaveError } from './transfer-version'
 import { toInstant, toPrice } from './transfers'
 import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
 
@@ -61,6 +62,7 @@ const lockedRows = z.object({
     vehicleId: z.uuid().nullable(),
     mustAccept: z.boolean().nullable(),
     landingAt: z.unknown().nullable(),
+    version: z.number().int(),
   })),
 })
 
@@ -83,12 +85,12 @@ const writtenRows = z.object({
  * a session. `confirm` is only for a true overlap the office has already seen.
  * The record route does not accept it.
  */
-function parseCorrect(transferId: unknown, body: unknown): { id: string, input: CreateTransfer, confirm: boolean } {
+function parseCorrect(transferId: unknown, body: unknown): { id: string, input: CreateTransfer, confirm: boolean, version: number } {
   const id = z.uuid().safeParse(transferId)
   if (!id.success)
     throw new TransferInputError()
   const parsed = parseCorrectTransfer(body)
-  return { id: id.data, input: parsed.input, confirm: parsed.confirm }
+  return { id: id.data, input: parsed.input, confirm: parsed.confirm, version: parsed.version }
 }
 
 function officeOnly(role: string): void {
@@ -123,7 +125,7 @@ export async function correctTransfer(
   const parsed = parseCorrect(rawId, rawBody)
   const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm)
+    const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm, parsed.version)
     // The snapshot needs a Driver. An unassigned correction has nobody to mail.
     if (!corrected.notify || corrected.recorded.ride.driverId === null)
       return { recorded: corrected.recorded, order: null, relocationWarnings: corrected.relocationWarnings }
@@ -149,10 +151,15 @@ export async function correctTransferForOffice(
   transferId: string,
   input: CreateTransfer,
   confirm: boolean,
+  version: number,
 ): Promise<{ recorded: RecordedTransfer, notify: boolean, relocationWarnings: ScheduleClash[] }> {
   const current = await lockTransfer(transaction, transferId)
   if (!current)
     throw new TransferNotFoundError()
+  // A mismatch is refused before the closed-Ride rule, even when the body
+  // matches the stored booking. A form that still holds this version and
+  // finds the Ride finished is the existing closed error.
+  refuseStaleVersion(current.version, version)
   if (!canCorrectTransfer(current.state))
     throw new TransferNotCorrectableError()
 
@@ -167,7 +174,7 @@ export async function correctTransferForOffice(
   // the row after this write, so a 409 rolls the clear back with the booking.
   const clearLanding = flightNumberChangeClearsLanding(stored.flightNumber, input.flightNumber)
   const occupation = await occupiedWindowMoves(transaction, current, input, clearLanding)
-  await writeTransfer(transaction, transferId, input, clearLanding)
+  await writeTransfer(transaction, transferId, input, clearLanding, version, actorUserId)
   const relocationWarnings = occupation
     ? await checkRideSchedule(transaction, {
         rideId: current.rideId,
@@ -292,7 +299,8 @@ async function lockTransfer(transaction: TenantTransaction, transferId: string):
            r.driver_id as "driverId",
            r.vehicle_id as "vehicleId",
            r.must_accept as "mustAccept",
-           t.landing_at as "landingAt"
+           t.landing_at as "landingAt",
+           t.version
     from app.transfers as t
     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
     where t.id = ${transferId}
@@ -339,7 +347,11 @@ async function writeTransfer(
   transferId: string,
   input: CreateTransfer,
   clearLanding: boolean,
+  version: number,
+  actorUserId: string,
 ): Promise<void> {
+  // The version predicate is the compare-and-swap. The booking and the bump
+  // are one update, so a concurrent correction cannot both pass. ADR-0046.
   const written = z.object({ rows: z.array(z.object({ id: z.uuid() })) }).parse(await runStep(transaction, sql`
     update app.transfers
     set client_id = ${input.clientId},
@@ -361,12 +373,16 @@ async function writeTransfer(
         expected_arrival_at = case when ${clearLanding} then null else expected_arrival_at end,
         expected_arrival_basis_at = case when ${clearLanding} then null else expected_arrival_basis_at end,
         flight_will_not_arrive = case when ${clearLanding} then false else flight_will_not_arrive end,
-        flight_will_not_arrive_handed = case when ${clearLanding} then false else flight_will_not_arrive_handed end
+        flight_will_not_arrive_handed = case when ${clearLanding} then false else flight_will_not_arrive_handed end,
+        version = version + 1,
+        data_changed_at = now(),
+        data_changed_by = ${actorUserId}
     where id = ${transferId}
+      and version = ${version}
     returning id
   `))
   if (!written.rows[0])
-    throw new TransferNotCorrectableError()
+    throw new StaleSaveError()
 }
 
 /**

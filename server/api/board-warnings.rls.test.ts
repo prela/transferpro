@@ -228,6 +228,7 @@ async function ride(
     rideId: recorded.ride.id,
     driverId,
     vehicleId,
+    version: 0,
     ...(confirm ? { confirm: true } : {}),
   })
   return { transferId: recorded.transfer.id, rideId: assigned.ride.id }
@@ -380,6 +381,8 @@ it('shows an overlap across the operational-day boundary, after a correction, an
     luggageCount: 0,
     childSeatCount: 0,
     tabla: '',
+    // The assign above already claimed version 0. Confirm resends the version it opened.
+    version: 1,
     // The move is a true overlap. The board warning is what a confirmed save leaves behind.
     confirm: true,
   })

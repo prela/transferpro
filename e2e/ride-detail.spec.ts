@@ -140,7 +140,7 @@ test.describe('@phone', () => {
         data: { rosterDate: day, driverId, vehicleId },
       })).ok()).toBeTruthy()
       expect((await page.request.post(`/api/rides/${accept.ride.id}/assign`, {
-        data: { driverId: acceptDriverId, vehicleId: otherVehicleId },
+        data: { version: 0, driverId: acceptDriverId, vehicleId: otherVehicleId },
       })).ok()).toBeTruthy()
 
       await page.goto(`/transfers?day=${day}`)

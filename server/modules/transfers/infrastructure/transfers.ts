@@ -45,6 +45,9 @@ const dayRowSchema = transferRowSchema.omit({ id: true }).extend({
   driverId: z.uuid().nullable(),
   vehicleId: z.uuid().nullable(),
   mustAccept: z.boolean().nullable(),
+  version: z.number().int(),
+  changedAt: z.unknown().nullable(),
+  changedByName: z.string().min(1).nullable(),
 })
 
 const transferColumns = sql`
@@ -182,9 +185,13 @@ export async function loadRidesForDay(
       t.tabla,
       t.client_reference as "clientReference",
       t.landing_at as "landingAt",
-      t.expected_arrival_at as "expectedArrival"
+      t.expected_arrival_at as "expectedArrival",
+      t.version,
+      t.data_changed_at as "changedAt",
+      changed_by.name as "changedByName"
     from app.rides as r
     join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
+    left join app.tenant_member as changed_by on changed_by.user_id = t.data_changed_by
     where t.pickup_at >= ${bounds.start.toISOString()} and t.pickup_at < ${bounds.end.toISOString()}
     order by t.pickup_at, r.id
   `))
@@ -304,6 +311,9 @@ function toDayRide(
     clientReference: row.clientReference,
     landingAt,
     expectedArrival,
+    version: row.version,
+    changedAt: row.changedAt == null ? null : toInstant(row.changedAt),
+    changedByName: row.changedByName,
     landingAlarm: landingAlarmOn(
       landingAt,
       nowMs,

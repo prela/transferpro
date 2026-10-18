@@ -1,6 +1,6 @@
 # Urgent and warning tiers, and live refresh
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0046
 
 Damir accepted this on 15 October 2026, in the UI/UX round (step 8 of #206). It partially supersedes ADR-0023, ADR-0024, ADR-0027, and ADR-0030; the sentences are listed below. ADR-0032 stands: every alarm and warning is derived when the page is read, nothing is stored, and nothing is sent. ADR-0038 places these on the screens.
 
@@ -64,4 +64,4 @@ Nothing can hide an urgent item, which is the point, but a busy day with several
 
 Polling costs one office home read per open office tab per minute, and one upcoming-Rides read per open Driver tab. At the first Tenant's size that is negligible.
 
-The warning on a changed Ride is shown only in the browser. A save sent after it still writes over the other change, because the server does not refuse a stale save today. Refusing one is a decision about the write path and the strongest tier, not this record.
+The warning on a changed Ride is shown only in the browser. A save sent after it still writes over the other change, because the server does not refuse a stale save today. Refusing one is a decision about the write path and the strongest tier, not this record. ADR-0046 supersedes that sentence: the server refuses the stale save.
