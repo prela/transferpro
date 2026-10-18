@@ -1,0 +1,255 @@
+import type { JobQueue, QueuedJob, TenantTransaction } from '../../../core/index'
+import type { LoadedOutboxEntry, OutboxAttemptPatch } from './attempt'
+import { expect, it } from 'vitest'
+import { runWithRequestId } from '../../../core/index'
+import { captureLogs } from '../../../core/testing'
+import { ResendTransportError } from '../../tenancy'
+import { handleMailOutboxJob, MAIL_OUTBOX_QUEUE } from './attempt'
+
+const tenantId = '33333333-3333-4333-8333-333333333333'
+const entryId = 'd1d1d1d1-1111-4111-8111-111111111111'
+const otherEntryId = 'd2d2d2d2-2222-4222-8222-222222222222'
+const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+const email = 'ana@example.test'
+const guest = 'Ana Tajna'
+const started = new Date('2026-10-18T10:00:00.000Z')
+
+const message = {
+  subject: 'Dodijeljeno',
+  text: `Gost: ${guest}`,
+  html: `<p>Gost: ${guest}</p>`,
+}
+
+function entry(overrides: Partial<LoadedOutboxEntry> = {}): LoadedOutboxEntry {
+  return {
+    entryId,
+    status: 'assigned',
+    driverId,
+    rideDriverId: driverId,
+    rideFinished: false,
+    pickupAt: new Date('2026-10-18T18:00:00.000Z'),
+    email,
+    state: 'pending',
+    attemptCount: 0,
+    nextAttemptAt: started,
+    message,
+    ...overrides,
+  }
+}
+
+/**
+ * The service seam: a fake clock, the fake-shaped mailer, and `handleNext`.
+ * Jobs wait until `startAfter`. Nothing here talks to Postgres or Resend.
+ */
+function harness(initial: LoadedOutboxEntry[]) {
+  let now = started
+  const entries = new Map(initial.map(row => [row.entryId, { ...row }]))
+  const jobs: Array<{ id: string, name: string, tenantId: string, data: unknown, startAfter: Date }> = []
+  const sent: Array<{ to: string, subject: string, text: string, html: string, idempotencyKey?: string }> = []
+  let rejectSend = false
+  const logs = captureLogs()
+
+  const queue = {
+    async enqueue(context, _transaction, name, data, options) {
+      jobs.push({
+        id: crypto.randomUUID(),
+        name,
+        tenantId: context.tenantId,
+        data,
+        startAfter: options?.startAfter ?? now,
+      })
+    },
+    async handleNext(name, handle) {
+      const index = jobs.findIndex(job => job.name === name && job.startAfter.getTime() <= now.getTime())
+      if (index < 0)
+        return null
+      const job = jobs.splice(index, 1)[0]
+      if (!job)
+        return null
+      const queued: QueuedJob = { id: job.id, name: job.name, tenantId: job.tenantId, data: job.data }
+      await handle(queued, { transaction: {} as TenantTransaction })
+      return queued
+    },
+    async schedule() {},
+    async workScheduled() {},
+    async work() {},
+    async close() {},
+  } as JobQueue
+
+  async function due(name = MAIL_OUTBOX_QUEUE) {
+    return queue.handleNext(name, async (job, scope) => {
+      await handleMailOutboxJob(job, scope, {
+        mailer: {
+          async sendWorkOrder(mail) {
+            sent.push(mail)
+            if (rejectSend)
+              throw new Error('Work order email was not sent.')
+          },
+        },
+        queue,
+        log: logs.logger,
+        now: () => now,
+        openStore: () => ({
+          async load(id) {
+            const row = entries.get(id)
+            return row ? { ...row, message: row.message ? { ...row.message } : null } : null
+          },
+          async save(id, patch: OutboxAttemptPatch) {
+            const row = entries.get(id)
+            if (!row || row.state !== 'pending')
+              throw new Error('Mail outbox update failed')
+            entries.set(id, { ...row, ...patch })
+          },
+        }),
+      })
+    })
+  }
+
+  return {
+    sent,
+    logs,
+    jobs,
+    entries,
+    queue,
+    due,
+    failSends() {
+      rejectSend = true
+    },
+    advance(ms: number) {
+      now = new Date(now.getTime() + ms)
+    },
+    enqueue(id: string, startAfter: Date) {
+      return queue.enqueue({ tenantId }, {} as TenantTransaction, MAIL_OUTBOX_QUEUE, { entryId: id }, { startAfter })
+    },
+  }
+}
+
+it('sends at most four times, waiting 1, 5, and 30 minutes after each failure', async () => {
+  const world = harness([entry({ nextAttemptAt: new Date(started.getTime() + 60_000) })])
+  world.failSends()
+  await world.enqueue(entryId, new Date(started.getTime() + 60_000))
+
+  expect(await world.due()).toBeNull()
+  expect(world.sent).toHaveLength(0)
+
+  world.advance(60_000)
+  expect(await world.due()).not.toBeNull()
+  world.advance(60_000)
+  expect(await world.due()).not.toBeNull()
+  world.advance(300_000)
+  expect(await world.due()).not.toBeNull()
+  world.advance(1_800_000)
+  expect(await world.due()).not.toBeNull()
+
+  expect(world.sent).toHaveLength(4)
+  expect(world.entries.get(entryId)).toMatchObject({ state: 'failed', attemptCount: 4, nextAttemptAt: null })
+  expect(world.jobs).toHaveLength(0)
+  expect(await world.due()).toBeNull()
+})
+
+it('stops after a successful attempt', async () => {
+  const world = harness([entry()])
+  await world.enqueue(entryId, started)
+  expect(await world.due()).not.toBeNull()
+  expect(world.sent).toHaveLength(1)
+  expect(world.entries.get(entryId)).toMatchObject({ state: 'sent', attemptCount: 1, nextAttemptAt: null })
+  expect(world.jobs).toHaveLength(0)
+  expect(await world.due()).toBeNull()
+})
+
+it('marks a mail stale and sends nothing when it no longer matters', async () => {
+  const world = harness([entry({ rideDriverId: 'b2b2b2b2-2222-4222-8222-222222222222' })])
+  await world.enqueue(entryId, started)
+  expect(await world.due()).not.toBeNull()
+  expect(world.sent).toHaveLength(0)
+  expect(world.entries.get(entryId)).toMatchObject({ state: 'stale', attemptCount: 0 })
+  expect(world.jobs).toHaveLength(0)
+})
+
+it('sends two pending mails for the same Ride and Driver, and does not stale the older one', async () => {
+  const world = harness([
+    entry(),
+    entry({ entryId: otherEntryId, status: 'changed', message: { ...message, subject: 'Promijenjeno' } }),
+  ])
+  await world.enqueue(entryId, started)
+  await world.enqueue(otherEntryId, started)
+  expect(await world.due()).not.toBeNull()
+  expect(await world.due()).not.toBeNull()
+  expect(world.sent.map(mail => mail.subject)).toEqual(['Dodijeljeno', 'Promijenjeno'])
+  expect(world.entries.get(entryId)?.state).toBe('sent')
+  expect(world.entries.get(otherEntryId)?.state).toBe('sent')
+})
+
+it('counts a blank address found at a later attempt as a failure and does not send', async () => {
+  const world = harness([entry({ attemptCount: 1, email: '   ' })])
+  await world.enqueue(entryId, started)
+  expect(await world.due()).not.toBeNull()
+  expect(world.sent).toHaveLength(0)
+  expect(world.entries.get(entryId)).toMatchObject({ state: 'pending', attemptCount: 2 })
+  expect(world.jobs).toHaveLength(1)
+  expect(world.jobs[0]?.startAfter).toEqual(new Date(started.getTime() + 300_000))
+})
+
+it('uses a new idempotency key when the composed message changes', async () => {
+  const world = harness([entry()])
+  world.failSends()
+  await world.enqueue(entryId, started)
+  expect(await world.due()).not.toBeNull()
+  const first = world.sent[0]?.idempotencyKey
+  const row = world.entries.get(entryId)
+  if (!row)
+    throw new Error('missing entry')
+  world.entries.set(entryId, {
+    ...row,
+    message: { ...message, text: 'Gost: Marko' },
+  })
+  world.advance(60_000)
+  expect(await world.due()).not.toBeNull()
+  expect(world.sent[1]?.idempotencyKey).toBeTruthy()
+  expect(world.sent[1]?.idempotencyKey).not.toBe(first)
+  expect(world.sent[0]?.idempotencyKey).toContain(entryId)
+})
+
+it('logs the entry id and the restored request id, and nothing about the person', async () => {
+  const world = harness([entry()])
+  const requestId = '6b1e0c3a-2222-4222-8222-222222222222'
+  await world.enqueue(entryId, started)
+  await runWithRequestId(requestId, () => world.due())
+  const [line] = world.logs.lines()
+  const { level: _level, time: _time, pid: _pid, hostname: _hostname, ...rest } = line ?? {}
+  expect(rest).toEqual({ event: 'mail_outbox.attempt', entryId, request_id: requestId })
+  expect(JSON.stringify(line)).not.toContain(email)
+  expect(JSON.stringify(line)).not.toContain(guest)
+})
+
+it('still aborts when the Resend transport is selected in test', async () => {
+  const world = harness([entry()])
+  await world.enqueue(entryId, started)
+  await expect(queueHandleWithTransport(world)).rejects.toBeInstanceOf(ResendTransportError)
+  expect(world.entries.get(entryId)?.state).toBe('pending')
+  expect(world.entries.get(entryId)?.attemptCount).toBe(0)
+})
+
+async function queueHandleWithTransport(world: ReturnType<typeof harness>) {
+  await world.queue.handleNext(MAIL_OUTBOX_QUEUE, async (job, scope) => {
+    await handleMailOutboxJob(job, scope, {
+      mailer: {
+        async sendWorkOrder() {
+          throw new ResendTransportError()
+        },
+      },
+      queue: world.queue,
+      log: world.logs.logger,
+      now: () => started,
+      openStore: () => ({
+        async load(id) {
+          const row = world.entries.get(id)
+          return row ?? null
+        },
+        async save() {
+          throw new Error('a refused transport must not settle the entry')
+        },
+      }),
+    })
+  })
+}

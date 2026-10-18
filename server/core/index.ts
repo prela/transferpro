@@ -366,12 +366,14 @@ export interface JobQueue {
    * Insert one job in `transaction`. A rollback of that transaction
    * removes the job. The tenant is `context.tenantId`, not a field of `data`.
    * The current request id, when one is open, is stored beside `tenantId`.
+   * `startAfter` is the instant the worker may take the job. Without it, the job is due now.
    */
   enqueue: (
     context: TenantContext,
     transaction: TenantTransaction,
     name: string,
     data: unknown,
+    options?: { readonly startAfter?: Date },
   ) => Promise<void>
 
   /**

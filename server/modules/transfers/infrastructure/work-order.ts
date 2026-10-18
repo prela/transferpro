@@ -1,5 +1,5 @@
 import type { DisplayLocale, PaymentMethod, WorkOrderNotice, WorkOrderStatus } from '../../../../shared'
-import type { Logger, TenantTransaction } from '../../../core/index'
+import type { JobQueue, Logger, TenantContext, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -7,7 +7,7 @@ import { composeWorkOrder, locationLabel, paymentMethodSchema } from '../../../.
 import { getLogger, hideDatabaseError } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadLocation } from '../../locations'
-import { noteWorkOrderAttempt, recordWorkOrder } from '../../mail'
+import { enqueueMailOutboxJob, MAIL_RETRY_DELAYS_MS, noteWorkOrderAttempt, recordWorkOrder, workOrderIdempotencyKey } from '../../mail'
 import { ResendTransportError, withTenantFromSession } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { toPrice } from './transfers'
@@ -167,8 +167,15 @@ export async function deliverAssignedWorkOrder(
   if (address === '')
     return { driverId: order.driverId, outcome: 'no_email' }
   const message = composeWorkOrder(order, status)
+  // The same key on a retry of this snapshot is one send inside Resend's window.
+  // A later attempt that composes different words gets its own key.
+  const idempotencyKey = entryId === undefined ? undefined : workOrderIdempotencyKey(entryId, message)
   try {
-    await mailer.sendWorkOrder({ to: address, ...message })
+    await mailer.sendWorkOrder({
+      to: address,
+      ...message,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    })
   }
   catch (error) {
     if (error instanceof ResendTransportError)
@@ -197,14 +204,30 @@ export interface StagedWorkOrder {
 }
 
 /**
+ * The queue and the Tenant for the job that rides in the Ride transaction.
+ * `now` is the clock. Tests pass a fixed instant. The office commands use the real one.
+ */
+export interface WorkOrderSchedule {
+  readonly queue: JobQueue
+  readonly context: TenantContext
+  readonly now?: Date
+}
+
+/**
  * Record the work order on the Ride transaction. A blank email records nothing.
- * The row commits or rolls back with the Ride change.
+ * The row commits or rolls back with the Ride change. When `schedule` is set,
+ * the same transaction enqueues the job for one minute later, so a process
+ * that dies before the first attempt is picked up. That job is also the
+ * second attempt when the first one fails.
  */
 export async function stageWorkOrder(
   transaction: TenantTransaction,
   order: AssignedWorkOrder,
   status: WorkOrderStatus,
+  schedule?: WorkOrderSchedule,
 ): Promise<StagedWorkOrder> {
+  const now = schedule?.now ?? new Date()
+  const startAfter = schedule === undefined ? null : new Date(now.getTime() + MAIL_RETRY_DELAYS_MS[0])
   const entryId = await recordWorkOrder(transaction, {
     rideId: order.rideId,
     driverId: order.driverId,
@@ -212,7 +235,9 @@ export async function stageWorkOrder(
     vehicleId: status === 'no_longer_yours' ? order.vehicleId : null,
     status,
     email: order.email,
-  })
+  }, startAfter)
+  if (entryId !== null && schedule !== undefined && startAfter !== null)
+    await enqueueMailOutboxJob(schedule.queue, schedule.context, transaction, entryId, startAfter)
   return { entryId, order, status }
 }
 

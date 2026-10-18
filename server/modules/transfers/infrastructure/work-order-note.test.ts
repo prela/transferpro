@@ -3,10 +3,14 @@ import { captureLogs } from '../../../core/testing'
 
 const note = vi.hoisted(() => vi.fn())
 
-vi.mock('../../mail', () => ({
-  noteWorkOrderAttempt: note,
-  recordWorkOrder: vi.fn(),
-}))
+vi.mock('../../mail', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../mail')>()
+  return {
+    ...actual,
+    noteWorkOrderAttempt: note,
+    recordWorkOrder: vi.fn(),
+  }
+})
 
 vi.mock('../../tenancy', () => ({
   ResendTransportError: class ResendTransportError extends Error {

@@ -26,6 +26,11 @@ export interface WorkOrderMail {
   readonly subject: string
   readonly text: string
   readonly html: string
+  /**
+   * Entry id plus a hash of this message. Only the Resend adapter posts it.
+   * The console and fake mailers ignore it. Absent for every other kind of mail.
+   */
+  readonly idempotencyKey?: string
 }
 
 /**
@@ -88,6 +93,18 @@ export class ResendTransportError extends Error {
   }
 }
 
+/**
+ * Resend still has this key in flight (`409 concurrent_idempotent_requests`).
+ * The send did not finish. It counts as an attempt, and a later one may retry.
+ * The message stays fixed: the provider body can echo the recipient.
+ */
+export class TransientMailError extends Error {
+  constructor() {
+    super('Mail delivery was not completed.')
+    this.name = 'TransientMailError'
+  }
+}
+
 const resendMailers = new WeakSet<Mailer>()
 const consoleMailers = new WeakSet<Mailer>()
 
@@ -108,9 +125,11 @@ export function createFakeMailer(
       // The ride e2e spec uses this address so a failing first attempt can
       // show the retry sentence. Every other recipient is recorded and is
       // not sent. The message does not include the address.
+      // The idempotency key is a Resend header. This mailer never sends one.
       if (mail.to === 'work-order-fail@example.test')
         throw new Error('Work order email was not sent.')
-      workOrders.push({ ...mail })
+      const { idempotencyKey: _ignored, ...stored } = mail
+      workOrders.push(stored)
     },
     async notifyArrivalMoved(notice) {
       arrivalMoves.push({ ...notice })
@@ -340,6 +359,7 @@ interface ResendMessage {
   readonly subject: string
   readonly text: string
   readonly html: string
+  readonly idempotencyKey?: string
 }
 
 /**
@@ -382,12 +402,16 @@ export function createResendMailer(
     // fetch and never leaves the process. Test mode must not reach Resend.
     if (nodeEnv() === 'test' && fetchImpl === globalThis.fetch)
       throw new ResendTransportError()
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    }
+    // Only a work order carries a key. Other mails stay as they were.
+    if (message.idempotencyKey !== undefined && message.idempotencyKey !== '')
+      headers['Idempotency-Key'] = message.idempotencyKey
     const response = await fetchImpl('https://api.resend.com/emails', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         from: 'Transferpro <noreply@transfers.prela.net>',
         to: [message.to],
@@ -398,8 +422,11 @@ export function createResendMailer(
     })
     if (!response.ok) {
       // Drain the body so the socket can close. Do not put it on the error:
-      // Resend echoes the recipient and the body.
-      await response.arrayBuffer()
+      // Resend echoes the recipient and the body. The name is the only field
+      // we read, and only to tell a concurrent key from any other rejection.
+      const conflict = response.status === 409 ? await idempotencyConflictName(response) : await drain(response)
+      if (conflict === 'concurrent_idempotent_requests')
+        throw new TransientMailError()
       throw new Error(failure)
     }
   }
@@ -443,6 +470,26 @@ export function createResendMailer(
   }
   resendMailers.add(mailer)
   return mailer
+}
+
+async function drain(response: Response): Promise<undefined> {
+  await response.arrayBuffer()
+  return undefined
+}
+
+/**
+ * The Resend error name, when the body is JSON. Anything else is discarded.
+ * The message field is not returned: it can name the recipient.
+ */
+async function idempotencyConflictName(response: Response): Promise<string | undefined> {
+  const body = await response.text()
+  try {
+    const parsed = JSON.parse(body) as { name?: unknown }
+    return typeof parsed.name === 'string' ? parsed.name : undefined
+  }
+  catch {
+    return undefined
+  }
 }
 
 function recipientDomain(address: string): string | undefined {

@@ -1,5 +1,5 @@
 import type { SQL } from 'drizzle-orm'
-import type { TenantTransaction } from '../../../core/index'
+import type { JobQueue, TenantTransaction } from '../../../core/index'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it } from 'vitest'
 import { captureLogs } from '../../../core/testing'
@@ -198,6 +198,54 @@ it('reads the tenant locale from the row, and a database failure drops the guest
   expect((error as Error).message).toBe('Work order read failed')
   expect((error as Error).message).not.toContain(guestName)
   expect((error as Error).message).not.toContain(email)
+})
+
+it('sends one idempotency key for the snapshot, and a new one when the words change', async () => {
+  const entryId = 'd1d1d1d1-1111-4111-8111-111111111111'
+  const keys: Array<string | undefined> = []
+  const mailer = {
+    async sendWorkOrder(mail: { idempotencyKey?: string }) {
+      keys.push(mail.idempotencyKey)
+    },
+  }
+  await deliverAssignedWorkOrder(order, mailer, captureLogs().logger, 'no_longer_yours', entryId)
+  await deliverAssignedWorkOrder(order, mailer, captureLogs().logger, 'no_longer_yours', entryId)
+  await deliverAssignedWorkOrder({ ...order, guestName: 'Netko Drugi' }, mailer, captureLogs().logger, 'no_longer_yours', entryId)
+  expect(keys[0]).toBe(keys[1])
+  expect(keys[0]).toContain(entryId)
+  expect(keys[2]).not.toBe(keys[0])
+  expect(JSON.stringify(keys)).not.toContain(email)
+})
+
+it('enqueues the one-minute job on the same transaction as the entry', async () => {
+  const dialect = new PgDialect()
+  const seen: unknown[][] = []
+  const transaction = {
+    async execute(query: SQL) {
+      seen.push(dialect.sqlToQuery(query).params)
+      return { rows: [{ id: 'd1d1d1d1-1111-4111-8111-111111111111' }] }
+    },
+  } as unknown as TenantTransaction
+  const enqueued: Array<{ name: string, data: unknown, startAfter: Date | undefined }> = []
+  const now = new Date('2026-10-18T10:00:00.000Z')
+  const queue = {
+    async enqueue(_context: unknown, same: unknown, name: string, data: unknown, options?: { startAfter?: Date }) {
+      expect(same).toBe(transaction)
+      enqueued.push({ name, data, startAfter: options?.startAfter })
+    },
+  } as unknown as JobQueue
+  await stageWorkOrder(transaction, order, 'no_longer_yours', {
+    queue,
+    context: { tenantId: '33333333-3333-4333-8333-333333333333' },
+    now,
+  })
+  expect(enqueued).toEqual([{
+    name: 'mail-outbox',
+    data: { entryId: 'd1d1d1d1-1111-4111-8111-111111111111' },
+    startAfter: new Date('2026-10-18T10:01:00.000Z'),
+  }])
+  expect(seen[0]).toContain(vehicleId)
+  expect(seen[0]?.some(value => value instanceof Date && value.toISOString() === '2026-10-18T10:01:00.000Z')).toBe(true)
 })
 
 it('records the released vehicle only on no longer yours', async () => {

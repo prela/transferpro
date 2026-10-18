@@ -10,6 +10,7 @@ import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
 import { loadTenantSettings, mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { mailOutboxQueue } from './mail-outbox-worker'
 import { checkRideSchedule } from './ride-schedule'
 import { refuseStaleVersion, StaleSaveError } from './transfer-version'
 import { toInstant, toPrice } from './transfers'
@@ -123,14 +124,15 @@ export async function correctTransfer(
   delivery?: { mailer: Mailer, logger?: Logger },
 ): Promise<CorrectedTransferResult> {
   const parsed = parseCorrect(rawId, rawBody)
-  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
+  const queue = await mailOutboxQueue()
+  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
     officeOnly(actor.role)
     const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm, parsed.version)
     // The snapshot needs a Driver. An unassigned correction has nobody to mail.
     if (!corrected.notify || corrected.recorded.ride.driverId === null)
       return { recorded: corrected.recorded, staged: null, relocationWarnings: corrected.relocationWarnings }
     const order = await readAssignedWorkOrder(transaction, corrected.recorded.ride.id)
-    const staged = await stageWorkOrder(transaction, order, 'changed')
+    const staged = await stageWorkOrder(transaction, order, 'changed', { queue, context })
     return { recorded: corrected.recorded, staged, relocationWarnings: corrected.relocationWarnings }
   })
   if (saved.staged === null)

@@ -96,6 +96,7 @@ export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
     transaction: Parameters<typeof asDrizzle>[0],
     name: string,
     data: unknown,
+    options?: { readonly startAfter?: Date },
   ) {
     raiseIfBossFailed()
     const tenantId = z.uuid().parse(context.tenantId)
@@ -108,6 +109,8 @@ export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
     // rollback drops the job together with the rest of that unit of work.
     const id = await boss.send(name, stored, {
       db: fromDrizzle(asDrizzle(transaction), sql),
+      // Absent means "due now". A Date is the instant the worker may take the job.
+      ...(options?.startAfter === undefined ? {} : { startAfter: options.startAfter }),
     })
     if (!id)
       throw new Error(`pg-boss did not accept a job on ${name}`)
@@ -148,8 +151,8 @@ export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
   }
 
   return {
-    async enqueue(context, transaction, name, data) {
-      await send(context, transaction, name, data)
+    async enqueue(context, transaction, name, data, options) {
+      await send(context, transaction, name, data, options)
     },
 
     async handleNext(name, handle) {
