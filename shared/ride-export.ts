@@ -108,7 +108,7 @@ const states: Record<DisplayLocale, Record<RideState, string>> = {
  * not passed through here.
  */
 function guardFormula(value: string): string {
-  return /^[=+\-@]/.test(value) ? `'${value}` : value
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
 }
 
 /** Quote when the cell holds the separator, a quote, or a line break. Quotes double. */

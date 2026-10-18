@@ -59,6 +59,12 @@ it('quotes separators and quotes, keeps č and ž, and leaves the price a number
   expect(csv).not.toContain('\'-5,00')
 })
 
+it('guards a text cell that starts with a tab or a carriage return', () => {
+  const csv = buildRideExportCsv([ride({ client: '\t=1', driver: '\rAna' })], 'Europe/Zagreb', 'hr')
+  expect(csv).toContain('\'\t=1')
+  expect(csv).toContain('"\'\rAna"')
+})
+
 it('formats both sides of a daylight-saving change in Europe/Zagreb', () => {
   // 29 Mar 2026 00:30 UTC is 01:30 CET, before the spring-forward.
   // 29 Mar 2026 01:30 UTC is 03:30 CEST, after 02:00 was skipped.
