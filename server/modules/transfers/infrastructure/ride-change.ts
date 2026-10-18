@@ -13,7 +13,7 @@ import { vehiclePresenceForAssign } from '../../vehicles'
 import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
 import { checkRideSchedule } from './ride-schedule'
 import { claimTransferVersion, lockTransferRide, refuseStaleVersion } from './transfer-version'
-import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
+import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
 /**
  * The Ride is not `assigned` or `accepted`, including when a concurrent
@@ -297,8 +297,9 @@ function officeOnly(role: string): void {
 /**
  * Change only the Vehicle. The body is parsed first. A driver is 403.
  * The update and `ride.vehicle_changed` commit together. The current Driver
- * is mailed changed after that commit. A rejected send leaves the Vehicle
- * change in place and is not retried. Tests pass a mailer.
+ * is mailed changed after that commit. The outbox entry commits with the
+ * Vehicle change. A rejection leaves that change in place and the entry
+ * pending. Tests pass a mailer.
  */
 export async function changeVehicle(headers: Headers, raw: unknown, delivery?: Delivery): Promise<AssignedRide> {
   const input = parseChangeRideVehicle(raw)
@@ -306,17 +307,19 @@ export async function changeVehicle(headers: Headers, raw: unknown, delivery?: D
     officeOnly(actor.role)
     const changed = await changeRideVehicle(transaction, actor.userId, input)
     const order = await readAssignedWorkOrder(transaction, changed.ride.id)
-    return { ride: changed.ride, order, relocationWarnings: changed.relocationWarnings }
+    const staged = await stageWorkOrder(transaction, order, 'changed')
+    return { ride: changed.ride, staged, relocationWarnings: changed.relocationWarnings }
   })
-  const notice = await deliverAssignedWorkOrder(saved.order, mailerFrom(delivery), delivery?.logger, 'changed')
+  const notice = await deliverStagedWorkOrder(headers, saved.staged, mailerFrom(delivery), delivery?.logger)
   return { ride: saved.ride, workOrders: [notice], relocationWarnings: saved.relocationWarnings }
 }
 
 /**
  * Clear the Driver and the Vehicle. The body is parsed first. A driver is 403.
  * The update and `ride.cleared` commit together. The Driver who lost the Ride
- * is mailed no longer yours after that commit, with no price. A rejected send
- * leaves the clear in place. Tests pass a mailer.
+ * is mailed no longer yours after that commit, with no price. The outbox
+ * entry commits with the clear. A rejection leaves the clear in place and
+ * the entry pending. Tests pass a mailer.
  */
 export async function clearRide(headers: Headers, rawRideId: unknown, rawBody: unknown, delivery?: Delivery): Promise<AssignedRide> {
   const parsed = parseClearRide(rawRideId, rawBody)
@@ -324,9 +327,10 @@ export async function clearRide(headers: Headers, rawRideId: unknown, rawBody: u
     officeOnly(actor.role)
     const cleared = await clearAssignedRide(transaction, actor.userId, parsed.rideId, parsed.version)
     const order = await readAssignedWorkOrder(transaction, cleared.ride.id, cleared.released)
-    return { ride: cleared.ride, order }
+    const staged = await stageWorkOrder(transaction, order, 'no_longer_yours')
+    return { ride: cleared.ride, staged }
   })
-  const notice = await deliverAssignedWorkOrder(saved.order, mailerFrom(delivery), delivery?.logger, 'no_longer_yours')
+  const notice = await deliverStagedWorkOrder(headers, saved.staged, mailerFrom(delivery), delivery?.logger)
   return { ride: saved.ride, workOrders: [notice], relocationWarnings: [] }
 }
 
@@ -334,22 +338,25 @@ export async function clearRide(headers: Headers, rawRideId: unknown, rawBody: u
  * Reassign to another Driver and a Vehicle. The body is parsed first. A driver
  * is 403. The update and `ride.reassigned` commit together. After that commit
  * the new Driver is mailed assigned and the previous Driver is mailed no longer
- * yours. Each result is its own. A rejection of one does not skip the other
- * and does not undo the reassignment. Tests pass a mailer.
+ * yours. Each entry commits with the reassignment. Each result is its own.
+ * A rejection of one does not skip the other and does not undo the
+ * reassignment. Tests pass a mailer.
  */
 export async function reassignRide(headers: Headers, raw: unknown, delivery?: Delivery): Promise<AssignedRide> {
   const input = parseReassignRide(raw)
   const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
     const moved = await reassignAssignedRide(transaction, actor.userId, input)
-    const next = await readAssignedWorkOrder(transaction, moved.ride.id)
-    const previous = await readAssignedWorkOrder(transaction, moved.ride.id, moved.released)
+    const nextOrder = await readAssignedWorkOrder(transaction, moved.ride.id)
+    const previousOrder = await readAssignedWorkOrder(transaction, moved.ride.id, moved.released)
+    const next = await stageWorkOrder(transaction, nextOrder, 'assigned')
+    const previous = await stageWorkOrder(transaction, previousOrder, 'no_longer_yours')
     return { ride: moved.ride, next, previous, relocationWarnings: moved.relocationWarnings }
   })
   const mailer = mailerFrom(delivery)
   const workOrders = [
-    await deliverAssignedWorkOrder(saved.next, mailer, delivery?.logger, 'assigned'),
-    await deliverAssignedWorkOrder(saved.previous, mailer, delivery?.logger, 'no_longer_yours'),
+    await deliverStagedWorkOrder(headers, saved.next, mailer, delivery?.logger),
+    await deliverStagedWorkOrder(headers, saved.previous, mailer, delivery?.logger),
   ]
   return { ride: saved.ride, workOrders, relocationWarnings: saved.relocationWarnings }
 }

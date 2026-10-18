@@ -28,7 +28,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0010 | Re-acceptance after the pickup, the places, or the flight change | accepted |
 | ADR-0011 | Tenant session, grant-walled roles, and the member read | accepted; partially superseded by ADR-0014 |
 | ADR-0012 | Logging, redaction, and error responses | accepted |
-| ADR-0013 | Invitation email and the accept path | accepted; partially superseded by ADR-0037 |
+| ADR-0013 | Invitation email and the accept path | accepted; partially superseded by ADR-0037 and ADR-0045 |
 | ADR-0014 | Append-only audit log | accepted; partially superseded by ADR-0015 and ADR-0019 |
 | ADR-0015 | Settings changes in the audit log | accepted; partially superseded by ADR-0025 |
 | ADR-0016 | UI: Nuxt UI + Tailwind v4 | accepted; partially superseded by ADR-0038 and ADR-0040 |
@@ -41,7 +41,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0023 | Unassigned alarm | accepted; partially superseded by ADR-0039 |
 | ADR-0024 | One office home read | accepted; partially superseded by ADR-0039 |
 | ADR-0025 | Operational-day start | accepted |
-| ADR-0026 | Driver work-order email | accepted |
+| ADR-0026 | Driver work-order email | accepted; partially superseded by ADR-0045 |
 | ADR-0027 | Unclosed mark | accepted; partially superseded by ADR-0039 |
 | ADR-0028 | Live flight | accepted |
 | ADR-0029 | Ride occupation | accepted |
@@ -52,10 +52,11 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0036 | The Transfer is the order, and who owns the v1 modules | accepted |
 | ADR-0037 | Console mailer on preview | accepted; partially superseded by ADR-0042 |
 | ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted; partially superseded by ADR-0041 and ADR-0042 |
-| ADR-0039 | Urgent and warning tiers, and live refresh | accepted; partially superseded by ADR-0046 |
+| ADR-0039 | Urgent and warning tiers, and live refresh | accepted; partially superseded by ADR-0045 and ADR-0046 |
 | ADR-0040 | Theme tokens and contrast rules | accepted |
 | ADR-0041 | Revoke a pending invitation | accepted |
 | ADR-0042 | Password change and password reset | accepted; partially superseded by ADR-0044 |
 | ADR-0043 | Preview is `DEPLOY_ENV`, not a second `NODE_ENV` | accepted |
 | ADR-0044 | Hashed reset identifiers | accepted |
+| ADR-0045 | Mail outbox with retries | accepted |
 | ADR-0046 | Refuse a stale save | accepted |

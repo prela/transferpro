@@ -13,7 +13,7 @@ import { loadTenantSettings, mailerForApp, TenantAccessError, withTenantFromSess
 import { checkRideSchedule } from './ride-schedule'
 import { refuseStaleVersion, StaleSaveError } from './transfer-version'
 import { toInstant, toPrice } from './transfers'
-import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
+import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
 /** The Transfer is not in this Tenant. Another Tenant's row looks the same. */
 export class TransferNotFoundError extends Error {
@@ -128,14 +128,15 @@ export async function correctTransfer(
     const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm, parsed.version)
     // The snapshot needs a Driver. An unassigned correction has nobody to mail.
     if (!corrected.notify || corrected.recorded.ride.driverId === null)
-      return { recorded: corrected.recorded, order: null, relocationWarnings: corrected.relocationWarnings }
+      return { recorded: corrected.recorded, staged: null, relocationWarnings: corrected.relocationWarnings }
     const order = await readAssignedWorkOrder(transaction, corrected.recorded.ride.id)
-    return { recorded: corrected.recorded, order, relocationWarnings: corrected.relocationWarnings }
+    const staged = await stageWorkOrder(transaction, order, 'changed')
+    return { recorded: corrected.recorded, staged, relocationWarnings: corrected.relocationWarnings }
   })
-  if (saved.order === null)
+  if (saved.staged === null)
     return { ...saved.recorded, workOrders: [], relocationWarnings: saved.relocationWarnings }
   const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
-  const notice = await deliverAssignedWorkOrder(saved.order, mailer, delivery?.logger, 'changed')
+  const notice = await deliverStagedWorkOrder(headers, saved.staged, mailer, delivery?.logger)
   return { ...saved.recorded, workOrders: [notice], relocationWarnings: saved.relocationWarnings }
 }
 

@@ -5,7 +5,7 @@ import { parseAssignRide, parseRosterVehicleRead } from '../../../../shared'
 import { loadAppEnv } from '../../../core/index'
 import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { assignUnassignedRide, suggestRosterVehicle } from './assign'
-import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
+import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
 function officeOnly(role: string): void {
   // Assigning a Ride is office work. A driver does none of it (ADR-0005).
@@ -18,9 +18,10 @@ function officeOnly(role: string): void {
 /**
  * Assign a Driver and a Vehicle together. The body is parsed first, so a
  * Driver without a Vehicle never opens a session. A driver is 403. The
- * update and `ride.assigned` commit together. The work order is sent after
- * that commit: a rejected send leaves the Ride assigned and is not retried.
- * Tests pass a mailer. The address is not on the result.
+ * update and `ride.assigned` commit together, and so does the outbox entry.
+ * The first attempt waits after that commit. A rejection leaves the Ride
+ * assigned and the entry pending. Tests pass a mailer. The address is not
+ * on the result.
  */
 export async function assignRide(
   headers: Headers,
@@ -32,10 +33,11 @@ export async function assignRide(
     officeOnly(actor.role)
     const assigned = await assignUnassignedRide(transaction, actor.userId, input)
     const order = await readAssignedWorkOrder(transaction, assigned.ride.id)
-    return { ride: assigned.ride, order, relocationWarnings: assigned.relocationWarnings }
+    const staged = await stageWorkOrder(transaction, order, 'assigned')
+    return { ride: assigned.ride, staged, relocationWarnings: assigned.relocationWarnings }
   })
   const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
-  const notice = await deliverAssignedWorkOrder(saved.order, mailer, delivery?.logger)
+  const notice = await deliverStagedWorkOrder(headers, saved.staged, mailer, delivery?.logger)
   return { ride: saved.ride, workOrders: [notice], relocationWarnings: saved.relocationWarnings }
 }
 

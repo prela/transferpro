@@ -1,6 +1,8 @@
 # Driver work orders by email
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0045
+
+ADR-0045 supersedes "The send is not retried." and the outcome "send failed". A failed first attempt is not sent yet and will be retried. "The action waits for the attempt" stays for the first attempt. The rest of this decision stands.
 
 Damir accepted this on 11 October 2026. This does not supersede ADR-0009, ADR-0020, or ADR-0023.
 

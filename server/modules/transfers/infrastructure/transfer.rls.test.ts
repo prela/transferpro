@@ -29,6 +29,7 @@ const tenantB = 'd2d2d2d2-d2d2-42d2-82d2-d2d2d2d2d2d2'
  * run after the file so a run cannot leave those rows behind.
  */
 async function deleteTransferFixtures(owner: pg.PoolClient): Promise<void> {
+  await owner.query('delete from app.mail_outbox where tenant_id in ($1, $2)', [tenantA, tenantB])
   await owner.query('delete from app.ride_alert where tenant_id in ($1, $2)', [tenantA, tenantB])
   await owner.query('delete from app.rides where tenant_id in ($1, $2)', [tenantA, tenantB])
   await owner.query('delete from app.roster where tenant_id in ($1, $2)', [tenantA, tenantB])
