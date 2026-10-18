@@ -9,17 +9,21 @@ const message = {
   html: '<p>Gost: Ana</p>',
 }
 
-it('builds the same key from the same entry and the same composed message', () => {
-  const key = workOrderIdempotencyKey(entryId, message)
-  expect(key).toBe(workOrderIdempotencyKey(entryId, { ...message }))
+const address = 'Ana@Example.test'
+
+it('builds the same key from the same entry, address, and composed message', () => {
+  const key = workOrderIdempotencyKey(entryId, message, address)
+  expect(key).toBe(workOrderIdempotencyKey(entryId, { ...message }, ' ana@example.test '))
   expect(key.startsWith(`${entryId}.`)).toBe(true)
   expect(key.length).toBeLessThanOrEqual(256)
+  expect(key).not.toContain('ana@example.test')
 })
 
-it('builds a new key when the entry or the composed message changes', () => {
-  const key = workOrderIdempotencyKey(entryId, message)
-  expect(workOrderIdempotencyKey(otherId, message)).not.toBe(key)
-  expect(workOrderIdempotencyKey(entryId, { ...message, text: 'Gost: Marko' })).not.toBe(key)
-  expect(workOrderIdempotencyKey(entryId, { ...message, subject: 'Promijenjeno' })).not.toBe(key)
-  expect(workOrderIdempotencyKey(entryId, { ...message, html: '<p>Gost: Ana.</p>' })).not.toBe(key)
+it('builds a new key when the entry, the address, or the composed message changes', () => {
+  const key = workOrderIdempotencyKey(entryId, message, address)
+  expect(workOrderIdempotencyKey(otherId, message, address)).not.toBe(key)
+  expect(workOrderIdempotencyKey(entryId, message, 'marko@example.test')).not.toBe(key)
+  expect(workOrderIdempotencyKey(entryId, { ...message, text: 'Gost: Marko' }, address)).not.toBe(key)
+  expect(workOrderIdempotencyKey(entryId, { ...message, subject: 'Promijenjeno' }, address)).not.toBe(key)
+  expect(workOrderIdempotencyKey(entryId, { ...message, html: '<p>Gost: Ana.</p>' }, address)).not.toBe(key)
 })

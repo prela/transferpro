@@ -27,7 +27,8 @@ export interface WorkOrderCurrentFacts {
  * Another mail for the same Ride is not an input. Both can be current.
  */
 export function workOrderIsCurrent(facts: WorkOrderCurrentFacts): boolean {
-  const pickupStillAhead = facts.now.getTime() < facts.pickupAt.getTime()
+  // At the pickup instant the pickup has not passed yet. A later instant has.
+  const pickupStillAhead = facts.now.getTime() <= facts.pickupAt.getTime()
   if (!pickupStillAhead)
     return false
   if (facts.status === 'cancelled')

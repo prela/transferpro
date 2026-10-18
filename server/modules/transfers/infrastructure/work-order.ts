@@ -7,7 +7,7 @@ import { composeWorkOrder, locationLabel, paymentMethodSchema } from '../../../.
 import { getLogger, hideDatabaseError } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadLocation } from '../../locations'
-import { enqueueMailOutboxJob, MAIL_RETRY_DELAYS_MS, noteWorkOrderAttempt, recordWorkOrder, workOrderIdempotencyKey } from '../../mail'
+import { enqueueMailOutboxJob, MAIL_RETRY_DELAYS_MS, markWorkOrderStale, noteWorkOrderAttempt, recordWorkOrder, workOrderIdempotencyKey, workOrderIsCurrent } from '../../mail'
 import { ResendTransportError, withTenantFromSession } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { toPrice } from './transfers'
@@ -169,7 +169,7 @@ export async function deliverAssignedWorkOrder(
   const message = composeWorkOrder(order, status)
   // The same key on a retry of this snapshot is one send inside Resend's window.
   // A later attempt that composes different words gets its own key.
-  const idempotencyKey = entryId === undefined ? undefined : workOrderIdempotencyKey(entryId, message)
+  const idempotencyKey = entryId === undefined ? undefined : workOrderIdempotencyKey(entryId, message, address)
   try {
     await mailer.sendWorkOrder({
       to: address,
@@ -262,19 +262,50 @@ export async function deliverStagedWorkOrder(
   if (staged.entryId === null)
     return { driverId: staged.order.driverId, outcome: 'no_email' }
   const entryId = staged.entryId
+  // The snapshot still names this Driver, except "no longer yours", which
+  // names the Driver the Ride just released. A finished Ride is read on the
+  // retry. Here the only fact that can already be stale is the pickup.
+  const stillCurrent = workOrderIsCurrent({
+    status: staged.status,
+    driverId: staged.order.driverId,
+    rideDriverId: staged.status === 'no_longer_yours' ? null : staged.order.driverId,
+    rideFinished: false,
+    pickupAt: staged.order.pickupAt,
+    now: new Date(),
+  })
+  if (!stillCurrent) {
+    await settleOutbox(headers, entryId, log, transaction => markWorkOrderStale(transaction, entryId))
+    // The office notice has no stale outcome. Nothing will be retried.
+    return { driverId: staged.order.driverId, outcome: 'failed' }
+  }
   const notice = await deliverAssignedWorkOrder(staged.order, mailer, log, staged.status, entryId)
   // The Ride is already saved. Settle on its own session so a slow send
   // does not hold the Ride transaction, and a rejection still counts.
+  await settleOutbox(headers, entryId, log, transaction =>
+    noteWorkOrderAttempt(transaction, entryId, notice.outcome === 'sent' ? 'sent' : 'pending'))
+  return notice
+}
+
+/**
+ * Write the outbox result after the Ride has committed. A failed statement
+ * aborts that session, so the catch wraps the session. The office still
+ * receives the notice. The log is the entry id and nothing else.
+ */
+async function settleOutbox(
+  headers: Headers,
+  entryId: string,
+  log: Logger | undefined,
+  write: (transaction: TenantTransaction) => Promise<void>,
+): Promise<void> {
   try {
     await withTenantFromSession(headers, async ({ transaction }) => {
-      await noteWorkOrderAttempt(transaction, entryId, notice.outcome === 'sent' ? 'sent' : 'pending')
+      await write(transaction)
     })
   }
   catch {
     const logger = log ?? getLogger()
     logger.warn({ event: 'mail_outbox.note_failed', entryId })
   }
-  return notice
 }
 
 function toPickup(value: unknown): Date {

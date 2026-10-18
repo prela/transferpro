@@ -381,11 +381,12 @@ it('sends the idempotency key, and a changed message gets a new one', async () =
     return new Response('sent', { status: 200 })
   })
   const entryId = 'd1d1d1d1-1111-4111-8111-111111111111'
+  const to = 'ana@example.test'
   const message = { subject: 'Dodijeljeno', text: 'Gost: Ana', html: '<p>Gost: Ana</p>' }
-  const key = workOrderIdempotencyKey(entryId, message)
-  await mailer.sendWorkOrder({ to: 'ana@example.test', ...message, idempotencyKey: key })
-  await mailer.sendWorkOrder({ to: 'ana@example.test', ...message, idempotencyKey: key })
-  const changed = workOrderIdempotencyKey(entryId, { ...message, text: 'Gost: Marko' })
+  const key = workOrderIdempotencyKey(entryId, message, to)
+  await mailer.sendWorkOrder({ to, ...message, idempotencyKey: key })
+  await mailer.sendWorkOrder({ to, ...message, idempotencyKey: key })
+  const changed = workOrderIdempotencyKey(entryId, { ...message, text: 'Gost: Marko' }, to)
   await mailer.sendWorkOrder({ to: 'ana@example.test', ...message, text: 'Gost: Marko', idempotencyKey: changed })
   expect(seen).toEqual([key, key, changed])
   expect(changed).not.toBe(key)

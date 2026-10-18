@@ -211,10 +211,13 @@ it('sends one idempotency key for the snapshot, and a new one when the words cha
   await deliverAssignedWorkOrder(order, mailer, captureLogs().logger, 'no_longer_yours', entryId)
   await deliverAssignedWorkOrder(order, mailer, captureLogs().logger, 'no_longer_yours', entryId)
   await deliverAssignedWorkOrder({ ...order, guestName: 'Netko Drugi' }, mailer, captureLogs().logger, 'no_longer_yours', entryId)
+  await deliverAssignedWorkOrder({ ...order, email: 'other@example.test' }, mailer, captureLogs().logger, 'no_longer_yours', entryId)
   expect(keys[0]).toBe(keys[1])
   expect(keys[0]).toContain(entryId)
   expect(keys[2]).not.toBe(keys[0])
+  expect(keys[3]).not.toBe(keys[0])
   expect(JSON.stringify(keys)).not.toContain(email)
+  expect(JSON.stringify(keys)).not.toContain('other@example.test')
 })
 
 it('enqueues the one-minute job on the same transaction as the entry', async () => {

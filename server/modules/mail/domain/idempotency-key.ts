@@ -11,14 +11,22 @@ export interface IdempotentWorkOrder {
 }
 
 /**
- * Entry id plus a hash of the composed message (ADR-0045).
- * The same words produce the same key, so a lost answer is not a second send
- * inside Resend's 24-hour window. Changed words produce a new key, so a
- * later attempt states the current facts instead of colliding with the old payload.
+ * Entry id plus a hash of the composed message and the recipient (ADR-0045).
+ * The address is hashed, not written into the key. The same words and the
+ * same address produce the same key, so a lost answer is not a second send
+ * inside Resend's 24-hour window. Changed words or a changed address produce
+ * a new key. The same key with a different Resend payload is a 409, so a
+ * corrected Driver email has to be a new key or the retry cannot be accepted.
  * The key stays under Resend's 256-character limit.
  */
-export function workOrderIdempotencyKey(entryId: string, message: IdempotentWorkOrder): string {
+export function workOrderIdempotencyKey(
+  entryId: string,
+  message: IdempotentWorkOrder,
+  to: string,
+): string {
   const hash = createHash('sha256')
+    .update(to.trim().toLowerCase())
+    .update('\0')
     .update(message.subject)
     .update('\0')
     .update(message.text)

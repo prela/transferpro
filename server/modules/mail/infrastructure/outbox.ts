@@ -91,3 +91,25 @@ export async function noteWorkOrderAttempt(
   if (updated.rows[0] === undefined)
     throw new Error('Mail outbox update failed')
 }
+
+/**
+ * The attempt found the mail no longer current. The count stays: nothing was sent.
+ * The next time is cleared so a queued job finds a row that is not pending.
+ * A missing pending row is the same fixed error as a counted attempt.
+ */
+export async function markWorkOrderStale(
+  transaction: TenantTransaction,
+  entryId: string,
+): Promise<void> {
+  const id = z.uuid().parse(entryId)
+  const updated = insertedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
+    update app.mail_outbox
+    set state = 'stale',
+        next_attempt_at = null
+    where id = ${id}
+      and state = 'pending'
+    returning id
+  `), 'Mail outbox update failed'))
+  if (updated.rows[0] === undefined)
+    throw new Error('Mail outbox update failed')
+}

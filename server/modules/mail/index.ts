@@ -6,7 +6,8 @@
  */
 export { enqueueMailOutboxJob, handleMailOutboxJob, MAIL_OUTBOX_QUEUE } from './application/attempt'
 export type { LoadedOutboxEntry, OutboxAttemptPatch, OutboxAttemptStore } from './application/attempt'
+export { workOrderIsCurrent } from './domain/current'
 export { workOrderIdempotencyKey } from './domain/idempotency-key'
 export { MAIL_RETRY_DELAYS_MS } from './domain/retry'
-export { noteWorkOrderAttempt, recordWorkOrder } from './infrastructure/outbox'
+export { markWorkOrderStale, noteWorkOrderAttempt, recordWorkOrder } from './infrastructure/outbox'
 export type { WorkOrderEntry } from './infrastructure/outbox'

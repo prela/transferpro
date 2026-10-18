@@ -33,7 +33,7 @@ it('drops an assigned or changed work order when the Driver changed, and keeps i
 it('drops an assigned or changed work order when the Ride is finished or the pickup has passed', () => {
   expect(workOrderIsCurrent(facts({ rideFinished: true }))).toBe(false)
   expect(workOrderIsCurrent(facts({ status: 'changed', rideFinished: true }))).toBe(false)
-  expect(workOrderIsCurrent(facts({ now: atPickup }))).toBe(false)
+  expect(workOrderIsCurrent(facts({ now: atPickup }))).toBe(true)
   expect(workOrderIsCurrent(facts({ status: 'changed', now: new Date('2026-10-18T12:00:01.000Z') }))).toBe(false)
 })
 
@@ -55,6 +55,11 @@ it('keeps no longer yours until that Driver has the Ride again or the pickup has
     status: 'no_longer_yours',
     rideDriverId: null,
     now: atPickup,
+  }))).toBe(true)
+  expect(workOrderIsCurrent(facts({
+    status: 'no_longer_yours',
+    rideDriverId: null,
+    now: new Date('2026-10-18T12:00:01.000Z'),
   }))).toBe(false)
 })
 
@@ -67,5 +72,9 @@ it('keeps a cancelled work order until the pickup has passed', () => {
   expect(workOrderIsCurrent(facts({
     status: 'cancelled',
     now: atPickup,
+  }))).toBe(true)
+  expect(workOrderIsCurrent(facts({
+    status: 'cancelled',
+    now: new Date('2026-10-18T12:00:01.000Z'),
   }))).toBe(false)
 })

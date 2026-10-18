@@ -136,7 +136,7 @@ export async function attemptOutboxEntry(input: {
       await input.mailer.sendWorkOrder({
         to: address,
         ...entry.message,
-        idempotencyKey: workOrderIdempotencyKey(entry.entryId, entry.message),
+        idempotencyKey: workOrderIdempotencyKey(entry.entryId, entry.message, address),
       })
       sent = true
     }
