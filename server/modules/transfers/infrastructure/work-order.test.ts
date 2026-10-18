@@ -4,7 +4,7 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it } from 'vitest'
 import { captureLogs } from '../../../core/testing'
 import { ResendTransportError } from '../../tenancy'
-import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
+import { deliverAssignedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
@@ -16,9 +16,12 @@ const tabla = 'TABLA-TAJNA'
 const vehiclePlate = 'DU9SECRET'
 const price = '77.50'
 
+const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
+
 const order = {
   rideId,
   driverId,
+  vehicleId,
   email,
   locale: 'hr' as const,
   timeZone: 'Europe/Zagreb',
@@ -115,7 +118,6 @@ it('reads the tenant locale from the row, and a database failure drops the guest
   const clientId = 'a1a1a1a1-1111-4111-8111-111111111111'
   const startLocationId = 'a2a2a2a2-2222-4222-8222-222222222222'
   const endLocationId = 'a3a3a3a3-3333-4333-8333-333333333333'
-  const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
   const dialect = new PgDialect()
   const transaction = {
     execute: async (query: SQL) => {
@@ -196,6 +198,21 @@ it('reads the tenant locale from the row, and a database failure drops the guest
   expect((error as Error).message).toBe('Work order read failed')
   expect((error as Error).message).not.toContain(guestName)
   expect((error as Error).message).not.toContain(email)
+})
+
+it('records the released vehicle only on no longer yours', async () => {
+  const dialect = new PgDialect()
+  const seen: unknown[][] = []
+  const transaction = {
+    async execute(query: SQL) {
+      seen.push(dialect.sqlToQuery(query).params)
+      return { rows: [{ id: 'd1d1d1d1-1111-4111-8111-111111111111' }] }
+    },
+  } as unknown as TenantTransaction
+  await stageWorkOrder(transaction, order, 'no_longer_yours')
+  await stageWorkOrder(transaction, order, 'assigned')
+  expect(seen[0]).toContain(vehicleId)
+  expect(seen[1]).not.toContain(vehicleId)
 })
 
 it('still aborts when the Resend transport is selected in test', async () => {

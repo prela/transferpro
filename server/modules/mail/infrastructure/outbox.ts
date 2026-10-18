@@ -10,10 +10,13 @@ import { hideDatabaseError } from '../../../core/index'
  * A blank Driver email is not an entry: the action reports no email, as before.
  * The address is not stored. The body is composed later, from the snapshot
  * read on this same transaction, so the table never holds it.
+ * `vehicleId` is the Vehicle a "no longer yours" mail released. Other
+ * statuses store null. The plate and the name stay off the row.
  */
 export interface WorkOrderEntry {
   readonly rideId: string
   readonly driverId: string
+  readonly vehicleId: string | null
   readonly status: WorkOrderStatus
   readonly email: string | null
 }
@@ -21,6 +24,7 @@ export interface WorkOrderEntry {
 const workOrderEntry = z.object({
   rideId: z.uuid(),
   driverId: z.uuid(),
+  vehicleId: z.uuid().nullable(),
   status: z.enum(WORK_ORDER_STATUSES),
   email: z.string().nullable(),
 })
@@ -44,10 +48,10 @@ export async function recordWorkOrder(
     return null
   const inserted = insertedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
     insert into app.mail_outbox (
-      kind, ride_id, driver_id, work_order_status, state, attempt_count
+      kind, ride_id, driver_id, vehicle_id, work_order_status, state, attempt_count
     )
     values (
-      'work_order', ${parsed.rideId}, ${parsed.driverId}, ${parsed.status}, 'pending', 0
+      'work_order', ${parsed.rideId}, ${parsed.driverId}, ${parsed.vehicleId}, ${parsed.status}, 'pending', 0
     )
     returning id
   `), 'Mail outbox write failed'))

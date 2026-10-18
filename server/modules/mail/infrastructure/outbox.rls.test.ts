@@ -10,7 +10,7 @@ import { createClient } from '../../clients'
 import { createDriver } from '../../drivers'
 import { createLocation } from '../../locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../../tenancy'
-import { assignRide, createTransfer } from '../../transfers'
+import { assignRide, clearRide, createTransfer } from '../../transfers'
 import { createVehicle } from '../../vehicles'
 import { recordWorkOrder } from '../index'
 
@@ -185,11 +185,12 @@ interface OutboxRow {
   invitation_id: string | null
   ride_id: string | null
   driver_id: string | null
+  vehicle_id: string | null
 }
 
 async function rowsFor(rideId: string): Promise<OutboxRow[]> {
   const result = await ownerPool.query<OutboxRow>(
-    `select id, kind, state, attempt_count, work_order_status, invitation_id, ride_id, driver_id
+    `select id, kind, state, attempt_count, work_order_status, invitation_id, ride_id, driver_id, vehicle_id
      from app.mail_outbox where ride_id = $1 order by created_at, id`,
     [rideId],
   )
@@ -240,6 +241,7 @@ it('forces row level security and stores no address, name, subject, or body', as
       'ride_id',
       'state',
       'tenant_id',
+      'vehicle_id',
       'work_order_status',
     ])
   }
@@ -272,6 +274,7 @@ it('rolls the entry back with the Ride transaction, then a sent attempt marks it
       const id = await recordWorkOrder(transaction, {
         rideId: recorded.ride.id,
         driverId: driver.id,
+        vehicleId: null,
         status: 'assigned',
         email: address,
       })
@@ -303,6 +306,7 @@ it('rolls the entry back with the Ride transaction, then a sent attempt marks it
     invitation_id: null,
     ride_id: recorded.ride.id,
     driver_id: driver.id,
+    vehicle_id: null,
   })
   expect(JSON.stringify(row)).not.toContain(address)
   expect(JSON.stringify(assigned)).not.toContain(address)
@@ -356,6 +360,50 @@ it('leaves a failed first attempt pending and logs the entry, the Ride, and the 
   const text = JSON.stringify(line)
   expect(text).not.toContain(address)
   expect(text).not.toContain('Gost Tajna')
+})
+
+it('stores the released vehicle on no longer yours and leaves the assigned row without one', async () => {
+  const world = await office('mbox-vehicle')
+  const driver = await createDriver(world.dispatcher, {
+    name: 'Ana Released',
+    kind: 'own',
+    phone: '+385911113305',
+    email: address,
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const vehicle = await createVehicle(world.dispatcher, {
+    registrationPlate: 'ZG9330EE',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const recorded = await createTransfer(world.dispatcher, transferBody(world))
+  await assignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+    version: 0,
+  }, {
+    mailer: mailer(async () => {}),
+  })
+  const version = await ownerPool.query<{ version: number }>(
+    `select t.version
+     from app.transfers as t
+     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
+     where r.id = $1`,
+    [recorded.ride.id],
+  )
+  await clearRide(world.dispatcher, recorded.ride.id, { version: Number(version.rows[0]?.version) }, {
+    mailer: mailer(async () => {}),
+  })
+  const rows = await rowsFor(recorded.ride.id)
+  expect(rows).toEqual([
+    expect.objectContaining({ work_order_status: 'assigned', vehicle_id: null }),
+    expect.objectContaining({ work_order_status: 'no_longer_yours', vehicle_id: vehicle.id }),
+  ])
+  expect(JSON.stringify(rows)).not.toContain('ZG9330EE')
 })
 
 it('writes no entry when the Driver has no email', async () => {

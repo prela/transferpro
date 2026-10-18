@@ -20,6 +20,8 @@ import { toPrice } from './transfers'
 export interface AssignedWorkOrder {
   readonly rideId: string
   readonly driverId: string
+  /** The Vehicle the mail names. For "no longer yours" this is the one just released. */
+  readonly vehicleId: string
   readonly email: string | null
   readonly locale: DisplayLocale
   readonly timeZone: string
@@ -122,6 +124,7 @@ export async function readAssignedWorkOrder(
   return {
     rideId,
     driverId: selected.driverId,
+    vehicleId: selected.vehicleId,
     email: selected.email,
     locale: selected.locale,
     timeZone: selected.timeZone,
@@ -205,6 +208,8 @@ export async function stageWorkOrder(
   const entryId = await recordWorkOrder(transaction, {
     rideId: order.rideId,
     driverId: order.driverId,
+    // Only "no longer yours" needs the vehicle after the Ride has let it go.
+    vehicleId: status === 'no_longer_yours' ? order.vehicleId : null,
     status,
     email: order.email,
   })
@@ -214,10 +219,14 @@ export async function stageWorkOrder(
 /**
  * The first attempt, after the Ride transaction has committed. The action
  * waits for it. The mail is the snapshot read on that transaction: a re-read
- * now would drop the vehicle a "no longer yours" mail must name. Later
- * retries re-read the current rows. Success marks the entry sent. A rejection
- * leaves it pending with the attempt counted, so a later ticket can retry it.
+ * now would drop the vehicle a "no longer yours" mail must name. That
+ * released vehicle id is already on the entry for the retry. Success marks
+ * the entry sent. A rejection leaves it pending with the attempt counted.
  * A blank email never opened an entry.
+ *
+ * Noting the attempt has its own session. A failed statement aborts that
+ * session, so the catch wraps the session, not only the update. The office
+ * still receives the notice. The log is the entry id and nothing else.
  */
 export async function deliverStagedWorkOrder(
   headers: Headers,
@@ -231,9 +240,15 @@ export async function deliverStagedWorkOrder(
   const notice = await deliverAssignedWorkOrder(staged.order, mailer, log, staged.status, entryId)
   // The Ride is already saved. Settle on its own session so a slow send
   // does not hold the Ride transaction, and a rejection still counts.
-  await withTenantFromSession(headers, async ({ transaction }) => {
-    await noteWorkOrderAttempt(transaction, entryId, notice.outcome === 'sent' ? 'sent' : 'pending')
-  })
+  try {
+    await withTenantFromSession(headers, async ({ transaction }) => {
+      await noteWorkOrderAttempt(transaction, entryId, notice.outcome === 'sent' ? 'sent' : 'pending')
+    })
+  }
+  catch {
+    const logger = log ?? getLogger()
+    logger.warn({ event: 'mail_outbox.note_failed', entryId })
+  }
   return notice
 }
 

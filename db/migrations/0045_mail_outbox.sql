@@ -4,6 +4,7 @@ CREATE TABLE "app"."mail_outbox" (
 	"kind" text NOT NULL,
 	"ride_id" uuid,
 	"driver_id" uuid,
+	"vehicle_id" uuid,
 	"work_order_status" text,
 	"invitation_id" uuid,
 	"state" text NOT NULL,
@@ -24,6 +25,7 @@ CREATE TABLE "app"."mail_outbox" (
         and "app"."mail_outbox"."invitation_id" is not null
         and "app"."mail_outbox"."ride_id" is null
         and "app"."mail_outbox"."driver_id" is null
+        and "app"."mail_outbox"."vehicle_id" is null
         and "app"."mail_outbox"."work_order_status" is null
     ))
 );
@@ -31,6 +33,7 @@ CREATE TABLE "app"."mail_outbox" (
 ALTER TABLE "app"."mail_outbox" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "app"."mail_outbox" ADD CONSTRAINT "mail_outbox_ride_fk" FOREIGN KEY ("tenant_id","ride_id") REFERENCES "app"."rides"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."mail_outbox" ADD CONSTRAINT "mail_outbox_driver_fk" FOREIGN KEY ("tenant_id","driver_id") REFERENCES "app"."drivers"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "app"."mail_outbox" ADD CONSTRAINT "mail_outbox_vehicle_fk" FOREIGN KEY ("tenant_id","vehicle_id") REFERENCES "app"."vehicles"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE POLICY "tenant_isolation" ON "app"."mail_outbox" AS PERMISSIVE FOR ALL TO "transferpro_app" USING ("app"."mail_outbox"."tenant_id" = app.current_tenant_id()) WITH CHECK ("app"."mail_outbox"."tenant_id" = app.current_tenant_id());
 --> statement-breakpoint
 -- drizzle-kit cannot emit FORCE RLS or this grant. There is no DELETE.
