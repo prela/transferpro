@@ -156,6 +156,7 @@ async function replaceAuth(client: PoolClient, picture: DemoPicture, passwordHas
 
 async function replaceApp(client: PoolClient, picture: DemoPicture): Promise<void> {
   const tenantId = picture.tenantId
+  await client.query('delete from app.mail_outbox where tenant_id = $1', [tenantId])
   await client.query('delete from app.ride_alert where tenant_id = $1', [tenantId])
   await client.query('delete from app.rides where tenant_id = $1', [tenantId])
   await client.query('delete from app.transfers where tenant_id = $1', [tenantId])

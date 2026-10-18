@@ -7,7 +7,8 @@ import { composeWorkOrder, locationLabel, paymentMethodSchema } from '../../../.
 import { getLogger, hideDatabaseError } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadLocation } from '../../locations'
-import { ResendTransportError } from '../../tenancy'
+import { noteWorkOrderAttempt, recordWorkOrder } from '../../mail'
+import { ResendTransportError, withTenantFromSession } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { toPrice } from './transfers'
 
@@ -19,6 +20,8 @@ import { toPrice } from './transfers'
 export interface AssignedWorkOrder {
   readonly rideId: string
   readonly driverId: string
+  /** The Vehicle the mail names. For "no longer yours" this is the one just released. */
+  readonly vehicleId: string
   readonly email: string | null
   readonly locale: DisplayLocale
   readonly timeZone: string
@@ -121,6 +124,7 @@ export async function readAssignedWorkOrder(
   return {
     rideId,
     driverId: selected.driverId,
+    vehicleId: selected.vehicleId,
     email: selected.email,
     locale: selected.locale,
     timeZone: selected.timeZone,
@@ -143,16 +147,21 @@ export async function readAssignedWorkOrder(
 }
 
 /**
- * One attempt, after the Ride has committed. A blank address sends nothing.
- * A provider rejection is `failed` and is not retried. The Resend-in-test
- * error still aborts the process. The log names the Ride and the Driver.
- * The provider message is dropped: it can echo the address.
+ * One attempt, after the Ride has committed. The mail is composed here from
+ * the snapshot read on that transaction, not stored on the outbox row.
+ * A blank address sends nothing. A provider rejection leaves the outbox
+ * entry `pending` (the caller records the attempt). The office outcome stays
+ * `failed`, and the sentence says the send will be tried again. The
+ * Resend-in-test error still aborts the process. The log names the entry,
+ * the Ride, and the Driver. The provider message is dropped: it can echo
+ * the address.
  */
 export async function deliverAssignedWorkOrder(
   order: AssignedWorkOrder,
   mailer: Pick<Mailer, 'sendWorkOrder'>,
   log?: Logger,
   status: WorkOrderStatus = 'assigned',
+  entryId?: string,
 ): Promise<WorkOrderNotice> {
   const address = order.email?.trim() ?? ''
   if (address === '')
@@ -170,6 +179,7 @@ export async function deliverAssignedWorkOrder(
     const logger = log ?? getLogger()
     logger.warn({
       event: 'work_order.email_failed',
+      ...(entryId === undefined ? {} : { entryId }),
       rideId: order.rideId,
       driverId: order.driverId,
       err: { type: error instanceof Error ? error.name : 'Error' },
@@ -177,6 +187,69 @@ export async function deliverAssignedWorkOrder(
     return { driverId: order.driverId, outcome: 'failed' }
   }
   return { driverId: order.driverId, outcome: 'sent' }
+}
+
+/** The outbox id recorded on the Ride transaction, or null when there was no address. */
+export interface StagedWorkOrder {
+  readonly entryId: string | null
+  readonly order: AssignedWorkOrder
+  readonly status: WorkOrderStatus
+}
+
+/**
+ * Record the work order on the Ride transaction. A blank email records nothing.
+ * The row commits or rolls back with the Ride change.
+ */
+export async function stageWorkOrder(
+  transaction: TenantTransaction,
+  order: AssignedWorkOrder,
+  status: WorkOrderStatus,
+): Promise<StagedWorkOrder> {
+  const entryId = await recordWorkOrder(transaction, {
+    rideId: order.rideId,
+    driverId: order.driverId,
+    // Only "no longer yours" needs the vehicle after the Ride has let it go.
+    vehicleId: status === 'no_longer_yours' ? order.vehicleId : null,
+    status,
+    email: order.email,
+  })
+  return { entryId, order, status }
+}
+
+/**
+ * The first attempt, after the Ride transaction has committed. The action
+ * waits for it. The mail is the snapshot read on that transaction: a re-read
+ * now would drop the vehicle a "no longer yours" mail must name. That
+ * released vehicle id is already on the entry for the retry. Success marks
+ * the entry sent. A rejection leaves it pending with the attempt counted.
+ * A blank email never opened an entry.
+ *
+ * Noting the attempt has its own session. A failed statement aborts that
+ * session, so the catch wraps the session, not only the update. The office
+ * still receives the notice. The log is the entry id and nothing else.
+ */
+export async function deliverStagedWorkOrder(
+  headers: Headers,
+  staged: StagedWorkOrder,
+  mailer: Pick<Mailer, 'sendWorkOrder'>,
+  log?: Logger,
+): Promise<WorkOrderNotice> {
+  if (staged.entryId === null)
+    return { driverId: staged.order.driverId, outcome: 'no_email' }
+  const entryId = staged.entryId
+  const notice = await deliverAssignedWorkOrder(staged.order, mailer, log, staged.status, entryId)
+  // The Ride is already saved. Settle on its own session so a slow send
+  // does not hold the Ride transaction, and a rejection still counts.
+  try {
+    await withTenantFromSession(headers, async ({ transaction }) => {
+      await noteWorkOrderAttempt(transaction, entryId, notice.outcome === 'sent' ? 'sent' : 'pending')
+    })
+  }
+  catch {
+    const logger = log ?? getLogger()
+    logger.warn({ event: 'mail_outbox.note_failed', entryId })
+  }
+  return notice
 }
 
 function toPickup(value: unknown): Date {

@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { seedTenant } from './fixtures/seed'
-import { chooseOption, signIn, switchLocale } from './fixtures/ui'
+import { chooseOption, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
 const phone = '+385911112244'
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
@@ -110,4 +110,32 @@ test('assign reports sent and no email, in Croatian, with an English smoke', asy
   await chooseOption(page, page.getByRole('combobox', { name: 'Vehicle' }), plate)
   await page.getByRole('button', { name: 'Assign ride', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: 'Assigned' }).filter({ hasText: 'Ana Blank has no email. No work order was sent.' })).toBeVisible()
+})
+
+test('a failed first send says we will try again, in Croatian and English, light and dark', async ({ page }) => {
+  const tenant = await seedTenant('work-order-retry')
+  const plate = 'DU166BB'
+  const failure = 'work-order-fail@example.test'
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await addDriver(page, 'Ana Retry', failure)
+  await addVehicle(page, plate)
+  await recordTodayRide(page, 'Iva Ponovo', '16:00')
+  await recordTodayRide(page, 'Iva Again', '18:00')
+
+  await switchTheme(page, 'dark')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await assign(page, 'Iva Ponovo', 'Ana Retry', plate, 'Dodijeli vožnju')
+  await expect(page.getByRole('alert').filter({ hasText: 'Radni nalog vozaču Ana Retry nije poslan, pokušat ćemo ponovno.' })).toBeVisible()
+  await expect(page.getByText(failure)).toHaveCount(0)
+
+  await switchTheme(page, 'light')
+  await switchLocale(page, 'en')
+  await expect(page.locator('html')).not.toHaveClass(/dark/)
+  await page.getByRole('link', { name: 'Transfers' }).click()
+  await page.getByRole('row', { name: 'Iva Again' }).getByRole('button', { name: 'Assign: Iva Again' }).click()
+  await chooseOption(page, page.getByRole('combobox', { name: 'Driver' }), 'Ana Retry')
+  await chooseOption(page, page.getByRole('combobox', { name: 'Vehicle' }), plate)
+  await page.getByRole('button', { name: 'Assign ride', exact: true }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'The work order to Ana Retry was not sent. We will try again.' })).toBeVisible()
+  await expect(page.getByText(failure)).toHaveCount(0)
 })

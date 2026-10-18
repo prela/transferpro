@@ -760,7 +760,7 @@
     "assigned": "Dodijeljeno",
     "workOrderSent": "Radni nalog je poslan vozaču {name}.",
     "workOrderNoEmail": "Vozač {name} nema e-poštu. Radni nalog nije poslan.",
-    "workOrderFailed": "Radni nalog vozaču {name} nije poslan.",
+    "workOrderFailed": "Radni nalog vozaču {name} nije poslan, pokušat ćemo ponovno.",
     "actions": "Radnje",
     "acceptByPhone": "Zabilježi telefonom",
     "acceptByPhoneFor": "Zabilježi prihvaćanje telefonom: {guest}",

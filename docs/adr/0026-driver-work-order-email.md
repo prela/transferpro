@@ -1,6 +1,6 @@
 # Driver work orders by email
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0045
 
 Damir accepted this on 11 October 2026. This does not supersede ADR-0009, ADR-0020, or ADR-0023.
 

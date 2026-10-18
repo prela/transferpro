@@ -15,8 +15,9 @@ export function workOrderNotice(outcome: WorkOrderNotice['outcome']) {
 }
 
 /**
- * "Sent" is a toast. "No email" and "send failed" stay in the Ride detail
- * until the user closes them (ADR-0038). The sentence still names the Driver.
+ * "Sent" is a toast. "No email" and a failed first attempt stay in the Ride
+ * detail until the user closes them (ADR-0038). The failed sentence says the
+ * send will be tried again. It still names the Driver, not the address.
  */
 export function workOrderStaysInDetail(outcome: WorkOrderNotice['outcome']): outcome is 'no_email' | 'failed' {
   return outcome !== 'sent'

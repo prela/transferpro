@@ -51,6 +51,9 @@ beforeAll(async () => {
   const auth = await authPool.connect()
   try {
     await owner.query('begin')
+    await owner.query(`delete from app.mail_outbox where tenant_id::text in (
+      select id from auth.organization where slug like 'rxc-%'
+    )`)
     await owner.query(`delete from app.ride_alert where tenant_id::text in (
       select id from auth.organization where slug like 'rxc-%'
     )`)

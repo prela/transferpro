@@ -760,7 +760,7 @@
     "assigned": "Assigned",
     "workOrderSent": "Work order sent to {name}.",
     "workOrderNoEmail": "{name} has no email. No work order was sent.",
-    "workOrderFailed": "The work order to {name} was not sent.",
+    "workOrderFailed": "The work order to {name} was not sent. We will try again.",
     "actions": "Actions",
     "acceptByPhone": "Record by phone",
     "acceptByPhoneFor": "Record acceptance by phone: {guest}",

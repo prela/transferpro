@@ -1,6 +1,6 @@
 # Urgent and warning tiers, and live refresh
 
-Status: accepted; partially superseded by ADR-0046
+Status: accepted; partially superseded by ADR-0045 and ADR-0046
 
 Damir accepted this on 15 October 2026, in the UI/UX round (step 8 of #206). It partially supersedes ADR-0023, ADR-0024, ADR-0027, and ADR-0030; the sentences are listed below. ADR-0032 stands: every alarm and warning is derived when the page is read, nothing is stored, and nothing is sent. ADR-0038 places these on the screens.
 

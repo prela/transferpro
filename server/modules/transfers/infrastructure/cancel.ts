@@ -9,7 +9,7 @@ import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { RideNotFoundError } from './assign'
-import { deliverAssignedWorkOrder, readAssignedWorkOrder } from './work-order'
+import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
 /** The body was not an empty object, or the path was not a Ride id. Nothing is written. */
 export class CancelRideInputError extends Error {
@@ -105,8 +105,9 @@ export async function cancelRideForOffice(
  * a session. A dispatcher or an admin cancels any Ride in the Tenant. A
  * driver is refused and the Ride is unchanged. The current Driver is mailed
  * cancelled after the Ride commits, with no price. A Ride with no Driver
- * sends nothing. A rejected send leaves the Ride cancelled and is not retried.
- * Tests pass a mailer. The address is not on the result.
+ * sends nothing. The outbox entry commits with the cancel. A rejection
+ * leaves the Ride cancelled and the entry pending. Tests pass a mailer.
+ * The address is not on the result.
  */
 export async function cancelRide(
   headers: Headers,
@@ -121,14 +122,15 @@ export async function cancelRide(
     const ride = await cancelRideForOffice(transaction, actor.userId, rideId)
     // An unassigned cancel has nobody to mail. The snapshot needs a Driver.
     if (ride.driverId === null)
-      return { ride, order: null }
+      return { ride, staged: null }
     const order = await readAssignedWorkOrder(transaction, ride.id)
-    return { ride, order }
+    const staged = await stageWorkOrder(transaction, order, 'cancelled')
+    return { ride, staged }
   })
-  if (saved.order === null)
+  if (saved.staged === null)
     return { ride: saved.ride, workOrders: [] }
   const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
-  const notice = await deliverAssignedWorkOrder(saved.order, mailer, delivery?.logger, 'cancelled')
+  const notice = await deliverStagedWorkOrder(headers, saved.staged, mailer, delivery?.logger)
   return { ride: saved.ride, workOrders: [notice] }
 }
 

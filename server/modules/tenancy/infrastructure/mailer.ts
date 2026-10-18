@@ -105,6 +105,11 @@ export function createFakeMailer(
       outbox.push({ ...mail })
     },
     async sendWorkOrder(mail) {
+      // The ride e2e spec uses this address so a failing first attempt can
+      // show the retry sentence. Every other recipient is recorded and is
+      // not sent. The message does not include the address.
+      if (mail.to === 'work-order-fail@example.test')
+        throw new Error('Work order email was not sent.')
       workOrders.push({ ...mail })
     },
     async notifyArrivalMoved(notice) {

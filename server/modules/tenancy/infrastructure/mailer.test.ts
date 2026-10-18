@@ -1,3 +1,4 @@
+import type { WorkOrderMail } from './mailer'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -370,6 +371,19 @@ it('writes the reset link for the e2e server only while NODE_ENV is test', async
       process.env.E2E_PASSWORD_RESET_OUTBOX = previousFile
     rmSync(directory, { recursive: true, force: true })
   }
+})
+
+it('rejects the e2e failure address and records every other work order', async () => {
+  const workOrders: WorkOrderMail[] = []
+  const mailer = createFakeMailer([], workOrders)
+  const message = { subject: 'Dodijeljeno', text: 'Gost', html: '<p>Gost</p>' }
+  await expect(mailer.sendWorkOrder({
+    to: 'work-order-fail@example.test',
+    ...message,
+  })).rejects.toThrow('Work order email was not sent.')
+  expect(workOrders).toHaveLength(0)
+  await mailer.sendWorkOrder({ to: 'ana@example.test', ...message })
+  expect(workOrders.map(mail => mail.to)).toEqual(['ana@example.test'])
 })
 
 it('records one password changed mail on the fake mailer', async () => {
