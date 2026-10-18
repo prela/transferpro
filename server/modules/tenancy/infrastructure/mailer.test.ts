@@ -2,7 +2,7 @@ import type { WorkOrderMail } from './mailer'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { captureLogs } from '../../../core/testing'
 import { workOrderIdempotencyKey } from '../../mail/domain/idempotency-key'
 import { assertTestMailer, createConsoleMailer, createFakeMailer, createResendMailer, invitationEmail, isConsoleMailer, isResendMailer, mailerForApp, passwordChangedEmail, passwordResetEmail, ResendTransportError, TransientMailError } from './mailer'
@@ -371,6 +371,26 @@ it('writes the reset link for the e2e server only while NODE_ENV is test', async
     else
       process.env.E2E_PASSWORD_RESET_OUTBOX = previousFile
     rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+it('aborts a Resend request after 15 seconds', async () => {
+  const timeout = vi.spyOn(AbortSignal, 'timeout')
+  try {
+    const mailer = createResendMailer('test-resend-key', async (_input, init) => {
+      expect(init?.signal).toBe(timeout.mock.results[0]?.value)
+      return new Response('sent', { status: 200 })
+    })
+    await mailer.sendWorkOrder({
+      to: 'ana@example.test',
+      subject: 'Dodijeljeno',
+      text: 'Gost: Ana',
+      html: '<p>Gost: Ana</p>',
+    })
+    expect(timeout).toHaveBeenCalledWith(15_000)
+  }
+  finally {
+    timeout.mockRestore()
   }
 })
 

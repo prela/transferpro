@@ -3,6 +3,7 @@ import { captureLogs } from '../../../core/testing'
 
 const note = vi.hoisted(() => vi.fn())
 const stale = vi.hoisted(() => vi.fn())
+const currentFacts = vi.hoisted(() => vi.fn())
 
 vi.mock('../../mail', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../mail')>()
@@ -14,6 +15,10 @@ vi.mock('../../mail', async (importOriginal) => {
   }
 })
 
+vi.mock('./work-order-attempt', () => ({
+  readWorkOrderCurrentFacts: currentFacts,
+}))
+
 vi.mock('../../tenancy', () => ({
   ResendTransportError: class ResendTransportError extends Error {
     constructor() {
@@ -23,10 +28,8 @@ vi.mock('../../tenancy', () => ({
   },
   withTenantFromSession: async (
     _headers: Headers,
-    run: (scope: { transaction: object }) => Promise<void>,
-  ) => {
-    await run({ transaction: {} })
-  },
+    run: (scope: { transaction: object }) => Promise<unknown>,
+  ) => run({ transaction: {} }),
 }))
 
 const { deliverStagedWorkOrder } = await import('./work-order')
@@ -65,7 +68,17 @@ function staged(pickupAt: Date) {
   }
 }
 
+function current() {
+  return {
+    status: 'assigned' as const,
+    rideFinished: false,
+    rideCancelled: false,
+    superseded: false,
+  }
+}
+
 it('returns the office notice when noting the attempt fails, and logs only the entry id', async () => {
+  currentFacts.mockResolvedValue(current())
   note.mockRejectedValue(new Error(`db ${email} Ana Tajna`))
   const logs = captureLogs()
   const notice = await deliverStagedWorkOrder(new Headers(), staged(new Date('2099-01-01T00:00:00.000Z')), {
@@ -79,18 +92,34 @@ it('returns the office notice when noting the attempt fails, and logs only the e
   expect(JSON.stringify(line)).not.toContain('Ana Tajna')
 })
 
-it('marks a past pickup stale, sends nothing, and still reports failed', async () => {
-  stale.mockResolvedValue(undefined)
-  note.mockClear()
-  const logs = captureLogs()
+it('sends a work order whose pickup has already passed', async () => {
+  currentFacts.mockResolvedValue(current())
+  note.mockResolvedValue(undefined)
+  stale.mockClear()
   let sent = 0
   const notice = await deliverStagedWorkOrder(new Headers(), staged(new Date('2020-01-01T00:00:00.000Z')), {
     async sendWorkOrder() {
       sent += 1
     },
+  })
+  expect(sent).toBe(1)
+  expect(notice).toEqual({ driverId, outcome: 'sent' })
+  expect(stale).not.toHaveBeenCalled()
+})
+
+it('returns stale and sends nothing when a newer work order replaced this one', async () => {
+  currentFacts.mockResolvedValue({ ...current(), superseded: true })
+  stale.mockResolvedValue(undefined)
+  note.mockClear()
+  const logs = captureLogs()
+  let sent = 0
+  const notice = await deliverStagedWorkOrder(new Headers(), staged(new Date('2099-01-01T00:00:00.000Z')), {
+    async sendWorkOrder() {
+      sent += 1
+    },
   }, logs.logger)
   expect(sent).toBe(0)
-  expect(notice).toEqual({ driverId, outcome: 'failed' })
+  expect(notice).toEqual({ driverId, outcome: 'stale' })
   expect(stale).toHaveBeenCalledOnce()
   expect(note).not.toHaveBeenCalled()
   expect(JSON.stringify(logs.lines())).not.toContain(email)

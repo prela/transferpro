@@ -118,7 +118,7 @@ The language a user works in, Croatian or English. Each Tenant has a default loc
 _Avoid_: language
 
 **Work order**:
-The email sent when a Ride is assigned, when the office changes its Vehicle, when a Transfer correction changes a fact the Driver needs, when it is cleared, when it is reassigned, or when it is cancelled. It uses the Tenant's default locale and time zone. A Vehicle change uses changed and still states the cash price. A Transfer correction uses changed for pickup time, a place, the flight number, the guest, a count, the airport mark, the tabla, the note, the client, or the payment method, and for the price while payment is cash. A save that changes none of those sends nothing. A landing-time change sends nothing. Assign, and the new Driver on a reassign, use assigned. Clear, and the previous Driver on a reassign, use no longer yours and state no price. Cancel uses cancelled and states no price. A Ride with no Driver sends nothing. The office sees one result per Driver on the action: sent, no email, or not sent yet and retried. The result names the Driver and not the address. The Ride stays saved when a send fails. The send is recorded in the mail outbox and tried again. The mail does not ask the Driver to accept and has no link. A cash Ride states the price on assigned and changed; card and invoice to agency do not. The audit entry stays the Ride change. It does not gain an "email sent" row.
+The email sent when a Ride is assigned, when the office changes its Vehicle, when a Transfer correction changes a fact the Driver needs, when it is cleared, when it is reassigned, or when it is cancelled. It uses the Tenant's default locale and time zone. A Vehicle change uses changed and still states the cash price. A Transfer correction uses changed for pickup time, a place, the flight number, the guest, a count, the airport mark, the tabla, the note, the client, or the payment method, and for the price while payment is cash. A save that changes none of those sends nothing. A landing-time change sends nothing. Assign, and the new Driver on a reassign, use assigned. Clear, and the previous Driver on a reassign, use no longer yours and state no price. Cancel uses cancelled and states no price. A Ride with no Driver sends nothing. The office sees one result per Driver on the action: sent, no email, not sent yet and retried, or not sent because it is no longer current. The result names the Driver and not the address. The Ride stays saved when a send fails. The send is recorded in the mail outbox and tried again. The mail does not ask the Driver to accept and has no link. A cash Ride states the price on assigned and changed; card and invoice to agency do not. The audit entry stays the Ride change. It does not gain an "email sent" row.
 _Avoid_: SMS, push
 
 **Failed mail**:
@@ -126,7 +126,7 @@ A work order or an invitation that did not go out after the automatic attempts a
 _Avoid_: send failed
 
 **Stale mail**:
-A mail that no longer matters when it would be sent, so it is not sent. The office calls it Zastarjeli mail.
+A work order that is not sent because the Ride is finished or cancelled, or because a newer work order for that Ride was recorded after it. Pickup time does not make it stale. The cancellation notice itself is still sent. The office calls it Zastarjeli mail.
 _Avoid_: old mail
 
 **Vehicle**:

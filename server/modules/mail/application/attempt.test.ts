@@ -4,7 +4,7 @@ import { expect, it } from 'vitest'
 import { runWithRequestId } from '../../../core/index'
 import { captureLogs } from '../../../core/testing'
 import { ResendTransportError } from '../../tenancy'
-import { handleMailOutboxJob, MAIL_OUTBOX_QUEUE } from './attempt'
+import { handleMailOutboxJob, MAIL_OUTBOX_QUEUE, OutboxComposeError } from './attempt'
 
 const tenantId = '33333333-3333-4333-8333-333333333333'
 const entryId = 'd1d1d1d1-1111-4111-8111-111111111111'
@@ -25,9 +25,9 @@ function entry(overrides: Partial<LoadedOutboxEntry> = {}): LoadedOutboxEntry {
     entryId,
     status: 'assigned',
     driverId,
-    rideDriverId: driverId,
     rideFinished: false,
-    pickupAt: new Date('2026-10-18T18:00:00.000Z'),
+    rideCancelled: false,
+    superseded: false,
     email,
     state: 'pending',
     attemptCount: 0,
@@ -47,6 +47,8 @@ function harness(initial: LoadedOutboxEntry[]) {
   const jobs: Array<{ id: string, name: string, tenantId: string, data: unknown, startAfter: Date }> = []
   const sent: Array<{ to: string, subject: string, text: string, html: string, idempotencyKey?: string }> = []
   let rejectSend = false
+  let composeFails = false
+  let unreadable = false
   const logs = captureLogs()
 
   const queue = {
@@ -91,8 +93,14 @@ function harness(initial: LoadedOutboxEntry[]) {
         now: () => now,
         openStore: () => ({
           async load(id) {
+            if (unreadable)
+              throw new Error(`db ${email} ${guest}`)
             const row = entries.get(id)
-            return row ? { ...row, message: row.message ? { ...row.message } : null } : null
+            if (!row)
+              return null
+            if (composeFails)
+              throw new OutboxComposeError({ ...row, message: null })
+            return { ...row, message: row.message ? { ...row.message } : null }
           },
           async save(id, patch: OutboxAttemptPatch) {
             const row = entries.get(id)
@@ -114,6 +122,12 @@ function harness(initial: LoadedOutboxEntry[]) {
     due,
     failSends() {
       rejectSend = true
+    },
+    failCompose() {
+      composeFails = true
+    },
+    failLoad() {
+      unreadable = true
     },
     advance(ms: number) {
       now = new Date(now.getTime() + ms)
@@ -157,27 +171,65 @@ it('stops after a successful attempt', async () => {
   expect(await world.due()).toBeNull()
 })
 
-it('marks a mail stale and sends nothing when it no longer matters', async () => {
-  const world = harness([entry({ rideDriverId: 'b2b2b2b2-2222-4222-8222-222222222222' })])
-  await world.enqueue(entryId, started)
-  expect(await world.due()).not.toBeNull()
-  expect(world.sent).toHaveLength(0)
-  expect(world.entries.get(entryId)).toMatchObject({ state: 'stale', attemptCount: 0 })
-  expect(world.jobs).toHaveLength(0)
+it('marks a mail stale and sends nothing when the Ride is finished or a newer work order replaced it', async () => {
+  const finished = harness([entry({ rideFinished: true })])
+  await finished.enqueue(entryId, started)
+  expect(await finished.due()).not.toBeNull()
+  expect(finished.sent).toHaveLength(0)
+  expect(finished.entries.get(entryId)).toMatchObject({ state: 'stale', attemptCount: 0 })
+  expect(finished.jobs).toHaveLength(0)
+
+  const replaced = harness([entry({ superseded: true, rideCancelled: true, status: 'cancelled' })])
+  await replaced.enqueue(entryId, started)
+  expect(await replaced.due()).not.toBeNull()
+  expect(replaced.sent).toHaveLength(0)
+  expect(replaced.entries.get(entryId)?.state).toBe('stale')
 })
 
-it('sends two pending mails for the same Ride and Driver, and does not stale the older one', async () => {
+it('still sends the cancellation notice, and sends after the pickup when nothing replaced the entry', async () => {
+  const world = harness([entry({ status: 'cancelled', rideCancelled: true })])
+  await world.enqueue(entryId, started)
+  expect(await world.due()).not.toBeNull()
+  expect(world.sent).toHaveLength(1)
+  expect(world.entries.get(entryId)?.state).toBe('sent')
+})
+
+it('sends the newer work order and does not send the one it replaced', async () => {
   const world = harness([
-    entry(),
+    entry({ superseded: true }),
     entry({ entryId: otherEntryId, status: 'changed', message: { ...message, subject: 'Promijenjeno' } }),
   ])
   await world.enqueue(entryId, started)
   await world.enqueue(otherEntryId, started)
   expect(await world.due()).not.toBeNull()
   expect(await world.due()).not.toBeNull()
-  expect(world.sent.map(mail => mail.subject)).toEqual(['Dodijeljeno', 'Promijenjeno'])
-  expect(world.entries.get(entryId)?.state).toBe('sent')
+  expect(world.sent.map(mail => mail.subject)).toEqual(['Promijenjeno'])
+  expect(world.entries.get(entryId)?.state).toBe('stale')
   expect(world.entries.get(otherEntryId)?.state).toBe('sent')
+})
+
+it('counts a compose failure as an attempt and queues the next job', async () => {
+  const world = harness([entry()])
+  world.failCompose()
+  await world.enqueue(entryId, started)
+  expect(await world.due()).not.toBeNull()
+  expect(world.sent).toHaveLength(0)
+  expect(world.entries.get(entryId)).toMatchObject({ state: 'pending', attemptCount: 1 })
+  expect(world.jobs).toHaveLength(1)
+  expect(world.jobs[0]?.startAfter).toEqual(new Date(started.getTime() + 60_000))
+})
+
+it('logs only the entry id and lets the job retry when the row cannot be read', async () => {
+  const world = harness([entry()])
+  world.failLoad()
+  await world.enqueue(entryId, started)
+  await expect(world.due()).rejects.toThrow(`db ${email}`)
+  expect(world.entries.get(entryId)).toMatchObject({ state: 'pending', attemptCount: 0 })
+  const [line] = world.logs.lines()
+  const { level: _level, time: _time, pid: _pid, hostname: _hostname, ...rest } = line ?? {}
+  expect(rest).toEqual({ event: 'mail_outbox.attempt_failed', entryId })
+  expect(JSON.stringify(line)).not.toContain(email)
+  expect(JSON.stringify(line)).not.toContain(guest)
 })
 
 it('counts a blank address found at a later attempt as a failure and does not send', async () => {

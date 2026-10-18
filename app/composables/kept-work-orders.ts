@@ -8,7 +8,7 @@ import { workOrderNotice, workOrderStaysInDetail } from '../work-order-notice'
 export interface KeptWorkOrder {
   id: string
   rideId: string
-  outcome: 'no_email' | 'failed'
+  outcome: 'no_email' | 'failed' | 'stale'
   driverName: string
   /** The command that produced the notice, so two results stay distinct. */
   actionTitle: string
@@ -30,7 +30,7 @@ export function useKeptWorkOrders() {
 
 /**
  * "Sent" is a toast. The visible root is `role="status"` and Reka announces
- * it politely (`type: 'background'`). The other two outcomes stay in the
+ * it politely (`type: 'background'`). Every other outcome stays in the
  * detail, with the same action title, until the user closes them.
  */
 export function useWorkOrderPresenter() {

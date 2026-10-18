@@ -11,6 +11,7 @@ import { enqueueMailOutboxJob, MAIL_RETRY_DELAYS_MS, markWorkOrderStale, noteWor
 import { ResendTransportError, withTenantFromSession } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { toPrice } from './transfers'
+import { readWorkOrderCurrentFacts } from './work-order-attempt'
 
 /**
  * The assigned Ride as the mail will describe it, read on the assign
@@ -247,7 +248,8 @@ export async function stageWorkOrder(
  * now would drop the vehicle a "no longer yours" mail must name. That
  * released vehicle id is already on the entry for the retry. Success marks
  * the entry sent. A rejection leaves it pending with the attempt counted.
- * A blank email never opened an entry.
+ * A blank email never opened an entry. A mail that no longer matters is
+ * not sent, the entry is stale, and the office hears `stale`.
  *
  * Noting the attempt has its own session. A failed statement aborts that
  * session, so the catch wraps the session, not only the update. The office
@@ -262,21 +264,21 @@ export async function deliverStagedWorkOrder(
   if (staged.entryId === null)
     return { driverId: staged.order.driverId, outcome: 'no_email' }
   const entryId = staged.entryId
-  // The snapshot still names this Driver, except "no longer yours", which
-  // names the Driver the Ride just released. A finished Ride is read on the
-  // retry. Here the only fact that can already be stale is the pickup.
-  const stillCurrent = workOrderIsCurrent({
-    status: staged.status,
-    driverId: staged.order.driverId,
-    rideDriverId: staged.status === 'no_longer_yours' ? null : staged.order.driverId,
-    rideFinished: false,
-    pickupAt: staged.order.pickupAt,
-    now: new Date(),
-  })
+  // The same rule as a retry. Pickup time is not part of it. The body
+  // stays the snapshot: a re-read would drop the released vehicle.
+  let stillCurrent = true
+  try {
+    const facts = await withTenantFromSession(headers, async ({ transaction }) =>
+      readWorkOrderCurrentFacts(transaction, entryId))
+    stillCurrent = facts === null || workOrderIsCurrent(facts)
+  }
+  catch {
+    const logger = log ?? getLogger()
+    logger.warn({ event: 'mail_outbox.note_failed', entryId })
+  }
   if (!stillCurrent) {
     await settleOutbox(headers, entryId, log, transaction => markWorkOrderStale(transaction, entryId))
-    // The office notice has no stale outcome. Nothing will be retried.
-    return { driverId: staged.order.driverId, outcome: 'failed' }
+    return { driverId: staged.order.driverId, outcome: 'stale' }
   }
   const notice = await deliverAssignedWorkOrder(staged.order, mailer, log, staged.status, entryId)
   // The Ride is already saved. Settle on its own session so a slow send

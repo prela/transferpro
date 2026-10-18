@@ -409,6 +409,7 @@ export function createResendMailer(
     // Only a work order carries a key. Other mails stay as they were.
     if (message.idempotencyKey !== undefined && message.idempotencyKey !== '')
       headers['Idempotency-Key'] = message.idempotencyKey
+    // A hung provider must not hold the office action or the worker.
     const response = await fetchImpl('https://api.resend.com/emails', {
       method: 'POST',
       headers,
@@ -419,6 +420,7 @@ export function createResendMailer(
         text: message.text,
         html: message.html,
       }),
+      signal: AbortSignal.timeout(15_000),
     })
     if (!response.ok) {
       // Drain the body so the socket can close. Do not put it on the error:

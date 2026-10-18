@@ -679,7 +679,7 @@ onUnmounted(() => {
       v-for="notice in pageNotices"
       :key="notice.id"
       role="alert"
-      :color="notice.outcome === 'failed' ? 'error' : 'warning'"
+      :color="workOrderNotice(notice.outcome).color"
       variant="subtle"
       class="mb-3"
       :title="notice.actionTitle"

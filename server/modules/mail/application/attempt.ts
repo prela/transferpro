@@ -31,14 +31,30 @@ export interface LoadedOutboxEntry {
   readonly entryId: string
   readonly status: WorkOrderStatus
   readonly driverId: string
-  readonly rideDriverId: string | null
+  /** `done` or `no-show`. A cancelled Ride is `rideCancelled`, not this. */
   readonly rideFinished: boolean
-  readonly pickupAt: Date
+  readonly rideCancelled: boolean
+  /** A newer work order for the same Ride was recorded after this entry. */
+  readonly superseded: boolean
   readonly email: string | null
   readonly state: 'pending' | 'sent' | 'failed' | 'stale'
   readonly attemptCount: number
   readonly nextAttemptAt: Date | null
   readonly message: OutboxMessage | null
+}
+
+/**
+ * The row was read, and composing the mail failed. The attempt can still
+ * be counted. The message is fixed so a guest or a place cannot leave on it.
+ */
+export class OutboxComposeError extends Error {
+  readonly entry: LoadedOutboxEntry
+
+  constructor(entry: LoadedOutboxEntry) {
+    super('Mail outbox read failed')
+    this.name = 'OutboxComposeError'
+    this.entry = entry
+  }
 }
 
 export interface OutboxAttemptPatch {
@@ -92,7 +108,23 @@ export async function attemptOutboxEntry(input: {
   readonly now: Date
   readonly log: Logger
 }): Promise<void> {
-  const entry = await input.store.load(input.entryId)
+  let entry: LoadedOutboxEntry | null
+  try {
+    entry = await input.store.load(input.entryId)
+  }
+  catch (error) {
+    if (error instanceof ResendTransportError)
+      throw error
+    // The row was read and the mail could not be composed. Count it below.
+    // A failure before the row is in hand has nothing to save, so pg-boss retries.
+    if (error instanceof OutboxComposeError) {
+      entry = error.entry
+    }
+    else {
+      input.log.warn({ event: 'mail_outbox.attempt_failed', entryId: input.entryId })
+      throw error
+    }
+  }
   if (!entry || entry.state !== 'pending')
     return
   if (entry.nextAttemptAt !== null && entry.nextAttemptAt.getTime() > input.now.getTime()) {
@@ -105,11 +137,9 @@ export async function attemptOutboxEntry(input: {
 
   const current = workOrderIsCurrent({
     status: entry.status,
-    driverId: entry.driverId,
-    rideDriverId: entry.rideDriverId,
     rideFinished: entry.rideFinished,
-    pickupAt: entry.pickupAt,
-    now: input.now,
+    rideCancelled: entry.rideCancelled,
+    superseded: entry.superseded,
   })
   if (!current) {
     await input.store.save(entry.entryId, {

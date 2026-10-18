@@ -761,6 +761,7 @@
     "workOrderSent": "Work order sent to {name}.",
     "workOrderNoEmail": "{name} has no email. No work order was sent.",
     "workOrderFailed": "The work order to {name} was not sent. We will try again.",
+    "workOrderStale": "The work order for {name} was not sent because it is no longer current.",
     "actions": "Actions",
     "acceptByPhone": "Record by phone",
     "acceptByPhoneFor": "Record acceptance by phone: {guest}",

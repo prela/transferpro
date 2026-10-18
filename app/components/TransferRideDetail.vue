@@ -213,7 +213,7 @@ const primaryLabel = computed(() => {
     <UAlert
       v-for="notice in notices"
       :key="notice.id"
-      :color="notice.outcome === 'failed' ? 'error' : 'warning'"
+      :color="workOrderNotice(notice.outcome).color"
       variant="subtle"
       class="mb-3"
       role="alert"

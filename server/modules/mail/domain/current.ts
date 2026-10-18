@@ -2,38 +2,30 @@ import type { WorkOrderStatus } from '../../../../shared'
 
 /**
  * Facts the current-ness rule needs. No names and no addresses.
- * `rideFinished` is `done`, `no-show`, or `cancelled`.
- * `now` and `pickupAt` are instants. The Tenant time zone is display only.
+ * `rideFinished` is `done` or `no-show`. `rideCancelled` is the Ride state
+ * `cancelled`. Pickup time is not a fact: Damir, 18.10., dropped it.
+ * `superseded` means a newer work order for the same Ride was recorded
+ * after this entry. Rows from the same transaction share `created_at`
+ * and do not supersede each other.
  */
 export interface WorkOrderCurrentFacts {
   readonly status: WorkOrderStatus
-  /** The Driver this mail is about. */
-  readonly driverId: string
-  /** The Driver on the Ride now. Null when the Ride has none. */
-  readonly rideDriverId: string | null
   readonly rideFinished: boolean
-  readonly pickupAt: Date
-  readonly now: Date
+  readonly rideCancelled: boolean
+  readonly superseded: boolean
 }
 
 /**
- * Whether this attempt should still be sent (ADR-0045).
- * Assigned and changed stay current while that Driver still has the Ride,
- * the Ride is not finished, and the pickup has not passed.
- * No longer yours stays current while that Driver does not have the Ride
- * again and the pickup has not passed. A finished Ride does not drop it:
- * the Driver check is the one the rule names.
- * Cancelled stays current while the pickup has not passed.
- * Another mail for the same Ride is not an input. Both can be current.
+ * Whether this attempt should still be sent (ADR-0045, Damir 18.10.).
+ * Stale only when the Ride is finished or cancelled, or a newer work
+ * order for that Ride replaced this one. A driver change by itself does
+ * not. The cancellation notice is why the Ride is cancelled, so that
+ * state does not make the notice stale. A newer entry still does.
  */
 export function workOrderIsCurrent(facts: WorkOrderCurrentFacts): boolean {
-  // At the pickup instant the pickup has not passed yet. A later instant has.
-  const pickupStillAhead = facts.now.getTime() <= facts.pickupAt.getTime()
-  if (!pickupStillAhead)
+  if (facts.superseded)
     return false
   if (facts.status === 'cancelled')
     return true
-  if (facts.status === 'no_longer_yours')
-    return facts.rideDriverId !== facts.driverId
-  return !facts.rideFinished && facts.rideDriverId === facts.driverId
+  return !facts.rideFinished && !facts.rideCancelled
 }

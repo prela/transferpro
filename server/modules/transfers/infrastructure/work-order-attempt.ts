@@ -1,20 +1,22 @@
 import type { WorkOrderStatus } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
-import type { LoadedOutboxEntry, OutboxAttemptPatch, OutboxAttemptStore } from '../../mail'
+import type { LoadedOutboxEntry, OutboxAttemptPatch, OutboxAttemptStore, WorkOrderCurrentFacts } from '../../mail'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { composeWorkOrder, locationLabel, paymentMethodSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadLocation } from '../../locations'
+import { OutboxComposeError } from '../../mail'
+import { ResendTransportError } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { toPrice } from './transfers'
 
 /**
- * `done`, `no-show`, and `cancelled` are finished. Assigned and accepted are not.
- * The current-ness rule uses that flag only for assigned and changed mails.
+ * `done` and `no-show` are finished. `cancelled` is reported on its own,
+ * because the cancellation notice is still sent (Damir 18.10.).
  */
-const FINISHED_RIDE_STATES = new Set(['done', 'no-show', 'cancelled'])
+const FINISHED_RIDE_STATES = new Set(['done', 'no-show'])
 
 const attemptRows = z.object({
   rows: z.array(z.object({
@@ -24,8 +26,8 @@ const attemptRows = z.object({
     state: z.enum(['pending', 'sent', 'failed', 'stale']),
     attemptCount: z.number().int(),
     nextAttemptAt: z.unknown(),
-    rideDriverId: z.uuid().nullable(),
     rideState: z.string(),
+    superseded: z.boolean(),
     rideVehicleId: z.uuid().nullable(),
     pickupAt: z.unknown(),
     startLocationId: z.uuid(),
@@ -72,8 +74,15 @@ export async function loadOutboxAttempt(
         o.state,
         o.attempt_count as "attemptCount",
         o.next_attempt_at as "nextAttemptAt",
-        r.driver_id as "rideDriverId",
         r.state as "rideState",
+        exists (
+          select 1
+          from app.mail_outbox as newer
+          where newer.tenant_id = o.tenant_id
+            and newer.ride_id = o.ride_id
+            and newer.kind = 'work_order'
+            and newer.created_at > o.created_at
+        ) as "superseded",
         r.vehicle_id as "rideVehicleId",
         t.pickup_at as "pickupAt",
         t.start_location_id as "startLocationId",
@@ -108,14 +117,76 @@ export async function loadOutboxAttempt(
   }, 'Mail outbox read failed')
   if (!row)
     return null
-  const message = await composeAttempt(transaction, row)
+  const loaded = entryFromRow(id, row, null)
+  let message: LoadedOutboxEntry['message']
+  try {
+    message = await composeAttempt(transaction, row)
+  }
+  catch (error) {
+    if (error instanceof ResendTransportError)
+      throw error
+    throw new OutboxComposeError(loaded)
+  }
+  return { ...loaded, message }
+}
+
+const currentRows = z.object({
+  rows: z.array(z.object({
+    status: z.enum(['assigned', 'changed', 'cancelled', 'no_longer_yours']),
+    rideState: z.string(),
+    superseded: z.boolean(),
+  })),
+})
+
+/**
+ * Current-ness for the first attempt, without composing the mail.
+ * The body still comes from the snapshot. This read only decides whether
+ * that snapshot is still worth sending. A missing row is null.
+ */
+export async function readWorkOrderCurrentFacts(
+  transaction: TenantTransaction,
+  entryId: string,
+): Promise<WorkOrderCurrentFacts | null> {
+  const id = z.uuid().parse(entryId)
+  const parsed = currentRows.parse(await hideDatabaseError(() => transaction.execute(sql`
+    select
+      o.work_order_status as "status",
+      r.state as "rideState",
+      exists (
+        select 1
+        from app.mail_outbox as newer
+        where newer.tenant_id = o.tenant_id
+          and newer.ride_id = o.ride_id
+          and newer.kind = 'work_order'
+          and newer.created_at > o.created_at
+      ) as "superseded"
+    from app.mail_outbox as o
+    join app.rides as r
+      on r.id = o.ride_id and r.tenant_id = o.tenant_id
+    where o.id = ${id}
+      and o.kind = 'work_order'
+    for update of o
+  `), 'Mail outbox read failed'))
+  const row = parsed.rows[0]
+  if (!row)
+    return null
+  return factsFrom(row.status, row.rideState, row.superseded)
+}
+
+function factsFrom(status: WorkOrderCurrentFacts['status'], rideState: string, superseded: boolean): WorkOrderCurrentFacts {
   return {
-    entryId: id,
-    status: row.status,
+    status,
+    rideFinished: FINISHED_RIDE_STATES.has(rideState),
+    rideCancelled: rideState === 'cancelled',
+    superseded,
+  }
+}
+
+function entryFromRow(entryId: string, row: AttemptRow, message: LoadedOutboxEntry['message']): LoadedOutboxEntry {
+  return {
+    entryId,
     driverId: row.driverId,
-    rideDriverId: row.rideDriverId,
-    rideFinished: FINISHED_RIDE_STATES.has(row.rideState),
-    pickupAt: toInstant(row.pickupAt),
+    ...factsFrom(row.status, row.rideState, row.superseded),
     email: row.email,
     state: row.state,
     attemptCount: row.attemptCount,

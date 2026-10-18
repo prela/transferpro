@@ -5,6 +5,7 @@ import { expect, it } from 'vitest'
 import { captureLogs } from '../../../core/testing'
 import { ResendTransportError } from '../../tenancy'
 import { deliverAssignedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
+import { readWorkOrderCurrentFacts } from './work-order-attempt'
 
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
@@ -264,6 +265,26 @@ it('records the released vehicle only on no longer yours', async () => {
   await stageWorkOrder(transaction, order, 'assigned')
   expect(seen[0]).toContain(vehicleId)
   expect(seen[1]).not.toContain(vehicleId)
+})
+
+it('reads whether a later work order replaced this one, and not the pickup', async () => {
+  const dialect = new PgDialect()
+  let seen: { sql: string } | undefined
+  const transaction = {
+    async execute(query: SQL) {
+      seen = dialect.sqlToQuery(query)
+      return { rows: [{ status: 'cancelled', rideState: 'cancelled', superseded: false }] }
+    },
+  } as unknown as TenantTransaction
+  await expect(readWorkOrderCurrentFacts(transaction, 'd1d1d1d1-1111-4111-8111-111111111111')).resolves.toEqual({
+    status: 'cancelled',
+    rideFinished: false,
+    rideCancelled: true,
+    superseded: false,
+  })
+  expect(seen?.sql).toContain('created_at')
+  expect(seen?.sql).not.toContain('pickup_at')
+  expect(seen?.sql).not.toContain('guest_name')
 })
 
 it('still aborts when the Resend transport is selected in test', async () => {
