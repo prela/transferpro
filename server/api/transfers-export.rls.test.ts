@@ -163,6 +163,15 @@ async function auditCount(tenantId: string): Promise<number> {
   return Number(result.rows[0]?.count)
 }
 
+/** The version stored now. The assign body requires it (ADR-0046). */
+async function transferVersion(transferId: string): Promise<number> {
+  const result = await ownerPool.query<{ version: number }>(
+    `select version from app.transfers where id = $1`,
+    [transferId],
+  )
+  return Number(result.rows[0]?.version ?? 0)
+}
+
 function transferBody(clientId: string, startId: string, endId: string, pickupAt: string, price: number, payment: PaymentMethod) {
   return {
     clientId,
@@ -244,7 +253,12 @@ it('a driver is 403, and an admin and a dispatcher download the calendar day inc
     0,
     'cash',
   ))
-  await assignRide(dispatcher, { rideId: assigned.ride.id, driverId: person.id, vehicleId: vehicle.id })
+  await assignRide(dispatcher, {
+    rideId: assigned.ride.id,
+    driverId: person.id,
+    vehicleId: vehicle.id,
+    version: await transferVersion(assigned.transfer.id),
+  })
   await cancelRide(dispatcher, dropped.ride.id, {})
 
   const refused = await call(driver, day, day)
