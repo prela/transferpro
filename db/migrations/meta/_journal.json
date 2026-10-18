@@ -302,6 +302,20 @@
       "when": 1791400032000,
       "tag": "0042_location_iata_active",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791400033000,
+      "tag": "0043_transfer_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791400034000,
+      "tag": "0044_tenant_member_tenant_id",
+      "breakpoints": true
     }
   ]
 }

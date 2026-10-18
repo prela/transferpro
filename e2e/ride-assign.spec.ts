@@ -227,7 +227,7 @@ test('submit stays disabled with only a driver', async ({ page }) => {
   await expect(submit).toBeDisabled()
 })
 
-test('assigning from the form after the ride is already assigned shows the not-unassigned message', async ({ page }) => {
+test('assigning from a form opened before the ride was assigned shows the generic failure', async ({ page }) => {
   const tenant = await seedTenant('assign-again')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   const guest = 'Iva Again'
@@ -247,11 +247,13 @@ test('assigning from the form after the ride is already assigned shows the not-u
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), driverName)
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), plate)
   const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
-    data: { driverId, vehicleId },
+    data: { version: 0, driverId, vehicleId },
   })
   expect(assigned.ok()).toBeTruthy()
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
-  await expect(page.getByRole('alert')).toContainText('Dodijeliti se može samo vožnja koja još nema vozača i vozilo.')
+  // The form still holds version 0. The API assign claimed it, so this save is stale.
+  // Until the who-and-when screen, that 409 uses the generic assign failure.
+  await expect(page.getByRole('alert')).toContainText('Vožnja nije dodijeljena. Pokušajte ponovno.')
   await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toBeVisible()
 })
 

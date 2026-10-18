@@ -242,17 +242,17 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
   await record('Yesterday Luka', `${previous}T12:00`, 'cash', 10)
 
   const waitingToday = await record('Waiting Nika', `${calendar}T13:00`, 'cash', 10)
-  await assignRide(admin, { rideId: waitingToday, driverId: mustDriver.id, vehicleId: vehicle.id })
+  await assignRide(admin, { rideId: waitingToday, driverId: mustDriver.id, vehicleId: vehicle.id, version: 0 })
   const waitingTomorrow = await record('Waiting Tomorrow', `${next}T15:00`, 'cash', 10)
-  await assignRide(admin, { rideId: waitingTomorrow, driverId: mustDriver.id, vehicleId: vehicle.id })
+  await assignRide(admin, { rideId: waitingTomorrow, driverId: mustDriver.id, vehicleId: vehicle.id, version: 0 })
 
   const progressYesterday = await record('Progress Lara', `${previous}T11:00`, 'cash', 10)
-  await assignRide(admin, { rideId: progressYesterday, driverId: plainDriver.id, vehicleId: vehicle.id })
+  await assignRide(admin, { rideId: progressYesterday, driverId: plainDriver.id, vehicleId: vehicle.id, version: 0 })
   const progressToday = await record('Progress Today', `${calendar}T10:00`, 'cash', 10)
-  await assignRide(admin, { rideId: progressToday, driverId: plainDriver.id, vehicleId: vehicle.id })
+  await assignRide(admin, { rideId: progressToday, driverId: plainDriver.id, vehicleId: vehicle.id, version: 0 })
 
   const aheadId = await record('Ahead Only', `${calendar}T20:00`, 'cash', 10)
-  await assignRide(admin, { rideId: aheadId, driverId: plainDriver.id, vehicleId: vehicle.id })
+  await assignRide(admin, { rideId: aheadId, driverId: plainDriver.id, vehicleId: vehicle.id, version: 0 })
 
   await setRideState(await record('Done Mia', `${calendar}T11:00`, 'cash', 10), 'done')
   await setRideState(await record('No-show Mia', `${calendar}T09:00`, 'cash', 10), 'no-show')
@@ -451,7 +451,7 @@ it('turns the landing alarm on from the stored landing plus the Tenant transfer 
     luggageCount: 0,
     childSeatCount: 0,
   })
-  await assignRide(admin, { rideId: recorded.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  await assignRide(admin, { rideId: recorded.ride.id, driverId: driver.id, vehicleId: vehicle.id, version: 0 })
   // 150 minutes before noon: duration 60 alarms (end + 60 is 30 minutes ago); duration 120 does not.
   const landing = new Date(now.getTime() - 150 * 60 * 1000)
   await ownerPool.query(
@@ -519,7 +519,7 @@ it('carries a decline alert and the Driver name for any day, drops it when the R
       luggageCount: 0,
       childSeatCount: 0,
     })
-    await assignRide(admin, { rideId: recorded.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+    await assignRide(admin, { rideId: recorded.ride.id, driverId: driver.id, vehicleId: vehicle.id, version: 0 })
     const declined = await declineRide(driverSession, recorded.ride.id, {})
     expect(declined.state).toBe('unassigned')
     return recorded.ride.id
@@ -564,7 +564,7 @@ it('carries a decline alert and the Driver name for any day, drops it when the R
     luggageCount: 0,
     childSeatCount: 0,
   })
-  await assignRide(foreignAdmin, { rideId: foreignRecorded.ride.id, driverId: foreignDriver.id, vehicleId: foreignVehicle.id })
+  await assignRide(foreignAdmin, { rideId: foreignRecorded.ride.id, driverId: foreignDriver.id, vehicleId: foreignVehicle.id, version: 0 })
   await declineRide(foreignDriverSession, foreignRecorded.ride.id, {})
 
   const audits = await auditCount(created.tenantId)
@@ -613,7 +613,8 @@ it('carries a decline alert and the Driver name for any day, drops it when the R
   expect(foreignHome).not.toContain('Danas Klara')
   expect(foreignHome).toContain('Strani Vozač')
 
-  await assignRide(admin, { rideId: todayId, driverId: driver.id, vehicleId: vehicle.id })
+  // Decline leaves the version from the first assign. This save was opened after that.
+  await assignRide(admin, { rideId: todayId, driverId: driver.id, vehicleId: vehicle.id, version: 1 })
   const again = officeHomeSchema.parse(await readOfficeHome(admin, now))
   expect(again.unassigned.map(row => row.rideId)).toEqual([tomorrowId, laterId])
   expect(JSON.stringify(again)).not.toContain(todayId)

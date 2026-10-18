@@ -96,7 +96,7 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
       throw new Error(`${response.status()} ${await response.text()}`)
     const body = await response.json() as { ride: { id: string } }
     const assigned = await page.request.post(`/api/rides/${body.ride.id}/assign`, {
-      data: { driverId, vehicleId },
+      data: { version: 0, driverId, vehicleId },
     })
     if (!assigned.ok())
       throw new Error(`${assigned.status()} ${await assigned.text()}`)

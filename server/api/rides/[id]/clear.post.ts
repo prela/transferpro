@@ -5,8 +5,9 @@ import { rideHttpError } from '../http'
 
 /**
  * POST /api/rides/:id/clear
- * Return an assigned or accepted Ride to unassigned. The body is empty.
- * Any key is 400 and is parsed before a session opens.
+ * Return an assigned or accepted Ride to unassigned. The body is the version
+ * the form was opened with. A missing version, or any other key, is 400
+ * and is parsed before a session opens. A mismatch is 409 `stale_save`.
  * A driver is 403. No session is 401.
  * A Ride that is not assigned or accepted is 409 and is unchanged.
  * The audit entry names the office member and the Driver and Vehicle that were cleared.

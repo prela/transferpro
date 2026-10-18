@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotOpenError, RideNotUnassignedError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError } from '../../modules/transfers'
+import { RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotOpenError, RideNotUnassignedError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
 import { rideHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -70,6 +70,15 @@ describe('rideHttpError', () => {
       statusCode: 409,
       data: { code: 'ride_not_cancellable' },
     })
+  })
+
+  it('returns the stale-save code and does not keep a name', () => {
+    const error = thrown(() => rideHttpError(new StaleSaveError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'stale_save' },
+    })
+    expect(JSON.stringify(error)).not.toContain('Ana Anić')
   })
 
   it('returns a distinct code when the reassignment names the same driver', () => {

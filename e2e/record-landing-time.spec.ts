@@ -75,7 +75,7 @@ test('the office and the Driver record a landing time in both languages and both
 
   await page.goto('/transfers')
   const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
-    data: { driverId, vehicleId },
+    data: { version: 0, driverId, vehicleId },
   })
   expect(assigned.ok()).toBeTruthy()
 
@@ -150,7 +150,7 @@ test('@phone a driver records a landing time from the next ride', async ({ page 
   expect(recorded.ok()).toBeTruthy()
   const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
   const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
-    data: { driverId, vehicleId },
+    data: { version: 0, driverId, vehicleId },
   })
   expect(assigned.ok()).toBeTruthy()
 

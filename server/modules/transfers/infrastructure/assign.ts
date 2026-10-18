@@ -3,7 +3,7 @@ import type { AssignRide, Ride, RosterVehicleSuggestion, ScheduleClash } from '.
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { assignTransitionAllowed, calendarDateInTimeZone, RIDE_ASSIGNMENT_FIELDS, rideStateSchema, RosterInputError } from '../../../../shared'
+import { assignTransitionAllowed, calendarDateInTimeZone, RIDE_ASSIGNMENT_FIELDS, RosterInputError } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { driverAssignState, driverIsInTenant } from '../../drivers'
@@ -11,13 +11,7 @@ import { vehicleIdForDriverOnDate } from '../../roster'
 import { loadTenantSettings, TenantSettingsMissingError } from '../../tenancy'
 import { vehiclePresence, vehiclePresenceForAssign } from '../../vehicles'
 import { checkRideSchedule } from './ride-schedule'
-
-const rideStateRows = z.object({
-  rows: z.array(z.object({
-    id: z.uuid(),
-    state: rideStateSchema,
-  })),
-})
+import { claimTransferVersion, lockTransferRide, refuseStaleVersion } from './transfer-version'
 
 const assignedRows = z.object({
   rows: z.array(z.object({
@@ -94,20 +88,18 @@ export class RideNotUnassignedError extends Error {
  * between the read and the Ride update.
  * An archived Driver is not a new assignment. The name stays on the row.
  * The caller has already required a dispatcher or an admin.
+ * The opened version is claimed with the assignment. A mismatch writes nothing.
  */
 export async function assignUnassignedRide(
   transaction: TenantTransaction,
   actorUserId: string,
   input: AssignRide,
 ): Promise<{ ride: Ride, relocationWarnings: ScheduleClash[] }> {
-  const current = rideStateRows.parse(await runRideStep(transaction, sql`
-    select id, state
-    from app.rides
-    where id = ${input.rideId}
-    for update
-  `, 'Ride assignment failed')).rows[0]
+  const current = await lockTransferRide(transaction, input.rideId, 'Ride assignment failed')
   if (!current)
     throw new RideNotFoundError()
+  // Stale before the state check: a colleague's save is not "already assigned".
+  refuseStaleVersion(current.version, input.version)
   if (!assignTransitionAllowed(current.state))
     throw new RideNotUnassignedError()
 
@@ -131,7 +123,9 @@ export async function assignUnassignedRide(
   })
 
   // The share lock held both fields. The update does not read the Driver again.
+  // The version claim and this update commit together. A lost claim rolls the Ride back.
   const mustAccept = driver.mustAccept
+  await claimTransferVersion(transaction, current.transferId, input.version, actorUserId, 'Ride assignment failed')
   const updated = assignedRows.parse(await runRideStep(transaction, sql`
     update app.rides
     set state = 'assigned',

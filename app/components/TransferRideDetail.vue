@@ -322,6 +322,7 @@ const primaryLabel = computed(() => {
       :day-rides="dayRides"
       :pickup-at="formRide.pickupAt"
       :landing-at="formRide.landingAt"
+      :version="formRide.version"
       @assigned="emit('saved')"
       @cancel="emit('command', null)"
     />
@@ -330,6 +331,7 @@ const primaryLabel = computed(() => {
       :ride-id="formRide.rideId"
       :guest-name="formRide.guestName"
       :vehicle-id="formRide.vehicleId"
+      :version="formRide.version"
       :drivers="drivers"
       :vehicles="vehicles"
       :phone="pinActions"
@@ -341,6 +343,7 @@ const primaryLabel = computed(() => {
       :ride-id="formRide.rideId"
       :guest-name="formRide.guestName"
       :driver-id="formRide.driverId"
+      :version="formRide.version"
       :drivers="drivers"
       :vehicles="vehicles"
       :phone="pinActions"

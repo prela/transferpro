@@ -311,6 +311,11 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   landingAlarm: z.boolean(),
   // Derived at read. Display only. Empty unless the Ride is assigned or accepted.
   warnings: boardWarningsSchema,
+  // The Transfer version the form was opened with (ADR-0046). One version covers the Ride.
+  version: z.number().int().nonnegative(),
+  // Null until an office data save. A member who has left leaves the name null.
+  changedAt: z.iso.datetime().nullable(),
+  changedByName: z.string().min(1).nullable(),
 })
 
 export type TransferDayRide = z.infer<typeof transferDayRideSchema>
@@ -473,14 +478,16 @@ export function parseCreateTransfer(raw: unknown, now: Date = new Date()): Creat
  */
 const correctionEnvelopeSchema = z.object({
   confirm: z.boolean().optional(),
+  // The version the form was opened with. Missing is the same 400 as a bad booking.
+  version: z.number().int().nonnegative(),
 }).passthrough()
 
-export function parseCorrectTransfer(raw: unknown, now: Date = new Date()): { input: CreateTransfer, confirm: boolean } {
+export function parseCorrectTransfer(raw: unknown, now: Date = new Date()): { input: CreateTransfer, confirm: boolean, version: number } {
   const envelope = correctionEnvelopeSchema.safeParse(raw)
   if (!envelope.success)
     throw new TransferInputError()
-  const { confirm, ...booking } = envelope.data
-  return { input: parseCreateTransfer(booking, now), confirm: confirm === true }
+  const { confirm, version, ...booking } = envelope.data
+  return { input: parseCreateTransfer(booking, now), confirm: confirm === true, version }
 }
 
 /**

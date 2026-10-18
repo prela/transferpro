@@ -81,7 +81,7 @@ test('search, Client, and Driver filters narrow the day and stay in the URL', as
     startLocationId,
     endLocationId,
   }, { flightNumber: 'OU222', tabla: 'IVO' })
-  const assigned = await page.request.post(`/api/rides/${rideId}/assign`, { data: { driverId, vehicleId } })
+  const assigned = await page.request.post(`/api/rides/${rideId}/assign`, { data: { version: 0, driverId, vehicleId } })
   expect(assigned.ok()).toBeTruthy()
 
   await page.goto(`/transfers?day=${day}`)

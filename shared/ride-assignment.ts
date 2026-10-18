@@ -22,6 +22,8 @@ export const assignRideSchema = z.strictObject({
   driverId: z.uuid(),
   vehicleId: z.uuid(),
   confirm: z.boolean().optional(),
+  /** The Transfer version the form was opened with. One version covers the Ride. */
+  version: z.number().int().nonnegative(),
 })
 
 export interface AssignRide {
@@ -30,6 +32,7 @@ export interface AssignRide {
   readonly vehicleId: string
   /** Set only after a 409 `ride_overlap`. A tight gap does not use this. */
   readonly confirm?: boolean
+  readonly version: number
 }
 
 /** The body was not an assignment. Nothing is written. */
@@ -106,6 +109,8 @@ export const changeRideVehicleSchema = z.strictObject({
   rideId: z.uuid(),
   vehicleId: z.uuid(),
   confirm: z.boolean().optional(),
+  /** The Transfer version the form was opened with. One version covers the Ride. */
+  version: z.number().int().nonnegative(),
 })
 
 export interface ChangeRideVehicle {
@@ -113,6 +118,7 @@ export interface ChangeRideVehicle {
   readonly vehicleId: string
   /** Set only after a 409 `ride_overlap`. A tight gap does not use this. */
   readonly confirm?: boolean
+  readonly version: number
 }
 
 /**
@@ -124,6 +130,8 @@ export const reassignRideSchema = z.strictObject({
   driverId: z.uuid(),
   vehicleId: z.uuid(),
   confirm: z.boolean().optional(),
+  /** The Transfer version the form was opened with. One version covers the Ride. */
+  version: z.number().int().nonnegative(),
 })
 
 export interface ReassignRide {
@@ -132,6 +140,7 @@ export interface ReassignRide {
   readonly vehicleId: string
   /** Set only after a 409 `ride_overlap`. A tight gap does not use this. */
   readonly confirm?: boolean
+  readonly version: number
 }
 
 /** The body was not one of these commands. Nothing is written. */
@@ -153,15 +162,16 @@ export function parseChangeRideVehicle(raw: unknown): ChangeRideVehicle {
 }
 
 /**
- * Accepts a clear. The path is the Ride. The body is empty. Any key throws
- * first, so the caller does not open a session. No body is the same empty object.
+ * Accepts a clear. The path is the Ride. The body is the version the form
+ * was opened with. Any other key throws first, so the caller does not open
+ * a session. A missing version is the same failure as an unknown key.
  */
-export function parseClearRide(rideId: unknown, body: unknown): string {
+export function parseClearRide(rideId: unknown, body: unknown): { rideId: string, version: number } {
   const id = z.uuid().safeParse(rideId)
-  const payload = body === undefined ? { success: true as const } : z.strictObject({}).safeParse(body)
+  const payload = z.strictObject({ version: z.number().int().nonnegative() }).safeParse(body)
   if (!id.success || !payload.success)
     throw new RideCommandInputError()
-  return id.data
+  return { rideId: id.data, version: payload.data.version }
 }
 
 /** Accepts a reassignment. A body that names only one id throws first. */

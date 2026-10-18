@@ -17,7 +17,7 @@ const toast = useToast()
 const { present } = useWorkOrderPresenter()
 const { notifyAuditChanged } = useAuditRefresh()
 
-const clearing = ref<{ rideId: string, guestName: string } | null>(null)
+const clearing = ref<{ rideId: string, guestName: string, version: number } | null>(null)
 const clearPending = ref(false)
 const clearErrorKey = ref<'ride.notOpen' | 'ride.notFound' | 'ride.signedOut' | 'ride.changeFailed' | null>(null)
 
@@ -29,7 +29,7 @@ function open(ride: TransferDayRide) {
   if (!canChangeAssignment(ride) || clearPending.value)
     return
   clearErrorKey.value = null
-  clearing.value = { rideId: ride.rideId, guestName: ride.guestName }
+  clearing.value = { rideId: ride.rideId, guestName: ride.guestName, version: ride.version }
 }
 
 function closeClear() {
@@ -62,7 +62,7 @@ async function confirmClear() {
   try {
     const cleared = assignedRideSchema.parse(await $fetch(`/api/rides/${target.rideId}/clear`, {
       method: 'POST',
-      body: {},
+      body: { version: target.version },
     }))
     notifyAuditChanged()
     // The notice names the Driver who lost the Ride. The address is not on the response.

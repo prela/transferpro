@@ -5,6 +5,7 @@ import { expect, it, vi } from 'vitest'
 import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
 import { changeRideVehicle, clearAssignedRide, reassignAssignedRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './ride-change'
 import { RideOverlapError } from './ride-schedule'
+import { StaleSaveError } from './transfer-version'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
@@ -26,6 +27,7 @@ interface Script {
   occupying?: Array<{ id: string, driverId: string, vehicleId: string, pickupAt: Date, landingAt: Date | null }>
   vehicle?: 'active' | 'archived' | 'missing'
   updateWins?: boolean
+  version?: number
 }
 
 function fakeTransaction(script: Script) {
@@ -35,13 +37,15 @@ function fakeTransaction(script: Script) {
       const compiled = dialect.sqlToQuery(query)
       queries.push(compiled)
       const text = compiled.sql
-      if (text.includes('for update') && text.includes('from app.rides')) {
+      if (text.includes('for update') && text.includes('app.rides')) {
         if (script.state === 'missing')
           return { rows: [] }
         return {
           rows: [{
             id: rideId,
+            transferId,
             state: script.state ?? 'assigned',
+            version: script.version ?? 0,
             driverId: script.driverId === undefined ? driverId : script.driverId,
             vehicleId: script.vehicleId === undefined ? vehicleId : script.vehicleId,
             mustAccept: script.mustAccept === undefined ? true : script.mustAccept,
@@ -91,6 +95,8 @@ function fakeTransaction(script: Script) {
           }],
         }
       }
+      if (text.includes('update app.transfers'))
+        return { rows: [{ id: transferId }] }
       if (text.includes('update app.rides')) {
         if (script.updateWins === false)
           return { rows: [] }
@@ -143,7 +149,7 @@ function wrote(queries: Array<{ sql: string }>): boolean {
 
 it('changes only the Vehicle on an assigned Ride and keeps the state and the copied flag', async () => {
   const { transaction, queries } = fakeTransaction({ state: 'assigned', mustAccept: true })
-  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId })).resolves.toEqual({
+  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId, version: 0 })).resolves.toEqual({
     ride: {
       id: rideId,
       transferId,
@@ -175,7 +181,7 @@ it('changes only the Vehicle on an assigned Ride and keeps the state and the cop
 
 it('changes only the Vehicle on an accepted Ride and leaves it accepted', async () => {
   const { transaction, queries } = fakeTransaction({ state: 'accepted', mustAccept: true })
-  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId })).resolves.toMatchObject({
+  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId, version: 0 })).resolves.toMatchObject({
     ride: {
       state: 'accepted',
       driverId,
@@ -189,35 +195,35 @@ it('changes only the Vehicle on an accepted Ride and leaves it accepted', async 
 
 it('refuses the same Vehicle, and writes no transition', async () => {
   const { transaction, queries } = fakeTransaction({})
-  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId })).rejects.toBeInstanceOf(RideVehicleUnchangedError)
+  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideVehicleUnchangedError)
   expect(wrote(queries)).toBe(false)
 })
 
 it('refuses a vehicle change when the Ride is not assigned or accepted, and writes nothing', async () => {
   for (const state of ['unassigned', 'done', 'no-show', 'cancelled'] as const) {
     const { transaction, queries } = fakeTransaction({ state, driverId: null, vehicleId: null, mustAccept: null })
-    await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId })).rejects.toBeInstanceOf(RideNotOpenError)
+    await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId, version: 0 })).rejects.toBeInstanceOf(RideNotOpenError)
     expect(wrote(queries)).toBe(false)
   }
 })
 
 it('refuses a missing Ride before it loads a Vehicle', async () => {
   const { transaction, queries } = fakeTransaction({ state: 'missing' })
-  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId })).rejects.toBeInstanceOf(RideNotFoundError)
+  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId, version: 0 })).rejects.toBeInstanceOf(RideNotFoundError)
   expect(queries.some(query => query.sql.includes('from app.vehicles'))).toBe(false)
   expect(wrote(queries)).toBe(false)
 })
 
 it('refuses an archived Vehicle on a vehicle change, and writes nothing', async () => {
   const { transaction, queries } = fakeTransaction({ vehicle: 'archived' })
-  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId })).rejects.toBeInstanceOf(RideVehicleArchivedError)
+  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId, version: 0 })).rejects.toBeInstanceOf(RideVehicleArchivedError)
   expect(wrote(queries)).toBe(false)
 })
 
 it('clears an assigned or accepted Ride and names the actor and the ids that were cleared', async () => {
   for (const state of ['assigned', 'accepted'] as const) {
     const { transaction, queries } = fakeTransaction({ state, mustAccept: true })
-    await expect(clearAssignedRide(transaction, actorUserId, rideId)).resolves.toEqual({
+    await expect(clearAssignedRide(transaction, actorUserId, rideId, 0)).resolves.toEqual({
       ride: {
         id: rideId,
         transferId,
@@ -248,7 +254,7 @@ it('clears an assigned or accepted Ride and names the actor and the ids that wer
 
 it('refuses a clear when the Ride is not assigned or accepted, and writes nothing', async () => {
   const { transaction, queries } = fakeTransaction({ state: 'done', mustAccept: true })
-  await expect(clearAssignedRide(transaction, actorUserId, rideId)).rejects.toBeInstanceOf(RideNotOpenError)
+  await expect(clearAssignedRide(transaction, actorUserId, rideId, 0)).rejects.toBeInstanceOf(RideNotOpenError)
   expect(wrote(queries)).toBe(false)
 })
 
@@ -256,6 +262,7 @@ it('reassigns an accepted Ride to another Driver, copies that Driver\'s flag, an
   const { transaction, queries } = fakeTransaction({ state: 'accepted', mustAccept: true, nextMustAccept: false })
   await expect(reassignAssignedRide(transaction, actorUserId, {
     rideId,
+    version: 0,
     driverId: otherDriverId,
     vehicleId: otherVehicleId,
   })).resolves.toEqual({
@@ -292,6 +299,7 @@ it('copies true when that is the new Driver\'s setting, including from assigned'
   const { transaction } = fakeTransaction({ state: 'assigned', mustAccept: false, nextMustAccept: true })
   await expect(reassignAssignedRide(transaction, actorUserId, {
     rideId,
+    version: 0,
     driverId: otherDriverId,
     vehicleId: otherVehicleId,
   })).resolves.toMatchObject({ ride: { state: 'assigned', mustAccept: true, driverId: otherDriverId } })
@@ -301,6 +309,7 @@ it('refuses a reassignment to an archived Driver, and writes nothing', async () 
   const { transaction, queries } = fakeTransaction({ state: 'assigned', driverArchived: true })
   await expect(reassignAssignedRide(transaction, actorUserId, {
     rideId,
+    version: 0,
     driverId: otherDriverId,
     vehicleId,
   })).rejects.toBeInstanceOf(RideDriverArchivedError)
@@ -311,6 +320,7 @@ it('refuses a reassignment to the same Driver, and writes nothing', async () => 
   const { transaction, queries } = fakeTransaction({})
   await expect(reassignAssignedRide(transaction, actorUserId, {
     rideId,
+    version: 0,
     driverId,
     vehicleId: otherVehicleId,
   })).rejects.toBeInstanceOf(RideSameDriverError)
@@ -322,6 +332,7 @@ it('refuses a reassignment when the new Driver is not in this Tenant, and writes
   const { transaction, queries } = fakeTransaction({ nextMustAccept: 'missing' })
   await expect(reassignAssignedRide(transaction, actorUserId, {
     rideId,
+    version: 0,
     driverId: otherDriverId,
     vehicleId: otherVehicleId,
   })).rejects.toBeInstanceOf(RideNotFoundError)
@@ -332,6 +343,7 @@ it('refuses a reassignment when the Ride is not open, and writes nothing', async
   const { transaction, queries } = fakeTransaction({ state: 'unassigned', driverId: null, vehicleId: null, mustAccept: null })
   await expect(reassignAssignedRide(transaction, actorUserId, {
     rideId,
+    version: 0,
     driverId: otherDriverId,
     vehicleId: otherVehicleId,
   })).rejects.toBeInstanceOf(RideNotOpenError)
@@ -342,7 +354,7 @@ const otherRideId = 'e2e2e2e2-3333-4333-8333-333333333333'
 
 it('does not check the schedule when a Ride is cleared', async () => {
   const { transaction, queries } = fakeTransaction({ state: 'assigned' })
-  await clearAssignedRide(transaction, actorUserId, rideId)
+  await clearAssignedRide(transaction, actorUserId, rideId, 0)
   expect(queries.some(query => query.sql.includes('landing_at'))).toBe(false)
   expect(queries.some(query => query.sql.includes('for share') && query.sql.includes('app.rides'))).toBe(false)
 })
@@ -357,7 +369,7 @@ it('refuses a vehicle change that overlaps the same Vehicle, and writes nothing'
       landingAt: null,
     }],
   })
-  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId })).rejects.toBeInstanceOf(RideOverlapError)
+  await expect(changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId, version: 0 })).rejects.toBeInstanceOf(RideOverlapError)
   expect(wrote(queries)).toBe(false)
 })
 
@@ -373,6 +385,7 @@ it('changes the Vehicle when that overlap is confirmed', async () => {
   })
   await expect(changeRideVehicle(transaction, actorUserId, {
     rideId,
+    version: 0,
     vehicleId: otherVehicleId,
     confirm: true,
   })).resolves.toMatchObject({ ride: { vehicleId: otherVehicleId } })
@@ -392,6 +405,7 @@ it('refuses a reassignment that overlaps the new Driver, and writes nothing', as
   })
   await expect(reassignAssignedRide(transaction, actorUserId, {
     rideId,
+    version: 0,
     driverId: otherDriverId,
     vehicleId: otherVehicleId,
   })).rejects.toBeInstanceOf(RideOverlapError)
@@ -411,6 +425,7 @@ it('reassigns when that overlap is confirmed', async () => {
   })
   await expect(reassignAssignedRide(transaction, actorUserId, {
     rideId,
+    version: 0,
     driverId: otherDriverId,
     vehicleId: otherVehicleId,
     confirm: true,
@@ -419,4 +434,39 @@ it('reassigns when that overlap is confirmed', async () => {
     relocationWarnings: [],
   })
   expect(wrote(queries)).toBe(true)
+})
+
+it('refuses a stale vehicle change, including one that would change nothing, before it writes', async () => {
+  const same = fakeTransaction({ version: 4 })
+  await expect(changeRideVehicle(same.transaction, actorUserId, {
+    rideId,
+    vehicleId,
+    version: 1,
+  })).rejects.toBeInstanceOf(StaleSaveError)
+  expect(wrote(same.queries)).toBe(false)
+  expect(same.queries.some(query => query.sql.includes('update app.transfers'))).toBe(false)
+
+  const moved = fakeTransaction({ version: 4 })
+  await expect(changeRideVehicle(moved.transaction, actorUserId, {
+    rideId,
+    vehicleId: otherVehicleId,
+    version: 1,
+  })).rejects.toBeInstanceOf(StaleSaveError)
+  expect(wrote(moved.queries)).toBe(false)
+})
+
+it('refuses a stale reassignment and a stale clear before it writes', async () => {
+  const moved = fakeTransaction({ version: 3, nextMustAccept: false })
+  await expect(reassignAssignedRide(moved.transaction, actorUserId, {
+    rideId,
+    driverId: otherDriverId,
+    vehicleId: otherVehicleId,
+    version: 0,
+  })).rejects.toBeInstanceOf(StaleSaveError)
+  expect(wrote(moved.queries)).toBe(false)
+
+  const cleared = fakeTransaction({ version: 3 })
+  await expect(clearAssignedRide(cleared.transaction, actorUserId, rideId, 0)).rejects.toBeInstanceOf(StaleSaveError)
+  expect(wrote(cleared.queries)).toBe(false)
+  expect(cleared.queries.some(query => query.sql.includes('update app.transfers'))).toBe(false)
 })

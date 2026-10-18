@@ -96,6 +96,8 @@ export function useTransferForm(options: {
   const formMode = ref<'add' | 'edit' | null>(null)
   const editingTransferId = ref<string | null>(null)
   const editingRideId = ref<string | null>(null)
+  // The version the correction was opened with. A refresh must not replace it.
+  const editingVersion = ref<number | null>(null)
   const formErrorKey = ref<TransferFailure | null>(null)
   const guestErrorKey = ref<'transfers.guestEmpty' | 'transfers.guestTooLong' | null>(null)
   const tablaErrorKey = ref<'transfers.tablaTooLong' | null>(null)
@@ -424,6 +426,7 @@ export function useTransferForm(options: {
     formMode.value = null
     editingTransferId.value = null
     editingRideId.value = null
+    editingVersion.value = null
     placeTarget.value = null
     clientTarget.value = false
     formErrorKey.value = null
@@ -454,6 +457,7 @@ export function useTransferForm(options: {
     }
     ignoreDraft = true
     editingTransferId.value = null
+    editingVersion.value = null
     clientId.value = undefined
     pickupWall.value = `${pickupDay}T12:00`
     startLocationId.value = undefined
@@ -494,6 +498,7 @@ export function useTransferForm(options: {
     ignoreDraft = true
     editingTransferId.value = null
     editingRideId.value = null
+    editingVersion.value = null
     applyDraft({
       clientId: fields.clientId,
       pickupWall: fields.pickupWall,
@@ -540,6 +545,7 @@ export function useTransferForm(options: {
     overlapOpen.value = false
     editingTransferId.value = ride.transferId
     editingRideId.value = ride.rideId
+    editingVersion.value = ride.version
     clientId.value = ride.clientId
     pickupWall.value = wallClockInTimeZone(options.timeZone(), new Date(ride.pickupAt))
     startLocationId.value = ride.startLocationId
@@ -583,10 +589,11 @@ export function useTransferForm(options: {
 
   async function saveCorrection(confirm = false) {
     const transferId = editingTransferId.value
+    const version = editingVersion.value
     options.saved.value = false
     options.corrected.value = false
     formErrorKey.value = null
-    if (!transferId || !formReady() || !clientId.value || !startLocationId.value || !endLocationId.value || !payment.value) {
+    if (version === null || !transferId || !formReady() || !clientId.value || !startLocationId.value || !endLocationId.value || !payment.value) {
       markInvalid()
       return
     }
@@ -596,6 +603,7 @@ export function useTransferForm(options: {
         method: 'PATCH',
         body: {
           ...bookingBody(),
+          version,
           ...(confirm ? { confirm: true } : {}),
         },
       }))

@@ -266,7 +266,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     if (input.assign) {
       // These Rides share a Driver on purpose so the list can show several.
       // The times overlap. The office records that with confirm.
-      await assignRide(admin, { rideId: recorded.ride.id, driverId: input.assign, vehicleId: vehicle.id, confirm: true })
+      await assignRide(admin, { rideId: recorded.ride.id, driverId: input.assign, vehicleId: vehicle.id, confirm: true, version: 0 })
       if (input.state || input.movePickupTo)
         await setRide(recorded.ride.id, { state: input.state, pickupAt: input.movePickupTo })
     }
@@ -436,7 +436,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     luggageCount: 0,
     childSeatCount: 0,
   })
-  await assignRide(foreignAdmin, { rideId: foreignRide.ride.id, driverId: foreignDriver.id, vehicleId: foreignVehicle.id })
+  await assignRide(foreignAdmin, { rideId: foreignRide.ride.id, driverId: foreignDriver.id, vehicleId: foreignVehicle.id, version: 0 })
 
   const again = driverUpcomingListSchema.parse(await (await call(driver, `?driverId=${foreignDriver.id}`)).json())
   expect(again.rides.map(row => row.guestName)).not.toContain('Iva Foreign')

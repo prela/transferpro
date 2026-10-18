@@ -121,7 +121,7 @@ test('the office Ride and the Driver Ride show a stored landing time in both lan
   await expect(page.getByText(landingHr)).toBeVisible()
 
   const assigned = await page.request.post(`/api/rides/${body.ride.id}/assign`, {
-    data: { driverId, vehicleId },
+    data: { version: 0, driverId, vehicleId },
   })
   if (!assigned.ok())
     throw new Error(`${assigned.status()} ${await assigned.text()}`)

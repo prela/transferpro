@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { text } from 'drizzle-orm/pg-core'
+import { text, uuid } from 'drizzle-orm/pg-core'
 import { member, user } from './auth-schema'
 import { appSchema } from './tenant-table'
 
@@ -14,11 +14,14 @@ export const tenantMember = appSchema.view('tenant_member', {
   userId: text('user_id').notNull(),
   name: text('name').notNull(),
   role: text('role').notNull(),
+  // The day read joins the author and requires this tenant on that join.
+  // Organization ids are the tenant uuid stored as text.
+  tenantId: uuid('tenant_id').notNull(),
 }).with({
   securityBarrier: true,
   securityInvoker: false,
 }).as(sql`
-  select ${member.userId}, ${user.name}, ${member.role}
+  select ${member.userId}, ${user.name}, ${member.role}, ${member.organizationId}::uuid as tenant_id
   from ${member}
   inner join ${user} on ${user.id} = ${member.userId}
   where ${member.organizationId} = app.current_tenant_id()::text

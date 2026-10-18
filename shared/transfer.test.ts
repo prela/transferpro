@@ -49,7 +49,7 @@ it('stores a Client reference trimmed, and a blank one as null', () => {
   expect(parseCreateTransfer({ ...body, clientReference: '  V-19  ' }, now).clientReference).toBe('V-19')
   expect(parseCreateTransfer({ ...body, clientReference: '   ' }, now).clientReference).toBeNull()
   expect(parseCreateTransfer({ ...body, clientReference: null }, now).clientReference).toBeNull()
-  expect(parseCorrectTransfer({ ...body, clientReference: '  V-20  ', confirm: true }, now).input.clientReference).toBe('V-20')
+  expect(parseCorrectTransfer({ ...body, clientReference: '  V-20  ', confirm: true, version: 0 }, now).input.clientReference).toBe('V-20')
   expect(() => parseCreateTransfer({
     ...body,
     clientReference: 'A'.repeat(CLIENT_REFERENCE_MAX_LENGTH + 1),
@@ -57,13 +57,16 @@ it('stores a Client reference trimmed, and a blank one as null', () => {
 })
 
 it('accepts confirm on a correction and refuses it on a new Transfer', () => {
-  expect(parseCorrectTransfer({ ...body, confirm: true }, now)).toMatchObject({
+  expect(parseCorrectTransfer({ ...body, confirm: true, version: 2 }, now)).toMatchObject({
     confirm: true,
+    version: 2,
     input: { guestName: guest, pickupAt: '2026-10-06T22:30:00.000Z' },
   })
-  expect(parseCorrectTransfer(body, now).confirm).toBe(false)
-  expect(() => parseCorrectTransfer({ ...body, confirm: 'yes' }, now)).toThrow(TransferInputError)
-  expect(() => parseCorrectTransfer({ ...body, confirm: true, plate: 'ZG1' }, now)).toThrow(TransferInputError)
+  expect(parseCorrectTransfer({ ...body, version: 0 }, now).confirm).toBe(false)
+  expect(() => parseCorrectTransfer({ ...body, confirm: 'yes', version: 0 }, now)).toThrow(TransferInputError)
+  expect(() => parseCorrectTransfer({ ...body, confirm: true, version: 0, plate: 'ZG1' }, now)).toThrow(TransferInputError)
+  expect(() => parseCorrectTransfer(body, now)).toThrow(TransferInputError)
+  expect(() => parseCorrectTransfer({ ...body, version: -1 }, now)).toThrow(TransferInputError)
   expect(() => parseCreateTransfer({ ...body, confirm: true }, now)).toThrow(TransferInputError)
 })
 

@@ -8,6 +8,7 @@ import { createLogger, handleLoggedError } from '../../../core/index'
 import { TenantSettingsMissingError } from '../../tenancy'
 import { assignUnassignedRide, RideDriverArchivedError, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError, suggestRosterVehicle } from './assign'
 import { RideOverlapError } from './ride-schedule'
+import { StaleSaveError } from './transfer-version'
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
@@ -19,6 +20,7 @@ const dialect = new PgDialect()
 
 interface Script {
   rideState?: 'unassigned' | 'assigned' | 'missing'
+  version?: number
   driverMustAccept?: boolean | 'missing'
   driverArchived?: boolean
   vehicle?: 'active' | 'archived' | 'missing'
@@ -48,10 +50,20 @@ function fakeTransaction(script: Script) {
         }
         throw new Error(script.fail.message)
       }
-      if (text.includes('for update') && text.includes('from app.rides')) {
+      if (text.includes('for update') && text.includes('app.rides')) {
         if (script.rideState === 'missing')
           return { rows: [] }
-        return { rows: [{ id: rideId, state: script.rideState ?? 'unassigned' }] }
+        return {
+          rows: [{
+            id: rideId,
+            transferId,
+            state: script.rideState ?? 'unassigned',
+            version: script.version ?? 0,
+            driverId: null,
+            vehicleId: null,
+            mustAccept: null,
+          }],
+        }
       }
       if (text.includes('from app.drivers')) {
         if (script.driverMustAccept === 'missing')
@@ -93,6 +105,8 @@ function fakeTransaction(script: Script) {
           }],
         }
       }
+      if (text.includes('update app.transfers'))
+        return { rows: [{ id: transferId }] }
       if (text.includes('update app.rides')) {
         if (script.updateWins === false)
           return { rows: [] }
@@ -146,7 +160,7 @@ function logLine(error: unknown): string {
 
 it('assigns only from unassigned, copies must-accept, and names fields not a plate or a phone', async () => {
   const { transaction, queries } = fakeTransaction({ driverMustAccept: true })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).resolves.toEqual({
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).resolves.toEqual({
     ride: {
       id: rideId,
       transferId,
@@ -183,7 +197,7 @@ it('assigns only from unassigned, copies must-accept, and names fields not a pla
 
 it('copies false when that is the Driver setting at the call', async () => {
   const { transaction, queries } = fakeTransaction({ driverMustAccept: false })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).resolves.toMatchObject({
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).resolves.toMatchObject({
     ride: { mustAccept: false },
     relocationWarnings: [],
   })
@@ -192,59 +206,59 @@ it('copies false when that is the Driver setting at the call', async () => {
 
 it('refuses a Ride that is not unassigned, and writes no transition and no audit entry', async () => {
   const { transaction, queries } = fakeTransaction({ rideState: 'assigned' })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideNotUnassignedError)
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideNotUnassignedError)
   expect(wroteAssignment(queries)).toBe(false)
 })
 
 it('refuses a missing Ride before it loads a Driver', async () => {
   const { transaction, queries } = fakeTransaction({ rideState: 'missing' })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideNotFoundError)
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideNotFoundError)
   expect(queries.some(query => query.sql.includes('from app.drivers'))).toBe(false)
   expect(wroteAssignment(queries)).toBe(false)
 })
 
 it('refuses a Driver that is not in this Tenant, and writes nothing', async () => {
   const { transaction, queries } = fakeTransaction({ driverMustAccept: 'missing' })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideNotFoundError)
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideNotFoundError)
   expect(wroteAssignment(queries)).toBe(false)
 })
 
 it('refuses an archived Driver, and writes nothing', async () => {
   const { transaction, queries } = fakeTransaction({ driverArchived: true })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideDriverArchivedError)
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideDriverArchivedError)
   expect(queries.some(query => query.sql.includes('update app.rides'))).toBe(false)
 })
 
 it('refuses an archived Vehicle, and writes nothing', async () => {
   const { transaction, queries } = fakeTransaction({ vehicle: 'archived' })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideVehicleArchivedError)
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideVehicleArchivedError)
   expect(wroteAssignment(queries)).toBe(false)
 })
 
 it('refuses a Vehicle that is not in this Tenant, and writes nothing', async () => {
   const { transaction, queries } = fakeTransaction({ vehicle: 'missing' })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideNotFoundError)
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideNotFoundError)
   expect(wroteAssignment(queries)).toBe(false)
 })
 
 it('replaces a database failure so the log line does not keep the bound ids', async () => {
   const leaked = `duplicate ${driverId} ${vehicleId} ${rideId}`
   const update = fakeTransaction({ fail: { sql: 'update app.rides', message: leaked } })
-  const updateError = await assignUnassignedRide(update.transaction, actorUserId, { rideId, driverId, vehicleId }).catch(caught => caught)
+  const updateError = await assignUnassignedRide(update.transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 }).catch(caught => caught)
   expect(updateError).toMatchObject({ message: 'Ride assignment failed' })
   expect(String(updateError)).not.toContain(driverId)
   expect(logLine(updateError)).not.toContain(vehicleId)
   expect(update.queries.some(query => query.sql.includes('audit.append_entry'))).toBe(false)
 
   const driver = fakeTransaction({ fail: { sql: 'from app.drivers', message: leaked } })
-  const driverError = await assignUnassignedRide(driver.transaction, actorUserId, { rideId, driverId, vehicleId }).catch(caught => caught)
+  const driverError = await assignUnassignedRide(driver.transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 }).catch(caught => caught)
   expect(driverError).toMatchObject({ message: 'Driver read failed' })
   expect(String(driverError)).not.toContain(driverId)
   expect(logLine(driverError)).not.toContain(rideId)
   expect(wroteAssignment(driver.queries)).toBe(false)
 
   const vehicle = fakeTransaction({ fail: { sql: 'from app.vehicles', message: leaked } })
-  const vehicleError = await assignUnassignedRide(vehicle.transaction, actorUserId, { rideId, driverId, vehicleId }).catch(caught => caught)
+  const vehicleError = await assignUnassignedRide(vehicle.transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 }).catch(caught => caught)
   expect(vehicleError).toMatchObject({ message: 'Vehicle read failed' })
   expect(String(vehicleError)).not.toContain(vehicleId)
   expect(logLine(vehicleError)).not.toContain(driverId)
@@ -326,7 +340,7 @@ it('keeps a roster input error from the pre-fill', async () => {
 
 it('treats a lost update as a conflict and appends nothing', async () => {
   const { transaction, queries } = fakeTransaction({ updateWins: false })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideNotUnassignedError)
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideNotUnassignedError)
   expect(queries.some(query => query.sql.includes('audit.append_entry'))).toBe(false)
 })
 
@@ -388,7 +402,7 @@ it('refuses an assign that truly overlaps the same Driver, and writes nothing', 
       landingAt: null,
     }],
   })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideOverlapError)
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideOverlapError)
   expect(wroteAssignment(queries)).toBe(false)
   const occupying = queries.find(query => query.sql.includes('for share') && query.sql.includes('app.rides'))
   expect(occupying?.sql).toContain('\'assigned\'')
@@ -412,6 +426,7 @@ it('assigns when the overlap is confirmed, and still writes the work-order path\
     rideId,
     driverId,
     vehicleId,
+    version: 0,
     confirm: true,
   })).resolves.toMatchObject({
     ride: { state: 'assigned', driverId, vehicleId },
@@ -430,7 +445,7 @@ it('assigns through a tight gap and reports the warning', async () => {
       landingAt: null,
     }],
   })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).resolves.toEqual({
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).resolves.toEqual({
     ride: {
       id: rideId,
       transferId,
@@ -455,6 +470,18 @@ it('treats a landing that stretches the window as a true overlap', async () => {
       landingAt: null,
     }],
   })
-  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId })).rejects.toBeInstanceOf(RideOverlapError)
+  await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideOverlapError)
   expect(wroteAssignment(queries)).toBe(false)
+})
+
+it('refuses a stale version before it writes the ride or an audit entry', async () => {
+  const { transaction, queries } = fakeTransaction({ version: 2 })
+  await expect(assignUnassignedRide(transaction, actorUserId, {
+    rideId,
+    driverId,
+    vehicleId,
+    version: 1,
+  })).rejects.toBeInstanceOf(StaleSaveError)
+  expect(wroteAssignment(queries)).toBe(false)
+  expect(queries.some(query => query.sql.includes('update app.transfers'))).toBe(false)
 })
