@@ -1,6 +1,6 @@
 # Ride occupation
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0034
 
 Damir locked this on 11 October 2026, with NEO, on issue #184. On 13 October 2026 it was extended to a Transfer correction that moves the occupied window. ADR-0005 still names who may assign, change the Vehicle, reassign, and clear. This decision adds when those commands refuse a time clash. It does not add a Ride state. ADR-0022 stands: in progress is derived.
 
