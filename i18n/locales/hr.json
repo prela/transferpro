@@ -891,7 +891,7 @@
       "title": "Neuspjeli mailovi",
       "resend": "Pošalji ponovno",
       "resendFor": "Pošalji ponovno: {driver}, {when}",
-      "stale": "Mail više nije aktualan",
+      "stale": "Mail više nije aktualan.",
       "notSent": "Mail nije poslan.",
       "status": {
         "assigned": "Dodijeljeno",

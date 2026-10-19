@@ -602,7 +602,7 @@ test('a resend that is no longer current keeps the sentence after the row leaves
   // Cancel after the list is on screen. The row is still there; the resend finds the Ride cancelled.
   expect((await page.request.post(`/api/rides/${rideId}/cancel`, { data: {} })).ok()).toBeTruthy()
   await block.getByRole('button', { name: /Pošalji ponovno/ }).click()
-  await expect(page.getByRole('alert').filter({ hasText: 'Mail više nije aktualan' })).toBeVisible()
+  await expect(page.getByRole('alert').filter({ hasText: 'Mail više nije aktualan.' })).toBeVisible()
   await expect(page.getByRole('heading', { name: /Neuspjeli mailovi/ })).toHaveCount(0)
 })
 

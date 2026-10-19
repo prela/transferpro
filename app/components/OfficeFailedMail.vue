@@ -39,12 +39,24 @@ async function resend(entryId: string) {
       notice.value = body.outcome
     await refreshSharedOfficeHome()
   }
-  catch {
+  catch (error) {
+    // 404: another member already settled this row. Refresh the list and
+    // stay quiet. Any other failure is "Mail nije poslan."
+    if (httpStatus(error) === 404) {
+      await refreshSharedOfficeHome()
+      return
+    }
     notice.value = 'failed'
   }
   finally {
     pendingId.value = null
   }
+}
+
+function httpStatus(error: unknown): number | null {
+  if (typeof error === 'object' && error !== null && 'statusCode' in error && typeof error.statusCode === 'number')
+    return error.statusCode
+  return null
 }
 </script>
 
