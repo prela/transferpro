@@ -565,6 +565,47 @@ test('a failed work order sits below Attention and Send again clears it, in both
   await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Home, 0', exact: true })).toBeVisible()
 })
 
+test('a resend that is no longer current keeps the sentence after the row leaves', async ({ page }) => {
+  const tenant = await seedTenant('home-stale-mail')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const places = await placesFor(page)
+  const driverId = await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Ana Slobodna',
+      kind: 'own',
+      phone: '+38595555181',
+      email: `e2e-stale-${tenant.tenantId.slice(0, 8)}@example.test`,
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+    },
+  }))
+  const vehicleId = await createdId(await page.request.post('/api/vehicles', {
+    data: {
+      registrationPlate: 'DU181AA',
+      kind: 'fixed',
+      registrationExpiresOn: licence,
+      technicalInspectionExpiresOn: licence,
+      insuranceExpiresOn: licence,
+    },
+  }))
+  const rideId = await record(page, 'Gost Klara', new Date(Date.now() + 5 * 60 * 60 * 1000), places, {
+    price: 10,
+    payment: 'cash',
+  })
+  expect((await page.request.post(`/api/rides/${rideId}/assign`, {
+    data: { version: 0, driverId, vehicleId },
+  })).ok()).toBeTruthy()
+  await plantFailedWorkOrder(tenant.tenantId, { rideId, driverId })
+  await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
+  const block = page.getByRole('region', { name: /Neuspjeli mailovi \(1\)/ })
+  await expect(block).toBeVisible()
+  // Cancel after the list is on screen. The row is still there; the resend finds the Ride cancelled.
+  expect((await page.request.post(`/api/rides/${rideId}/cancel`, { data: {} })).ok()).toBeTruthy()
+  await block.getByRole('button', { name: /Pošalji ponovno/ }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Mail više nije aktualan' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Neuspjeli mailovi/ })).toHaveCount(0)
+})
+
 async function placesFor(page: Page) {
   const clientId = await createdId(await page.request.post('/api/clients', {
     data: { name: 'Agencija Mora', kind: 'agency' },
