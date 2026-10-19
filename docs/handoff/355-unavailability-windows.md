@@ -26,6 +26,7 @@ Out of scope: Partner windows and the Partner handoff check (#206 step 21a-P), `
 ## Test edits flagged
 
 - `server/modules/mail/infrastructure/retention.rls.test.ts`: the pinned DELETE grant list gains `app.unavailability_windows transferpro_app`. Nothing else changed.
+- `e2e/settings-profile.spec.ts` (the hr/en locale test): the Croatian `Profil` heading check is now exact. It was a substring match, so the English `Profile` passed it and `page.goto('/')` aborted the save still in flight. CI rendered Home in English (PR #362, e2e shard 2). Stricter, not weaker.
 - Additive only. These files get new cases, and the only removed lines are imports widened to bring in new names. No assertion changed or was removed:
   - the domain `errors.test.ts` and `judge-ride.test.ts`;
   - `server/api/rides/http.test.ts` and `server/api/transfers/http.test.ts`;

@@ -60,7 +60,9 @@ test('profile saves hr and en through POST /api/locale and the next screen uses 
   )
   await page.getByRole('button', { name: 'Hrvatski', exact: true }).click()
   expect((await croatian).postDataJSON()).toEqual({ locale: 'hr' })
-  await expect(page.getByRole('heading', { level: 1, name: 'Profil' })).toBeVisible()
+  // Exact: 'Profil' is a substring of 'Profile', which would let Home load
+  // before the save lands and render in English.
+  await expect(page.getByRole('heading', { level: 1, name: 'Profil', exact: true })).toBeVisible()
 
   await page.goto('/')
   await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: /^Početna, \d+$/ })).toBeVisible()
