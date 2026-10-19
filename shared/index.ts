@@ -61,6 +61,8 @@ export type { ScreenWakeLockDeps, ScreenWakeLockPort, ScreenWakeLockSentinel, Sc
 export { sessionShellSchema } from './session-shell'
 export type { SessionShell } from './session-shell'
 export { signInErrorKey } from './sign-in-error'
+export { staleSaveNotice } from './stale-save'
+export type { StaleSaveNotice } from './stale-save'
 export { TENANT_NAME_MAX_LENGTH, tenantNameSchema } from './tenant-name'
 export { tenantRoleSchema } from './tenant-role'
 export type { TenantRole } from './tenant-role'

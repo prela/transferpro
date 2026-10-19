@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
-import type { Client, DisplayLocale, Driver, Location, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, DisplayLocale, Driver, LiveRefreshOutcome, Location, TransferDayRide, Vehicle } from '../../shared'
 import type { RideDetailCommand } from '../ride-detail'
 import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel } from '../../shared'
 import { useKeptWorkOrders } from '../composables/kept-work-orders'
@@ -23,7 +23,7 @@ const props = defineProps<{
   listDrivers: boolean
   /** Phone keeps the action bar on screen while the body scrolls. */
   pinActions: boolean
-  loadDay: () => Promise<void>
+  loadDay: () => Promise<LiveRefreshOutcome>
   operationalDayStartHour: number
   tenantId: string
   userId: string
@@ -50,7 +50,16 @@ const clients = defineModel<Client[]>('clients', { required: true })
 const { t } = useI18n()
 const { dismiss, kept } = useKeptWorkOrders()
 const titleId = useId()
-const correctForm = ref<{ formMode: 'add' | 'edit' | null } | null>(null)
+const snapshot = ref<TransferDayRide | null>(null)
+const rideChanged = ref(false)
+const staleNotice = ref(false)
+/** A failed day read has no new author. The notice then says someone, not the opened row. */
+const staleReadFailed = ref(false)
+const refreshing = ref(false)
+const correctForm = ref<{
+  formMode: 'add' | 'edit' | null
+  openCorrect: (ride: TransferDayRide) => void
+} | null>(null)
 
 watch(() => correctForm.value?.formMode, (mode, previous) => {
   // Cancel closes the form. Facts and the commands come back. A save sets
@@ -59,17 +68,18 @@ watch(() => correctForm.value?.formMode, (mode, previous) => {
     emit('command', null)
 })
 
-const snapshot = ref<TransferDayRide | null>(null)
-const rideChanged = ref(false)
-
 watch(() => props.command, (command) => {
   if (command) {
     snapshot.value = props.ride
     rideChanged.value = false
+    staleNotice.value = false
+    staleReadFailed.value = false
     return
   }
   snapshot.value = null
   rideChanged.value = false
+  staleNotice.value = false
+  staleReadFailed.value = false
 }, { immediate: true })
 
 watch(() => props.ride, (ride) => {
@@ -80,6 +90,44 @@ watch(() => props.ride, (ride) => {
 })
 
 const formRide = computed(() => (props.command && snapshot.value ? snapshot.value : props.ride))
+
+async function noteStale() {
+  // The 409 carries no name. The day read does. The snapshot stays, so the
+  // typed values and the opened version stay until Osvježi.
+  const outcome = await props.loadDay()
+  staleReadFailed.value = outcome === 'fail'
+  if (outcome !== 'fail')
+    await nextTick()
+  staleNotice.value = true
+}
+
+async function refreshStale() {
+  if (refreshing.value)
+    return
+  refreshing.value = true
+  try {
+    const outcome = await props.loadDay()
+    // A failed read keeps the last rows. A superseded one may not have
+    // applied its body yet. Either way the form stays on the opened version.
+    if (outcome === 'fail')
+      return
+    await nextTick()
+    if (outcome === 'stale' && snapshot.value && rideFormStamp(props.ride) === rideFormStamp(snapshot.value))
+      return
+    snapshot.value = props.ride
+    rideChanged.value = false
+    staleNotice.value = false
+    staleReadFailed.value = false
+    correctForm.value?.openCorrect(props.ride)
+    // Clear removes the Driver and the Vehicle. Those forms only exist while
+    // the opened row still has one, so the facts show the current Ride.
+    if ((props.command === 'vehicle' && !props.ride.vehicleId) || (props.command === 'reassign' && !props.ride.driverId))
+      emit('command', null)
+  }
+  finally {
+    refreshing.value = false
+  }
+}
 
 const notices = computed(() => kept.value.filter(entry =>
   entry.rideId === props.ride.rideId || entry.rideId === props.ride.transferId,
@@ -210,6 +258,17 @@ const primaryLabel = computed(() => {
       :ui="{ title: '!text-default !opacity-100', description: '!text-default !opacity-100' }"
     />
 
+    <StaleSaveAlert
+      v-if="staleNotice"
+      :changed-by-name="staleReadFailed ? null : ride.changedByName"
+      :changed-at="staleReadFailed ? null : ride.changedAt"
+      :time-zone="timeZone"
+      :locale="locale"
+      :phone="pinActions"
+      :pending="refreshing"
+      @refresh="refreshStale"
+    />
+
     <UAlert
       v-for="notice in notices"
       :key="notice.id"
@@ -323,6 +382,9 @@ const primaryLabel = computed(() => {
       :pickup-at="formRide.pickupAt"
       :landing-at="formRide.landingAt"
       :version="formRide.version"
+      :ride-driver-id="formRide.driverId"
+      :ride-vehicle-id="formRide.vehicleId"
+      :on-stale="noteStale"
       @assigned="emit('saved')"
       @cancel="emit('command', null)"
     />
@@ -335,6 +397,7 @@ const primaryLabel = computed(() => {
       :drivers="drivers"
       :vehicles="vehicles"
       :phone="pinActions"
+      :on-stale="noteStale"
       @saved="emit('saved')"
       @cancel="emit('command', null)"
     />
@@ -347,6 +410,7 @@ const primaryLabel = computed(() => {
       :drivers="drivers"
       :vehicles="vehicles"
       :phone="pinActions"
+      :on-stale="noteStale"
       @saved="emit('saved')"
       @cancel="emit('command', null)"
     />
@@ -363,7 +427,7 @@ const primaryLabel = computed(() => {
     <RideAcceptByPhoneDialog
       v-else-if="command === 'accept'"
       :ride="formRide"
-      :load-day="loadDay"
+      :load-day="async () => { await loadDay() }"
       :phone="pinActions"
       @done="emit('saved')"
       @cancel="emit('command', null)"
@@ -386,7 +450,8 @@ const primaryLabel = computed(() => {
       :tenant-id="tenantId"
       :user-id="userId"
       :drivers="drivers"
-      :load-day="loadDay"
+      :load-day="async () => { await loadDay() }"
+      :on-stale="noteStale"
     />
 
     <div

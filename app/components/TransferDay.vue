@@ -787,7 +787,7 @@ onUnmounted(() => {
               :operational-day-start-hour="operationalDayStartHour"
               :tenant-id="tenantId"
               :user-id="userId"
-              :load-day="async () => { await loadDay() }"
+              :load-day="() => loadDay()"
               @command="onCommand"
               @close="closeDetail"
               @back="backFromDetail"
@@ -859,7 +859,7 @@ onUnmounted(() => {
           :operational-day-start-hour="operationalDayStartHour"
           :tenant-id="tenantId"
           :user-id="userId"
-          :load-day="async () => { await loadDay() }"
+          :load-day="() => loadDay()"
           @command="onCommand"
           @close="closeDetail"
           @back="backFromDetail"
@@ -887,7 +887,10 @@ onUnmounted(() => {
     <TransferRideCommands
       ref="commands"
       :drivers="drivers"
-      :load-day="async () => { await loadDay() }"
+      :rides="rides"
+      :time-zone="timeZone"
+      :locale="locale"
+      :load-day="() => loadDay()"
       @saved="closeDetail"
     />
   </section>
