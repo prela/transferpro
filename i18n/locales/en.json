@@ -756,7 +756,8 @@
     "skipRefused": "{name}, {date}: the server refused",
     "given": "already given",
     "driverUnavailable": "Driver unavailable",
-    "vehicleUnavailable": "Vehicle unavailable"
+    "vehicleUnavailable": "Vehicle unavailable",
+    "unavailableMark": "unavailable"
   },
   "ride": {
     "title": "Assign the ride",

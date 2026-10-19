@@ -756,7 +756,8 @@
     "skipRefused": "{name}, {date}: poslužitelj nije prihvatio",
     "given": "već dano",
     "driverUnavailable": "Vozač nedostupan",
-    "vehicleUnavailable": "Vozilo nedostupno"
+    "vehicleUnavailable": "Vozilo nedostupno",
+    "unavailableMark": "nedostupno"
   },
   "ride": {
     "title": "Dodjela vožnje",

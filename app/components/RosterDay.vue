@@ -99,13 +99,18 @@ function givenVehicleIds(date: string, exceptDriverId: string): Set<string> {
 
 function vehicleItems(date: string, driverId: string) {
   const given = givenVehicleIds(date, driverId)
-  return activeVehicles.value.map(vehicle => ({
-    // The server still refuses a duplicate. The mark is only a hint.
-    label: given.has(vehicle.id)
-      ? `${vehicle.registrationPlate} (${t('roster.given')})`
-      : vehicle.registrationPlate,
-    value: vehicle.id,
-  }))
+  const away = new Set(windowsOn(date).flatMap(entry => entry.vehicleId === null ? [] : [entry.vehicleId]))
+  return activeVehicles.value.map((vehicle) => {
+    // The server still refuses a duplicate. The marks are only hints; a window does not block the roster.
+    const marks = [
+      ...(given.has(vehicle.id) ? [t('roster.given')] : []),
+      ...(away.has(vehicle.id) ? [t('roster.unavailableMark')] : []),
+    ]
+    return {
+      label: marks.length > 0 ? `${vehicle.registrationPlate} (${marks.join(', ')})` : vehicle.registrationPlate,
+      value: vehicle.id,
+    }
+  })
 }
 
 function assignedPlate(driverId: string, date: string): string | null {

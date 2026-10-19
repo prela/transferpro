@@ -180,4 +180,5 @@ test('a Vehicle window from one time to another, in English and the dark theme',
   await page.goto('/roster')
   await showRosterWeek(page, 'Previous week')
   await expect(page.getByRole('row').filter({ hasText: 'Ben Roster' })).toContainText('Vehicle unavailable')
+  await expect(page.locator(`#roster-vehicle-${driverId}-${rideDay}`)).toContainText('DU356AA (unavailable)')
 })
