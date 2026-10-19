@@ -44,6 +44,7 @@ export { correctTransfer, TransferNotCorrectableError, TransferNotFoundError } f
 export { declineRide, DeclineRideInputError, RideNotDeclinableError } from './infrastructure/decline'
 export { markRideDone, MarkRideDoneInputError, RideNotFinishableError } from './infrastructure/done'
 export { listUpcomingRides } from './infrastructure/driver-ride-access'
+export { FailedMailInputError, FailedMailNotFoundError, resendFailedMail } from './infrastructure/failed-mail'
 export { askFlightLandings, LandingTimeClosedError, LandingTimeInFutureError, recordLandingTime, refreshFlightLandings } from './infrastructure/flight-landing'
 export { startFlightLandingWorker } from './infrastructure/flight-landing-worker'
 export { RecordLandingInputError, recordRideLanding, RideLandingClosedError, RideLandingInFutureError } from './infrastructure/landing'

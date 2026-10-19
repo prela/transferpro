@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { check, foreignKey, integer, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { check, foreignKey, index, integer, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import { drivers } from './drivers'
 import { tenantTable } from './tenant-table'
 import { rides } from './transfers'
@@ -20,6 +20,8 @@ import { vehicles } from './vehicles'
  * The composite foreign keys refuse another Tenant's Ride, Driver, or Vehicle.
  * There is no DELETE grant. ADR-0045 allows a later retention job to delete
  * rows older than 90 days; that grant is not in this migration.
+ * The partial index is only the failed rows, so the Home refresh does not
+ * walk sent and pending mail. Current-ness is decided after that read.
  * FORCE RLS and the grants are in the migration. drizzle-kit cannot emit them.
  */
 export const mailOutbox = tenantTable('mail_outbox', {
@@ -35,6 +37,8 @@ export const mailOutbox = tenantTable('mail_outbox', {
   nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'date' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 }, table => [
+  // Home lists failed mail. The predicate matches `state = 'failed'` on that read (ADR-0045).
+  index('mail_outbox_failed_tenant_idx').on(table.tenantId).where(sql`${table.state} = 'failed'`),
   foreignKey({
     name: 'mail_outbox_ride_fk',
     columns: [table.tenantId, table.rideId],

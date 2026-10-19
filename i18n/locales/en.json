@@ -886,7 +886,20 @@
     "countRides": "Rides",
     "unassignedAlarm": "Unassigned alarm",
     "unclosedMark": "Unclosed mark",
-    "landingAlarm": "Landing alarm"
+    "landingAlarm": "Landing alarm",
+    "failedMail": {
+      "title": "Failed mail",
+      "resend": "Send again",
+      "resendFor": "Send again: {driver}, {when}",
+      "stale": "This mail is no longer current.",
+      "notSent": "The mail was not sent.",
+      "status": {
+        "assigned": "Assigned",
+        "changed": "Changed",
+        "cancelled": "Cancelled",
+        "no_longer_yours": "No longer yours"
+      }
+    }
   },
   "expiringDocuments": {
     "title": "Expiring documents",

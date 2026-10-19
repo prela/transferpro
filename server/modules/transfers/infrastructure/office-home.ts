@@ -2,13 +2,14 @@ import type { OfficeHome, OfficeHomeRide } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { buildOfficeHome, localDayBounds, operationalDateInTimeZone, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema } from '../../../../shared'
+import { buildOfficeHome, localDayBounds, officeHomeSchema, operationalDateInTimeZone, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { loadClients } from '../../clients'
 import { loadDrivers } from '../../drivers'
 import { loadLocations } from '../../locations'
 import { loadTenantSettings } from '../../tenancy'
 import { loadVehicles } from '../../vehicles'
+import { loadFailedWorkOrders } from './failed-mail'
 import { toInstant, toPrice } from './transfers'
 
 const sourceRowSchema = z.object({
@@ -133,7 +134,11 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
     }
   })
 
-  return buildOfficeHome(rides, now, timeZone, startHour, settings.transferDurationMinutes)
+  const home = buildOfficeHome(rides, now, timeZone, startHour, settings.transferDurationMinutes)
+  // Derived on read. A finished Ride or a newer work order for this Driver drops the row.
+  // Nothing is written, so a refresh cannot turn a failed row into stale by itself.
+  const failedMails = await loadFailedWorkOrders(transaction, drivers, places)
+  return officeHomeSchema.parse({ ...home, failedMails })
 }
 
 /** A missing Driver or Vehicle for an id that is set fails the whole read. A null id is an empty name. */

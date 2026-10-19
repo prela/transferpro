@@ -32,3 +32,23 @@ export function workOrderIsCurrent(facts: WorkOrderCurrentFacts): boolean {
     return true
   return !facts.rideCancelled
 }
+
+const FINISHED_RIDE_STATES = new Set(['done', 'no-show'])
+
+/**
+ * A failed work order still belongs on Home when a send would still go out.
+ * Pickup time is not a fact. "No longer yours" stays when the Ride is cancelled
+ * and leaves when that Ride is finished or this Driver has a newer work order.
+ */
+export function failedWorkOrderMatters(row: {
+  readonly status: WorkOrderCurrentFacts['status']
+  readonly rideState: string
+  readonly superseded: boolean
+}): boolean {
+  return workOrderIsCurrent({
+    status: row.status,
+    rideFinished: FINISHED_RIDE_STATES.has(row.rideState),
+    rideCancelled: row.rideState === 'cancelled',
+    superseded: row.superseded,
+  })
+}
