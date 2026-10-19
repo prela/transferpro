@@ -756,7 +756,7 @@ async function transferVersion(rideId: string): Promise<number> {
   return Number(version.rows[0]?.version)
 }
 
-it('hides Tenant A entries from Tenant B and refuses a delete', async () => {
+it('hides Tenant A entries from Tenant B, and Tenant B cannot change or delete them', async () => {
   const world = await office('mbox-iso-a')
   const other = await office('mbox-iso-b')
   const driver = await createDriver(world.dispatcher, {
@@ -787,10 +787,13 @@ it('hides Tenant A entries from Tenant B and refuses a delete', async () => {
   const seenByB = await withAppTenant(other.tenantId, async (client) => {
     const selected = await client.query('select id from app.mail_outbox')
     const updated = await client.query(`update app.mail_outbox set state = 'failed'`)
-    return { rows: selected.rows, updated: updated.rowCount }
+    // ADR-0045 grants DELETE for the 90-day job. The row policy still hides A's entries from B.
+    const deleted = await client.query('delete from app.mail_outbox')
+    return { rows: selected.rows, updated: updated.rowCount, deleted: deleted.rowCount }
   })
   expect(seenByB.rows).toEqual([])
   expect(seenByB.updated).toBe(0)
+  expect(seenByB.deleted).toBe(0)
 
   await expect(withAppTenant(other.tenantId, client =>
     client.query(
@@ -798,9 +801,6 @@ it('hides Tenant A entries from Tenant B and refuses a delete', async () => {
        values ($1, 'work_order', $2, $3, 'assigned', 'pending')`,
       [world.tenantId, recorded.ride.id, driver.id],
     ))).rejects.toMatchObject({ code: '42501' })
-
-  await expect(withAppTenant(world.tenantId, client =>
-    client.query('delete from app.mail_outbox'))).rejects.toMatchObject({ code: '42501' })
 
   const [row] = await rowsFor(recorded.ride.id)
   expect(row).toMatchObject({ state: 'sent', attempt_count: 1 })

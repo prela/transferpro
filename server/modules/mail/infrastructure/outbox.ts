@@ -188,6 +188,21 @@ export async function settleFailedOutboxEntry(
     throw new Error('Mail outbox update failed')
 }
 
+const deletedRows = z.object({ rowCount: z.number().int().nonnegative() })
+
+/**
+ * Delete this Tenant's entries created before `before`, in every state (ADR-0045).
+ * The caller's transaction already holds the tenant session, so the row policy
+ * keeps every other Tenant's entries out of reach. Returns the count only.
+ */
+export async function deleteOutboxEntriesBefore(transaction: TenantTransaction, before: Date): Promise<number> {
+  const cutoff = z.date().parse(before)
+  const deleted = deletedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
+    delete from app.mail_outbox where created_at < ${cutoff}
+  `), 'Mail outbox delete failed'))
+  return deleted.rowCount
+}
+
 const kindRows = z.object({
   rows: z.array(z.object({ kind: z.enum(['work_order', 'invitation']) })),
 })

@@ -337,6 +337,13 @@
       "when": 1791400037000,
       "tag": "0047_client_version",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791400038000,
+      "tag": "0048_mail_outbox_retention",
+      "breakpoints": true
     }
   ]
 }
