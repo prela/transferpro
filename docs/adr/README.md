@@ -60,3 +60,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0044 | Hashed reset identifiers | accepted |
 | ADR-0045 | Mail outbox with retries | accepted |
 | ADR-0046 | Refuse a stale save | accepted |
+| ADR-0047 | Invitation outbox entry after the Better Auth commit | accepted |

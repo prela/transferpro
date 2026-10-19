@@ -5,7 +5,7 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import pg from 'pg'
 import { afterAll, expect, it } from 'vitest'
 import { openTenantSession } from '../../../core/index'
-import { failedWorkOrdersQuery } from './failed-mail'
+import { failedInvitationsQuery, failedWorkOrdersQuery } from './failed-mail'
 
 /**
  * The Home refresh must use the partial index on failed mail (ADR-0045).
@@ -52,5 +52,20 @@ it('finds failed work orders through the partial index on tenant_id', async () =
   const plan = JSON.stringify(explained)
   expect(plan).toContain('mail_outbox_failed_tenant_idx')
   expect(compiled.sql).toContain(`'failed'`)
+  expect(compiled.sql).not.toContain('email')
+})
+
+it('finds failed invitations through the same partial index, without an address', async () => {
+  const compiled = dialect.sqlToQuery(failedInvitationsQuery())
+  const tenantId = '11111111-1111-4111-8111-111111111111'
+  const explained = await appDb.transaction(async (transaction) => {
+    return openTenantSession(transaction, { tenantId }, async () => {
+      await transaction.execute(sql`set local enable_seqscan = off`)
+      return transaction.execute(sql.raw(`explain (format json) ${compiled.sql}`))
+    })
+  })
+  expect(JSON.stringify(explained)).toContain('mail_outbox_failed_tenant_idx')
+  expect(compiled.sql).toContain(`'failed'`)
+  expect(compiled.sql).toContain('app.tenant_invitation')
   expect(compiled.sql).not.toContain('email')
 })

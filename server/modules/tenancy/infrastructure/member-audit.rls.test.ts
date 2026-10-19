@@ -1,3 +1,4 @@
+import type { InvitationMailPort } from '..'
 import type { TenantRole } from '../../../../shared'
 import type { AuthHandle } from './auth'
 import type { Actor } from './session'
@@ -32,6 +33,9 @@ function required(name: string): string {
 const authDatabaseUrl = required('AUTH_DATABASE_URL')
 const migrateDatabaseUrl = required('DATABASE_MIGRATE_URL')
 const password = 'member-audit-password'
+
+/** The audit seam does not observe mail. The invite call's outbox has its own test. */
+const noMail: InvitationMailPort = { deliver: async () => 'sent' }
 
 const authPool = new pg.Pool({ connectionString: authDatabaseUrl })
 const ownerPool = new pg.Pool({ connectionString: migrateDatabaseUrl })
@@ -121,7 +125,7 @@ it('inviting, changing a role, and removing a member each append exactly one ent
   const admin = await signIn('ma-actions-acting@example.test')
   const target = await addMember(created.tenantId, 'ma-actions-target@example.test', 'Tara Target', 'driver')
 
-  await inviteMember(admin, { email: 'ma-actions-invitee@example.test', role: 'driver' })
+  await inviteMember(admin, { email: 'ma-actions-invitee@example.test', role: 'driver' }, noMail)
   await changeMemberRole(admin, target, { role: 'dispatcher' })
   // Read while Tara is still a member, so her name resolves.
   const beforeRemoval = await readAuditLog(admin)
@@ -151,11 +155,11 @@ it('a refused invite, role change, or removal appends nothing', async () => {
   const driverHeaders = await signIn('ma-refused-driver@example.test')
   const invite = { email: 'ma-refused-invitee@example.test', role: 'driver' }
 
-  await expect(inviteMember(dispatcherHeaders, invite)).rejects.toMatchObject({ statusCode: 403 })
-  await expect(inviteMember(driverHeaders, invite)).rejects.toMatchObject({ statusCode: 403 })
-  await expect(inviteMember(admin, { ...invite, role: 'owner' })).rejects.toMatchObject({ statusCode: 400 })
+  await expect(inviteMember(dispatcherHeaders, invite, noMail)).rejects.toMatchObject({ statusCode: 403 })
+  await expect(inviteMember(driverHeaders, invite, noMail)).rejects.toMatchObject({ statusCode: 403 })
+  await expect(inviteMember(admin, { ...invite, role: 'owner' }, noMail)).rejects.toMatchObject({ statusCode: 400 })
   // Already a member. Better Auth's code is a 409, and nothing is written.
-  await expect(inviteMember(admin, { email: 'ma-refused-dispatcher@example.test', role: 'driver' })).rejects.toMatchObject({ statusCode: 409 })
+  await expect(inviteMember(admin, { email: 'ma-refused-dispatcher@example.test', role: 'driver' }, noMail)).rejects.toMatchObject({ statusCode: 409 })
 
   await expect(changeMemberRole(dispatcherHeaders, driver, { role: 'dispatcher' })).rejects.toMatchObject({ statusCode: 403 })
   await expect(removeTenantMember(driverHeaders, dispatcher)).rejects.toMatchObject({ statusCode: 403 })
@@ -256,8 +260,8 @@ it('only an admin reads the audit log, and only their own Tenant\'s entries', as
   const admin = await signIn('ma-read-admin@example.test')
   const otherAdmin = await signIn('ma-read-other-admin@example.test')
 
-  await inviteMember(admin, { email: 'ma-read-invitee@example.test', role: 'dispatcher' })
-  await inviteMember(otherAdmin, { email: 'ma-read-other-invitee@example.test', role: 'driver' })
+  await inviteMember(admin, { email: 'ma-read-invitee@example.test', role: 'dispatcher' }, noMail)
+  await inviteMember(otherAdmin, { email: 'ma-read-other-invitee@example.test', role: 'driver' }, noMail)
 
   const seen = await readAuditLog(admin)
   const seenByOther = await readAuditLog(otherAdmin)

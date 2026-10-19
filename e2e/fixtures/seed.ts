@@ -250,6 +250,24 @@ export async function plantFailedWorkOrder(tenantId: string, input: {
   }
 }
 
+/**
+ * The automatic invitation retries take about 36 minutes. This leaves the
+ * row they would: the invitation's entry, failed after four attempts.
+ * The id comes from the link the dialog showed. It is not logged.
+ */
+export async function failInvitationMail(tenantId: string, invitationId: string): Promise<void> {
+  await withOwnerTransaction(tenantId, async (client) => {
+    const updated = await client.query(
+      `update app.mail_outbox
+       set state = 'failed', attempt_count = 4, next_attempt_at = null
+       where tenant_id = $1 and kind = 'invitation' and invitation_id = $2`,
+      [tenantId, invitationId],
+    )
+    if (updated.rowCount !== 1)
+      throw new Error('Invitation mail was not marked failed.')
+  })
+}
+
 async function withOwnerTransaction(tenantId: string, write: (client: pg.PoolClient) => Promise<void>): Promise<void> {
   const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
   const client = await pool.connect()

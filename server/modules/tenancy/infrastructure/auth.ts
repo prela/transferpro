@@ -10,9 +10,8 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
 import * as authSchema from '../../../../db/auth-schema'
-import { inviteLink, passwordLengthLimits, SUPERADMIN_SESSION_SECONDS, tenantRoleSchema } from '../../../../shared'
+import { passwordLengthLimits, SUPERADMIN_SESSION_SECONDS, tenantRoleSchema } from '../../../../shared'
 import { getLogger, nodeEnv } from '../../../core/index'
-import { deliverInvitationEmail, inviteSendState } from './invite-send'
 import { noticePasswordChanged, passwordMailAccount, queuePasswordChangedMail } from './password-changed'
 import { createResetMailLimiter, deleteRemainingResetTokens, hashResetPasswordIdentifier, queuePasswordReset, RESET_PASSWORD_IDENTIFIER_PREFIX, RESET_PASSWORD_TOKEN_SECONDS } from './password-reset'
 import { invitationExpiresInSeconds, organizationRoles } from './tenant-roles'
@@ -60,6 +59,9 @@ const disabledPaths = [
   '/organization/list-members',
   '/organization/get-full-organization',
   '/organization/list-invitations',
+  // The invite goes through /api/invitations, which writes the mail outbox
+  // entry (ADR-0045). This route would create an invitation with no mail.
+  '/organization/invite-member',
 ]
 
 export interface Membership {
@@ -128,6 +130,23 @@ const invitationRow = z.object({
   expires_at: z.coerce.date(),
   organization_id: z.string(),
 })
+
+const invitationForMailRow = z.object({
+  email: z.string().min(1),
+  role: z.string().nullable(),
+  status: z.string(),
+  expires_at: z.coerce.date(),
+  tenant_name: z.string().min(1),
+})
+
+/** What the outbox needs to compose an invitation and decide whether it is current. */
+export interface InvitationForMailRecord {
+  readonly email: string
+  readonly role: string | null
+  readonly status: string
+  readonly expiresAt: Date
+  readonly tenantName: string
+}
 
 export interface InvitationRecord {
   readonly id: string
@@ -384,19 +403,8 @@ export function createAuth(
               throw new APIError('BAD_REQUEST', { message: 'Role is not valid.' })
           },
         },
-        async sendInvitationEmail(data) {
-          const pending = inviteSendState.getStore()
-          const role = tenantRoleSchema.safeParse(data.role)
-          if (!role.success)
-            return
-          await deliverInvitationEmail(options?.mailer, {
-            to: data.email,
-            inviteUrl: inviteLink(env.BETTER_AUTH_URL, data.id),
-            role: role.data,
-            tenantName: data.organization.name,
-            locale: pending?.locale ?? 'hr',
-          })
-        },
+        // No sendInvitationEmail. The invite call writes an outbox entry and
+        // the outbox sends it, so a failed send is retried (ADR-0045).
       }),
     ],
   })
@@ -430,6 +438,45 @@ export function createAuth(
         expiresAt: row.data.expires_at,
         organizationId: row.data.organization_id,
       }
+    },
+    /**
+     * The invitation as its mail needs it, limited to one Tenant. The
+     * caller passes the Tenant from the session or the job envelope.
+     * The email and the id are bearer material. Do not log the result.
+     */
+    async invitationForMail(organizationId: string, id: string): Promise<InvitationForMailRecord | null> {
+      const result = await pool.query(
+        `select i.email, i.role, i.status, i.expires_at, o.name as tenant_name
+         from auth.invitation as i
+         join auth.organization as o on o.id = i.organization_id
+         where i.id = $1 and i.organization_id = $2`,
+        [id, organizationId],
+      )
+      const row = invitationForMailRow.safeParse(result.rows[0])
+      if (!row.success)
+        return null
+      return {
+        email: row.data.email,
+        role: row.data.role,
+        status: row.data.status,
+        expiresAt: row.data.expires_at,
+        tenantName: row.data.tenant_name,
+      }
+    },
+    /**
+     * Invitee addresses for the Home failed-mail block, keyed by invitation id.
+     * The caller passes ids its tenant session already listed, so another
+     * Tenant's invitations are not here. Do not log the result.
+     */
+    async invitationEmailsById(organizationId: string, ids: readonly string[]): Promise<Map<string, string>> {
+      if (ids.length === 0)
+        return new Map()
+      const result = await pool.query(
+        'select id, email from auth.invitation where organization_id = $1 and id = any($2::text[])',
+        [organizationId, ids],
+      )
+      const rows = z.array(z.object({ id: z.string(), email: z.string().min(1) })).parse(result.rows)
+      return new Map(rows.map(row => [row.id, row.email]))
     },
     async userIdByEmail(email: string): Promise<string | null> {
       const result = await pool.query(

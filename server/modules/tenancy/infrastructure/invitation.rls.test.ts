@@ -4,10 +4,11 @@ import { loadEnvFile } from 'node:process'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { closeTenantRuntime, readSessionShell, removeTenantMember } from '..'
+import { inviteLink } from '../../../../shared'
 import { parseAppEnv } from '../../../core/index'
 import { createAuth, signInRateLimit } from './auth'
 import { createTenant } from './create-tenant'
-import { acceptInvitation, InvitationAccessError, previewInvitation, sendInvitation } from './invitation'
+import { acceptInvitation, createInvitation, InvitationAccessError, previewInvitation } from './invitation'
 
 /**
  * Invitation seam: invite, accept, and the other tenant's session.
@@ -123,33 +124,30 @@ afterAll(async () => {
 })
 
 it('lets an admin invite admin, dispatcher, and driver, and refuses the other roles', async () => {
-  const driver = await sendInvitation(handle, adminHeaders, {
+  const driver = await createInvite(handle, adminHeaders, {
     email: 'slice11-driver@example.com',
     role: 'driver',
     organizationId: tenantA,
-    locale: 'hr',
   })
-  const dispatcher = await sendInvitation(handle, adminHeaders, {
+  const dispatcher = await createInvite(handle, adminHeaders, {
     email: 'slice11-dispatcher@example.com',
     role: 'dispatcher',
     organizationId: tenantA,
-    locale: 'hr',
   })
-  const secondAdmin = await sendInvitation(handle, adminHeaders, {
+  const secondAdmin = await createInvite(handle, adminHeaders, {
     email: 'slice11-second-admin@example.com',
     role: 'admin',
     organizationId: tenantA,
-    locale: 'hr',
   })
 
-  expect(sent.map(mail => mail.role)).toEqual(['driver', 'dispatcher', 'admin'])
-  expect(sent.every(mail => mail.locale === 'hr' && mail.to.endsWith('@example.com'))).toBe(true)
+  // Better Auth no longer sends. The invite call's outbox does (ADR-0045),
+  // observed in server/api/invitation-outbox.rls.test.ts.
+  expect(sent).toEqual([])
   for (const link of [driver.inviteUrl, dispatcher.inviteUrl, secondAdmin.inviteUrl]) {
     const url = new URL(link)
     expect(url.search).toBe('')
     expect(url.hash).toMatch(/^#[0-9a-f-]{36}$/)
   }
-  expect(driver.emailSent).toBe(true)
 
   const driverId = new URL(driver.inviteUrl).hash.slice(1)
   const expiresAt = await invitationExpiry(driverId)
@@ -191,17 +189,15 @@ it('lets an admin invite admin, dispatcher, and driver, and refuses the other ro
   const dispatcherHeaders = (await signIn('slice11-dispatcher@example.com', memberPassword)).headers
   const driverHeaders = (await signIn('slice11-driver@example.com', memberPassword)).headers
   const before = sent.length
-  await expect(sendInvitation(handle, dispatcherHeaders, {
+  await expect(createInvite(handle, dispatcherHeaders, {
     email: 'slice11-nope@example.com',
     role: 'driver',
     organizationId: tenantA,
-    locale: 'hr',
   })).rejects.toMatchObject({ statusCode: 403 })
-  await expect(sendInvitation(handle, driverHeaders, {
+  await expect(createInvite(handle, driverHeaders, {
     email: 'slice11-nope@example.com',
     role: 'driver',
     organizationId: tenantA,
-    locale: 'hr',
   })).rejects.toMatchObject({ statusCode: 403 })
   expect(sent).toHaveLength(before)
 })
@@ -392,11 +388,10 @@ it('deletes the new user when accept fails after insert, then a retry works', as
 })
 
 it('answers 409 when the person is already a member or already invited, and invites them again after removal', async () => {
-  await expect(sendInvitation(handle, adminHeaders, {
+  await expect(createInvite(handle, adminHeaders, {
     email: adminEmail,
     role: 'driver',
     organizationId: tenantA,
-    locale: 'hr',
   })).rejects.toMatchObject({ statusCode: 409, message: 'Account already exists.' })
 
   const pending = 'slice11-pending@example.com'
@@ -427,11 +422,10 @@ it('accepts four new accounts while the production sign-in limit is on', async (
     expect(ctx.rateLimit.customRules?.['/sign-in/email']).toEqual({ window: 10, max: 3 })
     for (let index = 0; index < 4; index++) {
       const email = `slice11-burst-${index}@example.com`
-      const invited = await sendInvitation(limited, adminHeaders, {
+      const invited = await createInvite(limited, adminHeaders, {
         email,
         role: 'driver',
         organizationId: tenantA,
-        locale: 'hr',
       })
       const accepted = await acceptInvitation(limited, {
         invitationId: new URL(invited.inviteUrl).hash.slice(1),
@@ -448,12 +442,17 @@ it('accepts four new accounts while the production sign-in limit is on', async (
   }
 })
 
+/** Better Auth's create, and the link the invite call would return. */
+async function createInvite(auth: AuthHandle, headers: Headers, input: Parameters<typeof createInvitation>[2]) {
+  const id = await createInvitation(auth, headers, input)
+  return { inviteUrl: inviteLink(auth.baseURL, id) }
+}
+
 async function invite(email: string, role: 'admin' | 'dispatcher' | 'driver') {
-  const result = await sendInvitation(handle, adminHeaders, {
+  const result = await createInvite(handle, adminHeaders, {
     email,
     role,
     organizationId: tenantA,
-    locale: 'hr',
   })
   return { ...result, id: new URL(result.inviteUrl).hash.slice(1) }
 }

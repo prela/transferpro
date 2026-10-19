@@ -617,6 +617,7 @@ it('resends one failed work order, refuses the other roles, and does not audit',
     async sendWorkOrder() {
       throw new Error(`provider down ${address}`)
     },
+    async sendInvitation() {},
   }))
   expect(rejected).toEqual({ outcome: 'failed' })
   expect(await outboxState(rejectId)).toEqual({ state: 'failed', attempt_count: 4 })

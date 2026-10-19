@@ -7,6 +7,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
 import { auditEntryListSchema, inviteResultSchema } from '../../../shared'
+import { configureLogger } from '../../core/index'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../../modules/tenancy'
 import getAuditEntries from '../audit-entries.get'
 import revokeInvitation from './[invitationId]/revoke.post'
@@ -21,6 +22,9 @@ import postInvitation from './index.post'
  */
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
+
+// The invite route logs its mail outbox attempt, as the server does after boot().
+configureLogger('info')
 
 function required(name: string): string {
   const value = process.env[name]

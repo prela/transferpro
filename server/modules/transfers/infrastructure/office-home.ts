@@ -1,5 +1,5 @@
-import type { OfficeHome, OfficeHomeRide } from '../../../../shared'
-import type { TenantTransaction } from '../../../core/index'
+import type { OfficeHome, OfficeHomeRide, TenantRole } from '../../../../shared'
+import type { TenantContext, TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { buildOfficeHome, localDayBounds, officeHomeSchema, operationalDateInTimeZone, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema } from '../../../../shared'
@@ -9,7 +9,7 @@ import { loadDrivers } from '../../drivers'
 import { loadLocations } from '../../locations'
 import { loadTenantSettings } from '../../tenancy'
 import { loadVehicles } from '../../vehicles'
-import { loadFailedWorkOrders } from './failed-mail'
+import { loadFailedInvitations, loadFailedWorkOrders } from './failed-mail'
 import { toInstant, toPrice } from './transfers'
 
 const sourceRowSchema = z.object({
@@ -49,8 +49,14 @@ const MISSING_DECLINE_DRIVER = '—'
  * so leaving it out does not change the result. Names are resolved
  * afterwards, through each catalog module, on this same transaction
  * (ADR-0018).
+ * `viewer` is the session's Tenant and role. Failed invitations are listed
+ * for an Admin only. Without a viewer, only failed work orders are read.
  */
-export async function loadOfficeHome(transaction: TenantTransaction, now: Date): Promise<OfficeHome> {
+export async function loadOfficeHome(
+  transaction: TenantTransaction,
+  now: Date,
+  viewer?: { readonly context: TenantContext, readonly role: TenantRole },
+): Promise<OfficeHome> {
   const settings = await loadTenantSettings(transaction)
   const timeZone = settings.timeZone
   const startHour = settings.operationalDayStartHour
@@ -137,8 +143,10 @@ export async function loadOfficeHome(transaction: TenantTransaction, now: Date):
   const home = buildOfficeHome(rides, now, timeZone, startHour, settings.transferDurationMinutes)
   // Derived on read. A finished Ride or a newer work order for this Driver drops the row.
   // Nothing is written, so a refresh cannot turn a failed row into stale by itself.
-  const failedMails = await loadFailedWorkOrders(transaction, drivers, places)
-  return officeHomeSchema.parse({ ...home, failedMails })
+  const failedWorkOrders = await loadFailedWorkOrders(transaction, drivers, places)
+  // Still pending is derived on read. The invitee's email comes from the auth role.
+  const failedInvitations = viewer ? await loadFailedInvitations(transaction, viewer.context, viewer.role, now) : []
+  return officeHomeSchema.parse({ ...home, failedMails: [...failedWorkOrders, ...failedInvitations] })
 }
 
 /** A missing Driver or Vehicle for an id that is set fails the whole read. A null id is an empty name. */

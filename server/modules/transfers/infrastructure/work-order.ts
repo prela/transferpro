@@ -7,7 +7,7 @@ import { composeWorkOrder, locationLabel, paymentMethodSchema } from '../../../.
 import { getLogger, hideDatabaseError } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadLocation } from '../../locations'
-import { enqueueMailOutboxJob, MAIL_RETRY_DELAYS_MS, markWorkOrderStale, noteWorkOrderAttempt, recordWorkOrder, workOrderIdempotencyKey, workOrderIsCurrent } from '../../mail'
+import { enqueueMailOutboxJob, MAIL_RETRY_DELAYS_MS, mailIdempotencyKey, markWorkOrderStale, noteWorkOrderAttempt, recordWorkOrder, workOrderIsCurrent } from '../../mail'
 import { ResendTransportError, withTenantFromSession } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { toPrice } from './transfers'
@@ -170,7 +170,7 @@ export async function deliverAssignedWorkOrder(
   const message = composeWorkOrder(order, status)
   // The same key on a retry of this snapshot is one send inside Resend's window.
   // A later attempt that composes different words gets its own key.
-  const idempotencyKey = entryId === undefined ? undefined : workOrderIdempotencyKey(entryId, message, address)
+  const idempotencyKey = entryId === undefined ? undefined : mailIdempotencyKey(entryId, message, address)
   try {
     await mailer.sendWorkOrder({
       to: address,

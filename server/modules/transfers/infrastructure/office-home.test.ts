@@ -141,7 +141,7 @@ it('lists only failed work orders that still matter, with the Driver name and no
     mailRow(hiddenReplacedLostId, 'no_longer_yours', 'no-show', false, '2026-10-16T08:50:00.000Z'),
   ])
   const snapshot = await loadOfficeHome(transaction, new Date('2026-10-16T10:00:00.000Z'))
-  expect(snapshot.failedMails.map(row => [row.entryId, row.status, row.driverName])).toEqual([
+  expect(snapshot.failedMails.map(row => row.kind === 'work_order' ? [row.entryId, row.status, row.driverName] : [row.entryId, row.kind])).toEqual([
     [currentEntryId, 'no_longer_yours', 'Ana Vozač'],
     [cancelledNoticeId, 'cancelled', 'Ana Vozač'],
     [laterEntryId, 'assigned', 'Ana Vozač'],

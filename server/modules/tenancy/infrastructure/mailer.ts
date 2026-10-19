@@ -15,6 +15,11 @@ export interface InvitationMail {
   readonly role: TenantRole
   readonly tenantName: string
   readonly locale: DisplayLocale
+  /**
+   * Entry id plus a hash of the composed mail, set by the outbox (ADR-0045).
+   * Only the Resend adapter posts it. The console and fake mailers ignore it.
+   */
+  readonly idempotencyKey?: string
 }
 
 /**
@@ -119,7 +124,13 @@ export function createFakeMailer(
 ): Mailer {
   return {
     async sendInvitation(mail) {
-      outbox.push({ ...mail })
+      // The invitation e2e spec and the RLS seam use this address so a
+      // failing first attempt can show the retry sentence. The message does
+      // not include the address or the link.
+      if (mail.to === 'invite-fail@example.test')
+        throw new Error('Invitation email was not sent.')
+      const { idempotencyKey: _ignored, ...stored } = mail
+      outbox.push(stored)
     },
     async sendWorkOrder(mail) {
       // The ride e2e spec uses this address so a failing first attempt can
@@ -406,7 +417,7 @@ export function createResendMailer(
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     }
-    // Only a work order carries a key. Other mails stay as they were.
+    // Only an outbox mail (a work order or an invitation) carries a key. Other mails stay as they were.
     if (message.idempotencyKey !== undefined && message.idempotencyKey !== '')
       headers['Idempotency-Key'] = message.idempotencyKey
     // A hung provider must not hold the office action or the worker.
@@ -437,7 +448,7 @@ export function createResendMailer(
     async sendInvitation(mail) {
       const message = invitationEmail(mail)
       await send(
-        { to: mail.to, ...message },
+        { to: mail.to, ...message, idempotencyKey: mail.idempotencyKey },
         'Invitation email was not sent.',
         async () => { await consoleMailer?.sendInvitation(mail) },
       )

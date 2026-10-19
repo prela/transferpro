@@ -1,10 +1,11 @@
 import type { JobQueue, QueuedJob, TenantTransaction } from '../../../core/index'
-import type { LoadedOutboxEntry, OutboxAttemptPatch } from './attempt'
+import type { InvitationMail } from '../../tenancy'
+import type { LoadedInvitationEntry, LoadedOutboxEntry, LoadedWorkOrderEntry, OutboxAttemptPatch } from './attempt'
 import { expect, it } from 'vitest'
 import { runWithRequestId } from '../../../core/index'
 import { captureLogs } from '../../../core/testing'
 import { ResendTransportError } from '../../tenancy'
-import { handleMailOutboxJob, MAIL_OUTBOX_QUEUE, OutboxComposeError } from './attempt'
+import { firstOutboxAttempt, handleMailOutboxJob, MAIL_OUTBOX_QUEUE, OutboxComposeError } from './attempt'
 
 const tenantId = '33333333-3333-4333-8333-333333333333'
 const entryId = 'd1d1d1d1-1111-4111-8111-111111111111'
@@ -20,8 +21,9 @@ const message = {
   html: `<p>Gost: ${guest}</p>`,
 }
 
-function entry(overrides: Partial<LoadedOutboxEntry> = {}): LoadedOutboxEntry {
+function entry(overrides: Partial<LoadedWorkOrderEntry> = {}): LoadedWorkOrderEntry {
   return {
+    kind: 'work_order',
     entryId,
     status: 'assigned',
     driverId,
@@ -46,6 +48,7 @@ function harness(initial: LoadedOutboxEntry[]) {
   const entries = new Map(initial.map(row => [row.entryId, { ...row }]))
   const jobs: Array<{ id: string, name: string, tenantId: string, data: unknown, startAfter: Date }> = []
   const sent: Array<{ to: string, subject: string, text: string, html: string, idempotencyKey?: string }> = []
+  const invited: InvitationMail[] = []
   let rejectSend = false
   let composeFails = false
   let unreadable = false
@@ -87,6 +90,11 @@ function harness(initial: LoadedOutboxEntry[]) {
             if (rejectSend)
               throw new Error('Work order email was not sent.')
           },
+          async sendInvitation(mail) {
+            invited.push(mail)
+            if (rejectSend)
+              throw new Error('Invitation email was not sent.')
+          },
         },
         queue,
         log: logs.logger,
@@ -115,6 +123,7 @@ function harness(initial: LoadedOutboxEntry[]) {
 
   return {
     sent,
+    invited,
     logs,
     jobs,
     entries,
@@ -364,6 +373,9 @@ async function queueHandleWithTransport(world: ReturnType<typeof harness>) {
         async sendWorkOrder() {
           throw new ResendTransportError()
         },
+        async sendInvitation() {
+          throw new ResendTransportError()
+        },
       },
       queue: world.queue,
       log: world.logs.logger,
@@ -380,3 +392,156 @@ async function queueHandleWithTransport(world: ReturnType<typeof harness>) {
     })
   })
 }
+
+const inviteEntryId = 'e1e1e1e1-1111-4111-8111-111111111111'
+const invitee = 'pozvana@example.test'
+const inviteUrl = 'http://localhost:3000/accept-invite#6b1e0c3a-4444-4444-8444-444444444444'
+const inviteMessage = {
+  subject: 'Pozivnica u Tvrtka',
+  text: `Pozvani ste u Tvrtka kao vozač.\n${inviteUrl}`,
+  html: `<p><a href="${inviteUrl}">Otvorite poveznicu</a></p>`,
+}
+
+function invitation(overrides: Partial<LoadedInvitationEntry> = {}): LoadedInvitationEntry {
+  return {
+    kind: 'invitation',
+    entryId: inviteEntryId,
+    invitation: { status: 'pending', expiresAt: new Date(started.getTime() + 7 * 24 * 60 * 60 * 1000) },
+    mail: { to: invitee, inviteUrl, role: 'driver', tenantName: 'Tvrtka', locale: 'hr' },
+    message: inviteMessage,
+    state: 'pending',
+    attemptCount: 0,
+    nextAttemptAt: started,
+    ...overrides,
+  }
+}
+
+it('retries a failed invitation like a work order and keys it on the entry and the composed mail', async () => {
+  const world = harness([invitation({ attemptCount: 1, nextAttemptAt: started })])
+  world.failSends()
+  await world.enqueue(inviteEntryId, started)
+  expect(await world.due()).not.toBeNull()
+  world.advance(300_000)
+  expect(await world.due()).not.toBeNull()
+  world.advance(1_800_000)
+  expect(await world.due()).not.toBeNull()
+
+  expect(world.invited).toHaveLength(3)
+  expect(world.sent).toHaveLength(0)
+  expect(world.invited[0]).toMatchObject({ to: invitee, role: 'driver', tenantName: 'Tvrtka', locale: 'hr' })
+  const key = world.invited[0]?.idempotencyKey ?? ''
+  expect(key.startsWith(`${inviteEntryId}.`)).toBe(true)
+  expect(key).not.toContain('6b1e0c3a-4444-4444-8444-444444444444')
+  expect(world.entries.get(inviteEntryId)).toMatchObject({ state: 'failed', attemptCount: 4, nextAttemptAt: null })
+  expect(world.jobs).toHaveLength(0)
+})
+
+it('marks an invitation stale and sends nothing once it is accepted, revoked, expired, or gone', async () => {
+  for (const facts of [
+    { status: 'accepted', expiresAt: new Date(started.getTime() + 60_000) },
+    { status: 'canceled', expiresAt: new Date(started.getTime() + 60_000) },
+    { status: 'pending', expiresAt: started },
+    null,
+  ]) {
+    const world = harness([invitation({ invitation: facts })])
+    await world.enqueue(inviteEntryId, started)
+    expect(await world.due()).not.toBeNull()
+    expect(world.invited).toHaveLength(0)
+    expect(world.entries.get(inviteEntryId)).toMatchObject({ state: 'stale', attemptCount: 0, nextAttemptAt: null })
+    expect(world.jobs).toHaveLength(0)
+  }
+})
+
+it('counts an invitation that cannot be composed as a failed attempt', async () => {
+  const world = harness([invitation({ mail: null, message: null })])
+  await world.enqueue(inviteEntryId, started)
+  expect(await world.due()).not.toBeNull()
+  expect(world.invited).toHaveLength(0)
+  expect(world.entries.get(inviteEntryId)).toMatchObject({ state: 'pending', attemptCount: 1 })
+  expect(world.jobs).toHaveLength(1)
+})
+
+/** The first attempt reads and settles one row. It never queues: the entry's own job is the retry. */
+function firstStore(initial: LoadedOutboxEntry | null) {
+  let row = initial
+  return {
+    row: () => row,
+    store: {
+      async load() {
+        return row
+      },
+      async save(_id: string, patch: OutboxAttemptPatch) {
+        if (!row)
+          throw new Error('missing entry')
+        row = { ...row, ...patch }
+      },
+    },
+  }
+}
+
+it('sends a new invitation on the first attempt and marks it sent', async () => {
+  const logs = captureLogs()
+  const invited: InvitationMail[] = []
+  const world = firstStore(invitation({ nextAttemptAt: new Date(started.getTime() + 60_000) }))
+  const outcome = await firstOutboxAttempt({
+    entryId: inviteEntryId,
+    store: world.store,
+    mailer: {
+      async sendWorkOrder() {},
+      async sendInvitation(mail) {
+        invited.push(mail)
+      },
+    },
+    now: started,
+    log: logs.logger,
+  })
+  expect(outcome).toBe('sent')
+  expect(invited).toHaveLength(1)
+  expect(world.row()).toMatchObject({ state: 'sent', attemptCount: 1, nextAttemptAt: null })
+  const text = JSON.stringify(logs.lines())
+  expect(text).not.toContain(invitee)
+  expect(text).not.toContain('6b1e0c3a-4444-4444-8444-444444444444')
+})
+
+it('keeps a failed first attempt pending with the queued time, so the queued job is the retry', async () => {
+  const backup = new Date(started.getTime() + 60_000)
+  const world = firstStore(invitation({ nextAttemptAt: backup }))
+  const outcome = await firstOutboxAttempt({
+    entryId: inviteEntryId,
+    store: world.store,
+    mailer: {
+      async sendWorkOrder() {},
+      async sendInvitation() {
+        throw new Error(`provider down ${invitee}`)
+      },
+    },
+    now: started,
+    log: captureLogs().logger,
+  })
+  expect(outcome).toBe('pending')
+  expect(world.row()).toMatchObject({ state: 'pending', attemptCount: 1, nextAttemptAt: backup })
+})
+
+it('does not send a first attempt that is no longer current, and reports a row the job already settled', async () => {
+  const stale = firstStore(invitation({ invitation: { status: 'canceled', expiresAt: new Date(started.getTime() + 60_000) } }))
+  const mailer = {
+    async sendWorkOrder() {
+      throw new Error('nothing may be sent')
+    },
+    async sendInvitation() {
+      throw new Error('nothing may be sent')
+    },
+  }
+  expect(await firstOutboxAttempt({ entryId: inviteEntryId, store: stale.store, mailer, now: started, log: captureLogs().logger })).toBe('stale')
+  expect(stale.row()).toMatchObject({ state: 'stale', attemptCount: 0, nextAttemptAt: null })
+
+  const done = firstStore(invitation({ state: 'sent', attemptCount: 1 }))
+  expect(await firstOutboxAttempt({ entryId: inviteEntryId, store: done.store, mailer, now: started, log: captureLogs().logger })).toBe('sent')
+  await expect(firstOutboxAttempt({
+    entryId: inviteEntryId,
+    store: firstStore(null).store,
+    mailer,
+    now: started,
+    log: captureLogs().logger,
+  })).rejects.toThrow('Mail outbox read failed')
+})

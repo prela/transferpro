@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { captureLogs } from '../../../core/testing'
-import { workOrderIdempotencyKey } from '../../mail/domain/idempotency-key'
+import { mailIdempotencyKey } from '../../mail'
 import { assertTestMailer, createConsoleMailer, createFakeMailer, createResendMailer, invitationEmail, isConsoleMailer, isResendMailer, mailerForApp, passwordChangedEmail, passwordResetEmail, ResendTransportError, TransientMailError } from './mailer'
 
 const invitationId = '6b1e0c3a-2222-4222-8222-222222222222'
@@ -403,13 +403,34 @@ it('sends the idempotency key, and a changed message gets a new one', async () =
   const entryId = 'd1d1d1d1-1111-4111-8111-111111111111'
   const to = 'ana@example.test'
   const message = { subject: 'Dodijeljeno', text: 'Gost: Ana', html: '<p>Gost: Ana</p>' }
-  const key = workOrderIdempotencyKey(entryId, message, to)
+  const key = mailIdempotencyKey(entryId, message, to)
   await mailer.sendWorkOrder({ to, ...message, idempotencyKey: key })
   await mailer.sendWorkOrder({ to, ...message, idempotencyKey: key })
-  const changed = workOrderIdempotencyKey(entryId, { ...message, text: 'Gost: Marko' }, to)
+  const changed = mailIdempotencyKey(entryId, { ...message, text: 'Gost: Marko' }, to)
   await mailer.sendWorkOrder({ to: 'ana@example.test', ...message, text: 'Gost: Marko', idempotencyKey: changed })
   expect(seen).toEqual([key, key, changed])
   expect(changed).not.toBe(key)
+})
+
+it('posts an outbox invitation with its key, and keeps the key off a plain invitation', async () => {
+  const seen: string[] = []
+  const mailer = createResendMailer('test-resend-key', async (_input, init) => {
+    seen.push(new Headers(init?.headers).get('Idempotency-Key') ?? 'none')
+    return new Response('sent', { status: 200 })
+  })
+  const key = mailIdempotencyKey('d1d1d1d1-1111-4111-8111-111111111111', invitationEmail(mail), mail.to)
+  await mailer.sendInvitation({ ...mail, idempotencyKey: key })
+  await mailer.sendInvitation(mail)
+  expect(seen).toEqual([key, 'none'])
+  expect(key).not.toContain(invitationId)
+})
+
+it('fails the fake invitation for the test address and stores others without the key', async () => {
+  const outbox: Parameters<ReturnType<typeof createFakeMailer>['sendInvitation']>[0][] = []
+  const mailer = createFakeMailer(outbox)
+  await expect(mailer.sendInvitation({ ...mail, to: 'invite-fail@example.test' })).rejects.toThrow('Invitation email was not sent.')
+  await mailer.sendInvitation({ ...mail, idempotencyKey: 'k' })
+  expect(outbox).toEqual([mail])
 })
 
 it('treats a concurrent idempotency conflict as a transient failure and does not echo the body', async () => {

@@ -1,9 +1,9 @@
-import type { LoadedOutboxEntry } from './attempt'
+import type { LoadedInvitationEntry, LoadedOutboxEntry, LoadedWorkOrderEntry } from './attempt'
 import { expect, it } from 'vitest'
 import { captureLogs } from '../../../core/testing'
 import { ResendTransportError } from '../../tenancy'
 import { OutboxComposeError } from './attempt'
-import { resendFailedWorkOrder } from './resend'
+import { resendFailedOutboxEntry } from './resend'
 
 const entryId = 'd1d1d1d1-1111-4111-8111-111111111111'
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
@@ -16,8 +16,9 @@ const message = {
   html: `<p>Gost: ${guest}</p>`,
 }
 
-function failed(overrides: Partial<LoadedOutboxEntry> = {}): LoadedOutboxEntry {
+function failed(overrides: Partial<LoadedWorkOrderEntry> = {}): LoadedWorkOrderEntry {
   return {
+    kind: 'work_order',
     entryId,
     status: 'assigned',
     driverId,
@@ -57,7 +58,7 @@ function harness(initial: LoadedOutboxEntry | null) {
       composeFails = true
     },
     async resend() {
-      return resendFailedWorkOrder({
+      return resendFailedOutboxEntry({
         entryId,
         log: logs.logger,
         mailer: {
@@ -66,6 +67,11 @@ function harness(initial: LoadedOutboxEntry | null) {
             if (rejectSend)
               throw new Error(`Work order email was not sent to ${email}.`)
           },
+          async sendInvitation(mail) {
+            sent.push({ to: mail.to, subject: `invitation:${mail.role}`, idempotencyKey: mail.idempotencyKey })
+            if (rejectSend)
+              throw new Error(`Invitation email was not sent to ${mail.to}.`)
+          },
         },
         store: {
           async load(id) {
@@ -73,7 +79,7 @@ function harness(initial: LoadedOutboxEntry | null) {
               return null
             if (composeFails)
               throw new OutboxComposeError({ ...row, message: null })
-            return { ...row, message: row.message ? { ...row.message } : null }
+            return { ...row }
           },
           async settle(id, state) {
             if (!row || row.entryId !== id || row.state !== 'failed')
@@ -166,7 +172,7 @@ it('does nothing for a missing row or a row that is not failed', async () => {
 
 it('still aborts when the Resend transport is selected in test', async () => {
   const world = harness(failed())
-  await expect(resendFailedWorkOrder({
+  await expect(resendFailedOutboxEntry({
     entryId,
     log: world.logs.logger,
     store: {
@@ -181,7 +187,69 @@ it('still aborts when the Resend transport is selected in test', async () => {
       async sendWorkOrder() {
         throw new ResendTransportError()
       },
+      async sendInvitation() {
+        throw new ResendTransportError()
+      },
     },
   })).rejects.toBeInstanceOf(ResendTransportError)
   expect(world.logs.lines()).toHaveLength(0)
+})
+
+const invitationId = 'e1e1e1e1-1111-4111-8111-111111111111'
+const invitee = 'novi@example.test'
+
+function failedInvitation(overrides: Partial<LoadedInvitationEntry> = {}): LoadedInvitationEntry {
+  return {
+    kind: 'invitation',
+    entryId,
+    state: 'failed',
+    attemptCount: 4,
+    nextAttemptAt: null,
+    invitation: { status: 'pending', expiresAt: new Date(Date.now() + 86_400_000) },
+    mail: {
+      to: invitee,
+      inviteUrl: `http://localhost:3000/accept-invitation/${invitationId}`,
+      role: 'dispatcher',
+      tenantName: 'Tenant A',
+      locale: 'hr',
+    },
+    message: { subject: 'Pozivnica', text: invitationId, html: invitationId },
+    ...overrides,
+  }
+}
+
+it('resends a failed pending invitation with its key, and logs neither the address nor the invitation id', async () => {
+  const world = harness(failedInvitation())
+  await expect(world.resend()).resolves.toBe('sent')
+  expect(world.sent).toEqual([{ to: invitee, subject: 'invitation:dispatcher', idempotencyKey: expect.stringContaining(entryId) }])
+  expect(world.row()).toMatchObject({ state: 'sent', attemptCount: 4 })
+  expect(logged(world).rest).toEqual({ event: 'mail_outbox.resend', entryId, kind: 'invitation', outcome: 'sent' })
+  expect(JSON.stringify(logged(world).line)).not.toContain(invitee)
+  expect(JSON.stringify(logged(world).line)).not.toContain(invitationId)
+})
+
+it('marks an accepted, canceled, expired, or missing invitation stale and sends nothing', async () => {
+  for (const invitation of [
+    { status: 'accepted', expiresAt: new Date(Date.now() + 86_400_000) },
+    { status: 'canceled', expiresAt: new Date(Date.now() + 86_400_000) },
+    { status: 'pending', expiresAt: new Date(Date.now() - 1000) },
+    null,
+  ]) {
+    const world = harness(failedInvitation({ invitation }))
+    await expect(world.resend()).resolves.toBe('stale')
+    expect(world.sent).toHaveLength(0)
+    expect(world.settled).toEqual(['stale'])
+  }
+})
+
+it('keeps a failed invitation failed when the provider rejects it or the mail cannot be built', async () => {
+  const rejected = harness(failedInvitation())
+  rejected.failSend()
+  await expect(rejected.resend()).resolves.toBe('failed')
+  expect(rejected.row()?.state).toBe('failed')
+  expect(JSON.stringify(logged(rejected).line)).not.toContain(invitee)
+
+  const unbuilt = harness(failedInvitation({ mail: null, message: null }))
+  await expect(unbuilt.resend()).resolves.toBe('failed')
+  expect(unbuilt.sent).toHaveLength(0)
 })

@@ -49,9 +49,20 @@ export const invitationPreviewSchema = z.discriminatedUnion('state', [
 
 export type InvitationPreview = z.infer<typeof invitationPreviewSchema>
 
+/**
+ * The invite mail on the dialog (ADR-0045). `sent` went out. `retrying` was
+ * not sent and the outbox tries again. `stale` was not sent because the
+ * invitation is no longer pending. `not_sent` has no outbox entry, so
+ * nothing will retry it: the Admin hands the link over.
+ */
+export const INVITATION_MAIL_OUTCOMES = ['sent', 'retrying', 'stale', 'not_sent'] as const
+
+export type InvitationMailOutcome = typeof INVITATION_MAIL_OUTCOMES[number]
+
+/** The copyable link is always returned, whatever happened to the mail. */
 export const inviteResultSchema = z.object({
   inviteUrl: z.url(),
-  emailSent: z.boolean(),
+  mail: z.enum(INVITATION_MAIL_OUTCOMES),
 })
 
 export type InviteResult = z.infer<typeof inviteResultSchema>

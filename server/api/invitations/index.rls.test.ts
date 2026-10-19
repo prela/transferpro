@@ -5,6 +5,7 @@ import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { inviteResultSchema, memberListSchema } from '../../../shared'
+import { configureLogger } from '../../core/index'
 import { closeTenantRuntime, createTenant, handleAuthRequest, removeTenantMember } from '../../modules/tenancy'
 import listMembers from '../members.get'
 import acceptInvitationRoute from './accept.post'
@@ -17,6 +18,9 @@ import postInvitation from './index.post'
  */
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
+
+// The invite route logs its mail outbox attempt, as the server does after boot().
+configureLogger('info')
 
 function required(name: string): string {
   const value = process.env[name]

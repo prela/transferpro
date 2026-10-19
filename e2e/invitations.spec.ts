@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
-import { memberPassword, seedTenant } from './fixtures/seed'
-import { chooseOption, expectNoInvitationCookie, invite, openInvite, openMembers, signIn, signOut, switchLocale } from './fixtures/ui'
+import { expectNoAxeViolations } from './fixtures/axe'
+import { failInvitationMail, memberPassword, seedMember, seedTenant } from './fixtures/seed'
+import { chooseOption, expectNoInvitationCookie, invite, openInvite, openMembers, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 test('a failed send shows the message and the copyable invite link', async ({ page }) => {
   const tenant = await seedTenant('invite-mail-fail')
@@ -14,7 +15,7 @@ test('a failed send shows the message and the copyable invite link', async ({ pa
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ inviteUrl, emailSent: false }),
+      body: JSON.stringify({ inviteUrl, mail: 'not_sent' }),
     })
   })
   const value = await invite(page, `e2e-mail-fail-${crypto.randomUUID()}@example.test`, 'Vozač')
@@ -30,6 +31,54 @@ test('a failed send shows the message and the copyable invite link', async ({ pa
   await chooseOption(page, english.getByRole('combobox', { name: 'Role' }), 'Driver')
   await english.getByRole('button', { name: 'Send invite', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('The email was not sent. Copy the link and send it yourself.')
+})
+
+test('a failed first send says it will try again, and the Admin resends it from Home in both themes', async ({ page }) => {
+  // The fake mailer rejects this address. The automatic retries take about
+  // 36 minutes, so the fixture leaves the failed row they would.
+  const tenant = await seedTenant('invite-outbox')
+  const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispečer')
+  const failing = 'invite-fail@example.test'
+  const delivered = `e2e-outbox-${tenant.tenantId.slice(0, 8)}@example.test`
+  await useTheme(page, 'dark')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+
+  const failingLink = await invite(page, failing, 'Vozač')
+  const dialog = page.getByRole('dialog', { name: 'Pozovi člana' })
+  await expect(dialog.getByRole('alert')).toContainText('Mail nije poslan, pokušat ćemo ponovno.')
+  await expect(dialog.getByLabel('Poveznica pozivnice')).toHaveValue(failingLink)
+  await page.keyboard.press('Escape')
+  const deliveredLink = await invite(page, delivered, 'Dispečer')
+  await expect(page.getByRole('dialog', { name: 'Pozovi člana' }).getByRole('status')).toContainText('Pozivnica je poslana.')
+  await page.keyboard.press('Escape')
+  await failInvitationMail(tenant.tenantId, new URL(failingLink).hash.slice(1))
+  await failInvitationMail(tenant.tenantId, new URL(deliveredLink).hash.slice(1))
+
+  await page.goto('/')
+  const block = page.getByRole('region', { name: /Neuspjeli mailovi \(2\)/ })
+  await expect(block).toBeVisible()
+  await expect(block).toContainText(failing)
+  await expect(block).toContainText('Pozivnica · Vozač')
+  await expect(block).toContainText('Pozivnica · Dispečer')
+  await expect(block).not.toContainText(new URL(failingLink).hash.slice(1))
+  await switchTheme(page, 'light')
+  await expectNoAxeViolations(page)
+
+  await block.getByRole('button', { name: `Pošalji ponovno pozivnicu: ${delivered}`, exact: true }).click()
+  await expect(page.getByRole('region', { name: /Neuspjeli mailovi \(1\)/ })).toBeVisible()
+  await page.getByRole('button', { name: `Pošalji ponovno pozivnicu: ${failing}`, exact: true }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Mail nije poslan.' })).toBeVisible()
+
+  await switchLocale(page, 'en')
+  const english = page.getByRole('region', { name: /Failed mail \(1\)/ })
+  await expect(english).toContainText('Invitation · Driver')
+  await expect(english.getByRole('button', { name: `Send the invitation again: ${failing}`, exact: true })).toBeVisible()
+
+  await switchLocale(page, 'hr')
+  await signOut(page)
+  await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
+  await expect(page.getByRole('heading', { name: /Neuspjeli mailovi|Failed mail/ })).toHaveCount(0)
+  await expect(page.getByText(failing)).toHaveCount(0)
 })
 
 test('invite without a role shows the role message', async ({ page }) => {

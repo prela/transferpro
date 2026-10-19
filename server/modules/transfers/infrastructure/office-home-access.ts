@@ -13,15 +13,16 @@ function officeOnly(role: string): void {
 /**
  * The three lists and the seven operational-day counts, taken at `now`.
  * An unassigned row carries a decline alert and the declining Driver's
- * name, for any pickup day. A driver is 403. No session is 401. Nothing
+ * name, for any pickup day. Failed invitations, with the invitee's email,
+ * are on an Admin read only. A driver is 403. No session is 401. Nothing
  * is written: no audit entry and no mail. The alarm is a mark on the
  * unassigned list, not a message. The name is on the response only.
  */
 export async function readOfficeHome(headers: Headers, now: Date = new Date()): Promise<OfficeHome> {
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withTenantFromSession(headers, async ({ actor, context, transaction }) => {
     officeOnly(actor.role)
     try {
-      return await loadOfficeHome(transaction, now)
+      return await loadOfficeHome(transaction, now, { context, role: actor.role })
     }
     catch (error) {
       if (error instanceof TenantAccessError)
