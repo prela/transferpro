@@ -3,6 +3,7 @@
  * A work order is recorded on the Ride's transaction and sent after that
  * commit. An invitation is recorded after Better Auth created it, and the
  * invite call waits for its first attempt. Retries read the current rows.
+ * A daily job deletes each Tenant's entries older than 90 days.
  * The row holds the kind and the ids, never an address, a name, or a body (ADR-0045).
  */
 export { enqueueMailOutboxJob, entryIsCurrent, firstOutboxAttempt, handleMailOutboxJob, MAIL_OUTBOX_QUEUE, OutboxComposeError } from './application/attempt'
@@ -20,3 +21,4 @@ export { invitationMailOutbox } from './infrastructure/invitation-outbox'
 export { markWorkOrderStale, noteWorkOrderAttempt, outboxStoreByKind, readOutboxKind, recordInvitation, recordWorkOrder, saveOutboxAttempt, settleFailedOutboxEntry } from './infrastructure/outbox'
 export type { OutboxKind, WorkOrderEntry } from './infrastructure/outbox'
 export { closeMailOutboxQueue, mailOutboxQueue } from './infrastructure/queue'
+export { startMailOutboxRetention } from './infrastructure/retention'
