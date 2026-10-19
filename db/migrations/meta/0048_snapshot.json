@@ -1,6 +1,6 @@
 {
   "id": "23d1c8cf-b3a3-462e-802a-015cb6cfec4c",
-  "prevId": "0e29f78d-33ea-4e75-a9c7-2627494633a3",
+  "prevId": "c44fca00-80f1-4051-8855-0a3cdb89ab55",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -92,16 +92,16 @@
         "account_user_id_user_id_fk": {
           "name": "account_user_id_user_id_fk",
           "tableFrom": "account",
+          "tableTo": "user",
+          "schemaTo": "auth",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "user",
-          "schemaTo": "auth",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -179,9 +179,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -244,6 +244,25 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "data_changed_at": {
+          "name": "data_changed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "data_changed_by": {
+          "name": "data_changed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -264,9 +283,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -292,6 +311,14 @@
         "clients_kind": {
           "name": "clients_kind",
           "value": "\"app\".\"clients\".\"kind\" in ('agency', 'hotel', 'individual')"
+        },
+        "clients_version": {
+          "name": "clients_version",
+          "value": "\"app\".\"clients\".\"version\" >= 0"
+        },
+        "clients_data_change": {
+          "name": "clients_data_change",
+          "value": "(\"app\".\"clients\".\"version\" = 0 and \"app\".\"clients\".\"data_changed_at\" is null and \"app\".\"clients\".\"data_changed_by\" is null) or (\"app\".\"clients\".\"version\" >= 1 and \"app\".\"clients\".\"data_changed_at\" is not null and \"app\".\"clients\".\"data_changed_by\" <> '')"
         }
       },
       "isRLSEnabled": true
@@ -388,10 +415,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"app\".\"drivers\".\"member_user_id\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "drivers_tenant_id_id": {
           "name": "drivers_tenant_id_id",
@@ -410,9 +437,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -516,30 +543,30 @@
         "invitation_organization_id_organization_id_fk": {
           "name": "invitation_organization_id_organization_id_fk",
           "tableFrom": "invitation",
+          "tableTo": "organization",
+          "schemaTo": "auth",
           "columnsFrom": [
             "organization_id"
           ],
-          "tableTo": "organization",
-          "schemaTo": "auth",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "invitation_inviter_id_user_id_fk": {
           "name": "invitation_inviter_id_user_id_fk",
           "tableFrom": "invitation",
+          "tableTo": "user",
+          "schemaTo": "auth",
           "columnsFrom": [
             "inviter_id"
           ],
-          "tableTo": "user",
-          "schemaTo": "auth",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -627,10 +654,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"app\".\"locations\".\"archived_at\" is null and \"app\".\"locations\".\"iata\" is not null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "locations_tenant_id_id": {
           "name": "locations_tenant_id_id",
@@ -649,9 +676,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -802,60 +829,60 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"app\".\"mail_outbox\".\"state\" = 'failed'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "mail_outbox_ride_fk": {
           "name": "mail_outbox_ride_fk",
           "tableFrom": "mail_outbox",
+          "tableTo": "rides",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "ride_id"
           ],
-          "tableTo": "rides",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "mail_outbox_driver_fk": {
           "name": "mail_outbox_driver_fk",
           "tableFrom": "mail_outbox",
+          "tableTo": "drivers",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "driver_id"
           ],
-          "tableTo": "drivers",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "mail_outbox_vehicle_fk": {
           "name": "mail_outbox_vehicle_fk",
           "tableFrom": "mail_outbox",
+          "tableTo": "vehicles",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "vehicle_id"
           ],
-          "tableTo": "vehicles",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -932,30 +959,30 @@
         "member_organization_id_organization_id_fk": {
           "name": "member_organization_id_organization_id_fk",
           "tableFrom": "member",
+          "tableTo": "organization",
+          "schemaTo": "auth",
           "columnsFrom": [
             "organization_id"
           ],
-          "tableTo": "organization",
-          "schemaTo": "auth",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "member_user_id_user_id_fk": {
           "name": "member_user_id_user_id_fk",
           "tableFrom": "member",
+          "tableTo": "user",
+          "schemaTo": "auth",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "user",
-          "schemaTo": "auth",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1011,10 +1038,10 @@
       "uniqueConstraints": {
         "organization_slug_unique": {
           "name": "organization_slug_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "slug"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1083,43 +1110,43 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "ride_alert_ride_fk": {
           "name": "ride_alert_ride_fk",
           "tableFrom": "ride_alert",
+          "tableTo": "rides",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "ride_id"
           ],
-          "tableTo": "rides",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "ride_alert_driver_fk": {
           "name": "ride_alert_driver_fk",
           "tableFrom": "ride_alert",
+          "tableTo": "drivers",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "driver_id"
           ],
-          "tableTo": "drivers",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1205,9 +1232,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "rides_tenant_id_id": {
           "name": "rides_tenant_id_id",
@@ -1226,59 +1253,59 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "rides_transfer_fk": {
           "name": "rides_transfer_fk",
           "tableFrom": "rides",
+          "tableTo": "transfers",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "transfer_id"
           ],
-          "tableTo": "transfers",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "rides_driver_fk": {
           "name": "rides_driver_fk",
           "tableFrom": "rides",
+          "tableTo": "drivers",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "driver_id"
           ],
-          "tableTo": "drivers",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "rides_vehicle_fk": {
           "name": "rides_vehicle_fk",
           "tableFrom": "rides",
+          "tableTo": "vehicles",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "vehicle_id"
           ],
-          "tableTo": "vehicles",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1376,9 +1403,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "roster_vehicle_day": {
           "name": "roster_vehicle_day",
@@ -1403,43 +1430,43 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "roster_driver_fk": {
           "name": "roster_driver_fk",
           "tableFrom": "roster",
+          "tableTo": "drivers",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "driver_id"
           ],
-          "tableTo": "drivers",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "roster_vehicle_fk": {
           "name": "roster_vehicle_fk",
           "tableFrom": "roster",
+          "tableTo": "vehicles",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "vehicle_id"
           ],
-          "tableTo": "vehicles",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1523,26 +1550,26 @@
         "session_user_id_user_id_fk": {
           "name": "session_user_id_user_id_fk",
           "tableFrom": "session",
+          "tableTo": "user",
+          "schemaTo": "auth",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "user",
-          "schemaTo": "auth",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "session_token_unique": {
           "name": "session_token_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "token"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -1835,9 +1862,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "transfers_tenant_pickup_at": {
           "name": "transfers_tenant_pickup_at",
@@ -1856,59 +1883,59 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "transfers_client_fk": {
           "name": "transfers_client_fk",
           "tableFrom": "transfers",
+          "tableTo": "clients",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "client_id"
           ],
-          "tableTo": "clients",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "transfers_start_location_fk": {
           "name": "transfers_start_location_fk",
           "tableFrom": "transfers",
+          "tableTo": "locations",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "start_location_id"
           ],
-          "tableTo": "locations",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "transfers_end_location_fk": {
           "name": "transfers_end_location_fk",
           "tableFrom": "transfers",
+          "tableTo": "locations",
+          "schemaTo": "app",
           "columnsFrom": [
             "tenant_id",
             "end_location_id"
           ],
-          "tableTo": "locations",
-          "schemaTo": "app",
           "columnsTo": [
             "tenant_id",
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2036,10 +2063,10 @@
       "uniqueConstraints": {
         "user_email_unique": {
           "name": "user_email_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -2130,10 +2157,10 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"app\".\"vehicles\".\"archived_at\" is null",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "vehicles_tenant_id_id": {
           "name": "vehicles_tenant_id_id",
@@ -2152,9 +2179,9 @@
             }
           ],
           "isUnique": true,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -2291,10 +2318,11 @@
     }
   },
   "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
   "views": {
     "app.tenant_invitation": {
-      "name": "tenant_invitation",
-      "schema": "app",
       "columns": {
         "id": {
           "name": "id",
@@ -2322,16 +2350,16 @@
         }
       },
       "definition": "\n  select \"auth\".\"invitation\".\"id\", \"auth\".\"invitation\".\"role\", \"auth\".\"invitation\".\"status\", \"auth\".\"invitation\".\"expires_at\"\n  from \"auth\".\"invitation\"\n  where \"auth\".\"invitation\".\"organization_id\" = app.current_tenant_id()::text\n",
-      "materialized": false,
+      "name": "tenant_invitation",
+      "schema": "app",
+      "isExisting": false,
       "with": {
         "securityBarrier": true,
         "securityInvoker": false
       },
-      "isExisting": false
+      "materialized": false
     },
     "app.tenant_member": {
-      "name": "tenant_member",
-      "schema": "app",
       "columns": {
         "user_id": {
           "name": "user_id",
@@ -2359,17 +2387,16 @@
         }
       },
       "definition": "\n  select \"auth\".\"member\".\"user_id\", \"auth\".\"user\".\"name\", \"auth\".\"member\".\"role\", \"auth\".\"member\".\"organization_id\"::uuid as tenant_id\n  from \"auth\".\"member\"\n  inner join \"auth\".\"user\" on \"auth\".\"user\".\"id\" = \"auth\".\"member\".\"user_id\"\n  where \"auth\".\"member\".\"organization_id\" = app.current_tenant_id()::text\n",
-      "materialized": false,
+      "name": "tenant_member",
+      "schema": "app",
+      "isExisting": false,
       "with": {
         "securityBarrier": true,
         "securityInvoker": false
       },
-      "isExisting": false
+      "materialized": false
     }
   },
-  "sequences": {},
-  "roles": {},
-  "policies": {},
   "_meta": {
     "columns": {},
     "schemas": {},

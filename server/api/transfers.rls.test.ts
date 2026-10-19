@@ -6,7 +6,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../../shared'
 import { captureLogs } from '../core/testing'
-import { createClient } from '../modules/clients'
+import { createClient, updateClient } from '../modules/clients'
 import { createDriver, updateDriver } from '../modules/drivers'
 import { archiveLocation, createLocation } from '../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale } from '../modules/tenancy'
@@ -2301,6 +2301,35 @@ it('rejects a missing or fractional version on a correction before it writes', a
   expect(fraction.status).toBe(400)
   expect(await transferStamp(office.body.transfer.id)).toMatchObject({ version: 0, guest_name: guest, data_changed_by: null })
   expect(await correctionAudits(office.created.tenantId)).toEqual([])
+})
+
+it('a Client change leaves the Transfer version alone, and a Transfer save leaves the Client version alone', async () => {
+  const office = await correctionOffice('htr-ver-client')
+  const clientVersion = async () => Number((await ownerPool.query<{ version: number }>(
+    'select version from app.clients where id = $1',
+    [office.client.id],
+  )).rows[0]?.version)
+
+  await updateClient(office.dispatcher, office.client.id, { name: 'Mora d.o.o.', version: 0 })
+  expect(await clientVersion()).toBe(1)
+  expect(await transferStamp(office.body.transfer.id)).toMatchObject({ version: 0, data_changed_by: null })
+
+  // The Transfer form opened before the rename still holds the current Transfer version.
+  const saved = await call('PATCH', `/api/transfers/${office.body.transfer.id}`, office.dispatcher, correctionBody(
+    office.client.id,
+    office.start.id,
+    office.end.id,
+    office.pickupAt,
+    { guestName: 'Nova Ana', version: 0 },
+  ))
+  expect(saved.status).toBe(200)
+  expect(await transferStamp(office.body.transfer.id)).toMatchObject({ version: 1 })
+  expect(await clientVersion()).toBe(1)
+
+  // The Client form opened before the Transfer save is still fresh too.
+  await updateClient(office.dispatcher, office.client.id, { kind: 'hotel', version: 1 })
+  expect(await clientVersion()).toBe(2)
+  expect(await transferStamp(office.body.transfer.id)).toMatchObject({ version: 1 })
 })
 
 it('does not show another tenant author, and a member who left has no name', async () => {
