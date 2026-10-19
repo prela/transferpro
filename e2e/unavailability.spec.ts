@@ -170,9 +170,11 @@ test('a Vehicle window from one time to another, in English and the dark theme',
 
   await section.getByRole('button', { name: /^Change unavailability / }).click()
   await expect(section.getByRole('checkbox', { name: 'Whole days' })).not.toBeChecked()
+  await expect(section.getByLabel('From', { exact: true })).toHaveValue(`${rideDay}T09:00`)
+  await expect(section.getByLabel('To', { exact: true })).toHaveValue(`${rideDay}T11:00`)
   await section.getByLabel('To', { exact: true }).fill(`${rideDay}T13:00`)
   await section.getByRole('button', { name: 'Save unavailability', exact: true }).click()
-  await expect(list).toContainText(formatInstant(instantFromWallClock(`${rideDay}T13:00`, zone), zone, 'en'))
+  await expect(list).toContainText(`${from} – ${formatInstant(instantFromWallClock(`${rideDay}T13:00`, zone), zone, 'en')}`)
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expectNoAxeViolations(page)
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()

@@ -221,13 +221,18 @@ async function remove(entry: UnavailabilityWindowView) {
   }
 }
 
-/** The whole-day shortcut keeps the days already typed as the start of the first and the end of the last. */
-watch(() => form.wholeDays, (wholeDays) => {
-  if (wholeDays)
+/**
+ * Turning the whole-day shortcut off keeps the days already typed as the start
+ * of the first and the end of the last. Only the person's toggle does this:
+ * a watch would also fire when Change reopens a timed window and replace its times.
+ */
+function chooseWholeDays(value: boolean | 'indeterminate') {
+  form.wholeDays = value === true
+  if (form.wholeDays)
     return
   form.startsAt = `${form.fromDay}T00:00`
   form.endsAt = `${addCalendarDays(form.toDay, 1)}T00:00`
-})
+}
 
 watch(() => props.resourceId, () => {
   resetForm()
@@ -374,11 +379,12 @@ onMounted(() => {
       </p>
       <UCheckbox
         :id="wholeDaysId"
-        v-model="form.wholeDays"
+        :model-value="form.wholeDays"
         name="unavailability-whole-days"
         :size="phone ? 'xl' : 'sm'"
         :label="t('unavailability.wholeDays')"
         :disabled="pending"
+        @update:model-value="chooseWholeDays"
       />
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
