@@ -889,7 +889,20 @@
     "countRides": "Vožnje",
     "unassignedAlarm": "Alarm za nedodijeljenu vožnju",
     "unclosedMark": "Nije zatvoreno",
-    "landingAlarm": "Alarm slijetanja"
+    "landingAlarm": "Alarm slijetanja",
+    "failedMail": {
+      "title": "Neuspjeli mailovi",
+      "resend": "Pošalji ponovno",
+      "resendFor": "Pošalji ponovno: {driver}, {when}",
+      "stale": "Mail više nije aktualan.",
+      "notSent": "Mail nije poslan.",
+      "status": {
+        "assigned": "Dodijeljeno",
+        "changed": "Promijenjeno",
+        "cancelled": "Otkazano",
+        "no_longer_yours": "Više nije vaše"
+      }
+    }
   },
   "expiringDocuments": {
     "title": "Dokumenti koji istječu",

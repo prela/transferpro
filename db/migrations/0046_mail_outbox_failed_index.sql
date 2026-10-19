@@ -1,0 +1,2 @@
+-- Home reads failed mail on the 60-second refresh. Only failed rows are indexed (ADR-0045).
+CREATE INDEX "mail_outbox_failed_tenant_idx" ON "app"."mail_outbox" USING btree ("tenant_id") WHERE "app"."mail_outbox"."state" = 'failed';

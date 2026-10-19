@@ -224,6 +224,12 @@ function formatOperationalDate(iso: string, locale: DisplayLocale): string {
             </section>
           </section>
 
+          <OfficeFailedMail
+            :mails="snapshot.failedMails"
+            :time-zone="timeZone"
+            :locale="locale"
+          />
+
           <section
             class="mt-6"
             :aria-labelledby="unassignedTitleId"

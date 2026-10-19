@@ -199,6 +199,31 @@ function entryFromRow(entryId: string, row: AttemptRow, message: LoadedOutboxEnt
   }
 }
 
+/**
+ * A manual resend settles a failed row. The attempt count stays: the column
+ * stops at 4, and a resend does not start the retry cycle. A row that is no
+ * longer failed is a fixed error, so two clicks cannot both send.
+ */
+export async function settleFailedWorkOrder(
+  transaction: TenantTransaction,
+  entryId: string,
+  state: 'sent' | 'stale',
+): Promise<void> {
+  const id = z.uuid().parse(entryId)
+  const next = z.enum(['sent', 'stale']).parse(state)
+  const updated = savedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
+    update app.mail_outbox
+    set state = ${next},
+        next_attempt_at = null
+    where id = ${id}
+      and kind = 'work_order'
+      and state = 'failed'
+    returning id
+  `), 'Mail outbox update failed'))
+  if (updated.rows[0] === undefined)
+    throw new Error('Mail outbox update failed')
+}
+
 /** The update that settles one attempt. A row that is no longer pending is a fixed error. */
 export async function saveOutboxAttempt(
   transaction: TenantTransaction,

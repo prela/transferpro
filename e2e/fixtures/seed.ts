@@ -209,6 +209,47 @@ export async function seedVehicleRecord(tenantId: string, input: {
   })
 }
 
+/**
+ * A failed work order, as the retry worker would leave it.
+ * The e2e clock does not move that worker, so the Home spec plants the row.
+ * `created_at` is a second ahead of an assign that just committed, so that
+ * earlier mail does not make this one stale.
+ */
+export async function plantFailedWorkOrder(tenantId: string, input: {
+  readonly rideId: string
+  readonly driverId: string
+  readonly status?: 'assigned' | 'changed' | 'cancelled' | 'no_longer_yours'
+  readonly vehicleId?: string | null
+}): Promise<string> {
+  const status = input.status ?? 'assigned'
+  const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
+  const client = await pool.connect()
+  try {
+    await client.query('begin')
+    await client.query(`select set_config('app.tenant_id', $1, true)`, [tenantId])
+    const inserted = await client.query<{ id: string }>(
+      `insert into app.mail_outbox (
+         tenant_id, kind, ride_id, driver_id, vehicle_id, work_order_status, state, attempt_count, created_at
+       ) values ($1, 'work_order', $2, $3, $4, $5, 'failed', 4, now() + interval '1 second')
+       returning id`,
+      [tenantId, input.rideId, input.driverId, status === 'no_longer_yours' ? input.vehicleId ?? null : null, status],
+    )
+    const id = inserted.rows[0]?.id
+    if (id === undefined)
+      throw new Error('Failed work order was not planted.')
+    await client.query('commit')
+    return id
+  }
+  catch (error) {
+    await client.query('rollback')
+    throw error
+  }
+  finally {
+    client.release()
+    await pool.end()
+  }
+}
+
 async function withOwnerTransaction(tenantId: string, write: (client: pg.PoolClient) => Promise<void>): Promise<void> {
   const pool = new pg.Pool({ connectionString: required('DATABASE_MIGRATE_URL'), max: 1 })
   const client = await pool.connect()

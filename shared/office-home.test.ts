@@ -776,6 +776,20 @@ it('puts each listed Ride in one Home block, and past pickup and a decline in Po
   expect(guests(blocks.waitingOnAcceptance)).toEqual(['Waiting'])
   expect(guests(blocks.inProgress)).toEqual(['Fresh'])
   expect(officeHomeUrgentRideCount(snapshot)).toBe(4)
+  expect(snapshot.failedMails).toEqual([])
+  const withFailedMail = {
+    ...snapshot,
+    failedMails: [{
+      entryId: '12121212-1212-4121-8121-121212121212',
+      driverName: 'Ana Vozač',
+      pickupAt: '2026-06-15T08:00:00.000Z',
+      start: 'Zračna luka',
+      end: 'Hotel',
+      status: 'assigned' as const,
+    }],
+  }
+  expect(officeHomeUrgentRideCount(withFailedMail)).toBe(4)
+  expect(officeHomeUrgentKeys(withFailedMail)).toEqual(officeHomeUrgentKeys(snapshot))
 
   const placed = [
     ...blocks.attention.flatMap(group => group.rides),

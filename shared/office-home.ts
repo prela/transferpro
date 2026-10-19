@@ -4,6 +4,7 @@ import { isCalendarDate, localDayBounds, operationalDateInTimeZone } from './dat
 import { landingAlarmOn, rideIsInProgress } from './landing-alarm'
 import { OPERATIONAL_DAY_START_DEFAULT, operationalDayStartHourSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from './tenant-settings'
 import { PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema, TABLA_MAX_LENGTH, transferPriceSchema } from './transfer'
+import { WORK_ORDER_STATUSES } from './work-order'
 
 /**
  * Four hours, in milliseconds. The unassigned alarm includes this instant
@@ -109,7 +110,19 @@ const officeHomeCountsSchema = z.strictObject({
  * (ADR-0030). The lists still include a Ride that Home shows only in
  * Pozornost; the blocks below are what the screen renders. There is no
  * week, month, or euro total.
+ * `failedMails` sits below Pozornost and outside both attention tiers
+ * (ADR-0045). It does not change the urgent count. The Driver's name is
+ * derived on read. The address is not a field.
  */
+export const officeHomeFailedMailSchema = z.strictObject({
+  entryId: z.uuid(),
+  driverName: z.string().trim().min(1),
+  pickupAt: z.iso.datetime(),
+  start: z.string().trim().min(1),
+  end: z.string().trim().min(1),
+  status: z.enum(WORK_ORDER_STATUSES),
+})
+
 export const officeHomeSchema = z.strictObject({
   operationalDate: z.string().refine(isCalendarDate),
   operationalDayStartHour: operationalDayStartHourSchema,
@@ -117,6 +130,12 @@ export const officeHomeSchema = z.strictObject({
   waitingOnAcceptance: z.array(officeHomeRowSchema),
   inProgress: z.array(officeHomeInProgressSchema),
   counts: officeHomeCountsSchema,
+  failedMails: z.array(officeHomeFailedMailSchema),
+})
+
+/** One immediate resend. The address is not on the body. */
+export const failedMailResendSchema = z.strictObject({
+  outcome: z.enum(['sent', 'stale', 'failed']),
 })
 
 export type OfficeHome = z.infer<typeof officeHomeSchema>
@@ -292,6 +311,8 @@ export function buildOfficeHome(
     waitingOnAcceptance,
     inProgress,
     counts,
+    // The Ride snapshot does not know about mail. The Home read fills this afterwards.
+    failedMails: [],
   })
 }
 
