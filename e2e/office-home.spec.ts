@@ -2,7 +2,7 @@ import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
-import { seedMember, seedTenant } from './fixtures/seed'
+import { plantFailedWorkOrder, seedMember, seedTenant } from './fixtures/seed'
 import { signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
@@ -48,6 +48,7 @@ test('office home loads both reads, refreshes after 60 seconds while visible, an
   const waiting = page.getByRole('region', { name: 'Čeka prihvat' })
   const progress = page.getByRole('region', { name: 'U tijeku' })
   await expect(attention).toContainText('Nema hitnih vožnji. Ostale vožnje su na popisima ispod.')
+  await expect(page.getByRole('heading', { name: /Neuspjeli mailovi/ })).toHaveCount(0)
   await expect(unassigned).toContainText('Nema nedodijeljenih vožnji. Novi transfer otvorite na Transferima.')
   await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Početna, 0', exact: true })).toBeVisible()
   await expect(waiting).toContainText('Nema vožnji koje čekaju prihvat. Dodijeljena vožnja čeka ovdje dok je vozač ne prihvati.')
@@ -502,6 +503,67 @@ async function scrollTop(page: Page): Promise<number> {
     return 0
   })
 }
+
+test('a failed work order sits below Attention and Send again clears it, in both themes and on a phone', async ({ page }) => {
+  // The automatic attempts take about 36 minutes. This plants the failed row
+  // they would leave, then checks the block and one resend.
+  const tenant = await seedTenant('home-failed-mail')
+  const address = `e2e-failed-${tenant.tenantId.slice(0, 8)}@example.test`
+  await useTheme(page, 'dark')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const places = await placesFor(page)
+  const driverId = await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Ana Slobodna',
+      kind: 'own',
+      phone: '+38595555180',
+      email: address,
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+    },
+  }))
+  const vehicleId = await createdId(await page.request.post('/api/vehicles', {
+    data: {
+      registrationPlate: 'DU180AA',
+      kind: 'fixed',
+      registrationExpiresOn: licence,
+      technicalInspectionExpiresOn: licence,
+      insuranceExpiresOn: licence,
+    },
+  }))
+  const rideId = await record(page, 'Gost Klara', new Date(Date.now() + 4 * 60 * 60 * 1000), places, {
+    price: 10,
+    payment: 'cash',
+  })
+  expect((await page.request.post(`/api/rides/${rideId}/assign`, {
+    data: { version: 0, driverId, vehicleId },
+  })).ok()).toBeTruthy()
+  await plantFailedWorkOrder(tenant.tenantId, { rideId, driverId })
+  await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
+
+  const block = page.getByRole('region', { name: /Neuspjeli mailovi \(1\)/ })
+  await expect(block).toBeVisible()
+  await expect(block).toContainText('Ana Slobodna')
+  await expect(block).toContainText('Zračna luka Dubrovnik')
+  await expect(block).toContainText('Hotel Excelsior')
+  await expect(block).not.toContainText(address)
+  await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Početna, 0', exact: true })).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  const resend = block.getByRole('button', { name: /Pošalji ponovno/ })
+  await expect(resend).toBeVisible()
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await switchTheme(page, 'light')
+  await expect(page.getByRole('region', { name: /Neuspjeli mailovi \(1\)/ })).toBeVisible()
+  await expectNoAxeViolations(page)
+
+  await switchLocale(page, 'en')
+  const english = page.getByRole('region', { name: /Failed mail \(1\)/ })
+  await expect(english).toBeVisible()
+  await english.getByRole('button', { name: /Send again/ }).click()
+  await expect(page.getByRole('heading', { name: /Failed mail/ })).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Home, 0', exact: true })).toBeVisible()
+})
 
 async function placesFor(page: Page) {
   const clientId = await createdId(await page.request.post('/api/clients', {

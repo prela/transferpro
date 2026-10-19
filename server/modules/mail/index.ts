@@ -6,7 +6,9 @@
  */
 export { enqueueMailOutboxJob, handleMailOutboxJob, MAIL_OUTBOX_QUEUE, OutboxComposeError } from './application/attempt'
 export type { LoadedOutboxEntry, OutboxAttemptPatch, OutboxAttemptStore } from './application/attempt'
-export { workOrderIsCurrent } from './domain/current'
+export { resendFailedWorkOrder } from './application/resend'
+export type { FailedMailResendOutcome, FailedMailResendStore } from './application/resend'
+export { failedWorkOrderMatters, workOrderIsCurrent } from './domain/current'
 export type { WorkOrderCurrentFacts } from './domain/current'
 export { workOrderIdempotencyKey } from './domain/idempotency-key'
 export { MAIL_RETRY_DELAYS_MS } from './domain/retry'

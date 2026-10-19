@@ -1,5 +1,6 @@
 import { createError } from 'h3'
 import { TenantAccessError } from '../../modules/tenancy'
+import { FailedMailInputError, FailedMailNotFoundError } from '../../modules/transfers'
 
 /**
  * Turn an office-home failure into an HTTP error. The message stays a fixed
@@ -8,6 +9,8 @@ import { TenantAccessError } from '../../modules/tenancy'
  */
 export function officeHomeHttpError(error: unknown): never {
   if (error instanceof TenantAccessError)
+    throw createError({ statusCode: error.statusCode })
+  if (error instanceof FailedMailNotFoundError || error instanceof FailedMailInputError)
     throw createError({ statusCode: error.statusCode })
   throw createError({ statusCode: 500 })
 }

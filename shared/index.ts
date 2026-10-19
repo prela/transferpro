@@ -38,7 +38,7 @@ export { canMarkNoShow, noShowWaitBounds, noShowWaitElapsed, noShowWindowLabels 
 export type { NoShowClock } from './no-show'
 export { occupationStripStorageKey, placeOccupationStrip, readOccupationStripCollapsed, writeOccupationStripCollapsed } from './occupation-strip'
 export type { OccupationStrip, OccupationStripBlock, OccupationStripRide, OccupationStripRow, OccupationStripTick, OccupationWarning } from './occupation-strip'
-export { buildOfficeHome, HOME_ATTENTION_KINDS, OFFICE_HOME_COUNT_KEYS, officeHomeBlocks, officeHomeCountPath, officeHomeSchema, officeHomeUrgentKeys, officeHomeUrgentRideCount } from './office-home'
+export { buildOfficeHome, failedMailResendSchema, HOME_ATTENTION_KINDS, OFFICE_HOME_COUNT_KEYS, officeHomeBlocks, officeHomeCountPath, officeHomeFailedMailSchema, officeHomeSchema, officeHomeUrgentKeys, officeHomeUrgentRideCount } from './office-home'
 export type { HomeAttentionKind, OfficeHome, OfficeHomeAttentionGroup, OfficeHomeBlockRide, OfficeHomeBlocks, OfficeHomeCountKey, OfficeHomeDecline, OfficeHomeMark, OfficeHomeRide } from './office-home'
 export { accountInitials, officeNav, officePhoneBar } from './office-nav'
 export type { OfficeNavGroup, OfficeNavLabels, OfficeNavLink, OfficeNavRole } from './office-nav'
