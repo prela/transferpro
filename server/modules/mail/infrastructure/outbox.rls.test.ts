@@ -10,7 +10,7 @@ import { createClient } from '../../clients'
 import { createDriver } from '../../drivers'
 import { createLocation } from '../../locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../../tenancy'
-import { assignRide, clearRide, closeMailOutboxQueue, createTransfer, mailOutboxQueue, outboxAttemptStore, reassignRide } from '../../transfers'
+import { assignRide, changeVehicle, clearRide, closeMailOutboxQueue, createTransfer, mailOutboxQueue, outboxAttemptStore, reassignRide } from '../../transfers'
 import { createVehicle } from '../../vehicles'
 import { enqueueMailOutboxJob, handleMailOutboxJob, recordWorkOrder } from '../index'
 
@@ -606,6 +606,143 @@ it('retries no longer yours from the released vehicle, not the one assigned late
   expect(JSON.stringify(sent)).not.toContain(address)
   const [row] = (await rowsFor(recorded.ride.id)).filter(item => item.id === entryId)
   expect(row).toMatchObject({ state: 'sent', vehicle_id: releasedVehicle.id })
+})
+
+it('replaces an older work order only when the later one names the same driver', async () => {
+  const world = await office('mbox-same')
+  const driverA = await createDriver(world.dispatcher, {
+    name: 'Ana Same',
+    kind: 'own',
+    phone: '+385911113309',
+    email: address,
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const driverB = await createDriver(world.dispatcher, {
+    name: 'Marko Same',
+    kind: 'own',
+    phone: '+385911113310',
+    email: 'marko-same@example.test',
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const vehicleA = await createVehicle(world.dispatcher, {
+    registrationPlate: 'ZG9330SA',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const vehicleB = await createVehicle(world.dispatcher, {
+    registrationPlate: 'ZG9330SB',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const recorded = await createTransfer(world.dispatcher, transferBody(world))
+  const quiet = { mailer: mailer(async () => {}), logger: captureLogs().logger }
+  await assignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driverA.id,
+    vehicleId: vehicleA.id,
+    version: 0,
+  }, quiet)
+  // One transaction writes B assigned and A no longer yours. They share created_at.
+  await reassignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driverB.id,
+    vehicleId: vehicleB.id,
+    version: await transferVersion(recorded.ride.id),
+  }, quiet)
+  // A later transaction. Only B's earlier mail is replaced.
+  await changeVehicle(world.dispatcher, {
+    rideId: recorded.ride.id,
+    vehicleId: vehicleA.id,
+    version: await transferVersion(recorded.ride.id),
+  }, quiet)
+
+  const rows = await rowsFor(recorded.ride.id)
+  const aLost = rows.find(row => row.driver_id === driverA.id && row.work_order_status === 'no_longer_yours')
+  const bAssigned = rows.find(row => row.driver_id === driverB.id && row.work_order_status === 'assigned')
+  const bChanged = rows.find(row => row.driver_id === driverB.id && row.work_order_status === 'changed')
+  if (aLost === undefined || bAssigned === undefined || bChanged === undefined)
+    throw new Error('missing entry')
+
+  await appDb.transaction(async (transaction) => {
+    await openTenantSession(transaction, { tenantId: world.tenantId }, async () => {
+      const store = outboxAttemptStore(transaction)
+      expect((await store.load(aLost.id))?.superseded).toBe(false)
+      expect((await store.load(bAssigned.id))?.superseded).toBe(true)
+      expect((await store.load(bChanged.id))?.superseded).toBe(false)
+    })
+  })
+})
+
+it('replaces A no longer yours when A is assigned the Ride again', async () => {
+  const world = await office('mbox-return')
+  const driverA = await createDriver(world.dispatcher, {
+    name: 'Ana Return',
+    kind: 'own',
+    phone: '+385911113311',
+    email: address,
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const driverB = await createDriver(world.dispatcher, {
+    name: 'Marko Return',
+    kind: 'own',
+    phone: '+385911113312',
+    email: 'marko-return@example.test',
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const vehicleA = await createVehicle(world.dispatcher, {
+    registrationPlate: 'ZG9330TA',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const vehicleB = await createVehicle(world.dispatcher, {
+    registrationPlate: 'ZG9330TB',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const recorded = await createTransfer(world.dispatcher, transferBody(world))
+  const quiet = { mailer: mailer(async () => {}), logger: captureLogs().logger }
+  await assignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driverA.id,
+    vehicleId: vehicleA.id,
+    version: 0,
+  }, quiet)
+  await reassignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driverB.id,
+    vehicleId: vehicleB.id,
+    version: await transferVersion(recorded.ride.id),
+  }, quiet)
+  await reassignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driverA.id,
+    vehicleId: vehicleA.id,
+    version: await transferVersion(recorded.ride.id),
+  }, quiet)
+
+  const rows = await rowsFor(recorded.ride.id)
+  const aLost = rows.find(row => row.driver_id === driverA.id && row.work_order_status === 'no_longer_yours')
+  if (aLost === undefined)
+    throw new Error('missing entry')
+
+  await appDb.transaction(async (transaction) => {
+    await openTenantSession(transaction, { tenantId: world.tenantId }, async () => {
+      const loaded = await outboxAttemptStore(transaction).load(aLost.id)
+      expect(loaded?.superseded).toBe(true)
+    })
+  })
 })
 
 async function transferVersion(rideId: string): Promise<number> {
