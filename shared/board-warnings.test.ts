@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { deriveBoardWarnings } from './board-warnings'
+import { boardWarningsSchema, deriveBoardWarnings } from './board-warnings'
 
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
 const otherDriverId = 'b2b2b2b2-2222-4222-8222-222222222222'
@@ -234,4 +234,19 @@ it('gives an unassigned or finished ride no warnings', () => {
       },
     })).toEqual(none)
   }
+})
+
+it('shows the unavailable Driver or Vehicle on an assigned or accepted Ride only', () => {
+  expect(derive({ unavailable: ['driver', 'vehicle'] })).toEqual({ ...none, unavailable: ['driver', 'vehicle'] })
+  const ride = { rideId, pickupAt: at(10, 0), landingAt: null, driverId, vehicleId }
+  expect(derive({ ride: { ...ride, state: 'accepted' }, unavailable: ['vehicle'] })).toEqual({ ...none, unavailable: ['vehicle'] })
+  expect(derive({ ride: { ...ride, state: 'done' }, unavailable: ['driver'] })).toEqual(none)
+  // No window covers the Ride: the warning is not there at all.
+  expect(derive({ unavailable: [] })).toEqual(none)
+})
+
+it('accepts the unavailability warning in the day list contract', () => {
+  expect(boardWarningsSchema.parse({ ...none, unavailable: ['driver'] })).toEqual({ ...none, unavailable: ['driver'] })
+  expect(boardWarningsSchema.safeParse({ ...none, unavailable: ['partner'] }).success).toBe(false)
+  expect(boardWarningsSchema.parse(none)).toEqual(none)
 })

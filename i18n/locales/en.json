@@ -406,7 +406,8 @@
       "unclosed": "Not closed",
       "overlap": "Overlap",
       "rosterMismatch": "Roster mismatch",
-      "expiredDocument": "Expired document"
+      "expiredDocument": "Expired document",
+      "unavailable": "Unavailable"
     },
     "attentionDetail": {
       "unassignedAlarm": "The ride is unassigned and the pickup is within four hours.",
@@ -416,7 +417,8 @@
       "unclosed": "More than an hour has passed since pickup and the ride is not closed.",
       "overlap": "The time overlaps another ride, or the gap to it is too short.",
       "rosterMismatch": "The vehicle is not the one the roster gives this driver for that day.",
-      "expiredDocument": "A document for the driver or the vehicle has expired."
+      "expiredDocument": "A document for the driver or the vehicle has expired.",
+      "unavailable": "The driver or the vehicle is marked unavailable during this ride."
     },
     "rowAccept": "Confirm by phone",
     "rowAcceptFor": "Confirm by phone: {guest}",

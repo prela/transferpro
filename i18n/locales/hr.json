@@ -406,7 +406,8 @@
       "unclosed": "Nije zatvoreno",
       "overlap": "Preklapanje",
       "rosterMismatch": "Nesklad rasporeda",
-      "expiredDocument": "Istekao dokument"
+      "expiredDocument": "Istekao dokument",
+      "unavailable": "Nedostupan"
     },
     "attentionDetail": {
       "unassignedAlarm": "Vožnja nije dodijeljena, a do preuzimanja je manje od četiri sata.",
@@ -416,7 +417,8 @@
       "unclosed": "Od preuzimanja je prošlo više od sata, a vožnja nije zatvorena.",
       "overlap": "Vrijeme se preklapa s drugom vožnjom ili je razmak do nje preuzak.",
       "rosterMismatch": "Vozilo nije ono koje raspored daje vozaču za taj dan.",
-      "expiredDocument": "Vozaču ili vozilu je istekao dokument."
+      "expiredDocument": "Vozaču ili vozilu je istekao dokument.",
+      "unavailable": "Vozač ili vozilo ima zabilježenu nedostupnost u vrijeme ove vožnje."
     },
     "rowAccept": "Potvrdi telefonom",
     "rowAcceptFor": "Potvrdi telefonom: {guest}",

@@ -1,4 +1,4 @@
-import type { ScheduleRide } from './capacity'
+import type { ScheduleResource, ScheduleRide } from './capacity'
 import type { ExpiringDocumentKind } from './expiring-documents'
 import type { RideState } from './transfer'
 import { z } from 'zod'
@@ -14,6 +14,8 @@ export const boardWarningsSchema = z.object({
   expiredDocuments: z.array(expiringDocumentKindSchema),
   rosterMismatch: z.boolean(),
   overlappingRideIds: z.array(z.uuid()),
+  // The Driver or Vehicle an unavailability window covers (ADR-0034). Absent when none is.
+  unavailable: z.array(z.enum(['driver', 'vehicle'])).min(1).optional(),
 })
 
 export type BoardWarnings = z.infer<typeof boardWarningsSchema>
@@ -64,6 +66,8 @@ export function emptyBoardWarnings(): BoardWarnings {
  * capacity module reads them. The overlap is capacity's board rule
  * (`overlappingRideIds` in `./capacity`), so a tight gap and a true
  * overlap are one warning and a gap equal to the relocation gap is none.
+ * `unavailable` is what capacity found covered by an unavailability window
+ * (`readBoardUnavailability`); it is shown only when it names something.
  */
 export function deriveBoardWarnings(input: {
   readonly ride: BoardWarningRide
@@ -73,6 +77,7 @@ export function deriveBoardWarnings(input: {
   readonly others: readonly ScheduleRide[]
   readonly durationMinutes: number
   readonly gapMinutes: number
+  readonly unavailable?: readonly ScheduleResource[]
 }): BoardWarnings {
   if (!isCalendarDate(input.pickupDate))
     throw new RangeError('Pickup date is not a calendar date.')
@@ -85,6 +90,7 @@ export function deriveBoardWarnings(input: {
       && input.ride.driverId !== null
       && input.rosteredDriverId !== input.ride.driverId,
     overlappingRideIds: overlappingRideIds(input),
+    ...(input.unavailable && input.unavailable.length > 0 ? { unavailable: [...input.unavailable] } : {}),
   }
 }
 

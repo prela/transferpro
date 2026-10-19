@@ -18,6 +18,7 @@ const iconFor: Record<RideAttentionItem['kind'], string> = {
   'landing-alarm': 'i-lucide-plane-landing',
   'unclosed-mark': 'i-lucide-circle-alert',
   'overlap': 'i-lucide-triangle-alert',
+  'unavailable': 'i-lucide-calendar-off',
   'roster-mismatch': 'i-lucide-calendar-x',
   'expired-document': 'i-lucide-file-warning',
 }
@@ -34,6 +35,7 @@ function label(item: RideAttentionItem): string {
     'landing-alarm': `${group}.landingAlarm`,
     'unclosed-mark': `${group}.unclosed`,
     'overlap': `${group}.overlap`,
+    'unavailable': `${group}.unavailable`,
     'roster-mismatch': `${group}.rosterMismatch`,
     'expired-document': `${group}.expiredDocument`,
   }[item.kind]
