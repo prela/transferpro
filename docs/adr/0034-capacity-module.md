@@ -54,7 +54,7 @@ The allow-list grows to this: `capacity` may import `tenancy`, `drivers`, `vehic
 
 ### Order of work
 
-The Tenant lock lands first, in today's transfers code, with a concurrency test. The extraction of the module follows with the same behaviour, then the Partner module, unavailability windows, the handoff (ADR-0048), and the hard block with the fully booked warning.
+The Tenant lock lands first, in today's transfers code, with a concurrency test. Beside it, a prefactor makes the unclosed-mark threshold one shared value, with no change in behaviour. The extraction of the module follows with the same behaviour, then unavailability windows for Drivers and Vehicles, with the retention job. The Partner module waits on the #206 step 18 grill, which settles the Partner record. The handoff (ADR-0048) follows the Driver and Vehicle windows, the Partner module, and the threshold prefactor. Unavailability windows for Partners follow the handoff, together with the confirmation for handing a Ride to an unavailable Partner. The hard block with the fully booked warning comes last.
 
 ## Consequences
 
