@@ -1,10 +1,11 @@
 import type { SQL } from 'drizzle-orm'
-import type { TenantTransaction } from '../../../core/index'
+import type { JobQueue, TenantTransaction } from '../../../core/index'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it } from 'vitest'
 import { captureLogs } from '../../../core/testing'
 import { ResendTransportError } from '../../tenancy'
 import { deliverAssignedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
+import { loadOutboxAttempt, readWorkOrderCurrentFacts } from './work-order-attempt'
 
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
@@ -200,6 +201,57 @@ it('reads the tenant locale from the row, and a database failure drops the guest
   expect((error as Error).message).not.toContain(email)
 })
 
+it('sends one idempotency key for the snapshot, and a new one when the words change', async () => {
+  const entryId = 'd1d1d1d1-1111-4111-8111-111111111111'
+  const keys: Array<string | undefined> = []
+  const mailer = {
+    async sendWorkOrder(mail: { idempotencyKey?: string }) {
+      keys.push(mail.idempotencyKey)
+    },
+  }
+  await deliverAssignedWorkOrder(order, mailer, captureLogs().logger, 'no_longer_yours', entryId)
+  await deliverAssignedWorkOrder(order, mailer, captureLogs().logger, 'no_longer_yours', entryId)
+  await deliverAssignedWorkOrder({ ...order, guestName: 'Netko Drugi' }, mailer, captureLogs().logger, 'no_longer_yours', entryId)
+  await deliverAssignedWorkOrder({ ...order, email: 'other@example.test' }, mailer, captureLogs().logger, 'no_longer_yours', entryId)
+  expect(keys[0]).toBe(keys[1])
+  expect(keys[0]).toContain(entryId)
+  expect(keys[2]).not.toBe(keys[0])
+  expect(keys[3]).not.toBe(keys[0])
+  expect(JSON.stringify(keys)).not.toContain(email)
+  expect(JSON.stringify(keys)).not.toContain('other@example.test')
+})
+
+it('enqueues the one-minute job on the same transaction as the entry', async () => {
+  const dialect = new PgDialect()
+  const seen: unknown[][] = []
+  const transaction = {
+    async execute(query: SQL) {
+      seen.push(dialect.sqlToQuery(query).params)
+      return { rows: [{ id: 'd1d1d1d1-1111-4111-8111-111111111111' }] }
+    },
+  } as unknown as TenantTransaction
+  const enqueued: Array<{ name: string, data: unknown, startAfter: Date | undefined }> = []
+  const now = new Date('2026-10-18T10:00:00.000Z')
+  const queue = {
+    async enqueue(_context: unknown, same: unknown, name: string, data: unknown, options?: { startAfter?: Date }) {
+      expect(same).toBe(transaction)
+      enqueued.push({ name, data, startAfter: options?.startAfter })
+    },
+  } as unknown as JobQueue
+  await stageWorkOrder(transaction, order, 'no_longer_yours', {
+    queue,
+    context: { tenantId: '33333333-3333-4333-8333-333333333333' },
+    now,
+  })
+  expect(enqueued).toEqual([{
+    name: 'mail-outbox',
+    data: { entryId: 'd1d1d1d1-1111-4111-8111-111111111111' },
+    startAfter: new Date('2026-10-18T10:01:00.000Z'),
+  }])
+  expect(seen[0]).toContain(vehicleId)
+  expect(seen[0]?.some(value => value instanceof Date && value.toISOString() === '2026-10-18T10:01:00.000Z')).toBe(true)
+})
+
 it('records the released vehicle only on no longer yours', async () => {
   const dialect = new PgDialect()
   const seen: unknown[][] = []
@@ -213,6 +265,65 @@ it('records the released vehicle only on no longer yours', async () => {
   await stageWorkOrder(transaction, order, 'assigned')
   expect(seen[0]).toContain(vehicleId)
   expect(seen[1]).not.toContain(vehicleId)
+})
+
+it('reads whether a later work order replaced this one, and not the pickup', async () => {
+  const dialect = new PgDialect()
+  let seen: { sql: string } | undefined
+  const transaction = {
+    async execute(query: SQL) {
+      seen = dialect.sqlToQuery(query)
+      return { rows: [{ status: 'cancelled', rideState: 'cancelled', superseded: false }] }
+    },
+  } as unknown as TenantTransaction
+  await expect(readWorkOrderCurrentFacts(transaction, 'd1d1d1d1-1111-4111-8111-111111111111')).resolves.toEqual({
+    status: 'cancelled',
+    rideFinished: false,
+    rideCancelled: true,
+    superseded: false,
+  })
+  expect(seen?.sql).toContain('created_at')
+  expect(seen?.sql).toContain('newer.driver_id = o.driver_id')
+  expect(seen?.sql).not.toContain('pickup_at')
+  expect(seen?.sql).not.toContain('guest_name')
+
+  let loaded: { sql: string } | undefined
+  const retry = {
+    async execute(query: SQL) {
+      loaded = dialect.sqlToQuery(query)
+      return {
+        rows: [{
+          driverId,
+          vehicleId: null,
+          status: 'assigned',
+          state: 'pending',
+          attemptCount: 0,
+          nextAttemptAt: null,
+          rideState: 'assigned',
+          superseded: false,
+          rideVehicleId: null,
+          pickupAt: '2026-10-18T12:00:00.000Z',
+          startLocationId: '11111111-1111-4111-8111-111111111111',
+          endLocationId: '22222222-2222-4222-8222-222222222222',
+          guestName: 'Gost',
+          tabla: 'T',
+          passengerCount: 1,
+          luggageCount: 0,
+          childSeatCount: 0,
+          flightNumber: null,
+          clientId: '33333333-3333-4333-8333-333333333333',
+          note: null,
+          payment: 'cash',
+          price: '10.00',
+          email: 'ana@example.test',
+          locale: 'hr',
+          timeZone: 'Europe/Zagreb',
+        }],
+      }
+    },
+  } as unknown as TenantTransaction
+  await loadOutboxAttempt(retry, 'd1d1d1d1-1111-4111-8111-111111111111')
+  expect(loaded?.sql).toContain('newer.driver_id = o.driver_id')
 })
 
 it('still aborts when the Resend transport is selected in test', async () => {

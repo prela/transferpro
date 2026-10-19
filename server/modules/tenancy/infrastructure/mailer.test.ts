@@ -2,9 +2,10 @@ import type { WorkOrderMail } from './mailer'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { captureLogs } from '../../../core/testing'
-import { assertTestMailer, createConsoleMailer, createFakeMailer, createResendMailer, invitationEmail, isConsoleMailer, isResendMailer, mailerForApp, passwordChangedEmail, passwordResetEmail, ResendTransportError } from './mailer'
+import { workOrderIdempotencyKey } from '../../mail/domain/idempotency-key'
+import { assertTestMailer, createConsoleMailer, createFakeMailer, createResendMailer, invitationEmail, isConsoleMailer, isResendMailer, mailerForApp, passwordChangedEmail, passwordResetEmail, ResendTransportError, TransientMailError } from './mailer'
 
 const invitationId = '6b1e0c3a-2222-4222-8222-222222222222'
 const inviteUrl = `http://localhost:3000/accept-invite#${invitationId}`
@@ -373,6 +374,67 @@ it('writes the reset link for the e2e server only while NODE_ENV is test', async
   }
 })
 
+it('aborts a Resend request after 15 seconds', async () => {
+  const timeout = vi.spyOn(AbortSignal, 'timeout')
+  try {
+    const mailer = createResendMailer('test-resend-key', async (_input, init) => {
+      expect(init?.signal).toBe(timeout.mock.results[0]?.value)
+      return new Response('sent', { status: 200 })
+    })
+    await mailer.sendWorkOrder({
+      to: 'ana@example.test',
+      subject: 'Dodijeljeno',
+      text: 'Gost: Ana',
+      html: '<p>Gost: Ana</p>',
+    })
+    expect(timeout).toHaveBeenCalledWith(15_000)
+  }
+  finally {
+    timeout.mockRestore()
+  }
+})
+
+it('sends the idempotency key, and a changed message gets a new one', async () => {
+  const seen: string[] = []
+  const mailer = createResendMailer('test-resend-key', async (_input, init) => {
+    seen.push(new Headers(init?.headers).get('Idempotency-Key') ?? '')
+    return new Response('sent', { status: 200 })
+  })
+  const entryId = 'd1d1d1d1-1111-4111-8111-111111111111'
+  const to = 'ana@example.test'
+  const message = { subject: 'Dodijeljeno', text: 'Gost: Ana', html: '<p>Gost: Ana</p>' }
+  const key = workOrderIdempotencyKey(entryId, message, to)
+  await mailer.sendWorkOrder({ to, ...message, idempotencyKey: key })
+  await mailer.sendWorkOrder({ to, ...message, idempotencyKey: key })
+  const changed = workOrderIdempotencyKey(entryId, { ...message, text: 'Gost: Marko' }, to)
+  await mailer.sendWorkOrder({ to: 'ana@example.test', ...message, text: 'Gost: Marko', idempotencyKey: changed })
+  expect(seen).toEqual([key, key, changed])
+  expect(changed).not.toBe(key)
+})
+
+it('treats a concurrent idempotency conflict as a transient failure and does not echo the body', async () => {
+  const mailer = createResendMailer('test-resend-key', async () => new Response(JSON.stringify({
+    name: 'concurrent_idempotent_requests',
+    message: 'ana@example.test Gost: Ana',
+  }), { status: 409 }))
+  const workOrder = {
+    to: 'ana@example.test',
+    subject: 'Dodijeljeno',
+    text: 'Gost: Ana',
+    html: '<p>Gost: Ana</p>',
+    idempotencyKey: 'd1d1d1d1-1111-4111-8111-111111111111.abc',
+  }
+  await expect(mailer.sendWorkOrder(workOrder)).rejects.toBeInstanceOf(TransientMailError)
+  await expect(mailer.sendWorkOrder(workOrder)).rejects.toThrow('Mail delivery was not completed.')
+  try {
+    await mailer.sendWorkOrder(workOrder)
+  }
+  catch (error) {
+    expect((error as Error).message).not.toContain('ana@example.test')
+    expect((error as Error).message).not.toContain('Gost: Ana')
+  }
+})
+
 it('rejects the e2e failure address and records every other work order', async () => {
   const workOrders: WorkOrderMail[] = []
   const mailer = createFakeMailer([], workOrders)
@@ -382,8 +444,30 @@ it('rejects the e2e failure address and records every other work order', async (
     ...message,
   })).rejects.toThrow('Work order email was not sent.')
   expect(workOrders).toHaveLength(0)
-  await mailer.sendWorkOrder({ to: 'ana@example.test', ...message })
-  expect(workOrders.map(mail => mail.to)).toEqual(['ana@example.test'])
+  await mailer.sendWorkOrder({
+    to: 'ana@example.test',
+    ...message,
+    idempotencyKey: 'd1d1d1d1-1111-4111-8111-111111111111.abc',
+  })
+  expect(workOrders).toEqual([{ to: 'ana@example.test', ...message }])
+  expect(JSON.stringify(workOrders)).not.toContain('idempotency')
+})
+
+it('leaves the idempotency key off the console line', async () => {
+  const logs = captureLogs()
+  const mailer = createConsoleMailer(logs.logger)
+  await mailer.sendWorkOrder({
+    to: 'ana@example.test',
+    subject: 'Zračna luka',
+    text: 'Gost: Ana',
+    html: '<p>Gost: Ana</p>',
+    idempotencyKey: 'd1d1d1d1-1111-4111-8111-111111111111.abc',
+  })
+  const text = JSON.stringify(logs.lines())
+  expect(text).not.toContain('ana@example.test')
+  expect(text).not.toContain('Zračna luka')
+  expect(text).not.toContain('idempotency')
+  expect(text).not.toContain('d1d1d1d1')
 })
 
 it('records one password changed mail on the fake mailer', async () => {

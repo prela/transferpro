@@ -1,5 +1,5 @@
 import type { DisplayLocale, PaymentMethod, WorkOrderNotice, WorkOrderStatus } from '../../../../shared'
-import type { Logger, TenantTransaction } from '../../../core/index'
+import type { JobQueue, Logger, TenantContext, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -7,10 +7,11 @@ import { composeWorkOrder, locationLabel, paymentMethodSchema } from '../../../.
 import { getLogger, hideDatabaseError } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadLocation } from '../../locations'
-import { noteWorkOrderAttempt, recordWorkOrder } from '../../mail'
+import { enqueueMailOutboxJob, MAIL_RETRY_DELAYS_MS, markWorkOrderStale, noteWorkOrderAttempt, recordWorkOrder, workOrderIdempotencyKey, workOrderIsCurrent } from '../../mail'
 import { ResendTransportError, withTenantFromSession } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { toPrice } from './transfers'
+import { readWorkOrderCurrentFacts } from './work-order-attempt'
 
 /**
  * The assigned Ride as the mail will describe it, read on the assign
@@ -167,8 +168,15 @@ export async function deliverAssignedWorkOrder(
   if (address === '')
     return { driverId: order.driverId, outcome: 'no_email' }
   const message = composeWorkOrder(order, status)
+  // The same key on a retry of this snapshot is one send inside Resend's window.
+  // A later attempt that composes different words gets its own key.
+  const idempotencyKey = entryId === undefined ? undefined : workOrderIdempotencyKey(entryId, message, address)
   try {
-    await mailer.sendWorkOrder({ to: address, ...message })
+    await mailer.sendWorkOrder({
+      to: address,
+      ...message,
+      ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    })
   }
   catch (error) {
     if (error instanceof ResendTransportError)
@@ -197,14 +205,30 @@ export interface StagedWorkOrder {
 }
 
 /**
+ * The queue and the Tenant for the job that rides in the Ride transaction.
+ * `now` is the clock. Tests pass a fixed instant. The office commands use the real one.
+ */
+export interface WorkOrderSchedule {
+  readonly queue: JobQueue
+  readonly context: TenantContext
+  readonly now?: Date
+}
+
+/**
  * Record the work order on the Ride transaction. A blank email records nothing.
- * The row commits or rolls back with the Ride change.
+ * The row commits or rolls back with the Ride change. When `schedule` is set,
+ * the same transaction enqueues the job for one minute later, so a process
+ * that dies before the first attempt is picked up. That job is also the
+ * second attempt when the first one fails.
  */
 export async function stageWorkOrder(
   transaction: TenantTransaction,
   order: AssignedWorkOrder,
   status: WorkOrderStatus,
+  schedule?: WorkOrderSchedule,
 ): Promise<StagedWorkOrder> {
+  const now = schedule?.now ?? new Date()
+  const startAfter = schedule === undefined ? null : new Date(now.getTime() + MAIL_RETRY_DELAYS_MS[0])
   const entryId = await recordWorkOrder(transaction, {
     rideId: order.rideId,
     driverId: order.driverId,
@@ -212,7 +236,9 @@ export async function stageWorkOrder(
     vehicleId: status === 'no_longer_yours' ? order.vehicleId : null,
     status,
     email: order.email,
-  })
+  }, startAfter)
+  if (entryId !== null && schedule !== undefined && startAfter !== null)
+    await enqueueMailOutboxJob(schedule.queue, schedule.context, transaction, entryId, startAfter)
   return { entryId, order, status }
 }
 
@@ -222,7 +248,8 @@ export async function stageWorkOrder(
  * now would drop the vehicle a "no longer yours" mail must name. That
  * released vehicle id is already on the entry for the retry. Success marks
  * the entry sent. A rejection leaves it pending with the attempt counted.
- * A blank email never opened an entry.
+ * A blank email never opened an entry. A mail that no longer matters is
+ * not sent, the entry is stale, and the office hears `stale`.
  *
  * Noting the attempt has its own session. A failed statement aborts that
  * session, so the catch wraps the session, not only the update. The office
@@ -237,19 +264,50 @@ export async function deliverStagedWorkOrder(
   if (staged.entryId === null)
     return { driverId: staged.order.driverId, outcome: 'no_email' }
   const entryId = staged.entryId
+  // The same rule as a retry. Pickup time is not part of it. The body
+  // stays the snapshot: a re-read would drop the released vehicle.
+  let stillCurrent = true
+  try {
+    const facts = await withTenantFromSession(headers, async ({ transaction }) =>
+      readWorkOrderCurrentFacts(transaction, entryId))
+    stillCurrent = facts === null || workOrderIsCurrent(facts)
+  }
+  catch {
+    const logger = log ?? getLogger()
+    logger.warn({ event: 'mail_outbox.current_check_failed', entryId })
+  }
+  if (!stillCurrent) {
+    await settleOutbox(headers, entryId, log, transaction => markWorkOrderStale(transaction, entryId))
+    return { driverId: staged.order.driverId, outcome: 'stale' }
+  }
   const notice = await deliverAssignedWorkOrder(staged.order, mailer, log, staged.status, entryId)
   // The Ride is already saved. Settle on its own session so a slow send
   // does not hold the Ride transaction, and a rejection still counts.
+  await settleOutbox(headers, entryId, log, transaction =>
+    noteWorkOrderAttempt(transaction, entryId, notice.outcome === 'sent' ? 'sent' : 'pending'))
+  return notice
+}
+
+/**
+ * Write the outbox result after the Ride has committed. A failed statement
+ * aborts that session, so the catch wraps the session. The office still
+ * receives the notice. The log is the entry id and nothing else.
+ */
+async function settleOutbox(
+  headers: Headers,
+  entryId: string,
+  log: Logger | undefined,
+  write: (transaction: TenantTransaction) => Promise<void>,
+): Promise<void> {
   try {
     await withTenantFromSession(headers, async ({ transaction }) => {
-      await noteWorkOrderAttempt(transaction, entryId, notice.outcome === 'sent' ? 'sent' : 'pending')
+      await write(transaction)
     })
   }
   catch {
     const logger = log ?? getLogger()
     logger.warn({ event: 'mail_outbox.note_failed', entryId })
   }
-  return notice
 }
 
 function toPickup(value: unknown): Date {

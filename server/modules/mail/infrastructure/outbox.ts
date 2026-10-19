@@ -37,10 +37,12 @@ const insertedRows = z.object({
  * Write one pending work order on the caller's transaction.
  * A rollback of that transaction leaves no row. A blank address writes nothing
  * and returns null. The attempt count stays 0 until the first send.
+ * `nextAttemptAt` is when the queued job may run. Null leaves that column empty.
  */
 export async function recordWorkOrder(
   transaction: TenantTransaction,
   entry: WorkOrderEntry,
+  nextAttemptAt: Date | null = null,
 ): Promise<string | null> {
   const parsed = workOrderEntry.parse(entry)
   const address = parsed.email?.trim() ?? ''
@@ -48,10 +50,10 @@ export async function recordWorkOrder(
     return null
   const inserted = insertedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
     insert into app.mail_outbox (
-      kind, ride_id, driver_id, vehicle_id, work_order_status, state, attempt_count
+      kind, ride_id, driver_id, vehicle_id, work_order_status, state, attempt_count, next_attempt_at
     )
     values (
-      'work_order', ${parsed.rideId}, ${parsed.driverId}, ${parsed.vehicleId}, ${parsed.status}, 'pending', 0
+      'work_order', ${parsed.rideId}, ${parsed.driverId}, ${parsed.vehicleId}, ${parsed.status}, 'pending', 0, ${nextAttemptAt}
     )
     returning id
   `), 'Mail outbox write failed'))
@@ -64,10 +66,11 @@ export async function recordWorkOrder(
 const attemptResult = z.enum(['sent', 'pending'])
 
 /**
- * Count the attempt that just finished. `sent` stops the entry.
- * `pending` keeps it for a later retry. This ticket does not schedule that
- * retry and does not set `next_attempt_at`. A missing pending row is a fixed
- * error, so a bound id cannot leave on a database message.
+ * Count the attempt that just finished. `sent` stops the entry and clears
+ * the next time, so the queued job finds nothing to send. `pending` keeps
+ * the next time written with the row: the job from that insert is the retry.
+ * A missing pending row is a fixed error, so a bound id cannot leave on a
+ * database message.
  */
 export async function noteWorkOrderAttempt(
   transaction: TenantTransaction,
@@ -79,7 +82,30 @@ export async function noteWorkOrderAttempt(
   const updated = insertedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
     update app.mail_outbox
     set state = ${state},
-        attempt_count = attempt_count + 1
+        attempt_count = attempt_count + 1,
+        next_attempt_at = case when ${state} = 'sent' then null else next_attempt_at end
+    where id = ${id}
+      and state = 'pending'
+    returning id
+  `), 'Mail outbox update failed'))
+  if (updated.rows[0] === undefined)
+    throw new Error('Mail outbox update failed')
+}
+
+/**
+ * The attempt found the mail no longer current. The count stays: nothing was sent.
+ * The next time is cleared so a queued job finds a row that is not pending.
+ * A missing pending row is the same fixed error as a counted attempt.
+ */
+export async function markWorkOrderStale(
+  transaction: TenantTransaction,
+  entryId: string,
+): Promise<void> {
+  const id = z.uuid().parse(entryId)
+  const updated = insertedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
+    update app.mail_outbox
+    set state = 'stale',
+        next_attempt_at = null
     where id = ${id}
       and state = 'pending'
     returning id

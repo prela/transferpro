@@ -2,7 +2,7 @@ import type { SQL } from 'drizzle-orm'
 import type { TenantTransaction } from '../../../core/index'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it } from 'vitest'
-import { recordWorkOrder } from './outbox'
+import { markWorkOrderStale, recordWorkOrder } from './outbox'
 
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
@@ -51,4 +51,29 @@ it('stores the released vehicle id and no plate', async () => {
   expect(seen?.params).toContain(vehicleId)
   expect(seen?.sql).not.toContain('registration_plate')
   expect(JSON.stringify(seen?.params)).not.toContain('DU')
+})
+
+it('marks a pending entry stale without counting a send', async () => {
+  const dialect = new PgDialect()
+  let seen: { sql: string, params: unknown[] } | undefined
+  const transaction = {
+    async execute(query: SQL) {
+      seen = dialect.sqlToQuery(query)
+      return { rows: [{ id: entryId }] }
+    },
+  } as unknown as TenantTransaction
+  await markWorkOrderStale(transaction, entryId)
+  expect(seen?.sql).toContain('stale')
+  expect(seen?.sql).not.toContain('attempt_count')
+  expect(seen?.params).toContain(entryId)
+  expect(JSON.stringify(seen?.params)).not.toContain('ana@example.test')
+
+  const missing = {
+    async execute() {
+      return { rows: [] }
+    },
+  } as unknown as TenantTransaction
+  const error = await markWorkOrderStale(missing, entryId).catch(caught => caught)
+  expect(error).toBeInstanceOf(Error)
+  expect((error as Error).message).toBe('Mail outbox update failed')
 })

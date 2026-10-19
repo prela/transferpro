@@ -761,6 +761,7 @@
     "workOrderSent": "Radni nalog je poslan vozaču {name}.",
     "workOrderNoEmail": "Vozač {name} nema e-poštu. Radni nalog nije poslan.",
     "workOrderFailed": "Radni nalog vozaču {name} nije poslan, pokušat ćemo ponovno.",
+    "workOrderStale": "Radni nalog vozaču {name} nije poslan jer više nije aktualan.",
     "actions": "Radnje",
     "acceptByPhone": "Zabilježi telefonom",
     "acceptByPhoneFor": "Zabilježi prihvaćanje telefonom: {guest}",

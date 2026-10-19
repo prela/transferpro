@@ -11,6 +11,7 @@ import { driverAssignState } from '../../drivers'
 import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { vehiclePresenceForAssign } from '../../vehicles'
 import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
+import { mailOutboxQueue } from './mail-outbox-worker'
 import { checkRideSchedule } from './ride-schedule'
 import { claimTransferVersion, lockTransferRide, refuseStaleVersion } from './transfer-version'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
@@ -303,11 +304,12 @@ function officeOnly(role: string): void {
  */
 export async function changeVehicle(headers: Headers, raw: unknown, delivery?: Delivery): Promise<AssignedRide> {
   const input = parseChangeRideVehicle(raw)
-  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
+  const queue = await mailOutboxQueue()
+  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
     officeOnly(actor.role)
     const changed = await changeRideVehicle(transaction, actor.userId, input)
     const order = await readAssignedWorkOrder(transaction, changed.ride.id)
-    const staged = await stageWorkOrder(transaction, order, 'changed')
+    const staged = await stageWorkOrder(transaction, order, 'changed', { queue, context })
     return { ride: changed.ride, staged, relocationWarnings: changed.relocationWarnings }
   })
   const notice = await deliverStagedWorkOrder(headers, saved.staged, mailerFrom(delivery), delivery?.logger)
@@ -323,11 +325,12 @@ export async function changeVehicle(headers: Headers, raw: unknown, delivery?: D
  */
 export async function clearRide(headers: Headers, rawRideId: unknown, rawBody: unknown, delivery?: Delivery): Promise<AssignedRide> {
   const parsed = parseClearRide(rawRideId, rawBody)
-  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
+  const queue = await mailOutboxQueue()
+  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
     officeOnly(actor.role)
     const cleared = await clearAssignedRide(transaction, actor.userId, parsed.rideId, parsed.version)
     const order = await readAssignedWorkOrder(transaction, cleared.ride.id, cleared.released)
-    const staged = await stageWorkOrder(transaction, order, 'no_longer_yours')
+    const staged = await stageWorkOrder(transaction, order, 'no_longer_yours', { queue, context })
     return { ride: cleared.ride, staged }
   })
   const notice = await deliverStagedWorkOrder(headers, saved.staged, mailerFrom(delivery), delivery?.logger)
@@ -344,13 +347,14 @@ export async function clearRide(headers: Headers, rawRideId: unknown, rawBody: u
  */
 export async function reassignRide(headers: Headers, raw: unknown, delivery?: Delivery): Promise<AssignedRide> {
   const input = parseReassignRide(raw)
-  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
+  const queue = await mailOutboxQueue()
+  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
     officeOnly(actor.role)
     const moved = await reassignAssignedRide(transaction, actor.userId, input)
     const nextOrder = await readAssignedWorkOrder(transaction, moved.ride.id)
     const previousOrder = await readAssignedWorkOrder(transaction, moved.ride.id, moved.released)
-    const next = await stageWorkOrder(transaction, nextOrder, 'assigned')
-    const previous = await stageWorkOrder(transaction, previousOrder, 'no_longer_yours')
+    const next = await stageWorkOrder(transaction, nextOrder, 'assigned', { queue, context })
+    const previous = await stageWorkOrder(transaction, previousOrder, 'no_longer_yours', { queue, context })
     return { ride: moved.ride, next, previous, relocationWarnings: moved.relocationWarnings }
   })
   const mailer = mailerFrom(delivery)

@@ -9,6 +9,7 @@ import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { RideNotFoundError } from './assign'
+import { mailOutboxQueue } from './mail-outbox-worker'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
 /** The body was not an empty object, or the path was not a Ride id. Nothing is written. */
@@ -116,7 +117,8 @@ export async function cancelRide(
   delivery?: { mailer: Mailer, logger?: Logger },
 ): Promise<CancelledRideResult> {
   const rideId = parseCancel(rawRideId, rawBody)
-  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
+  const queue = await mailOutboxQueue()
+  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
     if (actor.role !== 'admin' && actor.role !== 'dispatcher')
       throw new TenantAccessError(403)
     const ride = await cancelRideForOffice(transaction, actor.userId, rideId)
@@ -124,7 +126,7 @@ export async function cancelRide(
     if (ride.driverId === null)
       return { ride, staged: null }
     const order = await readAssignedWorkOrder(transaction, ride.id)
-    const staged = await stageWorkOrder(transaction, order, 'cancelled')
+    const staged = await stageWorkOrder(transaction, order, 'cancelled', { queue, context })
     return { ride, staged }
   })
   if (saved.staged === null)

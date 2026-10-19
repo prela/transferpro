@@ -151,7 +151,7 @@ export function composeAssignedWorkOrder(facts: AssignedWorkOrderFacts): WorkOrd
   return composeWorkOrder(facts, 'assigned')
 }
 
-export const WORK_ORDER_OUTCOMES = ['sent', 'no_email', 'failed'] as const
+export const WORK_ORDER_OUTCOMES = ['sent', 'no_email', 'failed', 'stale'] as const
 
 export const workOrderNoticeSchema = z.object({
   driverId: z.uuid(),

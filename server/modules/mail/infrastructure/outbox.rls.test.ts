@@ -10,9 +10,9 @@ import { createClient } from '../../clients'
 import { createDriver } from '../../drivers'
 import { createLocation } from '../../locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../../tenancy'
-import { assignRide, clearRide, createTransfer } from '../../transfers'
+import { assignRide, changeVehicle, clearRide, closeMailOutboxQueue, createTransfer, mailOutboxQueue, outboxAttemptStore, reassignRide } from '../../transfers'
 import { createVehicle } from '../../vehicles'
-import { recordWorkOrder } from '../index'
+import { enqueueMailOutboxJob, handleMailOutboxJob, recordWorkOrder } from '../index'
 
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
@@ -98,6 +98,14 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  // Jobs from this file name only mbox tenants. Drop them so a dev worker
+  // does not deliver a fixture. The owner role can see both schemas.
+  await ownerPool.query(`delete from pgboss.job
+    where name = 'mail-outbox'
+      and data->>'tenantId' in (
+        select id::text from auth.organization where slug like 'mbox-%'
+      )`)
+  await closeMailOutboxQueue()
   await closeTenantRuntime()
   await authPool.end()
   await ownerPool.end()
@@ -186,11 +194,12 @@ interface OutboxRow {
   ride_id: string | null
   driver_id: string | null
   vehicle_id: string | null
+  next_attempt_at: Date | null
 }
 
 async function rowsFor(rideId: string): Promise<OutboxRow[]> {
   const result = await ownerPool.query<OutboxRow>(
-    `select id, kind, state, attempt_count, work_order_status, invitation_id, ride_id, driver_id, vehicle_id
+    `select id, kind, state, attempt_count, work_order_status, invitation_id, ride_id, driver_id, vehicle_id, next_attempt_at
      from app.mail_outbox where ride_id = $1 order by created_at, id`,
     [rideId],
   )
@@ -269,6 +278,8 @@ it('rolls the entry back with the Ride transaction, then a sent attempt marks it
   })
   const recorded = await createTransfer(world.dispatcher, transferBody(world))
 
+  const queue = await mailOutboxQueue()
+  let written = ''
   await expect(appDb.transaction(async (transaction) => {
     await openTenantSession(transaction, { tenantId: world.tenantId }, async () => {
       const id = await recordWorkOrder(transaction, {
@@ -277,12 +288,16 @@ it('rolls the entry back with the Ride transaction, then a sent attempt marks it
         vehicleId: null,
         status: 'assigned',
         email: address,
-      })
+      }, new Date(Date.now() + 60_000))
       expect(id).toEqual(expect.any(String))
+      written = id ?? ''
+      await enqueueMailOutboxJob(queue, { tenantId: world.tenantId }, transaction, written, new Date(Date.now() + 60_000))
     })
     throw new RolledBack()
   })).rejects.toBeInstanceOf(RolledBack)
   expect(await rowsFor(recorded.ride.id)).toEqual([])
+  const kept = await ownerPool.query('select id from pgboss.job where data #>> \'{data,entryId}\' = $1', [written])
+  expect(kept.rows).toEqual([])
 
   const sent: string[] = []
   const assigned = await assignRide(world.dispatcher, {
@@ -307,6 +322,7 @@ it('rolls the entry back with the Ride transaction, then a sent attempt marks it
     ride_id: recorded.ride.id,
     driver_id: driver.id,
     vehicle_id: null,
+    next_attempt_at: null,
   })
   expect(JSON.stringify(row)).not.toContain(address)
   expect(JSON.stringify(assigned)).not.toContain(address)
@@ -349,6 +365,7 @@ it('leaves a failed first attempt pending and logs the entry, the Ride, and the 
     attempt_count: 1,
     work_order_status: 'assigned',
   })
+  expect(row?.next_attempt_at).toBeInstanceOf(Date)
   const [line] = logs.lines()
   expect(line).toMatchObject({
     event: 'work_order.email_failed',
@@ -360,6 +377,16 @@ it('leaves a failed first attempt pending and logs the entry, the Ride, and the 
   const text = JSON.stringify(line)
   expect(text).not.toContain(address)
   expect(text).not.toContain('Gost Tajna')
+  const queued = await ownerPool.query<{ start_after: Date }>(
+    'select start_after from pgboss.job where name = $1 and data #>> \'{data,entryId}\' = $2',
+    ['mail-outbox', row?.id],
+  )
+  expect(queued.rows).toHaveLength(1)
+  const due = queued.rows[0]?.start_after
+  expect(due).toBeInstanceOf(Date)
+  const wait = (due?.getTime() ?? 0) - Date.now()
+  expect(wait).toBeGreaterThan(20_000)
+  expect(wait).toBeLessThan(90_000)
 })
 
 it('stores the released vehicle on no longer yours and leaves the assigned row without one', async () => {
@@ -466,6 +493,268 @@ it('writes no entry when the Driver has no email', async () => {
   expect(calls).toBe(0)
   expect(await rowsFor(recorded.ride.id)).toEqual([])
 })
+
+it('retries no longer yours from the released vehicle, not the one assigned later', async () => {
+  const world = await office('mbox-retry')
+  const releasedDriver = await createDriver(world.dispatcher, {
+    name: 'Ana Released',
+    kind: 'own',
+    phone: '+385911113307',
+    email: address,
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const nextDriver = await createDriver(world.dispatcher, {
+    name: 'Marko Next',
+    kind: 'own',
+    phone: '+385911113308',
+    email: 'marko-outbox@example.test',
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const releasedPlate = 'ZG9330RA'
+  const laterPlate = 'ZG9330RB'
+  const releasedVehicle = await createVehicle(world.dispatcher, {
+    registrationPlate: releasedPlate,
+    description: 'Stari kombi',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const laterVehicle = await createVehicle(world.dispatcher, {
+    registrationPlate: laterPlate,
+    description: 'Novi kombi',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const recorded = await createTransfer(world.dispatcher, transferBody(world))
+  const logs = captureLogs()
+  const failing = mailer(async () => {
+    throw new Error('Work order email was not sent.')
+  })
+  await assignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: releasedDriver.id,
+    vehicleId: releasedVehicle.id,
+    version: 0,
+  }, { mailer: failing, logger: logs.logger })
+  // Reassign drops vehicle A from the Ride. The "no longer yours" row keeps it.
+  await reassignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: nextDriver.id,
+    vehicleId: laterVehicle.id,
+    version: await transferVersion(recorded.ride.id),
+  }, {
+    logger: logs.logger,
+    mailer: mailer(async (mail) => {
+      if (mail.subject.startsWith('Više nije vaše') || mail.text.startsWith('Više nije vaše'))
+        throw new Error('Work order email was not sent.')
+    }),
+  })
+
+  const rows = await rowsFor(recorded.ride.id)
+  const released = rows.find(row => row.work_order_status === 'no_longer_yours')
+  expect(released).toMatchObject({
+    state: 'pending',
+    vehicle_id: releasedVehicle.id,
+    driver_id: releasedDriver.id,
+  })
+  const entryId = released?.id
+  if (entryId === undefined)
+    throw new Error('missing entry')
+
+  const sent: Array<{ text: string, subject: string }> = []
+  await appDb.transaction(async (transaction) => {
+    await openTenantSession(transaction, { tenantId: world.tenantId }, async () => {
+      await handleMailOutboxJob({
+        id: '6b1e0c3a-1111-4111-8111-111111111111',
+        name: 'mail-outbox',
+        tenantId: world.tenantId,
+        data: { entryId },
+      }, { transaction }, {
+        mailer: mailer(async (mail) => {
+          sent.push({ text: mail.text, subject: mail.subject })
+        }),
+        queue: {
+          async enqueue() {
+            throw new Error('a sent retry must not schedule another attempt')
+          },
+          async handleNext() {
+            return null
+          },
+          async schedule() {},
+          async workScheduled() {},
+          async work() {},
+          async close() {},
+        },
+        log: captureLogs().logger,
+        // The row's next attempt is one minute after the clear. This clock is past that.
+        now: () => new Date(Date.now() + 2 * 60 * 1000),
+        openStore: outboxAttemptStore,
+      })
+    })
+  })
+
+  expect(sent).toHaveLength(1)
+  expect(sent[0]?.text).toContain(releasedPlate)
+  expect(sent[0]?.text).toContain('Stari kombi')
+  expect(sent[0]?.text).not.toContain(laterPlate)
+  expect(sent[0]?.text).not.toContain('Novi kombi')
+  expect(JSON.stringify(sent)).not.toContain(address)
+  const [row] = (await rowsFor(recorded.ride.id)).filter(item => item.id === entryId)
+  expect(row).toMatchObject({ state: 'sent', vehicle_id: releasedVehicle.id })
+})
+
+it('replaces an older work order only when the later one names the same driver', async () => {
+  const world = await office('mbox-same')
+  const driverA = await createDriver(world.dispatcher, {
+    name: 'Ana Same',
+    kind: 'own',
+    phone: '+385911113309',
+    email: address,
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const driverB = await createDriver(world.dispatcher, {
+    name: 'Marko Same',
+    kind: 'own',
+    phone: '+385911113310',
+    email: 'marko-same@example.test',
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const vehicleA = await createVehicle(world.dispatcher, {
+    registrationPlate: 'ZG9330SA',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const vehicleB = await createVehicle(world.dispatcher, {
+    registrationPlate: 'ZG9330SB',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const recorded = await createTransfer(world.dispatcher, transferBody(world))
+  const quiet = { mailer: mailer(async () => {}), logger: captureLogs().logger }
+  await assignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driverA.id,
+    vehicleId: vehicleA.id,
+    version: 0,
+  }, quiet)
+  // One transaction writes B assigned and A no longer yours. They share created_at.
+  await reassignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driverB.id,
+    vehicleId: vehicleB.id,
+    version: await transferVersion(recorded.ride.id),
+  }, quiet)
+  // A later transaction. Only B's earlier mail is replaced.
+  await changeVehicle(world.dispatcher, {
+    rideId: recorded.ride.id,
+    vehicleId: vehicleA.id,
+    version: await transferVersion(recorded.ride.id),
+  }, quiet)
+
+  const rows = await rowsFor(recorded.ride.id)
+  const aLost = rows.find(row => row.driver_id === driverA.id && row.work_order_status === 'no_longer_yours')
+  const bAssigned = rows.find(row => row.driver_id === driverB.id && row.work_order_status === 'assigned')
+  const bChanged = rows.find(row => row.driver_id === driverB.id && row.work_order_status === 'changed')
+  if (aLost === undefined || bAssigned === undefined || bChanged === undefined)
+    throw new Error('missing entry')
+
+  await appDb.transaction(async (transaction) => {
+    await openTenantSession(transaction, { tenantId: world.tenantId }, async () => {
+      const store = outboxAttemptStore(transaction)
+      expect((await store.load(aLost.id))?.superseded).toBe(false)
+      expect((await store.load(bAssigned.id))?.superseded).toBe(true)
+      expect((await store.load(bChanged.id))?.superseded).toBe(false)
+    })
+  })
+})
+
+it('replaces A no longer yours when A is assigned the Ride again', async () => {
+  const world = await office('mbox-return')
+  const driverA = await createDriver(world.dispatcher, {
+    name: 'Ana Return',
+    kind: 'own',
+    phone: '+385911113311',
+    email: address,
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const driverB = await createDriver(world.dispatcher, {
+    name: 'Marko Return',
+    kind: 'own',
+    phone: '+385911113312',
+    email: 'marko-return@example.test',
+    drivingLicenceExpiresOn: '2030-01-01',
+    transportLicenceExpiresOn: '2030-06-01',
+  })
+  const vehicleA = await createVehicle(world.dispatcher, {
+    registrationPlate: 'ZG9330TA',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const vehicleB = await createVehicle(world.dispatcher, {
+    registrationPlate: 'ZG9330TB',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const recorded = await createTransfer(world.dispatcher, transferBody(world))
+  const quiet = { mailer: mailer(async () => {}), logger: captureLogs().logger }
+  await assignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driverA.id,
+    vehicleId: vehicleA.id,
+    version: 0,
+  }, quiet)
+  await reassignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driverB.id,
+    vehicleId: vehicleB.id,
+    version: await transferVersion(recorded.ride.id),
+  }, quiet)
+  await reassignRide(world.dispatcher, {
+    rideId: recorded.ride.id,
+    driverId: driverA.id,
+    vehicleId: vehicleA.id,
+    version: await transferVersion(recorded.ride.id),
+  }, quiet)
+
+  const rows = await rowsFor(recorded.ride.id)
+  const aLost = rows.find(row => row.driver_id === driverA.id && row.work_order_status === 'no_longer_yours')
+  if (aLost === undefined)
+    throw new Error('missing entry')
+
+  await appDb.transaction(async (transaction) => {
+    await openTenantSession(transaction, { tenantId: world.tenantId }, async () => {
+      const loaded = await outboxAttemptStore(transaction).load(aLost.id)
+      expect(loaded?.superseded).toBe(true)
+    })
+  })
+})
+
+async function transferVersion(rideId: string): Promise<number> {
+  const version = await ownerPool.query<{ version: number }>(
+    `select t.version
+     from app.transfers as t
+     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
+     where r.id = $1`,
+    [rideId],
+  )
+  return Number(version.rows[0]?.version)
+}
 
 it('hides Tenant A entries from Tenant B and refuses a delete', async () => {
   const world = await office('mbox-iso-a')
