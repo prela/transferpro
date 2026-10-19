@@ -102,7 +102,7 @@ A person in one Tenant, with one role: admin, dispatcher, or driver.
 _Avoid_: user
 
 **Invitation**:
-A pending offer for one email to join a Tenant as admin, dispatcher, or driver. It expires and can be used once.
+A pending offer for one email to join a Tenant as admin, dispatcher, or driver. It expires and can be used once. Its mail goes through the mail outbox and is tried again; the admin always gets the copyable link. The id is in the link and is a bearer secret.
 _Avoid_: signup link
 
 **Audit entry**:
@@ -126,7 +126,7 @@ A work order or an invitation that did not go out after the automatic attempts a
 _Avoid_: send failed
 
 **Stale mail**:
-A work order that is not sent because the Ride is finished (`done` or `no-show`), or because the Ride is cancelled and this mail is neither "no longer yours" nor the cancellation notice, or because a newer work order for the same Ride and the same Driver was recorded after it. Pickup time does not make it stale. "No longer yours" is still sent when the Ride is later cancelled. The office calls it Zastarjeli mail.
+A work order that is not sent because the Ride is finished (`done` or `no-show`), or because the Ride is cancelled and this mail is neither "no longer yours" nor the cancellation notice, or because a newer work order for the same Ride and the same Driver was recorded after it. Pickup time does not make it stale. "No longer yours" is still sent when the Ride is later cancelled. An invitation mail is stale once the invitation is accepted, revoked, or expired. The office calls it Zastarjeli mail.
 _Avoid_: old mail
 
 **Vehicle**:
