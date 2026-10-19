@@ -89,8 +89,6 @@ export class RideNotUnassignedError extends Error {
  * An archived Driver is not a new assignment. The name stays on the row.
  * The caller has already required a dispatcher or an admin.
  * The opened version is claimed with the assignment. A mismatch writes nothing.
- * The Tenant capacity lock is held from before the Driver read to commit,
- * so a concurrent assign of this Driver or Vehicle sees this one (ADR-0034).
  */
 export async function assignUnassignedRide(
   transaction: TenantTransaction,

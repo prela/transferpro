@@ -39,7 +39,7 @@ export interface ScheduleCheck {
 /**
  * First key of the two-key advisory lock. Postgres keeps two-key locks
  * apart from one-key locks, so this never meets the member lock, which
- * is `pg_advisory_xact_lock(hashtext(organizationId))` (ADR-0014). 34 is ADR-0034.
+ * is `pg_advisory_xact_lock(hashtext(organizationId))` (ADR-0014).
  */
 const CAPACITY_LOCK_SPACE = 34
 
@@ -52,9 +52,9 @@ const CAPACITY_LOCK_SPACE = 34
  * key differs, so two Tenants never wait on each other.
  */
 export async function lockTenantCapacity(transaction: TenantTransaction): Promise<void> {
-  await run(transaction, sql`
+  await hideDatabaseError(() => transaction.execute(sql`
     select pg_advisory_xact_lock(${sql.raw(String(CAPACITY_LOCK_SPACE))}, hashtext(current_setting('app.tenant_id')::uuid::text))
-  `)
+  `), 'Ride capacity lock failed')
 }
 
 /**

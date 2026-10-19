@@ -331,7 +331,6 @@ async function expectOnlyHeldAssignment(
   heldRideId: string,
 ): Promise<void> {
   const after = await snapshot(tenantId, refused)
-  expect(after.ride).toEqual({ state: 'unassigned', driver_id: null, vehicle_id: null, must_accept: null })
   expect(after.ride).toEqual(before.ride)
   expect(after.transfer).toEqual(before.transfer)
   expect(after.outbox).toEqual(before.outbox)
@@ -364,6 +363,7 @@ it('a second assignment of the same Driver to a clashing Ride waits for the firs
   expect(response.status).toBe(409)
   expect(await response.text()).toContain('ride_overlap')
   expect(await rideRow(first.ride.id)).toMatchObject({ state: 'assigned', driver_id: driver.id })
+  expect(await rideRow(second.ride.id)).toEqual({ state: 'unassigned', driver_id: null, vehicle_id: null, must_accept: null })
   await expectOnlyHeldAssignment(world.tenantId, before, second.ride, first.ride.id)
 })
 
@@ -391,6 +391,7 @@ it('a second assignment of the same Vehicle with another Driver waits for the fi
   expect(response.status).toBe(409)
   expect(await response.text()).toContain('ride_overlap')
   expect(await rideRow(first.ride.id)).toMatchObject({ state: 'assigned', vehicle_id: vehicle.id })
+  expect(await rideRow(second.ride.id)).toEqual({ state: 'unassigned', driver_id: null, vehicle_id: null, must_accept: null })
   await expectOnlyHeldAssignment(world.tenantId, before, second.ride, first.ride.id)
 })
 
@@ -417,11 +418,8 @@ it('a correction that moves an assigned Ride onto a held assignment of its Drive
   expect(order).toBe('waited')
   expect(response.status).toBe(409)
   expect(await response.text()).toContain('ride_overlap')
-  const after = await snapshot(world.tenantId, moved.ride)
-  expect(after.ride).toEqual(before.ride)
-  expect(after.transfer).toEqual(before.transfer)
-  expect(after.audit.filter(row => row.action === 'transfer.corrected')).toEqual([])
-  expect(after.outbox.filter(row => row.ride_id === moved.ride.id)).toEqual(before.outbox.filter(row => row.ride_id === moved.ride.id))
+  expect(await rideRow(held.ride.id)).toMatchObject({ state: 'assigned', driver_id: driver.id })
+  await expectOnlyHeldAssignment(world.tenantId, before, moved.ride, held.ride.id)
 })
 
 it('a capacity write in another Tenant completes while one is held open', async () => {

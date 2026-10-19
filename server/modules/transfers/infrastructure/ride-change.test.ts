@@ -8,7 +8,7 @@ import { readOccupyingRides } from './ride-occupation'
 import { RideOverlapError } from './ride-schedule'
 import { StaleSaveError } from './transfer-version'
 
-// Every export keeps its real behaviour and records its calls.
+// The reader still runs against the fake transaction; the spy only records calls.
 vi.mock('./ride-occupation', { spy: true })
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
