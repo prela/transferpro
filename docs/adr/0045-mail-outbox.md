@@ -1,6 +1,6 @@
 # Mail outbox with retries
 
-Status: accepted
+Status: accepted; amended by ADR-0047
 
 Damir accepted this on 18 October 2026, in the grill recorded on #206 as "Owner decisions 18.10." and in spec #325. It partially supersedes ADR-0026 and ADR-0013, and it amends ADR-0039. The sentences are named below.
 
