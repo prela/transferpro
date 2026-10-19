@@ -20,8 +20,14 @@ const props = defineProps<{
   landingAt?: string | null
   /** The Transfer version this form was opened with. ADR-0046. */
   version: number
+  /** The Ride's Driver after Osvježi. Null while the Ride is unassigned. */
+  rideDriverId: string | null
+  /** The Ride's Vehicle after Osvježi. Null while the Ride is unassigned. */
+  rideVehicleId: string | null
   /** Phone uses the large targets. Desktop uses the office size. */
   phone?: boolean
+  /** 409 stale_save. Awaited so the notice is up before the button enables. */
+  onStale: () => Promise<void>
 }>()
 
 const emit = defineEmits<{
@@ -48,6 +54,9 @@ const fromRoster = computed(() => rosterVehicleId.value !== null && vehicleId.va
 
 // A slower roster read must not fill a vehicle for a driver the dispatcher has left.
 let fillTicket = 0
+// Osvježi writes the Ride's Driver. That write is not a new choice, so the roster pre-fill stays out.
+// Set when Osvježi writes the opened Driver, so the roster watch does not pre-fill a Vehicle.
+let applyingOpenedRide = false
 
 type RideFailure
   = 'ride.driverArchived'
@@ -184,7 +193,21 @@ function errorCode(error: unknown): string | undefined {
   return undefined
 }
 
+watch(() => props.version, (next, previous) => {
+  if (previous === undefined || next === previous)
+    return
+  if ((props.rideDriverId ?? undefined) !== driverId.value)
+    applyingOpenedRide = true
+  driverId.value = props.rideDriverId ?? undefined
+  vehicleId.value = props.rideVehicleId ?? undefined
+  rosterVehicleId.value = null
+})
+
 watch(driverId, (next) => {
+  if (applyingOpenedRide) {
+    applyingOpenedRide = false
+    return
+  }
   const ticket = ++fillTicket
   // Capture before rosterVehicleId is cleared: fromRoster depends on it.
   // A roster pre-fill belongs to the previous driver, so drop it. A hand-picked
@@ -264,6 +287,10 @@ async function assign(confirm = false) {
       return
     }
     overlapOpen.value = false
+    if (errorCode(error) === 'stale_save') {
+      await props.onStale()
+      return
+    }
     formErrorKey.value = failureKey(error)
   }
   finally {

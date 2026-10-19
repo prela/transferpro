@@ -15,6 +15,8 @@ const props = defineProps<{
   vehicles: Vehicle[]
   /** Phone uses the large targets. Desktop uses the office size. */
   phone?: boolean
+  /** 409 stale_save. Awaited so the notice is up before the button enables. */
+  onStale: () => Promise<void>
 }>()
 
 const emit = defineEmits<{
@@ -54,6 +56,13 @@ const vehicleItems = computed(() => props.vehicles
   })))
 
 const canSubmit = computed(() => Boolean(nextVehicleId.value))
+
+watch(() => props.version, (next, previous) => {
+  // Osvježi replaced the opened version. The pending vehicle is not the Ride's vehicle.
+  if (previous === undefined || next === previous)
+    return
+  nextVehicleId.value = undefined
+})
 
 function failureKey(error: unknown): RideFailure {
   if (errorCode(error) === 'ride_vehicle_archived')
@@ -124,6 +133,10 @@ async function submit(confirm = false) {
       return
     }
     overlapOpen.value = false
+    if (errorCode(error) === 'stale_save') {
+      await props.onStale()
+      return
+    }
     formErrorKey.value = failureKey(error)
   }
   finally {

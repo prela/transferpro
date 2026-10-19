@@ -15,6 +15,8 @@ const props = defineProps<{
   vehicles: Vehicle[]
   /** Phone uses the large targets. Desktop uses the office size. */
   phone?: boolean
+  /** 409 stale_save. Awaited so the notice is up before the button enables. */
+  onStale: () => Promise<void>
 }>()
 
 const emit = defineEmits<{
@@ -41,6 +43,9 @@ const fromRoster = computed(() => rosterVehicleId.value !== null && vehicleId.va
 
 // A slower roster read must not fill a vehicle for a driver the dispatcher has left.
 let fillTicket = 0
+// Osvježi clears the pending choice. That clear is not a new Driver, so the roster pre-fill stays out.
+// Set when Osvježi clears the picker, so the roster watch does not pre-fill a Vehicle.
+let applyingOpenedRide = false
 
 type RideFailure
   = 'ride.vehicleArchived'
@@ -70,6 +75,17 @@ const vehicleItems = computed(() => props.vehicles
   })))
 
 const canSubmit = computed(() => Boolean(nextDriverId.value) && Boolean(vehicleId.value))
+
+watch(() => props.version, (next, previous) => {
+  // Osvježi replaced the opened version. The current Driver stays off this picker.
+  if (previous === undefined || next === previous)
+    return
+  if (nextDriverId.value !== undefined)
+    applyingOpenedRide = true
+  nextDriverId.value = undefined
+  vehicleId.value = undefined
+  rosterVehicleId.value = null
+})
 
 function failureKey(error: unknown): RideFailure {
   if (errorCode(error) === 'ride_driver_archived')
@@ -110,6 +126,10 @@ function errorCode(error: unknown): string | undefined {
 }
 
 watch(nextDriverId, (next) => {
+  if (applyingOpenedRide) {
+    applyingOpenedRide = false
+    return
+  }
   const ticket = ++fillTicket
   if (fromRoster.value)
     vehicleId.value = undefined
@@ -181,6 +201,10 @@ async function submit(confirm = false) {
       return
     }
     overlapOpen.value = false
+    if (errorCode(error) === 'stale_save') {
+      await props.onStale()
+      return
+    }
     formErrorKey.value = failureKey(error)
   }
   finally {

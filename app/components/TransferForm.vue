@@ -19,6 +19,8 @@ const props = defineProps<{
   correctRide?: TransferDayRide | null
   /** Phone uses the large targets. The office desktop uses the small size. */
   phone?: boolean
+  /** 409 stale_save on a correction. Awaited so the notice is up before the button enables. */
+  onStale?: () => Promise<void>
 }>()
 
 const emit = defineEmits<{
@@ -31,6 +33,8 @@ const saved = defineModel<boolean>('saved', { required: true })
 const corrected = defineModel<boolean>('corrected', { required: true })
 const locations = defineModel<Location[]>('locations', { required: true })
 const clients = defineModel<Client[]>('clients', { required: true })
+
+const onStale = props.onStale
 
 const api = useTransferForm({
   timeZone: () => props.timeZone,
@@ -51,6 +55,7 @@ const api = useTransferForm({
   },
   onRecorded: rideId => emit('recorded', rideId),
   onClose: () => emit('close'),
+  onStale: onStale === undefined ? undefined : () => onStale(),
 })
 provide(transferFormKey, api)
 
@@ -66,7 +71,15 @@ const {
   saveCorrection,
 } = api
 
-defineExpose({ openAdd, openPrefill, openCorrect, formTitle, formMode, formOpen, pending })
+defineExpose({
+  openAdd,
+  openPrefill,
+  openCorrect,
+  formTitle,
+  formMode,
+  formOpen,
+  pending,
+})
 
 watch(() => props.correctRide?.rideId, (rideId) => {
   const ride = props.correctRide

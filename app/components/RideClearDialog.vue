@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Driver, TransferDayRide } from '../../shared'
+import type { DisplayLocale, Driver, LiveRefreshOutcome, TransferDayRide } from '../../shared'
 import { assignedRideSchema } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
@@ -9,7 +9,13 @@ import { canChangeAssignment } from '../transfer-ride-guards'
 
 const props = defineProps<{
   drivers: Driver[]
+  rides: TransferDayRide[]
+  timeZone: string
+  locale: DisplayLocale
+  /** Closes the detail after a clear that saved. */
   loadDay: () => Promise<void>
+  /** Reloads the day and leaves the dialog open. */
+  reloadDay: () => Promise<LiveRefreshOutcome | void>
 }>()
 
 const { t } = useI18n()
@@ -20,6 +26,17 @@ const { notifyAuditChanged } = useAuditRefresh()
 const clearing = ref<{ rideId: string, guestName: string, version: number } | null>(null)
 const clearPending = ref(false)
 const clearErrorKey = ref<'ride.notOpen' | 'ride.notFound' | 'ride.signedOut' | 'ride.changeFailed' | null>(null)
+const stale = ref(false)
+/** A failed day read has no new author. The notice then says someone, not the opened row. */
+const staleReadFailed = ref(false)
+const refreshing = ref(false)
+
+const staleRide = computed(() => {
+  const id = clearing.value?.rideId
+  if (!id)
+    return null
+  return props.rides.find(ride => ride.rideId === id) ?? null
+})
 
 function driverLabel(id: string | null): string {
   return driverDisplayName(props.drivers, id, t('ride.unknownDriver'))
@@ -29,6 +46,8 @@ function open(ride: TransferDayRide) {
   if (!canChangeAssignment(ride) || clearPending.value)
     return
   clearErrorKey.value = null
+  stale.value = false
+  staleReadFailed.value = false
   clearing.value = { rideId: ride.rideId, guestName: ride.guestName, version: ride.version }
 }
 
@@ -37,6 +56,8 @@ function closeClear() {
     return
   const rideId = clearing.value?.rideId
   clearErrorKey.value = null
+  stale.value = false
+  staleReadFailed.value = false
   clearing.value = null
   if (!rideId)
     return
@@ -59,6 +80,8 @@ async function confirmClear() {
     return
   clearPending.value = true
   clearErrorKey.value = null
+  stale.value = false
+  staleReadFailed.value = false
   try {
     const cleared = assignedRideSchema.parse(await $fetch(`/api/rides/${target.rideId}/clear`, {
       method: 'POST',
@@ -78,6 +101,12 @@ async function confirmClear() {
     await props.loadDay()
   }
   catch (error) {
+    if (errorCode(error) === 'stale_save') {
+      const outcome = await props.reloadDay()
+      staleReadFailed.value = outcome === 'fail'
+      stale.value = true
+      return
+    }
     if (errorCode(error) === 'ride_not_open')
       clearErrorKey.value = 'ride.notOpen'
     else if (httpStatus(error) === 401)
@@ -91,6 +120,36 @@ async function confirmClear() {
   }
   finally {
     clearPending.value = false
+  }
+}
+
+async function refreshStale() {
+  if (refreshing.value)
+    return
+  refreshing.value = true
+  try {
+    const outcome = await props.reloadDay()
+    // A failed read keeps the last rows. A superseded one may not have
+    // applied its body yet. Either way the dialog stays on the opened version.
+    if (outcome === 'fail')
+      return
+    await nextTick()
+    const ride = staleRide.value
+    if (!clearing.value)
+      return
+    if (ride && outcome === 'stale' && ride.version === clearing.value.version)
+      return
+    // A missing, finished, or unassigned Ride can no longer be cleared.
+    if (!ride || !canChangeAssignment(ride)) {
+      closeClear()
+      return
+    }
+    clearing.value = { rideId: ride.rideId, guestName: ride.guestName, version: ride.version }
+    stale.value = false
+    staleReadFailed.value = false
+  }
+  finally {
+    refreshing.value = false
   }
 }
 
@@ -109,8 +168,19 @@ defineExpose({ open })
       <p v-if="clearing">
         {{ clearing.guestName }}
       </p>
+      <StaleSaveAlert
+        v-if="stale"
+        class="mt-4"
+        :changed-by-name="staleReadFailed ? null : (staleRide?.changedByName ?? null)"
+        :changed-at="staleReadFailed ? null : (staleRide?.changedAt ?? null)"
+        :time-zone="timeZone"
+        :locale="locale"
+        phone
+        :pending="refreshing"
+        @refresh="refreshStale"
+      />
       <UAlert
-        v-if="clearErrorKey"
+        v-else-if="clearErrorKey"
         color="error"
         variant="subtle"
         role="alert"
