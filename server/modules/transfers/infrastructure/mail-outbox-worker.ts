@@ -7,10 +7,7 @@ import { outboxAttemptStore } from './work-order-attempt'
 
 let starting: Promise<void> | undefined
 
-/**
- * The queue lives in the mail module, which the invite call shares.
- * These names stay here for the Ride actions and the tests that import them.
- */
+/** The queue lives in the mail module, which the invite call shares. */
 export { mailOutboxQueue }
 
 /** Close the shared queue and let a later call start the worker again. */

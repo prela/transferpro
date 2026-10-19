@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { captureLogs } from '../../../core/testing'
-import { mailIdempotencyKey } from '../../mail/domain/idempotency-key'
+import { mailIdempotencyKey } from '../../mail'
 import { assertTestMailer, createConsoleMailer, createFakeMailer, createResendMailer, invitationEmail, isConsoleMailer, isResendMailer, mailerForApp, passwordChangedEmail, passwordResetEmail, ResendTransportError, TransientMailError } from './mailer'
 
 const invitationId = '6b1e0c3a-2222-4222-8222-222222222222'
