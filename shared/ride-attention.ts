@@ -1,19 +1,13 @@
 import type { RideState } from './transfer'
 import { calendarDateInTimeZone, isCalendarDate, operationalDateInTimeZone } from './date'
 import { rideIsInProgress } from './landing-alarm'
+import { UNCLOSED_MARK_MS } from './unclosed-mark'
 
 /**
  * Four hours, in milliseconds. The unassigned alarm includes this instant
  * and excludes the pickup instant (ADR-0023). Same bound as the office home.
  */
 const UNASSIGNED_ALARM_MS = 4 * 60 * 60 * 1000
-
-/**
- * Sixty minutes, in milliseconds. The unclosed mark includes this instant.
- * It starts at the scheduled pickup. A recorded landing does not move it
- * (ADR-0027).
- */
-const UNCLOSED_MARK_MS = 60 * 60 * 1000
 
 export const RIDE_ATTENTION_KINDS = [
   'unassigned-past-pickup',
