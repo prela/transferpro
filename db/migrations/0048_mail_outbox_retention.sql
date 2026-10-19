@@ -1,6 +1,6 @@
 -- ADR-0045 allows a scheduled job to delete outbox entries older than 90 days.
--- This migration deletes no rows. The grant is on app.mail_outbox only, for the
--- app role the job runs as. The row policy keeps each delete inside one Tenant.
+-- The grant is on app.mail_outbox only, for the app role the job runs as.
+-- The row policy keeps each delete inside one Tenant.
 GRANT DELETE ON TABLE "app"."mail_outbox" TO "transferpro_app";
 --> statement-breakpoint
 -- The daily tick lists the Tenants that hold an entry older than the cutoff,

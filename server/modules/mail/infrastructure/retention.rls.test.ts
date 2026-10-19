@@ -5,7 +5,7 @@ import pg from 'pg'
 import { afterAll, expect, it } from 'vitest'
 import { openTenantSession } from '../../../core/index'
 import { captureLogs } from '../../../core/testing'
-import { MAIL_RETENTION_DELETE, MAIL_RETENTION_TICK, registerMailOutboxRetention } from './retention'
+import { listTenantsWithOutboxBefore, MAIL_RETENTION_DELETE, MAIL_RETENTION_TICK, registerMailOutboxRetention } from './retention'
 
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
@@ -109,6 +109,15 @@ it('grants DELETE on the outbox to the app role, and on no other new table', asy
     'app.roster transferpro_app',
     'app.tenant_settings transferpro_app',
   ])
+  // Better Auth's tables are the auth role's alone (ADR-0011). No other role may delete there.
+  const authGrants = await ownerPool.query<{ grant: string }>(`
+    select table_name || ' ' || grantee as grant
+    from information_schema.role_table_grants
+    where privilege_type = 'DELETE'
+      and table_schema = 'auth'
+      and grantee not in ('transferpro_owner', 'transferpro_auth')
+  `)
+  expect(authGrants.rows).toEqual([])
   const truncate = await ownerPool.query<{ app: boolean, auth: boolean, queue: boolean, platform: boolean }>(`
     select has_table_privilege('transferpro_app', 'app.mail_outbox', 'TRUNCATE') as app,
            has_table_privilege('transferpro_auth', 'app.mail_outbox', 'DELETE') as auth,
@@ -142,13 +151,7 @@ it('deletes Tenant A entries older than 90 days in every state, keeps 89 and 90 
   await registerMailOutboxRetention(queue, {
     log: logs.logger,
     now: () => now,
-    async listTenantIds(cutoff) {
-      const listed = await appPool.query<{ tenant_id: string }>(
-        'select tenant_id from app.tenants_with_mail_outbox_before($1)',
-        [cutoff],
-      )
-      return listed.rows.map(row => row.tenant_id)
-    },
+    listTenantIds: cutoff => listTenantsWithOutboxBefore(appPool, cutoff),
   })
 
   const published: Array<{ tenantId: string, name: string, data: unknown }> = []

@@ -47,12 +47,18 @@ export async function registerMailOutboxRetention(
   })
 }
 
+/**
+ * The Tenants holding an entry created before `before`. The security definer
+ * function returns Tenant ids only, so the app role sees no other column.
+ */
+export async function listTenantsWithOutboxBefore(pool: pg.Pool, before: Date): Promise<string[]> {
+  const listed = await pool.query('select tenant_id from app.tenants_with_mail_outbox_before($1)', [before])
+  return z.array(z.object({ tenant_id: z.uuid() })).parse(listed.rows).map(row => row.tenant_id)
+}
+
 let starting: Promise<void> | undefined
 
-/**
- * Run the retention on the process's one mail queue. A second call does nothing.
- * The Tenant list comes from a security definer function that returns ids only.
- */
+/** Run the retention on the process's one mail queue. A second call does nothing. */
 export function startMailOutboxRetention(env: AppEnv = loadAppEnv(), log: Logger = getLogger()): Promise<void> {
   starting ??= start(env, log)
   return starting
@@ -63,9 +69,6 @@ async function start(env: AppEnv, log: Logger): Promise<void> {
   const pool = new pg.Pool({ connectionString: env.DATABASE_URL, max: 1 })
   await registerMailOutboxRetention(queue, {
     log,
-    async listTenantIds(before) {
-      const listed = await pool.query('select tenant_id from app.tenants_with_mail_outbox_before($1)', [before])
-      return z.array(z.object({ tenant_id: z.uuid() })).parse(listed.rows).map(row => row.tenant_id)
-    },
+    listTenantIds: before => listTenantsWithOutboxBefore(pool, before),
   })
 }
