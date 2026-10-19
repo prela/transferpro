@@ -126,3 +126,21 @@ it('refuses an empty name, an untrimmed name, a name longer than 200 characters,
   })
   expect(kept.rows).toEqual([{ kind: 'individual' }])
 })
+
+it('starts a Client at version 0 with no author, and refuses a version without a time and a member', async () => {
+  const fresh = await withTenant(tenantA, client => client.query(
+    `insert into app.clients (name, kind) values ('Hotel Verzija', 'hotel')
+     returning version, data_changed_at, data_changed_by`,
+  ))
+  expect(fresh.rows).toEqual([{ version: 0, data_changed_at: null, data_changed_by: null }])
+
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.clients set version = 1 where name = 'Hotel Verzija'`,
+  ))).rejects.toMatchObject({ code: '23514' })
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.clients set data_changed_by = 'someone' where name = 'Hotel Verzija'`,
+  ))).rejects.toMatchObject({ code: '23514' })
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.clients set version = -1 where name = 'Hotel Verzija'`,
+  ))).rejects.toMatchObject({ code: '23514' })
+})

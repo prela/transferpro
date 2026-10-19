@@ -1,16 +1,23 @@
 <script setup lang="ts">
 import type { FormSubmitEvent } from '@nuxt/ui'
-import type { Client, ClientKind } from '../../shared'
+import type { ClientKind, ClientListEntry, DisplayLocale } from '../../shared'
 import { z } from 'zod'
 import { catalogSearchMatches, CLIENT_KINDS, CLIENT_NAME_MAX_LENGTH, clientListSchema, clientSchema } from '../../shared'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
+import { errorCode, httpStatus } from '../transfer-day-http'
+
+defineProps<{
+  /** The refusal names when a colleague saved, in the Tenant time zone. */
+  timeZone: string
+  locale: DisplayLocale
+}>()
 
 const { t } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
 const listTitleId = useId()
 const searchId = useId()
 
-const clients = ref<Client[]>([])
+const clients = ref<ClientListEntry[]>([])
 const query = ref('')
 const loading = ref(false)
 const loadErrorKey = ref<ClientFailure | null>(null)
@@ -25,7 +32,23 @@ const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
 /** The panel title stays the name that was opened, not the half-typed correction. */
 const openedName = ref('')
+/** The version the edit form opened with. Only Osvježi replaces it (ADR-0046). */
+const openedVersion = ref(0)
 const state = reactive<{ name: string, kind?: ClientKind }>({ name: '' })
+/** 409 `stale_save`: the typed values stay, and the notice offers Osvježi. */
+const staleNotice = ref(false)
+const refreshing = ref(false)
+
+/**
+ * The row the edit form is on, as the list last read it. The 409 carries no
+ * name, so the notice reads who and when from here. Until that row's version
+ * moves past the opened one, the read has not seen the winning save, and the
+ * notice must not name the author already on screen.
+ */
+const staleRow = computed(() => {
+  const row = clients.value.find(client => client.id === editingId.value)
+  return row && row.version !== openedVersion.value ? row : null
+})
 
 type ClientFailure = 'clients.loadFailed' | 'clients.rejected' | 'clients.notFound' | 'clients.forbidden' | 'clients.signedOut' | 'clients.saveFailed'
 interface ClientForm {
@@ -95,22 +118,64 @@ async function loadClients() {
   }
 }
 
+/**
+ * Re-read the list behind an open form. A failure keeps the rows already on
+ * screen and does not replace the table with the load error.
+ */
+async function rereadClients(): Promise<boolean> {
+  try {
+    clients.value = clientListSchema.parse(await $fetch('/api/clients')).clients
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
 function openAdd() {
   editingId.value = null
   openedName.value = ''
   state.name = ''
   state.kind = undefined
   formErrorKey.value = null
+  staleNotice.value = false
   formMode.value = 'add'
 }
 
-function openEdit(client: Client) {
+function openEdit(client: ClientListEntry) {
   editingId.value = client.id
   openedName.value = client.name
+  openedVersion.value = client.version
   state.name = client.name
   state.kind = client.kind
   formErrorKey.value = null
+  staleNotice.value = false
   formMode.value = 'edit'
+}
+
+async function noteStale() {
+  // The 409 carries no name. The list does. The typed values and the opened
+  // version stay until Osvježi. A failed read leaves the unknown-author sentence.
+  await rereadClients()
+  staleNotice.value = true
+}
+
+/** Osvježi: the current row and version replace the form. A failed read keeps the notice. */
+async function refreshStale() {
+  if (refreshing.value)
+    return
+  refreshing.value = true
+  try {
+    if (!await rereadClients())
+      return
+    const row = clients.value.find(client => client.id === editingId.value)
+    if (!row)
+      return
+    openEdit(row)
+  }
+  finally {
+    refreshing.value = false
+  }
 }
 
 async function onSubmit(event: FormSubmitEvent<ClientForm>) {
@@ -123,7 +188,7 @@ async function onSubmit(event: FormSubmitEvent<ClientForm>) {
         return
       clientSchema.parse(await $fetch(`/api/clients/${id}`, {
         method: 'PATCH',
-        body: { name: event.data.name, kind: event.data.kind },
+        body: { name: event.data.name, kind: event.data.kind, version: openedVersion.value },
       }))
     }
     else {
@@ -137,21 +202,15 @@ async function onSubmit(event: FormSubmitEvent<ClientForm>) {
     await loadClients()
   }
   catch (error) {
-    formErrorKey.value = failureKey(error)
+    // Awaited so the notice is up before the save button enables again.
+    if (errorCode(error) === 'stale_save')
+      await noteStale()
+    else
+      formErrorKey.value = failureKey(error)
   }
   finally {
     saving.value = false
   }
-}
-
-function httpStatus(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null)
-    return undefined
-  if ('statusCode' in error && typeof error.statusCode === 'number')
-    return error.statusCode
-  if ('status' in error && typeof error.status === 'number')
-    return error.status
-  return undefined
 }
 
 onMounted(loadClients)
@@ -216,7 +275,7 @@ onMounted(loadClients)
           :columns="columns"
           :loading="loading"
           class="lg:whitespace-nowrap"
-          @select="(_event: Event, row: { original: Client }) => openEdit(row.original)"
+          @select="(_event: Event, row: { original: ClientListEntry }) => openEdit(row.original)"
         >
           <template #name-cell="{ row }">
             <button
@@ -255,6 +314,16 @@ onMounted(loadClients)
     </template>
 
     <template #body="{ phone }">
+      <StaleSaveAlert
+        v-if="staleNotice"
+        :changed-by-name="staleRow?.changedByName ?? null"
+        :changed-at="staleRow?.changedAt ?? null"
+        :time-zone="timeZone"
+        :locale="locale"
+        :phone="phone"
+        :pending="refreshing"
+        @refresh="refreshStale"
+      />
       <UAlert
         v-if="formErrorKey"
         color="error"
