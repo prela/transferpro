@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotOpenError, RideNotUnassignedError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
+import { RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotOpenError, RideNotUnassignedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
 import { rideHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -86,6 +86,14 @@ describe('rideHttpError', () => {
     expect(error).toMatchObject({
       statusCode: 409,
       data: { code: 'ride_same_driver' },
+    })
+  })
+
+  it('returns the unavailability code, which confirm passes like an overlap', () => {
+    const error = thrown(() => rideHttpError(new RideUnavailableError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'ride_unavailable' },
     })
   })
 })

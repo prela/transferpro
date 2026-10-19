@@ -51,6 +51,7 @@ const office = computed(() => isOfficeMember(session.value?.role))
       <DriverList
         v-if="office"
         :is-admin="session.role === 'admin'"
+        :time-zone="session.timeZone"
       />
       <UAlert
         v-if="shellError"

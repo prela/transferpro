@@ -736,3 +736,27 @@ it('lists an entry whose people are no longer members with null names', () => {
     entries: [{ ...listed.entries[0], occurredAt: 'yesterday' }],
   }).success).toBe(false)
 })
+
+it('records an unavailability window by ids and field names only, never the instants', () => {
+  const windowId = 'a1a1a1a1-1111-4111-8111-111111111111'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
+  const added = { action: 'unavailability.added' as const, subjectUserId: null, data: { windowId, driverId, vehicleId: null, fields: ['startsAt', 'endsAt'] } }
+  expect(auditFactSchema.parse(added)).toEqual(added)
+  const changed = { action: 'unavailability.changed' as const, subjectUserId: null, data: { windowId, driverId: null, vehicleId, fields: ['endsAt'] } }
+  expect(auditFactSchema.parse(changed)).toEqual(changed)
+  const removed = { action: 'unavailability.removed' as const, subjectUserId: null, data: { windowId, driverId, vehicleId: null, fields: ['removed'] } }
+  expect(auditFactSchema.parse(removed)).toEqual(removed)
+
+  // An instant is how a Driver's absence would stay forever on a row that is never deleted.
+  expect(auditFactSchema.safeParse({ ...added, data: { ...added.data, startsAt: '2026-10-20T08:00:00.000Z' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...changed, data: { ...changed.data, fields: ['2026-10-20T08:00:00.000Z'] } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...changed, data: { ...changed.data, fields: [] } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...changed, data: { ...changed.data, fields: ['endsAt', 'endsAt'] } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...added, data: { ...added.data, fields: ['startsAt'] } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...removed, data: { ...removed.data, fields: ['startsAt'] } }).success).toBe(false)
+  // Exactly one of the Driver and the Vehicle.
+  expect(auditFactSchema.safeParse({ ...added, data: { ...added.data, vehicleId } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...added, data: { ...added.data, driverId: null } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...added, data: { ...added.data, reason: 'sick' } }).success).toBe(false)
+})

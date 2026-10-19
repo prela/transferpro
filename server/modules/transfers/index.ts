@@ -30,8 +30,11 @@
  * their index files, by id. Those modules do not import this one (ADR-0018).
  * Whether a Driver or a Vehicle is taken is the capacity module's decision
  * (ADR-0034). Transfers implements its occupation port, takes its Tenant
- * lock, and re-exports its `RideOverlapError` for the routes, because only
- * transfers imports capacity.
+ * lock, and re-exports its `RideOverlapError` and `RideUnavailableError`
+ * for the routes, because only transfers imports capacity. For the same
+ * reason the unavailability window routes and the window retention job
+ * reach capacity through this file: transfers passes in its occupation
+ * adapter and the audit append.
  * Search reads Transfers on every day by guest, Client reference, or flight
  * number. Today and later come first, earliest pickup first. Past
  * operational days follow, newest first. It is office-only. The query
@@ -40,7 +43,7 @@
  * days. It is office-only. The log names the member, the range, and the
  * row count. It does not name a person or a place, and it writes no audit.
  */
-export { RideOverlapError } from '../capacity'
+export { RideOverlapError, RideUnavailableError, startUnavailabilityRetention, UnavailabilityArchivedError, UnavailabilityNotFoundError } from '../capacity'
 export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableError } from './infrastructure/accept'
 export { RideDriverArchivedError, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
 export { assignRide, rosterVehicleForRide } from './infrastructure/assign-access'
@@ -61,4 +64,5 @@ export { exportRides } from './infrastructure/ride-export'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'
 export { searchTransfers } from './infrastructure/transfer-search'
 export { StaleSaveError } from './infrastructure/transfer-version'
+export { addUnavailability, changeUnavailability, listDriverUnavailability, listUnavailabilityWeek, listVehicleUnavailability, removeUnavailability } from './infrastructure/unavailability-access'
 export { outboxAttemptStore } from './infrastructure/work-order-attempt'

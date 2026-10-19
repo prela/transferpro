@@ -5,6 +5,7 @@ import {
   homeRowNamesTheDate,
   parseTransferDayFilter,
   pickupNeedsCalendarDate,
+  rideAttentionTier,
   rideStateMark,
   transferDayFilterCounts,
   transferDayFilterMatches,
@@ -195,4 +196,24 @@ it('paints a Ride state as icon-ready text: waiting outlined, in progress, finis
     variant: 'subtle',
     muted: true,
   })
+})
+
+it('puts the unavailability warning in the Warning tier, after an overlap and before a roster mismatch', () => {
+  const items = classifyRideAttention(source({
+    state: 'accepted',
+    driverId: '00000000-0000-4000-8000-000000000010',
+    mustAccept: true,
+    warnings: {
+      expiredDocuments: [],
+      rosterMismatch: true,
+      overlappingRideIds: ['00000000-0000-4000-8000-000000000099'],
+      unavailable: ['vehicle'],
+    },
+  }), [], NOW)
+  expect(items).toEqual([
+    { tier: 'warning', kind: 'overlap' },
+    { tier: 'warning', kind: 'unavailable' },
+    { tier: 'warning', kind: 'roster-mismatch' },
+  ])
+  expect(rideAttentionTier('unavailable')).toBe('warning')
 })

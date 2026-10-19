@@ -5,6 +5,11 @@ import { z } from 'zod'
 import { catalogSearchMatches, VEHICLE_KINDS, vehicleDateError, vehicleDescriptionError, vehicleDescriptionSchema, vehicleListSchema, vehiclePlateError, vehicleSchema } from '../../shared'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
+defineProps<{
+  /** The Tenant zone. Unavailability windows are entered and shown in it. */
+  timeZone: string
+}>()
+
 const { t, locale } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
 const listTitleId = useId()
@@ -609,6 +614,15 @@ onMounted(() => {
             </template>
           </UFormField>
         </UForm>
+        <!-- Its own form, outside vehicle-form, so Enter in a window field does not save the Vehicle. -->
+        <UnavailabilityWindows
+          v-if="formMode === 'edit' && editingId"
+          owner="vehicle"
+          :resource-id="editingId"
+          :time-zone="timeZone"
+          :archived="archivedView"
+          :phone="phone"
+        />
       </template>
       <template #footer="{ phone }">
         <UButton

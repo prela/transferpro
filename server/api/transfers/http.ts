@@ -3,7 +3,7 @@ import { QueryParamError, RideExportRangeError, TransferInputError } from '../..
 import { ClientNotFoundError } from '../../modules/clients'
 import { LocationArchivedError, LocationNotFoundError } from '../../modules/locations'
 import { TenantAccessError } from '../../modules/tenancy'
-import { RideOverlapError, StaleSaveError, TransferNotCorrectableError, TransferNotFoundError } from '../../modules/transfers'
+import { RideOverlapError, RideUnavailableError, StaleSaveError, TransferNotCorrectableError, TransferNotFoundError } from '../../modules/transfers'
 
 /**
  * Turn a Transfer failure into an HTTP error. The message stays a fixed phrase
@@ -25,7 +25,7 @@ export function transferHttpError(error: unknown): never {
   ) {
     throw createError({ statusCode: error.statusCode })
   }
-  if (error instanceof TransferNotCorrectableError || error instanceof RideOverlapError || error instanceof StaleSaveError) {
+  if (error instanceof TransferNotCorrectableError || error instanceof RideOverlapError || error instanceof RideUnavailableError || error instanceof StaleSaveError) {
     throw createError({
       statusCode: error.statusCode,
       data: { code: error.code },

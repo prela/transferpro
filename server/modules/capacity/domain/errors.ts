@@ -12,3 +12,39 @@ export class RideOverlapError extends Error {
     this.name = 'RideOverlapError'
   }
 }
+
+/**
+ * The Driver or the Vehicle has an unavailability window over the Ride's
+ * occupied window. Nothing was written. One `confirm: true` passes this and
+ * an overlap together (ADR-0034); capacity owns the class, transfers throws it.
+ */
+export class RideUnavailableError extends Error {
+  readonly statusCode = 409
+  readonly code = 'ride_unavailable'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'RideUnavailableError'
+  }
+}
+
+/** The window, the Driver, or the Vehicle is not in this Tenant, or the window was removed. */
+export class UnavailabilityNotFoundError extends Error {
+  readonly statusCode = 404
+
+  constructor() {
+    super('Not found')
+    this.name = 'UnavailabilityNotFoundError'
+  }
+}
+
+/** An archived Driver or Vehicle takes no new or moved window. Removing one stays open. */
+export class UnavailabilityArchivedError extends Error {
+  readonly statusCode = 409
+  readonly code = 'unavailability_archived'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'UnavailabilityArchivedError'
+  }
+}

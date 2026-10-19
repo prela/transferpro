@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
-import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
+import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
 
 /**
  * Turn an assignment or accept failure into an HTTP error. The message stays
@@ -14,6 +14,8 @@ import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, Mark
  * that is not `assigned` or `accepted`. `ride_vehicle_unchanged` is the same
  * Vehicle. `ride_same_driver` is a reassignment to the Driver already on the Ride.
  * `ride_overlap` is a true overlap of the Driver or the Vehicle.
+ * `ride_unavailable` is an unavailability window over the Driver or the
+ * Vehicle (ADR-0034). `confirm: true` passes both.
  * `ride_not_finishable` is done refused: the copied flag and the state do
  * not allow it, or a concurrent command already won. Nothing was written.
  * `ride_not_no_show` is a No-show refused: the copied flag and the state do
@@ -59,6 +61,7 @@ export function rideHttpError(error: unknown): never {
     || error instanceof RideVehicleUnchangedError
     || error instanceof RideSameDriverError
     || error instanceof RideOverlapError
+    || error instanceof RideUnavailableError
     || error instanceof StaleSaveError
   ) {
     throw createError({

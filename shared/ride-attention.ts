@@ -16,6 +16,7 @@ export const RIDE_ATTENTION_KINDS = [
   'landing-alarm',
   'unclosed-mark',
   'overlap',
+  'unavailable',
   'roster-mismatch',
   'expired-document',
 ] as const
@@ -42,6 +43,8 @@ export interface RideAttentionSource {
     readonly expiredDocuments: readonly string[]
     readonly rosterMismatch: boolean
     readonly overlappingRideIds: readonly string[]
+    /** The Driver or Vehicle an unavailability window covers. Absent when none is. */
+    readonly unavailable?: readonly string[]
   }
 }
 
@@ -99,6 +102,8 @@ export function classifyRideAttention(
 
   if (ride.warnings.overlappingRideIds.length > 0)
     items.push({ tier: 'warning', kind: 'overlap' })
+  if ((ride.warnings.unavailable?.length ?? 0) > 0)
+    items.push({ tier: 'warning', kind: 'unavailable' })
   if (ride.warnings.rosterMismatch)
     items.push({ tier: 'warning', kind: 'roster-mismatch' })
   if (ride.warnings.expiredDocuments.length > 0)

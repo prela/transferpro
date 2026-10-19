@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Driver, RosterAssignment, RosterCopySkipReason, Vehicle } from '../../shared'
+import type { Driver, RosterAssignment, RosterCopySkipReason, UnavailabilityWindowView, Vehicle } from '../../shared'
 import {
   addCalendarDays,
   calendarDateInTimeZone,
@@ -8,8 +8,10 @@ import {
   planRosterCopy,
   rosterDaySchema,
   setRosterResultSchema,
+  unavailabilityListSchema,
   vehicleListSchema,
   weekDates,
+  windowTouchesDate,
 } from '../../shared'
 
 const props = defineProps<{
@@ -24,6 +26,11 @@ const assignmentsByDate = reactive<Record<string, RosterAssignment[]>>({})
 const choices = reactive<Record<string, string | undefined>>({})
 const cellState = reactive<Record<string, 'saving' | 'saved' | 'error' | undefined>>({})
 const cellError = reactive<Record<string, RosterFailure | undefined>>({})
+/**
+ * Unavailability windows (ADR-0034) of each roster week read, keyed by its
+ * Monday. Read only here: the windows are kept in the Driver and Vehicle panels.
+ */
+const windowsByWeek = reactive<Record<string, UnavailabilityWindowView[]>>({})
 
 const today = calendarDateInTimeZone(props.timeZone, new Date())
 const weekStart = ref(mondayOfWeek(today))
@@ -92,13 +99,18 @@ function givenVehicleIds(date: string, exceptDriverId: string): Set<string> {
 
 function vehicleItems(date: string, driverId: string) {
   const given = givenVehicleIds(date, driverId)
-  return activeVehicles.value.map(vehicle => ({
-    // The server still refuses a duplicate. The mark is only a hint.
-    label: given.has(vehicle.id)
-      ? `${vehicle.registrationPlate} (${t('roster.given')})`
-      : vehicle.registrationPlate,
-    value: vehicle.id,
-  }))
+  const away = new Set(windowsOn(date).flatMap(entry => entry.vehicleId === null ? [] : [entry.vehicleId]))
+  return activeVehicles.value.map((vehicle) => {
+    // The server still refuses a duplicate. The marks are only hints; a window does not block the roster.
+    const marks = [
+      ...(given.has(vehicle.id) ? [t('roster.given')] : []),
+      ...(away.has(vehicle.id) ? [t('roster.unavailableMark')] : []),
+    ]
+    return {
+      label: marks.length > 0 ? `${vehicle.registrationPlate} (${marks.join(', ')})` : vehicle.registrationPlate,
+      value: vehicle.id,
+    }
+  })
 }
 
 function assignedPlate(driverId: string, date: string): string | null {
@@ -123,6 +135,20 @@ function vehicleMissing(driverId: string, date: string): boolean {
   if (!assigned)
     return false
   return !vehicles.value.some(item => item.id === assigned.vehicleId)
+}
+
+function windowsOn(date: string): UnavailabilityWindowView[] {
+  return (windowsByWeek[mondayOfWeek(date)] ?? []).filter(entry => windowTouchesDate(entry, date, props.timeZone))
+}
+
+function driverUnavailable(driverId: string, date: string): boolean {
+  return windowsOn(date).some(entry => entry.driverId === driverId)
+}
+
+/** The Vehicle this Driver has on the roster that day is away for part of it. */
+function vehicleUnavailable(driverId: string, date: string): boolean {
+  const vehicleId = assignmentFor(driverId, date)?.vehicleId
+  return vehicleId !== undefined && windowsOn(date).some(entry => entry.vehicleId === vehicleId)
 }
 
 function syncChoice(driverId: string, date: string) {
@@ -185,6 +211,14 @@ async function readDates(dates: readonly string[]) {
   }))
 }
 
+async function readWindows(dates: readonly string[]) {
+  const mondays = [...new Set(dates.map(date => mondayOfWeek(date)))]
+  return Promise.all(mondays.map(async week => ({
+    week,
+    windows: unavailabilityListSchema.parse(await $fetch('/api/unavailability', { query: { week } })).windows,
+  })))
+}
+
 function applyDays(days: readonly { rosterDate: string, assignments: RosterAssignment[] }[]) {
   for (const day of days) {
     assignmentsByDate[day.rosterDate] = day.assignments
@@ -197,10 +231,12 @@ async function loadDates(dates: readonly string[], ticket = ++loadTicket) {
   loading.value = true
   loadError.value = false
   try {
-    const days = await readDates(dates)
+    const [days, weeks] = await Promise.all([readDates(dates), readWindows(dates)])
     if (ticket !== loadTicket)
       return
     applyDays(days)
+    for (const read of weeks)
+      windowsByWeek[read.week] = read.windows
   }
   catch {
     if (ticket !== loadTicket)
@@ -549,6 +585,28 @@ onMounted(() => {
                   {{ t('roster.missingVehicle') }}
                 </p>
                 <p
+                  v-if="driverUnavailable(driver.id, date)"
+                  class="mt-1 flex items-center gap-1 text-xs"
+                >
+                  <UIcon
+                    name="i-lucide-calendar-off"
+                    class="size-3.5 shrink-0"
+                    aria-hidden="true"
+                  />
+                  {{ t('roster.driverUnavailable') }}
+                </p>
+                <p
+                  v-if="vehicleUnavailable(driver.id, date)"
+                  class="mt-1 flex items-center gap-1 text-xs"
+                >
+                  <UIcon
+                    name="i-lucide-calendar-off"
+                    class="size-3.5 shrink-0"
+                    aria-hidden="true"
+                  />
+                  {{ t('roster.vehicleUnavailable') }}
+                </p>
+                <p
                   v-if="cellState[cellKey(driver.id, date)] === 'saving'"
                   class="mt-1 text-xs"
                 >
@@ -606,6 +664,28 @@ onMounted(() => {
             class="text-sm text-muted"
           >
             {{ t('roster.missingVehicle') }}
+          </p>
+          <p
+            v-if="driverUnavailable(driver.id, phoneDate)"
+            class="flex items-center gap-1 text-base"
+          >
+            <UIcon
+              name="i-lucide-calendar-off"
+              class="size-4 shrink-0"
+              aria-hidden="true"
+            />
+            {{ t('roster.driverUnavailable') }}
+          </p>
+          <p
+            v-if="vehicleUnavailable(driver.id, phoneDate)"
+            class="flex items-center gap-1 text-base"
+          >
+            <UIcon
+              name="i-lucide-calendar-off"
+              class="size-4 shrink-0"
+              aria-hidden="true"
+            />
+            {{ t('roster.vehicleUnavailable') }}
           </p>
           <p
             v-if="driver.archivedAt !== null && assignedPlate(driver.id, phoneDate)"

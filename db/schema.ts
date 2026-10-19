@@ -14,6 +14,7 @@ export { roster } from './roster'
 export { tenantInvitation } from './tenant-invitation'
 export { tenantMember } from './tenant-member'
 export { rides, transfers } from './transfers'
+export { unavailabilityWindows } from './unavailability-windows'
 export { vehicles } from './vehicles'
 
 /**

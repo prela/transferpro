@@ -250,6 +250,24 @@ function rosterDateText(data: AnyPgColumn) {
 }
 
 /**
+ * An unavailability window names the window and exactly one of its Driver
+ * and its Vehicle; the other key is JSON null. No instant is a key.
+ */
+function unavailabilityIds(data: AnyPgColumn) {
+  const driver = sql.raw(`'driverId'`)
+  const vehicle = sql.raw(`'vehicleId'`)
+  return sql`${keysOnly(data, 'windowId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(data, 'windowId')} and ${nullableUuidText(data, 'driverId')} and ${nullableUuidText(data, 'vehicleId')} and (jsonb_typeof(${data} -> ${driver}) = 'null') <> (jsonb_typeof(${data} -> ${vehicle}) = 'null')`
+}
+
+const windowTimeFieldsJson = sql.raw(`'["startsAt","endsAt"]'::jsonb`)
+
+/** A change names the instants it moved: one of them, or both once each. */
+function unavailabilityChangedFields(data: AnyPgColumn) {
+  const fields = sql.raw(`'fields'`)
+  return sql`jsonb_typeof(${data} -> ${fields}) = 'array' and ${data} -> ${fields} <@ ${windowTimeFieldsJson} and (jsonb_array_length(${data} -> ${fields}) = 1 or (jsonb_array_length(${data} -> ${fields}) = 2 and ${data} -> ${fields} @> ${windowTimeFieldsJson}))`
+}
+
+/**
  * Append-only (ADR-0014). The app role may only SELECT. Rows are written by
  * `audit.append_entry` and by the trigger on `auth.invitation`, and a trigger
  * refuses UPDATE, DELETE, and TRUNCATE for every role. drizzle-kit cannot
@@ -317,6 +335,9 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'roster.assigned' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'vehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')}
     when 'roster.changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'fromVehicleId', 'toVehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'fromVehicleId')} and ${uuidText(table.data, 'toVehicleId')}
     when 'roster.cleared' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'vehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')}
+    when 'unavailability.added' then ${table.subjectUserId} is null and ${unavailabilityIds(table.data)} and ${table.data} -> 'fields' = ${windowTimeFieldsJson}
+    when 'unavailability.changed' then ${table.subjectUserId} is null and ${unavailabilityIds(table.data)} and ${unavailabilityChangedFields(table.data)}
+    when 'unavailability.removed' then ${table.subjectUserId} is null and ${unavailabilityIds(table.data)} and ${table.data} -> 'fields' = '["removed"]'::jsonb
     when 'tenant.renamed' then ${table.subjectUserId} is null and ${emptyData(table.data)}
     when 'tenant.suspended' then ${table.subjectUserId} is null and ${emptyData(table.data)}
     when 'tenant.reactivated' then ${table.subjectUserId} is null and ${emptyData(table.data)}

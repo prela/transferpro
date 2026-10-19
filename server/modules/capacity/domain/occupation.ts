@@ -1,4 +1,4 @@
-import type { ScheduleClash, ScheduleRide } from '../../../../shared'
+import type { ScheduleClash, ScheduleResource, ScheduleRide } from '../../../../shared'
 import { judgeSchedule } from '../../../../shared'
 
 /**
@@ -29,6 +29,8 @@ export interface CapacityMinutes {
 export interface CapacityVerdict {
   readonly overlaps: readonly ScheduleClash[]
   readonly tightGaps: readonly ScheduleClash[]
+  /** The Driver, the Vehicle, or both, that an unavailability window covers (ADR-0034). Absent when none is. */
+  readonly unavailable?: readonly ScheduleResource[]
 }
 
 /** The occupied window the shared judge reads. The Partner plays no part in a Driver or Vehicle clash. */

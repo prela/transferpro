@@ -1,6 +1,9 @@
+import type { UnavailabilityField, UnavailabilityResource } from '../../../../shared'
 import type { CapacityMinutes, OccupyingRide } from '../domain/occupation'
+import type { UnavailabilityWindow, WindowTimes } from '../domain/unavailability'
 
 export type { CapacityMinutes, OccupyingRide } from '../domain/occupation'
+export type { UnavailabilityWindow, WindowTimes } from '../domain/unavailability'
 
 /**
  * The Rides that occupy one Driver or one Vehicle, at any time. `rideId`
@@ -46,8 +49,72 @@ export interface OccupationPort {
 /** Reads the Tenant's transfer duration and relocation gap from tenancy. */
 export type CapacityMinutesReader = () => Promise<CapacityMinutes>
 
+/**
+ * The live windows of these Drivers and Vehicles that share an instant with
+ * the half-open range `[from, to)`. A removed window is never in the answer.
+ */
+export interface UnavailabilityQuery {
+  readonly driverIds: readonly string[]
+  readonly vehicleIds: readonly string[]
+  readonly from: Date
+  readonly to: Date
+}
+
+/** Reads the unavailability windows. Capacity owns the table, so its own infrastructure implements this. */
+export type UnavailabilityReader = (query: UnavailabilityQuery) => Promise<readonly UnavailabilityWindow[]>
+
 /** Everything a capacity application service reads through. */
 export interface CapacityPorts {
   readonly occupation: OccupationPort
   readonly minutes: CapacityMinutesReader
+  readonly windows: UnavailabilityReader
+}
+
+/** A new window: exactly one of the two ids is set. */
+export interface UnavailabilityRecord extends WindowTimes {
+  readonly driverId: string | null
+  readonly vehicleId: string | null
+}
+
+/**
+ * Writes and reads of the window table on the caller's tenant transaction.
+ * `lockLive` takes `for update` on a window that is not removed, or answers
+ * null. There is no delete here: only the retention job deletes.
+ */
+export interface UnavailabilityStore {
+  insert: (record: UnavailabilityRecord) => Promise<UnavailabilityWindow>
+  lockLive: (windowId: string) => Promise<UnavailabilityWindow | null>
+  update: (windowId: string, times: WindowTimes) => Promise<UnavailabilityWindow>
+  markRemoved: (windowId: string) => Promise<void>
+  liveOf: (resource: UnavailabilityResource) => Promise<readonly UnavailabilityWindow[]>
+  liveDuring: (from: Date, to: Date) => Promise<readonly UnavailabilityWindow[]>
+}
+
+/** Whether the Driver or Vehicle exists in this Tenant, and whether it is archived. Read without a lock. */
+export type ResourcePresence = 'active' | 'archived' | 'missing'
+export type ResourcePresenceReader = (resource: UnavailabilityResource) => Promise<ResourcePresence>
+
+/**
+ * What the audit log keeps about a window: ids and field names. It never
+ * holds the instants (ADR-0034), so the log shows that a window changed,
+ * not when someone was away.
+ */
+export interface UnavailabilityAuditFact {
+  readonly action: 'unavailability.added' | 'unavailability.changed' | 'unavailability.removed'
+  readonly windowId: string
+  readonly driverId: string | null
+  readonly vehicleId: string | null
+  readonly fields: readonly UnavailabilityField[]
+}
+
+/**
+ * The window commands read and write through these. `lock` is the Tenant
+ * capacity lock; `audit` appends one entry on the same transaction.
+ * Transfers wires the audit and the occupation, since capacity imports neither.
+ */
+export interface UnavailabilityPorts extends CapacityPorts {
+  readonly store: UnavailabilityStore
+  readonly presence: ResourcePresenceReader
+  readonly lock: () => Promise<void>
+  readonly audit: (fact: UnavailabilityAuditFact) => Promise<void>
 }

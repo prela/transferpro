@@ -7,6 +7,7 @@ import { rosterDateSchema } from './roster'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, operationalDayStartHourSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
 import { TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, transferCorrectionFieldSchema, transferFieldSchema } from './transfer'
+import { unavailabilityFieldSchema } from './unavailability'
 import { vehicleFieldSchema } from './vehicle'
 
 /**
@@ -59,6 +60,9 @@ export const auditActions = [
   'tenant.reactivated',
   'settings.transfer_duration_changed',
   'settings.relocation_gap_changed',
+  'unavailability.added',
+  'unavailability.changed',
+  'unavailability.removed',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -597,6 +601,43 @@ const tenantRenamed = tenantPlatformAction('tenant.renamed')
 const tenantSuspended = tenantPlatformAction('tenant.suspended')
 const tenantReactivated = tenantPlatformAction('tenant.reactivated')
 
+/*
+ * An unavailability window (ADR-0034) names the window and its Driver or
+ * its Vehicle; exactly one id is set and the other is null. `fields` names
+ * what was written. The instants are never a key, so the log shows that a
+ * window changed, not when someone was away. A window has no reason to log.
+ */
+function unavailabilityData<F extends z.ZodType>(fields: F) {
+  return z.strictObject({
+    windowId: z.uuid(),
+    driverId: driverId.nullable(),
+    vehicleId: vehicleId.nullable(),
+    fields,
+  }).refine(data => (data.driverId === null) !== (data.vehicleId === null), {
+    message: 'Exactly one of driverId and vehicleId is set.',
+  })
+}
+
+const windowTimeField = unavailabilityFieldSchema.extract(['startsAt', 'endsAt'])
+
+const unavailabilityAdded = z.object({
+  action: z.literal('unavailability.added'),
+  subjectUserId: z.null(),
+  data: unavailabilityData(z.tuple([z.literal('startsAt'), z.literal('endsAt')])),
+})
+
+const unavailabilityChanged = z.object({
+  action: z.literal('unavailability.changed'),
+  subjectUserId: z.null(),
+  data: unavailabilityData(z.array(windowTimeField).min(1).max(2).refine(fields => new Set(fields).size === fields.length)),
+})
+
+const unavailabilityRemoved = z.object({
+  action: z.literal('unavailability.removed'),
+  subjectUserId: z.null(),
+  data: unavailabilityData(z.tuple([z.literal('removed')])),
+})
+
 /** What happened: the action, the member it was done to, and its data. */
 export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
@@ -643,6 +684,9 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   tenantReactivated,
   settingsTransferDurationChanged,
   settingsRelocationGapChanged,
+  unavailabilityAdded,
+  unavailabilityChanged,
+  unavailabilityRemoved,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -775,6 +819,9 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   tenantReactivated.extend(listed),
   settingsTransferDurationChanged.extend(listed),
   settingsRelocationGapChanged.extend(listed),
+  unavailabilityAdded.extend(listed),
+  unavailabilityChanged.extend(listed),
+  unavailabilityRemoved.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

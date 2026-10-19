@@ -108,6 +108,7 @@ it('grants DELETE on the outbox to the app role, and on no other new table', asy
     'app.mail_outbox transferpro_app',
     'app.roster transferpro_app',
     'app.tenant_settings transferpro_app',
+    'app.unavailability_windows transferpro_app',
   ])
   // Better Auth's tables are the auth role's alone (ADR-0011). No other role may delete there.
   const authGrants = await ownerPool.query<{ grant: string }>(`

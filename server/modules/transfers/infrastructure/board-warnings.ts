@@ -1,7 +1,7 @@
 import type { TransferDayRide } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { calendarDateInTimeZone, deriveBoardWarnings, emptyBoardWarnings } from '../../../../shared'
-import { readBoardOccupation } from '../../capacity'
+import { capacityPorts, readBoardOccupation, readBoardUnavailability } from '../../capacity'
 import { loadDriverDocumentExpiry } from '../../drivers'
 import { rosteredDriversOnDates } from '../../roster'
 import { loadVehicleDocumentExpiry } from '../../vehicles'
@@ -13,6 +13,9 @@ import { rideOccupation } from './occupation-port'
  * to the list. The Ride's own Vehicle is read even when it is archived.
  * The overlap warning comes from capacity (ADR-0034): capacity reads the
  * neighbours through the occupation port, and the shared contract judges.
+ * The unavailability warning is capacity's too: it reads the live windows
+ * of the listed Drivers and Vehicles once, so removing or moving a window
+ * changes the warning on the next read.
  */
 export async function applyBoardWarnings(
   transaction: TenantTransaction,
@@ -45,6 +48,16 @@ export async function applyBoardWarnings(
       pickupAt: new Date(ride.pickupAt),
       landingAt: ride.landingAt == null ? null : new Date(ride.landingAt),
     })),
+  })
+  const unavailable = await readBoardUnavailability(capacityPorts(transaction, rideOccupation(transaction)).windows, role, {
+    rides: occupying.map(ride => ({
+      rideId: ride.rideId,
+      driverId: ride.driverId,
+      vehicleId: ride.vehicleId,
+      pickupAt: new Date(ride.pickupAt),
+      landingAt: ride.landingAt == null ? null : new Date(ride.landingAt),
+    })),
+    durationMinutes: transferDurationMinutes,
   })
   const driverExpiry = new Map(drivers.map(row => [row.id, row]))
   const vehicleExpiry = new Map(vehicles.map(row => [row.id, row]))
@@ -79,6 +92,7 @@ export async function applyBoardWarnings(
         others,
         durationMinutes: transferDurationMinutes,
         gapMinutes: relocationGapMinutes,
+        unavailable: unavailable.get(ride.rideId),
       }),
     }
   })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Driver, Vehicle } from '../../shared'
-import { assignedRideSchema } from '../../shared'
+import type { CapacityConfirmReason, Driver, Vehicle } from '../../shared'
+import { assignedRideSchema, capacityConfirmReason } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
@@ -35,6 +35,7 @@ const titleId = useId()
 const nextVehicleId = ref<string | undefined>()
 const pending = ref(false)
 const overlapOpen = ref(false)
+const confirmReason = ref<CapacityConfirmReason>('overlap')
 const formErrorKey = ref<RideFailure | null>(null)
 
 type RideFailure
@@ -128,7 +129,9 @@ async function submit(confirm = false) {
     emit('saved')
   }
   catch (error) {
-    if (errorCode(error) === 'ride_overlap') {
+    const reason = capacityConfirmReason(errorCode(error))
+    if (reason) {
+      confirmReason.value = reason
       overlapOpen.value = true
       return
     }
@@ -212,6 +215,7 @@ async function submit(confirm = false) {
   <RideOverlapDialog
     v-model:open="overlapOpen"
     :pending="pending"
+    :reason="confirmReason"
     @confirm="submit(true)"
   />
 </template>
