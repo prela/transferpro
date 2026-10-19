@@ -1,13 +1,13 @@
 import type { WorkOrderStatus } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
-import type { LoadedOutboxEntry, OutboxAttemptPatch, OutboxAttemptStore, WorkOrderCurrentFacts } from '../../mail'
+import type { LoadedWorkOrderEntry, OutboxAttemptStore, WorkOrderCurrentFacts } from '../../mail'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { composeWorkOrder, locationLabel, paymentMethodSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadLocation } from '../../locations'
-import { OutboxComposeError } from '../../mail'
+import { OutboxComposeError, saveOutboxAttempt } from '../../mail'
 import { ResendTransportError } from '../../tenancy'
 import { loadVehicle } from '../../vehicles'
 import { toPrice } from './transfers'
@@ -48,10 +48,6 @@ const attemptRows = z.object({
   })),
 })
 
-const savedRows = z.object({
-  rows: z.array(z.object({ id: z.uuid() })),
-})
-
 /**
  * The work order as a retry has to see it, locked on this transaction.
  * "No longer yours" names the Vehicle stored on the entry. The Ride has
@@ -63,7 +59,7 @@ const savedRows = z.object({
 export async function loadOutboxAttempt(
   transaction: TenantTransaction,
   entryId: string,
-): Promise<LoadedOutboxEntry | null> {
+): Promise<LoadedWorkOrderEntry | null> {
   const id = z.uuid().parse(entryId)
   const row = await hideDatabaseError(async () => {
     const parsed = attemptRows.parse(await transaction.execute(sql`
@@ -120,7 +116,7 @@ export async function loadOutboxAttempt(
   if (!row)
     return null
   const loaded = entryFromRow(id, row, null)
-  let message: LoadedOutboxEntry['message']
+  let message: LoadedWorkOrderEntry['message']
   try {
     message = await composeAttempt(transaction, row)
   }
@@ -186,8 +182,9 @@ function factsFrom(status: WorkOrderCurrentFacts['status'], rideState: string, s
   }
 }
 
-function entryFromRow(entryId: string, row: AttemptRow, message: LoadedOutboxEntry['message']): LoadedOutboxEntry {
+function entryFromRow(entryId: string, row: AttemptRow, message: LoadedWorkOrderEntry['message']): LoadedWorkOrderEntry {
   return {
+    kind: 'work_order',
     entryId,
     driverId: row.driverId,
     ...factsFrom(row.status, row.rideState, row.superseded),
@@ -199,53 +196,13 @@ function entryFromRow(entryId: string, row: AttemptRow, message: LoadedOutboxEnt
   }
 }
 
-/**
- * A manual resend settles a failed row. The attempt count stays: the column
- * stops at 4, and a resend does not start the retry cycle. A row that is no
- * longer failed is a fixed error, so two clicks cannot both send.
- */
-export async function settleFailedWorkOrder(
-  transaction: TenantTransaction,
-  entryId: string,
-  state: 'sent' | 'stale',
-): Promise<void> {
-  const id = z.uuid().parse(entryId)
-  const next = z.enum(['sent', 'stale']).parse(state)
-  const updated = savedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
-    update app.mail_outbox
-    set state = ${next},
-        next_attempt_at = null
-    where id = ${id}
-      and kind = 'work_order'
-      and state = 'failed'
-    returning id
-  `), 'Mail outbox update failed'))
-  if (updated.rows[0] === undefined)
-    throw new Error('Mail outbox update failed')
+/** A store that only reads work orders. */
+export interface WorkOrderAttemptStore extends OutboxAttemptStore {
+  load: (entryId: string) => Promise<LoadedWorkOrderEntry | null>
 }
 
-/** The update that settles one attempt. A row that is no longer pending is a fixed error. */
-export async function saveOutboxAttempt(
-  transaction: TenantTransaction,
-  entryId: string,
-  patch: OutboxAttemptPatch,
-): Promise<void> {
-  const id = z.uuid().parse(entryId)
-  const updated = savedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
-    update app.mail_outbox
-    set state = ${patch.state},
-        attempt_count = ${patch.attemptCount},
-        next_attempt_at = ${patch.nextAttemptAt}
-    where id = ${id}
-      and state = 'pending'
-    returning id
-  `), 'Mail outbox update failed'))
-  if (updated.rows[0] === undefined)
-    throw new Error('Mail outbox update failed')
-}
-
-/** Store bound to the job's tenant transaction. */
-export function outboxAttemptStore(transaction: TenantTransaction): OutboxAttemptStore {
+/** Work order store bound to the job's tenant transaction. The save is the mail module's, for any kind. */
+export function outboxAttemptStore(transaction: TenantTransaction): WorkOrderAttemptStore {
   return {
     load: entryId => loadOutboxAttempt(transaction, entryId),
     save: (entryId, patch) => saveOutboxAttempt(transaction, entryId, patch),
@@ -262,7 +219,7 @@ type AttemptRow = z.infer<typeof attemptRows>['rows'][number]
 async function composeAttempt(
   transaction: TenantTransaction,
   row: AttemptRow,
-): Promise<LoadedOutboxEntry['message']> {
+): Promise<LoadedWorkOrderEntry['message']> {
   const vehicleId = vehicleForAttempt(row.status, row.vehicleId, row.rideVehicleId)
   if (vehicleId === null)
     return null

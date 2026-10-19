@@ -33,6 +33,26 @@ export function workOrderIsCurrent(facts: WorkOrderCurrentFacts): boolean {
   return !facts.rideCancelled
 }
 
+/**
+ * What an invitation's current-ness needs: Better Auth's status and the expiry.
+ * No email and no id. Null is an invitation this Tenant cannot find.
+ */
+export interface InvitationCurrentFacts {
+  readonly status: string
+  readonly expiresAt: Date
+}
+
+/**
+ * Whether an invitation mail should still be sent (ADR-0045).
+ * Current while it is pending. Accepted, revoked (`canceled`), rejected,
+ * expired, or missing makes it stale. The expiry is exclusive, as accept is.
+ */
+export function invitationIsCurrent(facts: InvitationCurrentFacts | null, now: Date): boolean {
+  return facts !== null
+    && facts.status === 'pending'
+    && facts.expiresAt.getTime() > now.getTime()
+}
+
 const FINISHED_RIDE_STATES = new Set(['done', 'no-show'])
 
 /**

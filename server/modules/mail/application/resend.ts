@@ -1,15 +1,13 @@
 import type { Logger } from '../../../core/index'
-import type { LoadedOutboxEntry } from './attempt'
+import type { LoadedOutboxEntry, OutboxSender } from './attempt'
 import { z } from 'zod'
 import { ResendTransportError } from '../../tenancy'
-import { workOrderIsCurrent } from '../domain/current'
-import { workOrderIdempotencyKey } from '../domain/idempotency-key'
-import { OutboxComposeError } from './attempt'
+import { entryIsCurrent, OutboxComposeError, sendEntry } from './attempt'
 
 /**
- * One immediate resend of a failed work order (ADR-0045).
+ * One immediate resend of a failed mail (ADR-0045).
  * `sent` left the failed list. `stale` was not sent because it no longer matters.
- * `failed` was tried and stays failed. `missing` is not a failed work order.
+ * `failed` was tried and stays failed. `missing` is not a failed mail.
  * There is no next attempt: this does not start the 1, 5, 30 minute cycle.
  */
 export type FailedMailResendOutcome = 'sent' | 'stale' | 'failed' | 'missing'
@@ -21,27 +19,20 @@ export interface FailedMailResendStore {
   settle: (entryId: string, state: 'sent' | 'stale') => Promise<void>
 }
 
-interface WorkOrderSender {
-  sendWorkOrder: (mail: {
-    readonly to: string
-    readonly subject: string
-    readonly text: string
-    readonly html: string
-    readonly idempotencyKey?: string
-  }) => Promise<void>
-}
-
 /**
- * One try of a failed work order, with the same current-ness rule as a retry.
- * Success and a mail that no longer matters both leave `failed`.
- * A rejection stays `failed` and queues nothing.
- * The log line is the entry id, the kind, and the outcome. No address and no body.
+ * One try of a failed work order or invitation, with the same current-ness
+ * rule as a retry. Success and a mail that no longer matters both leave
+ * `failed`. A rejection stays `failed` and queues nothing.
+ * The log line is the entry id, the kind, and the outcome. No address,
+ * no body, and no invitation id. The caller has already checked the role
+ * for this kind.
  */
-export async function resendFailedWorkOrder(input: {
+export async function resendFailedOutboxEntry(input: {
   readonly entryId: string
   readonly store: FailedMailResendStore
-  readonly mailer: WorkOrderSender
+  readonly mailer: OutboxSender
   readonly log: Logger
+  readonly now?: Date
 }): Promise<FailedMailResendOutcome> {
   const entryId = z.uuid().parse(input.entryId)
   let entry: LoadedOutboxEntry | null
@@ -56,7 +47,7 @@ export async function resendFailedWorkOrder(input: {
     if (error instanceof OutboxComposeError) {
       if (error.entry.state !== 'failed')
         return 'missing'
-      logResend(input.log, entryId, 'failed')
+      logResend(input.log, error.entry, 'failed')
       return 'failed'
     }
     throw error
@@ -64,51 +55,27 @@ export async function resendFailedWorkOrder(input: {
   if (!entry || entry.state !== 'failed')
     return 'missing'
 
-  const current = workOrderIsCurrent({
-    status: entry.status,
-    rideFinished: entry.rideFinished,
-    rideCancelled: entry.rideCancelled,
-    superseded: entry.superseded,
-  })
-  if (!current) {
+  if (!entryIsCurrent(entry, input.now ?? new Date())) {
     await input.store.settle(entry.entryId, 'stale')
-    logResend(input.log, entry.entryId, 'stale')
+    logResend(input.log, entry, 'stale')
     return 'stale'
   }
 
-  const address = entry.email?.trim() ?? ''
-  let sent = false
-  if (address !== '' && entry.message !== null) {
-    try {
-      await input.mailer.sendWorkOrder({
-        to: address,
-        ...entry.message,
-        idempotencyKey: workOrderIdempotencyKey(entry.entryId, entry.message, address),
-      })
-      sent = true
-    }
-    catch (error) {
-      // The test server must not keep a live Resend transport running.
-      if (error instanceof ResendTransportError)
-        throw error
-    }
-  }
-
-  if (!sent) {
+  if (!await sendEntry(entry, input.mailer)) {
     // The count stays. A new cycle would queue another job, and the column stops at 4.
-    logResend(input.log, entry.entryId, 'failed')
+    logResend(input.log, entry, 'failed')
     return 'failed'
   }
   await input.store.settle(entry.entryId, 'sent')
-  logResend(input.log, entry.entryId, 'sent')
+  logResend(input.log, entry, 'sent')
   return 'sent'
 }
 
-function logResend(log: Logger, entryId: string, outcome: 'sent' | 'stale' | 'failed'): void {
+function logResend(log: Logger, entry: LoadedOutboxEntry, outcome: 'sent' | 'stale' | 'failed'): void {
   log.info({
     event: 'mail_outbox.resend',
-    entryId,
-    kind: 'work_order',
+    entryId: entry.entryId,
+    kind: entry.kind,
     outcome,
   })
 }

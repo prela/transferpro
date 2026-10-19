@@ -103,6 +103,8 @@
     "failed": "The invite was not sent. Try again.",
     "alreadyMember": "This person is already a member or already has a pending invitation.",
     "emailFailed": "The email was not sent. Copy the link and send it yourself.",
+    "emailRetrying": "The mail was not sent. We will try again. You can also copy the link and send it yourself.",
+    "emailStale": "The mail was not sent because the invitation is no longer pending. Copy the link if you still need it.",
     "link": "Invite link",
     "copy": "Copy link",
     "copied": "Link copied",
@@ -891,6 +893,8 @@
       "title": "Failed mail",
       "resend": "Send again",
       "resendFor": "Send again: {driver}, {when}",
+      "resendInvitationFor": "Send the invitation again: {email}",
+      "invitation": "Invitation · {role}",
       "stale": "This mail is no longer current.",
       "notSent": "The mail was not sent.",
       "status": {

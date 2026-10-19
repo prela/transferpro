@@ -1,42 +1,30 @@
-import type { AppEnv, JobQueue, Logger } from '../../../core/index'
-import process from 'node:process'
-import { getLogger, loadAppEnv, nodeEnv } from '../../../core/index'
-import { createPgBossJobQueue } from '../../../core/infrastructure'
-import { handleMailOutboxJob, MAIL_OUTBOX_QUEUE } from '../../mail'
+import type { AppEnv, Logger, TenantContext, TenantTransaction } from '../../../core/index'
+import type { OutboxAttemptStore } from '../../mail'
+import { getLogger, loadAppEnv } from '../../../core/index'
+import { closeMailOutboxQueue as closeQueue, handleMailOutboxJob, invitationAttemptStore, MAIL_OUTBOX_QUEUE, mailOutboxQueue, outboxStoreByKind } from '../../mail'
 import { mailerForApp } from '../../tenancy'
 import { outboxAttemptStore } from './work-order-attempt'
 
-let queuePromise: Promise<JobQueue> | undefined
 let starting: Promise<void> | undefined
 
 /**
- * Close the pools this process opened. A second call does nothing.
- * Tests call this so a later file can start a fresh queue, and so the
- * process can exit. Production stops with the server.
+ * The queue lives in the mail module, which the invite call shares.
+ * These names stay here for the Ride actions and the tests that import them.
  */
+export { mailOutboxQueue }
+
+/** Close the shared queue and let a later call start the worker again. */
 export async function closeMailOutboxQueue(): Promise<void> {
-  const pending = queuePromise
-  queuePromise = undefined
   starting = undefined
-  if (pending)
-    await (await pending).close()
+  await closeQueue()
 }
 
-// A test process enqueues on the real queue and then exits. Close the pools
-// or the open connections keep the process alive.
-if (nodeEnv() === 'test') {
-  process.once('beforeExit', () => {
-    void closeMailOutboxQueue()
+/** A work order reads the Ride. An invitation reads Better Auth's row for this Tenant. */
+export function mailOutboxStore(transaction: TenantTransaction, context: TenantContext): OutboxAttemptStore {
+  return outboxStoreByKind(transaction, {
+    work_order: outboxAttemptStore(transaction),
+    invitation: invitationAttemptStore(transaction, context),
   })
-}
-
-/**
- * The one queue for this process. The first call starts pg-boss.
- * Later calls share it, including the Ride transaction that enqueues.
- */
-export function mailOutboxQueue(env: AppEnv = loadAppEnv()): Promise<JobQueue> {
-  queuePromise ??= createPgBossJobQueue(env)
-  return queuePromise
 }
 
 /**
@@ -58,7 +46,7 @@ async function start(env: AppEnv, log: Logger): Promise<void> {
       queue,
       log,
       now: () => new Date(),
-      openStore: outboxAttemptStore,
+      openStore: mailOutboxStore,
     })
   })
 }

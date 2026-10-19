@@ -1,15 +1,16 @@
-import type { AuditEntryList, DisplayLocale, PlatformActor, SessionShell, TenantRole, TenantSettings } from '../../../../shared'
+import type { AuditEntryList, DisplayLocale, InvitationMailOutcome, InviteResult, PlatformActor, SessionShell, TenantRole, TenantSettings } from '../../../../shared'
 import type { TenantContext, TenantTransaction } from '../../../core/index'
 import type { Membership } from './auth'
+import type { InvitationMail } from './mailer'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
-import { memberListSchema, operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
+import { inviteLink, inviteResultSchema, memberListSchema, operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
 import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
-import { acceptInvitation, parseInviteInput, previewInvitation, listPendingInvitations as readPendingInvitations, repairInvitationCookies, revokePendingInvitation as revokePendingInvitationImpl, sendInvitation } from './invitation'
+import { acceptInvitation, createInvitation, parseInviteInput, previewInvitation, listPendingInvitations as readPendingInvitations, repairInvitationCookies, revokePendingInvitation as revokePendingInvitationImpl } from './invitation'
 import { mailerForApp } from './mailer'
 import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, removeMember as removeMemberImpl } from './member-management'
 import { changeTenantSettings, loadTenantSettings, TenantSettingsMissingError } from './tenant-settings'
@@ -182,26 +183,90 @@ const localeRows = z.object({
 })
 
 /**
- * Admin invite. The organization id comes from the tenant session, not the body.
- * The email uses the Tenant default locale.
+ * The invite call's mail (ADR-0045). The mail module implements this and
+ * the route passes it in: the mail module imports this one, not the other
+ * way round. `open` runs `run` on a new tenant transaction for the inviting
+ * Tenant. The outcome is what the Admin is told. The id never leaves it.
  */
-export async function inviteMember(headers: Headers, raw: unknown) {
+export interface InvitationMailPort {
+  deliver: (input: {
+    readonly context: TenantContext
+    readonly invitationId: string
+    readonly open: <T>(run: (transaction: TenantTransaction) => Promise<T>) => Promise<T>
+  }) => Promise<InvitationMailOutcome>
+}
+
+/**
+ * Admin invite. The organization id comes from the tenant session, not the body.
+ * The route checks the role itself, and Better Auth checks it again.
+ * Better Auth's invitation is on the auth pool and the outbox entry is on the
+ * app pool, so the mail runs after that commit. The link is always returned.
+ */
+export async function inviteMember(headers: Headers, raw: unknown, outbox: InvitationMailPort): Promise<InviteResult> {
   const input = parseInviteInput(raw)
-  const { handle } = tenantRuntime()
-  return withTenantFromSession(headers, async ({ context, transaction }) => {
+  const { handle, db } = tenantRuntime()
+  const created = await withTenantFromSession(headers, async ({ context, actor, transaction }) => {
+    if (actor.role !== 'admin')
+      throw new TenantAccessError(403, actor.userId)
+    // Every attempt composes in the Tenant default locale. A Tenant with no
+    // settings row would leave an entry that can never be composed.
     const selected = localeRows.parse(await transaction.execute(sql`
       select default_locale from app.tenant_settings
     `))
-    const settings = selected.rows.length === 1 ? selected.rows[0] : undefined
-    if (!settings)
+    if (selected.rows.length !== 1)
       throw new TenantSettingsMissingError()
-    return sendInvitation(handle, headers, {
+    const invitationId = await createInvitation(handle, headers, {
       email: input.email,
       role: input.role,
       organizationId: context.tenantId,
-      locale: settings.default_locale,
     })
+    return { context, invitationId }
   })
+  const mail = await outbox.deliver({
+    context: created.context,
+    invitationId: created.invitationId,
+    open: run => db.transaction(transaction => openTenantSession(transaction, created.context, () => run(transaction))),
+  })
+  return inviteResultSchema.parse({ inviteUrl: inviteLink(handle.baseURL, created.invitationId), mail })
+}
+
+/**
+ * One invitation as its mail needs it. `mail` has no locale: the outbox
+ * reads the Tenant default on its own transaction. Null `mail` is a role
+ * outside the Tenant roles, which cannot be composed.
+ */
+export interface InvitationForMail {
+  readonly status: string
+  readonly expiresAt: Date
+  readonly mail: Omit<InvitationMail, 'locale' | 'idempotencyKey'> | null
+}
+
+/**
+ * Read by the auth role, limited to `tenantId`, which the caller takes from
+ * the session or the job envelope. Null when this Tenant has no such
+ * invitation. The address and the link are bearer material: do not log them.
+ */
+export async function readInvitationForMail(tenantId: string, invitationId: string): Promise<InvitationForMail | null> {
+  const { handle } = tenantRuntime()
+  const record = await handle.invitationForMail(tenantId, invitationId)
+  if (record === null)
+    return null
+  const role = tenantRoleSchema.safeParse(record.role)
+  return {
+    status: record.status,
+    expiresAt: record.expiresAt,
+    mail: role.success
+      ? { to: record.email, inviteUrl: inviteLink(handle.baseURL, invitationId), role: role.data, tenantName: record.tenantName }
+      : null,
+  }
+}
+
+/**
+ * Invitee addresses for ids the caller's tenant session already listed,
+ * keyed by invitation id. The app role cannot read them. Do not log the result.
+ */
+export async function readInvitationEmails(tenantId: string, invitationIds: readonly string[]): Promise<Map<string, string>> {
+  return tenantRuntime().handle.invitationEmailsById(tenantId, invitationIds)
 }
 
 /**

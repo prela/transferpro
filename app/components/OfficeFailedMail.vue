@@ -3,7 +3,7 @@ import type { DisplayLocale, OfficeHome } from '../../shared'
 import { failedMailResendSchema, formatInstant } from '../../shared'
 import { refreshSharedOfficeHome } from '../composables/office-home-feed'
 
-defineProps<{
+const props = defineProps<{
   mails: OfficeHome['failedMails']
   timeZone: string
   locale: DisplayLocale
@@ -53,6 +53,15 @@ async function resend(entryId: string) {
   }
 }
 
+function resendLabel(mail: OfficeHome['failedMails'][number]): string {
+  if (mail.kind === 'invitation')
+    return t('officeHome.failedMail.resendInvitationFor', { email: mail.email })
+  return t('officeHome.failedMail.resendFor', {
+    driver: mail.driverName,
+    when: formatInstant(new Date(mail.pickupAt), props.timeZone, props.locale),
+  })
+}
+
 function httpStatus(error: unknown): number | null {
   if (typeof error === 'object' && error !== null && 'statusCode' in error && typeof error.statusCode === 'number')
     return error.statusCode
@@ -66,7 +75,9 @@ function httpStatus(error: unknown): number | null {
     The heading is hidden when the list is empty. The alert stays,
     including when the last resend is no longer current.
     The button text is the label. The accessible name adds the Driver
-    and the pickup so two rows are not the same control.
+    and the pickup, or the invitee, so two rows are not the same control.
+    An invitation row reaches an Admin only: the server leaves it off
+    any other read.
   -->
   <div
     v-if="mails.length > 0 || notice"
@@ -95,16 +106,26 @@ function httpStatus(error: unknown): number | null {
           :key="mail.entryId"
           class="rounded-md border border-default px-2 py-2"
         >
-          <p class="text-sm">
-            <time
-              class="tabular-nums"
-              :datetime="mail.pickupAt"
-            >{{ formatInstant(new Date(mail.pickupAt), timeZone, locale) }}</time>
-            {{ mail.start }} → {{ mail.end }}
-          </p>
-          <p class="text-sm">
-            {{ mail.driverName }} · {{ t(`officeHome.failedMail.status.${mail.status}`) }}
-          </p>
+          <template v-if="mail.kind === 'work_order'">
+            <p class="text-sm">
+              <time
+                class="tabular-nums"
+                :datetime="mail.pickupAt"
+              >{{ formatInstant(new Date(mail.pickupAt), timeZone, locale) }}</time>
+              {{ mail.start }} → {{ mail.end }}
+            </p>
+            <p class="text-sm">
+              {{ mail.driverName }} · {{ t(`officeHome.failedMail.status.${mail.status}`) }}
+            </p>
+          </template>
+          <template v-else>
+            <p class="text-sm break-all">
+              {{ mail.email }}
+            </p>
+            <p class="text-sm">
+              {{ t('officeHome.failedMail.invitation', { role: t(`invite.roles.${mail.role}`) }) }}
+            </p>
+          </template>
           <UButton
             type="button"
             color="neutral"
@@ -113,10 +134,7 @@ function httpStatus(error: unknown): number | null {
             class="mt-2 max-lg:min-h-11 max-lg:text-base"
             :loading="pendingId === mail.entryId"
             :disabled="pendingId !== null"
-            :aria-label="t('officeHome.failedMail.resendFor', {
-              driver: mail.driverName,
-              when: formatInstant(new Date(mail.pickupAt), timeZone, locale),
-            })"
+            :aria-label="resendLabel(mail)"
             @click="resend(mail.entryId)"
           >
             {{ t('officeHome.failedMail.resend') }}

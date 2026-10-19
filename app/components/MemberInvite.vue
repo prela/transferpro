@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { InvitationMailOutcome } from '../../shared'
 import { inviteResultSchema } from '../../shared'
 
 const emit = defineEmits<{
@@ -16,12 +17,25 @@ const roleMissing = ref(false)
 const pending = ref(false)
 const failed = ref(false)
 const alreadyMember = ref(false)
-const emailSent = ref(true)
+const mail = ref<InvitationMailOutcome>('sent')
 const inviteUrl = ref('')
 const copied = ref(false)
 
 /** Office control: 28px on the desktop, 44px on the phone. ADR-0038. */
 const controlClass = 'h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base'
+
+/**
+ * The link is shown whatever happened to the mail. `retrying` will be sent
+ * again by the outbox. `not_sent` and `stale` will not, so the Admin hands
+ * the link over.
+ */
+const mailNotice = computed(() => {
+  if (mail.value === 'retrying')
+    return { color: 'warning' as const, text: t('invite.emailRetrying') }
+  if (mail.value === 'stale')
+    return { color: 'error' as const, text: t('invite.emailStale') }
+  return { color: 'error' as const, text: t('invite.emailFailed') }
+})
 
 const roleItems = computed(() => [
   { label: t('invite.roles.admin'), value: 'admin' as const },
@@ -45,7 +59,7 @@ function reset() {
   roleMissing.value = false
   failed.value = false
   alreadyMember.value = false
-  emailSent.value = true
+  mail.value = 'sent'
   inviteUrl.value = ''
   copied.value = false
 }
@@ -72,7 +86,7 @@ async function invite() {
       body: { email: email.value, role: role.value },
     }))
     inviteUrl.value = result.inviteUrl
-    emailSent.value = result.emailSent
+    mail.value = result.mail
     email.value = ''
     role.value = undefined
     notifyAuditChanged()
@@ -199,7 +213,7 @@ async function copyLink() {
         </form>
         <div v-else>
           <UAlert
-            v-if="emailSent"
+            v-if="mail === 'sent'"
             color="success"
             variant="subtle"
             role="status"
@@ -208,11 +222,11 @@ async function copyLink() {
           />
           <UAlert
             v-else
-            color="error"
+            :color="mailNotice.color"
             variant="subtle"
             role="alert"
             class="mb-4"
-            :description="t('invite.emailFailed')"
+            :description="mailNotice.text"
           />
           <UFormField
             :label="t('invite.link')"

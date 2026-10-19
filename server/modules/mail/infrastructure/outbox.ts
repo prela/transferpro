@@ -1,5 +1,6 @@
 import type { WorkOrderStatus } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
+import type { OutboxAttemptPatch, OutboxAttemptStore } from '../application/attempt'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { WORK_ORDER_STATUSES } from '../../../../shared'
@@ -112,4 +113,109 @@ export async function markWorkOrderStale(
   `), 'Mail outbox update failed'))
   if (updated.rows[0] === undefined)
     throw new Error('Mail outbox update failed')
+}
+
+/**
+ * Write one pending invitation on the caller's tenant transaction (ADR-0045).
+ * The row holds the invitation id only. The address, the role, and the
+ * Tenant name are read at each attempt. `nextAttemptAt` is when the job
+ * queued with this row may run. The id is a bearer secret: no error carries it.
+ */
+export async function recordInvitation(
+  transaction: TenantTransaction,
+  invitationId: string,
+  nextAttemptAt: Date,
+): Promise<string> {
+  const parsed = z.object({ invitationId: z.uuid(), nextAttemptAt: z.date() }).safeParse({ invitationId, nextAttemptAt })
+  if (!parsed.success)
+    throw new Error('Mail outbox write failed')
+  const inserted = insertedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
+    insert into app.mail_outbox (kind, invitation_id, state, attempt_count, next_attempt_at)
+    values ('invitation', ${parsed.data.invitationId}, 'pending', 0, ${parsed.data.nextAttemptAt})
+    returning id
+  `), 'Mail outbox write failed'))
+  const id = inserted.rows[0]?.id
+  if (id === undefined)
+    throw new Error('Mail outbox write failed')
+  return id
+}
+
+/** The update that settles one attempt, for any kind. A row that is no longer pending is a fixed error. */
+export async function saveOutboxAttempt(
+  transaction: TenantTransaction,
+  entryId: string,
+  patch: OutboxAttemptPatch,
+): Promise<void> {
+  const id = z.uuid().parse(entryId)
+  const updated = insertedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
+    update app.mail_outbox
+    set state = ${patch.state},
+        attempt_count = ${patch.attemptCount},
+        next_attempt_at = ${patch.nextAttemptAt}
+    where id = ${id}
+      and state = 'pending'
+    returning id
+  `), 'Mail outbox update failed'))
+  if (updated.rows[0] === undefined)
+    throw new Error('Mail outbox update failed')
+}
+
+export type OutboxKind = 'work_order' | 'invitation'
+
+/**
+ * A manual resend settles a failed row of this kind. The attempt count stays:
+ * the column stops at 4, and a resend does not start the retry cycle. A row
+ * that is no longer failed is a fixed error, so two clicks cannot both send.
+ */
+export async function settleFailedOutboxEntry(
+  transaction: TenantTransaction,
+  kind: OutboxKind,
+  entryId: string,
+  state: 'sent' | 'stale',
+): Promise<void> {
+  const id = z.uuid().parse(entryId)
+  const next = z.enum(['sent', 'stale']).parse(state)
+  const updated = insertedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
+    update app.mail_outbox
+    set state = ${next},
+        next_attempt_at = null
+    where id = ${id}
+      and kind = ${kind}
+      and state = 'failed'
+    returning id
+  `), 'Mail outbox update failed'))
+  if (updated.rows[0] === undefined)
+    throw new Error('Mail outbox update failed')
+}
+
+const kindRows = z.object({
+  rows: z.array(z.object({ kind: z.enum(['work_order', 'invitation']) })),
+})
+
+/** The kind of one entry in this Tenant. Another Tenant's id is null, the same as a missing one. */
+export async function readOutboxKind(transaction: TenantTransaction, entryId: string): Promise<OutboxKind | null> {
+  const id = z.uuid().safeParse(entryId)
+  if (!id.success)
+    return null
+  const parsed = kindRows.parse(await hideDatabaseError(() => transaction.execute(sql`
+    select kind from app.mail_outbox where id = ${id.data}
+  `), 'Mail outbox read failed'))
+  return parsed.rows[0]?.kind ?? null
+}
+
+/**
+ * One store for the worker. The kind decides which reader composes the mail.
+ * The save is the same update for both kinds.
+ */
+export function outboxStoreByKind(
+  transaction: TenantTransaction,
+  stores: Readonly<Record<OutboxKind, OutboxAttemptStore>>,
+): OutboxAttemptStore {
+  return {
+    async load(entryId) {
+      const kind = await readOutboxKind(transaction, entryId)
+      return kind === null ? null : stores[kind].load(entryId)
+    },
+    save: (entryId, patch) => saveOutboxAttempt(transaction, entryId, patch),
+  }
 }

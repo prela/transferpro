@@ -2,6 +2,7 @@ import type { PaymentMethod, RideState } from './transfer'
 import { z } from 'zod'
 import { isCalendarDate, localDayBounds, operationalDateInTimeZone } from './date'
 import { landingAlarmOn, rideIsInProgress } from './landing-alarm'
+import { tenantRoleSchema } from './tenant-role'
 import { OPERATIONAL_DAY_START_DEFAULT, operationalDayStartHourSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from './tenant-settings'
 import { PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema, TABLA_MAX_LENGTH, transferPriceSchema } from './transfer'
 import { WORK_ORDER_STATUSES } from './work-order'
@@ -112,9 +113,10 @@ const officeHomeCountsSchema = z.strictObject({
  * week, month, or euro total.
  * `failedMails` sits below Pozornost and outside both attention tiers
  * (ADR-0045). It does not change the urgent count. The Driver's name is
- * derived on read. The address is not a field.
+ * derived on read. The Driver's address is not a field.
  */
-export const officeHomeFailedMailSchema = z.strictObject({
+export const officeHomeFailedWorkOrderSchema = z.strictObject({
+  kind: z.literal('work_order'),
   entryId: z.uuid(),
   driverName: z.string().trim().min(1),
   pickupAt: z.iso.datetime(),
@@ -122,6 +124,23 @@ export const officeHomeFailedMailSchema = z.strictObject({
   end: z.string().trim().min(1),
   status: z.enum(WORK_ORDER_STATUSES),
 })
+
+/**
+ * A failed invitation that is still pending. Admin reads only. The invitee's
+ * email is derived on read and is not stored on the entry. The invitation id
+ * is a bearer secret (ADR-0013), so the row names only the outbox entry.
+ */
+export const officeHomeFailedInvitationSchema = z.strictObject({
+  kind: z.literal('invitation'),
+  entryId: z.uuid(),
+  email: z.email(),
+  role: tenantRoleSchema,
+})
+
+export const officeHomeFailedMailSchema = z.discriminatedUnion('kind', [
+  officeHomeFailedWorkOrderSchema,
+  officeHomeFailedInvitationSchema,
+])
 
 export const officeHomeSchema = z.strictObject({
   operationalDate: z.string().refine(isCalendarDate),

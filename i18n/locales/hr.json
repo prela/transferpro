@@ -103,6 +103,8 @@
     "failed": "Pozivnica nije poslana. Pokušajte ponovno.",
     "alreadyMember": "Ova osoba je već član ili već ima pozivnicu na čekanju.",
     "emailFailed": "E-pošta nije poslana. Kopirajte poveznicu i pošaljite je sami.",
+    "emailRetrying": "Mail nije poslan, pokušat ćemo ponovno. Poveznicu možete i sami kopirati i poslati.",
+    "emailStale": "Mail nije poslan jer pozivnica više nije na čekanju. Kopirajte poveznicu ako je još trebate.",
     "link": "Poveznica pozivnice",
     "copy": "Kopiraj poveznicu",
     "copied": "Poveznica je kopirana",
@@ -891,6 +893,8 @@
       "title": "Neuspjeli mailovi",
       "resend": "Pošalji ponovno",
       "resendFor": "Pošalji ponovno: {driver}, {when}",
+      "resendInvitationFor": "Pošalji ponovno pozivnicu: {email}",
+      "invitation": "Pozivnica · {role}",
       "stale": "Mail više nije aktualan.",
       "notSent": "Mail nije poslan.",
       "status": {

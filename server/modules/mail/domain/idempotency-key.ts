@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
 
 /**
- * The composed work order. The address is not part of the key:
+ * The composed mail, a work order or an invitation. The address is passed apart:
  * Resend binds the key to the posted payload, and the address is that payload's recipient.
  */
-export interface IdempotentWorkOrder {
+export interface IdempotentMail {
   readonly subject: string
   readonly text: string
   readonly html: string
@@ -17,11 +17,12 @@ export interface IdempotentWorkOrder {
  * inside Resend's 24-hour window. Changed words or a changed address produce
  * a new key. The same key with a different Resend payload is a 409, so a
  * corrected Driver email has to be a new key or the retry cannot be accepted.
- * The key stays under Resend's 256-character limit.
+ * The key stays under Resend's 256-character limit. An invitation link is
+ * inside the hashed text, so the key does not carry the invitation id.
  */
-export function workOrderIdempotencyKey(
+export function mailIdempotencyKey(
   entryId: string,
-  message: IdempotentWorkOrder,
+  message: IdempotentMail,
   to: string,
 ): string {
   const hash = createHash('sha256')

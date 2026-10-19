@@ -1,12 +1,11 @@
-import type { DisplayLocale, TenantRole } from '../../../../shared'
+import type { TenantRole } from '../../../../shared'
 import type { AuthHandle } from './auth'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { z } from 'zod'
-import { invitationAcceptBodySchema, invitationPreviewBodySchema, inviteInputSchema, inviteLink, passwordLengthRule, pendingInvitationListSchema, tenantRoleSchema } from '../../../../shared'
+import { invitationAcceptBodySchema, invitationPreviewBodySchema, inviteInputSchema, passwordLengthRule, pendingInvitationListSchema, tenantRoleSchema } from '../../../../shared'
 import { nodeEnv, openTenantSession } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { acceptAttemptLimit, createAttemptLimiter } from './auth'
-import { inviteSendState } from './invite-send'
 
 /**
  * Fixed phrases. The id, the email, and the password never go in the message:
@@ -36,11 +35,10 @@ export class InvitationAccessError extends Error {
   }
 }
 
-export interface SendInvitationInput {
+export interface CreateInvitationInput {
   readonly email: string
   readonly role: TenantRole
   readonly organizationId: string
-  readonly locale: DisplayLocale
 }
 
 export interface AcceptCookies {
@@ -68,31 +66,29 @@ export function parseInviteInput(raw: unknown): { email: string, role: TenantRol
   }
 }
 
-export async function sendInvitation(
+/**
+ * Better Auth creates the invitation and checks the caller's role. It sends
+ * nothing: the caller writes the mail outbox entry (ADR-0045). The id is a
+ * bearer secret. The caller turns it into the link and never logs it.
+ */
+export async function createInvitation(
   handle: AuthHandle,
   headers: Headers,
-  input: SendInvitationInput,
-): Promise<{ inviteUrl: string, emailSent: boolean }> {
-  const state = { locale: input.locale, emailSent: false }
-  const invitationId = await inviteSendState.run(state, async () => {
-    try {
-      const created: unknown = await handle.auth.api.createInvitation({
-        body: {
-          email: input.email,
-          role: input.role,
-          organizationId: input.organizationId,
-        },
-        headers,
-      })
-      return readInvitationId(created)
-    }
-    catch (error) {
-      throw invitationFailure(error)
-    }
-  })
-  return {
-    inviteUrl: inviteLink(handle.baseURL, invitationId),
-    emailSent: state.emailSent,
+  input: CreateInvitationInput,
+): Promise<string> {
+  try {
+    const created: unknown = await handle.auth.api.createInvitation({
+      body: {
+        email: input.email,
+        role: input.role,
+        organizationId: input.organizationId,
+      },
+      headers,
+    })
+    return readInvitationId(created)
+  }
+  catch (error) {
+    throw invitationFailure(error)
   }
 }
 

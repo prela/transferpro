@@ -780,12 +780,18 @@ it('puts each listed Ride in one Home block, and past pickup and a decline in Po
   const withFailedMail = {
     ...snapshot,
     failedMails: [{
+      kind: 'work_order' as const,
       entryId: '12121212-1212-4121-8121-121212121212',
       driverName: 'Ana Vozač',
       pickupAt: '2026-06-15T08:00:00.000Z',
       start: 'Zračna luka',
       end: 'Hotel',
       status: 'assigned' as const,
+    }, {
+      kind: 'invitation' as const,
+      entryId: '13131313-1313-4131-8131-131313131313',
+      email: 'pozvana@example.test',
+      role: 'driver' as const,
     }],
   }
   expect(officeHomeUrgentRideCount(withFailedMail)).toBe(4)
