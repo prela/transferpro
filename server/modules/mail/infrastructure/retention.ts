@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { getLogger, loadAppEnv } from '../../../core/index'
 import { mailRetentionCutoff } from '../domain/retention'
 import { deleteOutboxEntriesBefore } from './outbox'
-import { mailOutboxQueue } from './queue'
+import { closeWithMailOutboxQueue, mailOutboxQueue } from './queue'
 
 /** Daily tick. Its payload is empty. It is not one Tenant. */
 export const MAIL_RETENTION_TICK = 'mail-outbox-retention'
@@ -58,7 +58,10 @@ export async function listTenantsWithOutboxBefore(pool: pg.Pool, before: Date): 
 
 let starting: Promise<void> | undefined
 
-/** Run the retention on the process's one mail queue. A second call does nothing. */
+/**
+ * Run the retention on the process's one mail queue. A second call does nothing.
+ * `closeMailOutboxQueue` also ends the listing pool and lets a later call start again.
+ */
 export function startMailOutboxRetention(env: AppEnv = loadAppEnv(), log: Logger = getLogger()): Promise<void> {
   starting ??= start(env, log)
   return starting
@@ -67,6 +70,10 @@ export function startMailOutboxRetention(env: AppEnv = loadAppEnv(), log: Logger
 async function start(env: AppEnv, log: Logger): Promise<void> {
   const queue = await mailOutboxQueue(env)
   const pool = new pg.Pool({ connectionString: env.DATABASE_URL, max: 1 })
+  closeWithMailOutboxQueue(async () => {
+    starting = undefined
+    await pool.end()
+  })
   await registerMailOutboxRetention(queue, {
     log,
     listTenantIds: before => listTenantsWithOutboxBefore(pool, before),

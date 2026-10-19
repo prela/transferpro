@@ -4,6 +4,12 @@ import { loadAppEnv, nodeEnv } from '../../../core/index'
 import { createPgBossJobQueue } from '../../../core/infrastructure'
 
 let queuePromise: Promise<JobQueue> | undefined
+const closers = new Set<() => Promise<void>>()
+
+/** Run `close` with the next `closeMailOutboxQueue`, so a pool opened beside the queue does not outlive it. */
+export function closeWithMailOutboxQueue(close: () => Promise<void>): void {
+  closers.add(close)
+}
 
 /**
  * Close the pools this process opened. A second call does nothing.
@@ -13,6 +19,9 @@ let queuePromise: Promise<JobQueue> | undefined
 export async function closeMailOutboxQueue(): Promise<void> {
   const pending = queuePromise
   queuePromise = undefined
+  const registered = [...closers]
+  closers.clear()
+  await Promise.all(registered.map(close => close()))
   if (pending)
     await (await pending).close()
 }
