@@ -34,6 +34,8 @@ const corrected = defineModel<boolean>('corrected', { required: true })
 const locations = defineModel<Location[]>('locations', { required: true })
 const clients = defineModel<Client[]>('clients', { required: true })
 
+const onStale = props.onStale
+
 const api = useTransferForm({
   timeZone: () => props.timeZone,
   locale: () => props.locale,
@@ -53,7 +55,7 @@ const api = useTransferForm({
   },
   onRecorded: rideId => emit('recorded', rideId),
   onClose: () => emit('close'),
-  onStale: () => props.onStale?.() ?? Promise.resolve(),
+  onStale: onStale === undefined ? undefined : () => onStale(),
 })
 provide(transferFormKey, api)
 

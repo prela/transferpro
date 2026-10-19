@@ -632,8 +632,9 @@ export function useTransferForm(options: {
         return
       }
       overlapOpen.value = false
-      if (errorCode(error) === 'stale_save') {
-        await options.onStale?.()
+      // A correction hands the refusal to the detail. Without that handler the form shows the error.
+      if (errorCode(error) === 'stale_save' && options.onStale) {
+        await options.onStale()
         return
       }
       formErrorKey.value = failureKey(error)

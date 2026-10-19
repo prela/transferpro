@@ -53,8 +53,6 @@ const titleId = useId()
 const snapshot = ref<TransferDayRide | null>(null)
 const rideChanged = ref(false)
 const staleNotice = ref(false)
-/** A failed day read has no new author. The notice then says someone, not the opened row. */
-const staleReadFailed = ref(false)
 const refreshing = ref(false)
 const correctForm = ref<{
   formMode: 'add' | 'edit' | null
@@ -73,13 +71,11 @@ watch(() => props.command, (command) => {
     snapshot.value = props.ride
     rideChanged.value = false
     staleNotice.value = false
-    staleReadFailed.value = false
     return
   }
   snapshot.value = null
   rideChanged.value = false
   staleNotice.value = false
-  staleReadFailed.value = false
 }, { immediate: true })
 
 watch(() => props.ride, (ride) => {
@@ -91,11 +87,26 @@ watch(() => props.ride, (ride) => {
 
 const formRide = computed(() => (props.command && snapshot.value ? snapshot.value : props.ride))
 
+/** The opened version is still on screen. The notice must not name that author. */
+const staleAuthorHidden = computed(() =>
+  snapshot.value !== null && props.ride.version === snapshot.value.version,
+)
+
+/** Assign stays on an unassigned Ride. The other assignment commands use canChangeAssignment. */
+function openedCommandStillAllowed(ride: TransferDayRide): boolean {
+  if (props.command === 'assign')
+    return ride.state === 'unassigned'
+  if (props.command === 'reassign' || props.command === 'vehicle')
+    return canChangeAssignment(ride)
+  if (props.command === 'correct')
+    return canCorrectTransfer(ride.state)
+  return true
+}
+
 async function noteStale() {
   // The 409 carries no name. The day read does. The snapshot stays, so the
   // typed values and the opened version stay until Osvježi.
   const outcome = await props.loadDay()
-  staleReadFailed.value = outcome === 'fail'
   if (outcome !== 'fail')
     await nextTick()
   staleNotice.value = true
@@ -117,11 +128,10 @@ async function refreshStale() {
     snapshot.value = props.ride
     rideChanged.value = false
     staleNotice.value = false
-    staleReadFailed.value = false
-    correctForm.value?.openCorrect(props.ride)
-    // Clear removes the Driver and the Vehicle. Those forms only exist while
-    // the opened row still has one, so the facts show the current Ride.
-    if ((props.command === 'vehicle' && !props.ride.vehicleId) || (props.command === 'reassign' && !props.ride.driverId))
+    const ride = props.ride
+    if (props.command === 'correct' && canCorrectTransfer(ride.state))
+      correctForm.value?.openCorrect(ride)
+    if (!openedCommandStillAllowed(ride))
       emit('command', null)
   }
   finally {
@@ -260,8 +270,8 @@ const primaryLabel = computed(() => {
 
     <StaleSaveAlert
       v-if="staleNotice"
-      :changed-by-name="staleReadFailed ? null : ride.changedByName"
-      :changed-at="staleReadFailed ? null : ride.changedAt"
+      :changed-by-name="staleAuthorHidden ? null : ride.changedByName"
+      :changed-at="staleAuthorHidden ? null : ride.changedAt"
       :time-zone="timeZone"
       :locale="locale"
       :phone="pinActions"

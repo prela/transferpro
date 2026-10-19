@@ -1,6 +1,6 @@
 import type { Browser, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { formatInstant } from '../shared/format-instant'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { seedMember, seedTenant } from './fixtures/seed'
@@ -66,6 +66,18 @@ async function openCorrection(page: Page, guest: string, locale: Locale) {
   await expect(page.getByRole('button', { name: text.save, exact: true })).toBeVisible()
 }
 
+async function saveAndClose(page: Page, locale: Locale) {
+  const text = copy[locale]
+  const saved = page.waitForResponse(response =>
+    response.request().method() === 'PATCH'
+    && response.url().includes('/api/transfers/')
+    && response.ok(),
+  )
+  await page.getByRole('button', { name: text.save, exact: true }).click()
+  await saved
+  await expect(page.getByText(text.saved, { exact: true })).toBeVisible()
+}
+
 async function secondPage(browser: Browser, page: Page, theme: 'light' | 'dark') {
   const baseURL = test.info().project.use.baseURL
   if (baseURL === undefined)
@@ -120,9 +132,7 @@ test.describe('@phone', () => {
         await openCorrection(other, 'Ana Zastarjelo', 'hr')
         await page.getByLabel(text.guest).fill(typed)
         await other.getByLabel(text.guest).fill(savedGuest)
-        await other.getByRole('button', { name: text.save, exact: true }).click()
-        // An unassigned Ride sends no work order, so the save has no toast. The form closes.
-        await expect(other.getByRole('button', { name: text.save, exact: true })).toBeHidden()
+        await saveAndClose(other, 'hr')
 
         const listed = await page.request.get('/api/transfers', { params: { date: day } })
         expect(listed.ok()).toBeTruthy()
@@ -141,10 +151,7 @@ test.describe('@phone', () => {
 
         await alert.getByRole('button', { name: text.refresh, exact: true }).click()
         await expect(page.getByLabel(text.guest)).toHaveValue(savedGuest)
-        await page.getByRole('button', { name: text.save, exact: true }).click()
-        await expect(page.getByRole('button', { name: text.save, exact: true })).toBeHidden()
-        // The phone list sits below the filters. The toast is the save that passed.
-        await expect(page.getByText(text.saved, { exact: true })).toBeVisible()
+        await saveAndClose(page, 'hr')
       }
       finally {
         await context.close()
@@ -261,8 +268,7 @@ test('the refusal is in English', async ({ browser, page }) => {
     await openCorrection(other, 'Ana Stale', 'hr')
     await page.getByLabel(text.guest).fill('Second guest')
     await other.getByLabel(copy.hr.guest).fill('Saved guest')
-    await other.getByRole('button', { name: copy.hr.save, exact: true }).click()
-    await expect(other.getByRole('button', { name: copy.hr.save, exact: true })).toBeHidden()
+    await saveAndClose(other, 'hr')
 
     const listed = await page.request.get('/api/transfers', { params: { date: day } })
     const rides = (await listed.json() as { rides: { changedAt: string | null }[] }).rides
@@ -274,6 +280,92 @@ test('the refusal is in English', async ({ browser, page }) => {
     await expect(alert.getByRole('button', { name: text.refresh, exact: true })).toBeVisible()
     await expect(page.getByLabel(text.guest)).toHaveValue('Second guest')
     await expect(page.getByText(text.changed)).toBeVisible()
+  }
+  finally {
+    await context.close()
+  }
+})
+
+test('a refused clear names who removed the assignment, and Osvježi closes the dialog', async ({ browser, page }) => {
+  test.setTimeout(120_000)
+  const text = copy.hr
+  const guest = 'Ana Dodjela'
+  const tenant = await seedTenant('stale-clear')
+  const colleague = await seedMember(tenant.tenantId, 'dispatcher', 'Dino')
+  await useTheme(page, 'light')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const { context, other } = await secondPage(browser, page, 'light')
+  try {
+    const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+    const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
+    const clientId = await createdId(page, '/api/clients', { name: 'Klijent Dodjela', kind: 'agency' })
+    const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Dodjela', kind: 'airport' })
+    const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Dodjela', kind: 'hotel' })
+    const driverId = await createdId(page, '/api/drivers', {
+      name: 'Vozač Dodjela',
+      kind: 'own',
+      phone: '+385911112244',
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+    })
+    const vehicleId = await createdId(page, '/api/vehicles', {
+      registrationPlate: 'DU334AA',
+      kind: 'fixed',
+      registrationExpiresOn: licence,
+      technicalInspectionExpiresOn: licence,
+      insuranceExpiresOn: licence,
+    })
+    const recorded = await page.request.post('/api/transfers', {
+      data: {
+        clientId,
+        pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
+        startLocationId,
+        endLocationId,
+        passengerCount: 1,
+        guestName: guest,
+        price: 10,
+        payment: 'cash',
+        airportMark: false,
+        luggageCount: 0,
+        childSeatCount: 0,
+      },
+    })
+    expect(recorded.ok()).toBeTruthy()
+    const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
+    const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
+      data: { version: 0, driverId, vehicleId },
+    })
+    expect(assigned.ok()).toBeTruthy()
+
+    await signIn(other, colleague.email, colleague.password, tenant.name)
+    await page.goto('/transfers')
+    await page.getByRole('button', { name: text.actions(guest), exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Ukloni dodjelu', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Uklanjanje dodjele' })
+    await expect(dialog).toBeVisible()
+
+    const opened = await page.request.get('/api/transfers', { params: { date: day } })
+    const openedRide = (await opened.json() as { rides: { version: number }[] }).rides[0]
+    const cleared = await other.request.post(`/api/rides/${rideId}/clear`, {
+      data: { version: openedRide?.version },
+    })
+    expect(cleared.ok()).toBeTruthy()
+
+    const listed = await page.request.get('/api/transfers', { params: { date: day } })
+    const rides = (await listed.json() as { rides: { changedAt: string | null, changedByName: string | null }[] }).rides
+    expect(rides[0]?.changedByName).toBe(colleague.name)
+    const when = formatInstant(new Date(rides[0]!.changedAt!), 'Europe/Zagreb', 'hr')
+
+    await dialog.getByRole('button', { name: 'Ukloni dodjelu', exact: true }).click()
+    const alert = dialog.getByRole('alert').filter({ hasText: text.by(colleague.name, when) })
+    await expect(alert).toBeVisible()
+    await expect(dialog).toContainText(guest)
+
+    await alert.getByRole('button', { name: text.refresh, exact: true }).click()
+    await expect(dialog).toBeHidden()
+    const row = page.getByRole('row', { name: guest })
+    await expect(row.getByRole('cell', { name: /^Nedodijeljeno/ })).toBeVisible()
+    await expect(row.getByRole('button', { name: `Dodijeli: ${guest}`, exact: true })).toBeVisible()
   }
   finally {
     await context.close()

@@ -135,10 +135,15 @@ async function refreshStale() {
       return
     await nextTick()
     const ride = staleRide.value
-    if (!ride || !clearing.value)
+    if (!clearing.value)
       return
-    if (outcome === 'stale' && ride.version === clearing.value.version)
+    if (ride && outcome === 'stale' && ride.version === clearing.value.version)
       return
+    // A missing, finished, or unassigned Ride can no longer be cleared.
+    if (!ride || !canChangeAssignment(ride)) {
+      closeClear()
+      return
+    }
     clearing.value = { rideId: ride.rideId, guestName: ride.guestName, version: ride.version }
     stale.value = false
     staleReadFailed.value = false
