@@ -200,12 +200,14 @@ export interface InvitationMailPort {
  * Admin invite. The organization id comes from the tenant session, not the body.
  * The route checks the role itself, and Better Auth checks it again.
  * Better Auth's invitation is on the auth pool and the outbox entry is on the
- * app pool, so the mail runs after that commit. The link is always returned.
+ * app pool, so neither shares a transaction with the other (ADR-0047). The
+ * tenant transaction commits before Better Auth is called, and the mail runs
+ * after Better Auth commits. The link is always returned.
  */
 export async function inviteMember(headers: Headers, raw: unknown, outbox: InvitationMailPort): Promise<InviteResult> {
   const input = parseInviteInput(raw)
   const { handle, db } = tenantRuntime()
-  const created = await withTenantFromSession(headers, async ({ context, actor, transaction }) => {
+  const context = await withTenantFromSession(headers, async ({ context, actor, transaction }) => {
     if (actor.role !== 'admin')
       throw new TenantAccessError(403, actor.userId)
     // Every attempt composes in the Tenant default locale. A Tenant with no
@@ -215,19 +217,19 @@ export async function inviteMember(headers: Headers, raw: unknown, outbox: Invit
     `))
     if (selected.rows.length !== 1)
       throw new TenantSettingsMissingError()
-    const invitationId = await createInvitation(handle, headers, {
-      email: input.email,
-      role: input.role,
-      organizationId: context.tenantId,
-    })
-    return { context, invitationId }
+    return context
+  })
+  const invitationId = await createInvitation(handle, headers, {
+    email: input.email,
+    role: input.role,
+    organizationId: context.tenantId,
   })
   let mail: InvitationMailOutcome
   try {
     mail = await outbox.deliver({
-      context: created.context,
-      invitationId: created.invitationId,
-      open: run => db.transaction(transaction => openTenantSession(transaction, created.context, () => run(transaction))),
+      context,
+      invitationId,
+      open: run => db.transaction(transaction => openTenantSession(transaction, context, () => run(transaction))),
     })
   }
   catch (error) {
@@ -240,11 +242,11 @@ export async function inviteMember(headers: Headers, raw: unknown, outbox: Invit
     // No id and no email: the id is a bearer secret. A missing logger must
     // not turn a created invitation into a 500.
     try {
-      getLogger().warn({ event: 'invite.mail_not_recorded' })
+      getLogger().warn({ event: 'mail_outbox.invitation_not_recorded' })
     }
     catch {}
   }
-  return inviteResultSchema.parse({ inviteUrl: inviteLink(handle.baseURL, created.invitationId), mail })
+  return inviteResultSchema.parse({ inviteUrl: inviteLink(handle.baseURL, invitationId), mail })
 }
 
 /**

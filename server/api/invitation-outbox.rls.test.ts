@@ -510,7 +510,7 @@ it('returns the link with a not-sent mail when the mail port throws before it ca
     })
     expect(result.mail).toBe('not_sent')
     expect(new URL(result.inviteUrl).hash).toMatch(/^#[0-9a-f-]{36}$/)
-    expect(warn).toHaveBeenCalledWith({ event: 'invite.mail_not_recorded' })
+    expect(warn).toHaveBeenCalledWith({ event: 'mail_outbox.invitation_not_recorded' })
     const text = JSON.stringify(warn.mock.calls)
     expect(text).not.toContain(new URL(result.inviteUrl).hash.slice(1))
     expect(text).not.toContain('iout-port-invitee')
