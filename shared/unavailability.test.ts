@@ -1,11 +1,13 @@
 import { expect, it } from 'vitest'
 import {
+  capacityConfirmReason,
   parseChangeUnavailability,
   parseRecordUnavailability,
   parseUnavailabilityResourceId,
   parseUnavailabilityWeek,
   UnavailabilityInputError,
   unavailabilityWeekRange,
+  wholeDaysOf,
   wholeDaysWindow,
   windowTouchesDate,
 } from './unavailability'
@@ -102,4 +104,19 @@ it('touches a roster day when any part of the half-open window falls on that loc
   expect(windowTouchesDate(window, '2026-10-19', zone)).toBe(false)
   expect(windowTouchesDate({ startsAt: '2026-10-19T21:59:00.000Z', endsAt: '2026-10-19T22:01:00.000Z' }, '2026-10-19', zone)).toBe(true)
   expect(windowTouchesDate({ startsAt: '2026-10-19T21:59:00.000Z', endsAt: '2026-10-19T22:01:00.000Z' }, '2026-10-20', zone)).toBe(true)
+})
+
+it('reads a window back as whole days only when both ends are local midnight', () => {
+  const days = wholeDaysWindow('2026-10-24', '2026-10-26', zone)
+  expect(wholeDaysOf({ startsAt: days.startsAt.toISOString(), endsAt: days.endsAt.toISOString() }, zone))
+    .toEqual({ fromDay: '2026-10-24', toDay: '2026-10-26' })
+  expect(wholeDaysOf({ startsAt: '2026-10-20T08:00:00.000Z', endsAt: '2026-10-20T22:00:00.000Z' }, zone)).toBeNull()
+  expect(wholeDaysOf({ startsAt: '2026-10-19T22:00:00.000Z', endsAt: '2026-10-20T10:00:00.000Z' }, zone)).toBeNull()
+})
+
+it('names which capacity refusal the confirmation passes, and nothing for any other code', () => {
+  expect(capacityConfirmReason('ride_overlap')).toBe('overlap')
+  expect(capacityConfirmReason('ride_unavailable')).toBe('unavailable')
+  for (const code of ['stale_save', 'fully_booked', 'ride_not_open', '', undefined])
+    expect(capacityConfirmReason(code)).toBeNull()
 })

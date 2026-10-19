@@ -754,7 +754,9 @@
     "skipArchived": "{name}, {date}: archived vehicle",
     "skipGiven": "{name}, {date}: vehicle already given",
     "skipRefused": "{name}, {date}: the server refused",
-    "given": "already given"
+    "given": "already given",
+    "driverUnavailable": "Driver unavailable",
+    "vehicleUnavailable": "Vehicle unavailable"
   },
   "ride": {
     "title": "Assign the ride",
@@ -865,7 +867,9 @@
     "detailClose": "Close",
     "detailMore": "More",
     "detailFacts": "Ride facts",
-    "unknownVehicle": "Unknown vehicle"
+    "unknownVehicle": "Unknown vehicle",
+    "unavailableTitle": "This driver or vehicle is unavailable then",
+    "unavailableBody": "Unavailability is recorded during this ride. If the ride also overlaps another, this confirmation covers both. Confirm to continue anyway."
   },
   "liveRefresh": {
     "refresh": "Refresh",
@@ -962,6 +966,41 @@
       "startsAt": "From",
       "endsAt": "To",
       "removed": "Removed"
-    }
+    },
+    "title": "Unavailability",
+    "intro": "Periods when this one does not drive. No reason is recorded. Times are in the company time zone.",
+    "loading": "Loading unavailability",
+    "loadFailed": "Unavailability could not be loaded. Try again.",
+    "empty": "No unavailability recorded.",
+    "listLabel": "Recorded unavailability",
+    "wholeDays": "Whole days",
+    "fromDay": "First day",
+    "toDay": "Last day",
+    "from": "From",
+    "to": "To",
+    "add": "Add unavailability",
+    "adding": "Adding…",
+    "save": "Save unavailability",
+    "saving": "Saving…",
+    "editing": "You are changing the selected unavailability.",
+    "cancelChange": "Cancel the change",
+    "change": "Change",
+    "changeFor": "Change unavailability {range}",
+    "remove": "Remove",
+    "removeFor": "Remove unavailability {range}",
+    "added": "Unavailability added.",
+    "changed": "Unavailability changed.",
+    "removedNotice": "Unavailability removed.",
+    "covered": "This unavailability covers rides that are already assigned. They stay assigned and show the Unavailable warning on the board:",
+    "dateInvalid": "Enter the first and the last day; the last may not be before the first.",
+    "timeInvalid": "Enter a start and an end.",
+    "orderInvalid": "The end must be after the start.",
+    "rejected": "The unavailability was not accepted. Check the times.",
+    "notFound": "That unavailability or record no longer exists.",
+    "forbidden": "Only the office can record unavailability.",
+    "signedOut": "You are signed out. Sign in and try again.",
+    "archived": "An archived driver or vehicle cannot get a new or moved unavailability.",
+    "saveFailed": "The unavailability was not saved. Try again.",
+    "removeFailed": "The unavailability was not removed. Try again."
   }
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { addCalendarDays, instantFromWallClock, isCalendarDate, mondayOfWeek } from './date'
+import { addCalendarDays, instantFromWallClock, isCalendarDate, mondayOfWeek, wallClockInTimeZone } from './date'
 
 /**
  * Unavailability windows (Nedostupnost, ADR-0034). The office marks a
@@ -162,10 +162,44 @@ export function wholeDaysWindow(fromDay: string, toDay: string, timeZone: string
   }
 }
 
+/**
+ * The inverse of {@link wholeDaysWindow}: the first and last local day when
+ * both ends fall on local midnight, else null. The list shows such a window
+ * as days, and the edit form reopens it with the whole-day shortcut on.
+ */
+export function wholeDaysOf(
+  window: { readonly startsAt: string, readonly endsAt: string },
+  timeZone: string,
+): { fromDay: string, toDay: string } | null {
+  const start = wallClockInTimeZone(timeZone, new Date(window.startsAt))
+  const end = wallClockInTimeZone(timeZone, new Date(window.endsAt))
+  if (!start.endsWith('T00:00') || !end.endsWith('T00:00'))
+    return null
+  const fromDay = start.slice(0, 10)
+  const toDay = addCalendarDays(end.slice(0, 10), -1)
+  return toDay < fromDay ? null : { fromDay, toDay }
+}
+
 /** The roster week read: seven local days from its Monday, half-open. */
 export function unavailabilityWeekRange(monday: string, timeZone: string): { from: Date, to: Date } {
   const days = wholeDaysWindow(monday, addCalendarDays(monday, 6), timeZone)
   return { from: days.startsAt, to: days.endsAt }
+}
+
+/** The capacity refusals that `confirm: true` passes (ADR-0029, ADR-0034). */
+export type CapacityConfirmReason = 'overlap' | 'unavailable'
+
+/**
+ * Which refusal the confirmation dialog names. `ride_unavailable` wins when
+ * an overlap also applies, and the one confirmation passes both. Every other
+ * code is not confirmable.
+ */
+export function capacityConfirmReason(code: string | undefined): CapacityConfirmReason | null {
+  if (code === 'ride_overlap')
+    return 'overlap'
+  if (code === 'ride_unavailable')
+    return 'unavailable'
+  return null
 }
 
 /** Whether any part of the window falls on this local calendar date. The roster grid shows it there. */

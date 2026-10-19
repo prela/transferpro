@@ -7,6 +7,8 @@ import { commandControlClass, commandControlSize, commandInputClass } from '../r
 
 const props = defineProps<{
   isAdmin: boolean
+  /** The Tenant zone. Unavailability windows are entered and shown in it. */
+  timeZone: string
 }>()
 
 const { t, locale } = useI18n()
@@ -738,6 +740,15 @@ onMounted(() => {
           :disabled="archivedView"
         />
       </UForm>
+      <!-- Its own form, outside driver-form, so Enter in a window field does not save the Driver. -->
+      <UnavailabilityWindows
+        v-if="formMode === 'edit' && editingId"
+        owner="driver"
+        :resource-id="editingId"
+        :time-zone="timeZone"
+        :archived="archivedView"
+        :phone="phone"
+      />
     </template>
     <template #footer="{ phone }">
       <UButton

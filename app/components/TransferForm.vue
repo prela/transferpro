@@ -62,6 +62,7 @@ provide(transferFormKey, api)
 const {
   pending,
   overlapOpen,
+  confirmReason,
   formMode,
   formOpen,
   formTitle,
@@ -103,6 +104,7 @@ watch(() => props.correctRide?.rideId, (rideId) => {
   <RideOverlapDialog
     v-model:open="overlapOpen"
     :pending="pending"
+    :reason="confirmReason"
     @confirm="saveCorrection(true)"
   />
 </template>
