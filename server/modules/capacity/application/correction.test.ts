@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
+import { fakeCapacityPorts } from '../testing'
 import { correctionMovesWindow } from './correction'
-import { fakeCapacityPorts } from './fake-ports'
 
 function at(hours: number, minutes: number): Date {
   return new Date(Date.UTC(2026, 9, 19, hours, minutes))

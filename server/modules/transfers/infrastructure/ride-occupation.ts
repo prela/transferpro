@@ -111,12 +111,12 @@ function toOccupyingRide(row: z.infer<typeof occupyingRows>['rows'][number]): Oc
     driverId: row.driverId,
     vehicleId: row.vehicleId,
     partnerId: null,
-    pickupAt: toInstant(row.pickupAt),
-    landingAt: row.landingAt == null ? null : toInstant(row.landingAt),
+    pickupAt: toInstantDate(row.pickupAt),
+    landingAt: row.landingAt == null ? null : toInstantDate(row.landingAt),
   }
 }
 
-export function toInstant(value: unknown): Date {
+export function toInstantDate(value: unknown): Date {
   if (value instanceof Date && !Number.isNaN(value.getTime()))
     return value
   if (typeof value === 'string') {

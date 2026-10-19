@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest'
 import { localDayBounds } from '../../../../shared'
 import { TenantAccessError } from '../../tenancy'
+import { fakeCapacityPorts } from '../testing'
 import { readBoardOccupation } from './board'
-import { fakeCapacityPorts } from './fake-ports'
 
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
 const otherDriverId = 'b2b2b2b2-2222-4222-8222-222222222222'

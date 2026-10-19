@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { fakeCapacityPorts } from './fake-ports'
+import { fakeCapacityPorts } from '../testing'
 import { judgeRideCapacity } from './judge-ride'
 
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'

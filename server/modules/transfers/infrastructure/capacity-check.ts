@@ -6,7 +6,7 @@ import { hideDatabaseError } from '../../../core/index'
 import { capacityPorts, judgeRideCapacity, RideOverlapError } from '../../capacity'
 import { RideNotFoundError } from './assign'
 import { rideOccupation } from './occupation-port'
-import { toInstant } from './ride-occupation'
+import { toInstantDate } from './ride-occupation'
 
 const subjectRows = z.object({
   rows: z.array(z.object({
@@ -49,8 +49,8 @@ export async function checkRideCapacity(
     rideId: input.rideId,
     driverId: input.driverId,
     vehicleId: input.vehicleId,
-    pickupAt: toInstant(subject.pickupAt),
-    landingAt: subject.landingAt == null ? null : toInstant(subject.landingAt),
+    pickupAt: toInstantDate(subject.pickupAt),
+    landingAt: subject.landingAt == null ? null : toInstantDate(subject.landingAt),
   })
   if (verdict.overlaps.length > 0 && !input.confirm)
     throw new RideOverlapError()

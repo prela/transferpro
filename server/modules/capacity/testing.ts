@@ -1,5 +1,5 @@
-import type { OccupyingRide } from '../domain/occupation'
-import type { CapacityMinutes, CapacityPorts, RangeOccupationQuery, RideOccupationQuery } from './ports'
+import type { CapacityMinutes, CapacityPorts, RangeOccupationQuery, RideOccupationQuery } from './application/ports'
+import type { OccupyingRide } from './domain/occupation'
 
 /**
  * A fake occupation port for the application tests. It answers with the
