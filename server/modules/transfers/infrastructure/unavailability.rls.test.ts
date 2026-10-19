@@ -8,6 +8,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
 import { instantFromWallClock } from '../../../../shared'
 import getDriverWindows from '../../../api/drivers/[id]/unavailability.get'
+import postAcceptByPhone from '../../../api/rides/[id]/accept-by-phone.post'
 import postAssign from '../../../api/rides/[id]/assign.post'
 import postReassign from '../../../api/rides/[id]/reassign.post'
 import postVehicle from '../../../api/rides/[id]/vehicle.post'
@@ -20,7 +21,7 @@ import postRemove from '../../../api/unavailability/[id]/remove.post'
 import getVehicleWindows from '../../../api/vehicles/[id]/unavailability.get'
 import { lockTenantCapacity } from '../../capacity'
 import { createClient } from '../../clients'
-import { archiveDriver, createDriver } from '../../drivers'
+import { archiveDriver, createDriver, updateDriver } from '../../drivers'
 import { createLocation } from '../../locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest, withTenantFromSession } from '../../tenancy'
 import { createVehicle } from '../../vehicles'
@@ -65,6 +66,8 @@ app.use('/api/rides', (event) => {
     return postVehicle(event)
   if (action === 'reassign')
     return postReassign(event)
+  if (action === 'accept-by-phone')
+    return postAcceptByPhone(event)
   return new Response('Not Found', { status: 404 })
 })
 app.use('/api/transfers', (event) => {
@@ -344,6 +347,22 @@ it('records, lists, moves, and removes a window, returns the Rides it covers, an
   const text = JSON.stringify(audit)
   for (const instant of [startsAt, endsAt, movedEnd])
     expect(text).not.toContain(instant.toISOString().slice(0, 16))
+})
+
+it('lists an accepted Ride the window covers, and leaves out an unassigned one', async () => {
+  const world = await office('huw-accepted')
+  const driver = await world.driver()
+  const vehicle = await world.vehicle()
+  await updateDriver(world.admin, driver.id, { mustAccept: true })
+  const accepted = await world.transfer(at('2026-11-14T10:00'))
+  const unassigned = await world.transfer(at('2026-11-14T11:00'))
+  expect((await assign(world.dispatcher, accepted.ride.id, driver.id, vehicle.id)).status).toBe(200)
+  expect((await call('POST', `/api/rides/${accepted.ride.id}/accept-by-phone`, world.dispatcher, {})).status).toBe(200)
+  expect((await ownerPool.query('select state from app.rides where id = $1', [accepted.ride.id])).rows).toEqual([{ state: 'accepted' }])
+
+  const saved = await json(await call('POST', '/api/unavailability', world.dispatcher, windowBody({ driverId: driver.id }, at('2026-11-14T00:00'), at('2026-11-15T00:00'))))
+  expect(saved.coveredRides).toEqual([{ rideId: accepted.ride.id, pickupAt: at('2026-11-14T10:00').toISOString() }])
+  expect(saved.coveredRides).not.toContainEqual(expect.objectContaining({ rideId: unassigned.ride.id }))
 })
 
 it('refuses a bad body, a Driver role, no session, an archived Driver, and a window on two owners, writing nothing', async () => {
