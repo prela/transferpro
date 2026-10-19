@@ -5,6 +5,7 @@ import { landingAlarmOn, rideIsInProgress } from './landing-alarm'
 import { tenantRoleSchema } from './tenant-role'
 import { OPERATIONAL_DAY_START_DEFAULT, operationalDayStartHourSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from './tenant-settings'
 import { PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema, TABLA_MAX_LENGTH, transferPriceSchema } from './transfer'
+import { UNCLOSED_MARK_MS } from './unclosed-mark'
 import { WORK_ORDER_STATUSES } from './work-order'
 
 /**
@@ -13,14 +14,6 @@ import { WORK_ORDER_STATUSES } from './work-order'
  * does not send mail (ADR-0023).
  */
 const UNASSIGNED_ALARM_MS = 4 * 60 * 60 * 1000
-
-/**
- * Sixty minutes, in milliseconds. The unclosed mark includes this instant.
- * It starts at the scheduled pickup, including an earlier day. A recorded
- * landing does not move it. It is not the no-show wait and it sends
- * nothing (ADR-0027).
- */
-const UNCLOSED_MARK_MS = 60 * 60 * 1000
 
 /** A decline already read with this Ride. The row stores the Driver id; the name is joined at read. */
 export interface OfficeHomeDecline {
