@@ -208,6 +208,81 @@ it('sends the newer work order and does not send the one it replaced', async () 
   expect(world.entries.get(otherEntryId)?.state).toBe('sent')
 })
 
+const driverA = 'a1a1a1a1-1111-4111-8111-111111111111'
+const driverB = 'b2b2b2b2-2222-4222-8222-222222222222'
+
+it('keeps A no longer yours pending and sends it when only B gets a later vehicle change', async () => {
+  const aLost = 'd3d3d3d3-3333-4333-8333-333333333333'
+  const world = harness([
+    entry({
+      entryId: aLost,
+      driverId: driverA,
+      status: 'no_longer_yours',
+      superseded: false,
+      message: { ...message, subject: 'Više nije vaše' },
+    }),
+    entry({
+      driverId: driverB,
+      status: 'changed',
+      superseded: false,
+      message: { ...message, subject: 'Promijenjeno' },
+    }),
+  ])
+  await world.enqueue(aLost, started)
+  await world.enqueue(entryId, started)
+  expect(await world.due()).not.toBeNull()
+  expect(await world.due()).not.toBeNull()
+  expect(world.sent.map(mail => mail.subject)).toEqual(['Više nije vaše', 'Promijenjeno'])
+  expect(world.entries.get(aLost)).toMatchObject({ state: 'sent', attemptCount: 1 })
+})
+
+it('stales B assigned when B later receives changed', async () => {
+  const world = harness([
+    entry({ driverId: driverB, superseded: true, message: { ...message, subject: 'Dodijeljeno' } }),
+    entry({
+      entryId: otherEntryId,
+      driverId: driverB,
+      status: 'changed',
+      superseded: false,
+      message: { ...message, subject: 'Promijenjeno' },
+    }),
+  ])
+  await world.enqueue(entryId, started)
+  await world.enqueue(otherEntryId, started)
+  expect(await world.due()).not.toBeNull()
+  expect(await world.due()).not.toBeNull()
+  expect(world.sent.map(mail => mail.subject)).toEqual(['Promijenjeno'])
+  expect(world.entries.get(entryId)?.state).toBe('stale')
+  expect(world.entries.get(otherEntryId)?.state).toBe('sent')
+})
+
+it('stales A no longer yours when A is assigned the Ride again', async () => {
+  const world = harness([
+    entry({ driverId: driverA, status: 'no_longer_yours', superseded: true }),
+  ])
+  await world.enqueue(entryId, started)
+  expect(await world.due()).not.toBeNull()
+  expect(world.sent).toHaveLength(0)
+  expect(world.entries.get(entryId)).toMatchObject({ state: 'stale', attemptCount: 0 })
+})
+
+it('still sends A no longer yours after that send failed and the Ride was then cancelled', async () => {
+  const world = harness([
+    entry({
+      driverId: driverA,
+      status: 'no_longer_yours',
+      rideCancelled: true,
+      superseded: false,
+      attemptCount: 1,
+      message: { ...message, subject: 'Više nije vaše' },
+    }),
+  ])
+  await world.enqueue(entryId, started)
+  expect(await world.due()).not.toBeNull()
+  expect(world.sent.map(mail => mail.subject)).toEqual(['Više nije vaše'])
+  expect(world.entries.get(entryId)).toMatchObject({ state: 'sent', attemptCount: 2 })
+})
+
 it('counts a compose failure as an attempt and queues the next job', async () => {
   const world = harness([entry()])
   world.failCompose()

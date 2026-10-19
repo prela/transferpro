@@ -92,6 +92,21 @@ it('returns the office notice when noting the attempt fails, and logs only the e
   expect(JSON.stringify(line)).not.toContain('Ana Tajna')
 })
 
+it('logs only the entry id when the current-ness read fails, and still sends the snapshot', async () => {
+  currentFacts.mockRejectedValue(new Error(`db ${email} Ana Tajna`))
+  note.mockResolvedValue(undefined)
+  const logs = captureLogs()
+  const notice = await deliverStagedWorkOrder(new Headers(), staged(new Date('2099-01-01T00:00:00.000Z')), {
+    async sendWorkOrder() {},
+  }, logs.logger)
+  expect(notice).toEqual({ driverId, outcome: 'sent' })
+  const [line] = logs.lines()
+  const { level: _level, time: _time, pid: _pid, hostname: _hostname, ...rest } = line ?? {}
+  expect(rest).toEqual({ event: 'mail_outbox.current_check_failed', entryId })
+  expect(JSON.stringify(line)).not.toContain(email)
+  expect(JSON.stringify(line)).not.toContain('Ana Tajna')
+})
+
 it('sends a work order whose pickup has already passed', async () => {
   currentFacts.mockResolvedValue(current())
   note.mockResolvedValue(undefined)

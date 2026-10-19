@@ -34,7 +34,7 @@ export interface LoadedOutboxEntry {
   /** `done` or `no-show`. A cancelled Ride is `rideCancelled`, not this. */
   readonly rideFinished: boolean
   readonly rideCancelled: boolean
-  /** A newer work order for the same Ride was recorded after this entry. */
+  /** A newer work order for the same Ride and the same Driver. */
   readonly superseded: boolean
   readonly email: string | null
   readonly state: 'pending' | 'sent' | 'failed' | 'stale'
@@ -94,6 +94,8 @@ export async function enqueueMailOutboxJob(
 /**
  * One due attempt. The caller is the job handler, through `handleNext` or `work`.
  * A mail that no longer matters is not sent and becomes stale.
+ * Replaced means a newer work order for the same Ride and the same Driver.
+ * "No longer yours" stays current when the Ride is cancelled.
  * A blank address counts as a failed attempt. A provider rejection does too.
  * After the fourth failure the entry is failed and nothing further is queued.
  * The log line is the entry id. The request id is the one the queue restored.

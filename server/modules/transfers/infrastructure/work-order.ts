@@ -274,7 +274,7 @@ export async function deliverStagedWorkOrder(
   }
   catch {
     const logger = log ?? getLogger()
-    logger.warn({ event: 'mail_outbox.note_failed', entryId })
+    logger.warn({ event: 'mail_outbox.current_check_failed', entryId })
   }
   if (!stillCurrent) {
     await settleOutbox(headers, entryId, log, transaction => markWorkOrderStale(transaction, entryId))

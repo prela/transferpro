@@ -126,7 +126,7 @@ A work order or an invitation that did not go out after the automatic attempts a
 _Avoid_: send failed
 
 **Stale mail**:
-A work order that is not sent because the Ride is finished or cancelled, or because a newer work order for that Ride was recorded after it. Pickup time does not make it stale. The cancellation notice itself is still sent. The office calls it Zastarjeli mail.
+A work order that is not sent because the Ride is finished (`done` or `no-show`), or because the Ride is cancelled and this mail is neither "no longer yours" nor the cancellation notice, or because a newer work order for the same Ride and the same Driver was recorded after it. Pickup time does not make it stale. "No longer yours" is still sent when the Ride is later cancelled. The office calls it Zastarjeli mail.
 _Avoid_: old mail
 
 **Vehicle**:

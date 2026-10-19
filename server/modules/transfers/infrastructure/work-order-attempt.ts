@@ -75,11 +75,13 @@ export async function loadOutboxAttempt(
         o.attempt_count as "attemptCount",
         o.next_attempt_at as "nextAttemptAt",
         r.state as "rideState",
+        -- Same Ride and the same Driver. Another Driver's later mail does not replace this one.
         exists (
           select 1
           from app.mail_outbox as newer
           where newer.tenant_id = o.tenant_id
             and newer.ride_id = o.ride_id
+            and newer.driver_id = o.driver_id
             and newer.kind = 'work_order'
             and newer.created_at > o.created_at
         ) as "superseded",
@@ -152,11 +154,13 @@ export async function readWorkOrderCurrentFacts(
     select
       o.work_order_status as "status",
       r.state as "rideState",
+      -- Same Ride and the same Driver. Another Driver's later mail does not replace this one.
       exists (
         select 1
         from app.mail_outbox as newer
         where newer.tenant_id = o.tenant_id
           and newer.ride_id = o.ride_id
+          and newer.driver_id = o.driver_id
           and newer.kind = 'work_order'
           and newer.created_at > o.created_at
       ) as "superseded"

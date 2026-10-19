@@ -5,7 +5,7 @@ import { expect, it } from 'vitest'
 import { captureLogs } from '../../../core/testing'
 import { ResendTransportError } from '../../tenancy'
 import { deliverAssignedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
-import { readWorkOrderCurrentFacts } from './work-order-attempt'
+import { loadOutboxAttempt, readWorkOrderCurrentFacts } from './work-order-attempt'
 
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
@@ -283,8 +283,47 @@ it('reads whether a later work order replaced this one, and not the pickup', asy
     superseded: false,
   })
   expect(seen?.sql).toContain('created_at')
+  expect(seen?.sql).toContain('newer.driver_id = o.driver_id')
   expect(seen?.sql).not.toContain('pickup_at')
   expect(seen?.sql).not.toContain('guest_name')
+
+  let loaded: { sql: string } | undefined
+  const retry = {
+    async execute(query: SQL) {
+      loaded = dialect.sqlToQuery(query)
+      return {
+        rows: [{
+          driverId,
+          vehicleId: null,
+          status: 'assigned',
+          state: 'pending',
+          attemptCount: 0,
+          nextAttemptAt: null,
+          rideState: 'assigned',
+          superseded: false,
+          rideVehicleId: null,
+          pickupAt: '2026-10-18T12:00:00.000Z',
+          startLocationId: '11111111-1111-4111-8111-111111111111',
+          endLocationId: '22222222-2222-4222-8222-222222222222',
+          guestName: 'Gost',
+          tabla: 'T',
+          passengerCount: 1,
+          luggageCount: 0,
+          childSeatCount: 0,
+          flightNumber: null,
+          clientId: '33333333-3333-4333-8333-333333333333',
+          note: null,
+          payment: 'cash',
+          price: '10.00',
+          email: 'ana@example.test',
+          locale: 'hr',
+          timeZone: 'Europe/Zagreb',
+        }],
+      }
+    },
+  } as unknown as TenantTransaction
+  await loadOutboxAttempt(retry, 'd1d1d1d1-1111-4111-8111-111111111111')
+  expect(loaded?.sql).toContain('newer.driver_id = o.driver_id')
 })
 
 it('still aborts when the Resend transport is selected in test', async () => {
