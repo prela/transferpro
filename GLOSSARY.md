@@ -23,7 +23,7 @@ The minutes a Ride occupies after its pickup, or after its landing when a landin
 The minutes the office wants between the end of one occupied Ride and the pickup of the next for the same Driver or the same Vehicle. The Tenant's default is 15. A shorter gap warns. It does not block. A gap of exactly that length is not a warning.
 
 **Unassigned**:
-A Ride with no Driver and no Vehicle.
+A Ride with no Driver, no Vehicle, and no Partner.
 
 **Unassigned alarm**:
 An unfinished unassigned Ride during the four hours before its pickup. It is not an acceptance deadline.
@@ -38,11 +38,11 @@ The tier of what asks the office to act now: an unassigned past pickup, an unass
 _Avoid_: notification, critical
 
 **Warning**:
-The tier of an overlap warning, a roster mismatch, or an expired-document warning. It does not block and asks for no action now. In Croatian it is Upozorenje.
+The tier of an overlap warning, an unavailability warning, fully booked, a roster mismatch, or an expired-document warning. It does not block and asks for no action now. In Croatian it is Upozorenje.
 _Avoid_: alarm, urgent
 
 **Assigned**:
-A Ride with both a Driver and a Vehicle. When it requires acceptance, it is waiting on acceptance, including after an earlier acceptance was cleared. Whether it requires acceptance is copied from the Driver at assignment and stays on the Ride. The Vehicle on a new assignment starts as that Driver's roster Vehicle for the calendar day, and the office can still choose a different Vehicle for that one Ride. A roster change does not change a Ride already assigned. An assigned Ride occupies its Driver and its Vehicle for the transfer duration, including when it is in progress. A true overlap blocks assign, a vehicle change, a reassignment, and a Transfer correction that moves when the Ride starts or ends, until the office confirms. Clear does not.
+A Ride with both a Driver and a Vehicle. When it requires acceptance, it is waiting on acceptance, including after an earlier acceptance was cleared. Whether it requires acceptance is copied from the Driver at assignment and stays on the Ride. The Vehicle on a new assignment starts as that Driver's roster Vehicle for the calendar day, and the office can still choose a different Vehicle for that one Ride. A roster change does not change a Ride already assigned. An assigned Ride occupies its Driver and its Vehicle for the transfer duration, including when it is in progress. A true overlap, or an unavailable Driver or Vehicle, blocks assign, a vehicle change, a reassignment, and a Transfer correction that moves when the Ride starts or ends, until the office confirms. A fully booked window blocks them, and confirming does not pass it. Clear does not.
 _Avoid_: pending
 
 **Waiting on acceptance**:
@@ -62,7 +62,7 @@ A finished Ride that was carried out.
 _Avoid_: complete, closed
 
 **No-show**:
-A finished Ride the guest did not take. The Driver marks it after the Tenant's wait. The office may mark it earlier from the same source state. v1 records it and charges nothing.
+A finished Ride the guest did not take. The Driver marks it after the Tenant's wait. The office may mark it earlier from the same source state, and marks a handed-off Ride at any time. v1 records it and charges nothing.
 _Avoid_: cancellation
 
 **Airport wait**:
@@ -77,12 +77,16 @@ _Avoid_: grace period
 A finished Ride that will not run. It stays on record.
 _Avoid_: deleted
 
+**Handed off**:
+A Ride the office has given to a Partner. It has no Driver and no Vehicle, and the office closes it. The office can change the Partner or take it back to unassigned. In Croatian it is Predano podizvođaču.
+_Avoid_: assigned, outsourced
+
 **In progress**:
 A Ride that has a Driver, is not finished, and is not waiting on acceptance, once its pickup is in the past. An earlier day's pickup stays in progress until the Ride is done, a no-show, or cancelled.
 _Avoid_: started, a Ride state
 
 **Unclosed mark**:
-An in-progress Ride once 60 minutes have passed since its scheduled pickup. A recorded landing does not move that instant.
+An in-progress Ride, or a handed-off Ride, once 60 minutes have passed since its scheduled pickup. Both use the same minutes. A recorded landing does not move that instant.
 _Avoid_: warning, unassigned alarm, overdue
 
 **Landing alarm**:
@@ -106,7 +110,7 @@ A pending offer for one email to join a Tenant as admin, dispatcher, or driver. 
 _Avoid_: signup link
 
 **Audit entry**:
-One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to, the setting value that changed, the Client (its id, and for a kind change the previous and next kind), the Driver fields that changed, the Driver archived or restored (its id only), or the Vehicle (its id and field names for created, field changed, and archived), or the roster (the calendar date and the Driver and Vehicle ids for a day assigned, changed, or cleared), or the Ride assignment (the Ride id, the Driver id, the Vehicle id, and the field names), or the Vehicle-only change (the Ride id, the Driver id, the Vehicle id, and the field name vehicleId), or the clear (the Ride id, the Driver id and the Vehicle id that were cleared, and the field names), or the reassignment (the Ride id, the new Driver id, the Vehicle id, and the field names), or the Ride acceptance (the Ride id, the Driver id, and the field name state), or the office acceptance by phone (the Ride id, the Driver id, and the field name state), or the Ride marked done (the Ride id, the Driver id, and the field name state; the actor is the person who marked it done), or the No-show after the wait (the Ride id, the Driver id, and the field name state; the actor is the person who marked it), or the early office No-show (the Ride id, the Driver id, and the field name state; the actor is the office member; this action is distinct from a No-show after the wait), or the Ride cancelled (the Ride id, the Driver id or null when the Ride was unassigned, and the field name state; the actor is the person who cancelled), or the Ride declined (the Ride id, the Driver id, the Vehicle id that was cleared, and the field names; the actor is the Driver who declined), or the landing time (the Ride id, the Driver id or null when the Ride was unassigned, and the field name landingAt; the actor is the person who recorded or cleared it), or the Transfer correction (the Transfer id, the Ride id, the Client id, the Location ids, and the names of the fields that changed; the actor is the office member), or the return to assigned (the Ride id, the Driver id, and the field name state; the actor is the office member who corrected the Transfer). A Client's name is not in the record. A Driver change does not record the phone, the email, or the licence dates. An archive or a restore records the Driver id only. A Vehicle change does not record the plate or the dates. A roster change does not record a plate, a driver name, or a phone. A Ride assignment does not record a plate, a phone, or the must-accept value. A Vehicle-only change does not record a plate, a phone, or the must-accept value. A clear does not record a plate, a phone, or the must-accept value. A reassignment does not record a plate, a phone, the must-accept value, or the previous Driver. A Ride acceptance does not record a name, a phone, a plate, a guest, or the must-accept value. An office acceptance by phone does not record a name, a phone number, a plate, a guest, or the must-accept value. A Ride marked done does not record a name, a phone, a plate, a guest, or the must-accept value. A No-show after the wait does not record a name, a phone, a plate, a guest, a fee, a charge, or the must-accept value. An early office No-show does not record those either. A Ride cancelled does not record a name, a phone, a plate, a guest, or the must-accept value. A Ride declined does not record a name, a phone, a plate, a guest, or the must-accept value. A landing time does not record the instant, a name, a phone, a plate, or a guest. A Transfer correction does not record the guest name, the flight number, the note, the tabla, or the price. A return to assigned does not record a name, a phone, a plate, a guest, or the must-accept value. A platform rename, deactivation, or reactivation stores an empty object and no person's name. It is written with the action and never changed or removed.
+One record in a Tenant's audit log: when, which member acted, the action, and either the member it was done to, the setting value that changed, the Client (its id, and for a kind change the previous and next kind), the Driver fields that changed, the Driver archived or restored (its id only), or the Vehicle (its id and field names for created, field changed, and archived), or the roster (the calendar date and the Driver and Vehicle ids for a day assigned, changed, or cleared), or the Ride assignment (the Ride id, the Driver id, the Vehicle id, and the field names), or the Vehicle-only change (the Ride id, the Driver id, the Vehicle id, and the field name vehicleId), or the clear (the Ride id, the Driver id and the Vehicle id that were cleared, and the field names), or the reassignment (the Ride id, the new Driver id, the Vehicle id, and the field names), or the Ride acceptance (the Ride id, the Driver id, and the field name state), or the office acceptance by phone (the Ride id, the Driver id, and the field name state), or the Ride marked done (the Ride id, the Driver id, and the field name state; the actor is the person who marked it done), or the No-show after the wait (the Ride id, the Driver id, and the field name state; the actor is the person who marked it), or the early office No-show (the Ride id, the Driver id, and the field name state; the actor is the office member; this action is distinct from a No-show after the wait), or the Ride cancelled (the Ride id, the Driver id or null when the Ride was unassigned, and the field name state; the actor is the person who cancelled), or the Ride declined (the Ride id, the Driver id, the Vehicle id that was cleared, and the field names; the actor is the Driver who declined), or the landing time (the Ride id, the Driver id or null when the Ride was unassigned, and the field name landingAt; the actor is the person who recorded or cleared it), or the Transfer correction (the Transfer id, the Ride id, the Client id, the Location ids, and the names of the fields that changed; the actor is the office member), or the return to assigned (the Ride id, the Driver id, and the field name state; the actor is the office member who corrected the Transfer), or the handoff (the Ride id, the Partner id, the Driver id and the Vehicle id it cleared when there were any, and the field names), or the change of Partner (the Ride id, the new Partner id, and the field names), or the handoff taken back (the Ride id, the Partner id, and the field names), or an unavailability window added, changed, or removed (the window id, the Driver, Vehicle, or Partner id, and the field names). A handed-off Ride marked done, a No-show, or cancelled holds the Partner id where the entry holds the Driver id. A Client's name is not in the record. A Driver change does not record the phone, the email, or the licence dates. An archive or a restore records the Driver id only. A Vehicle change does not record the plate or the dates. A roster change does not record a plate, a driver name, or a phone. A Ride assignment does not record a plate, a phone, or the must-accept value. A Vehicle-only change does not record a plate, a phone, or the must-accept value. A clear does not record a plate, a phone, or the must-accept value. A reassignment does not record a plate, a phone, the must-accept value, or the previous Driver. A Ride acceptance does not record a name, a phone, a plate, a guest, or the must-accept value. An office acceptance by phone does not record a name, a phone number, a plate, a guest, or the must-accept value. A Ride marked done does not record a name, a phone, a plate, a guest, or the must-accept value. A No-show after the wait does not record a name, a phone, a plate, a guest, a fee, a charge, or the must-accept value. An early office No-show does not record those either. A Ride cancelled does not record a name, a phone, a plate, a guest, or the must-accept value. A Ride declined does not record a name, a phone, a plate, a guest, or the must-accept value. A landing time does not record the instant, a name, a phone, a plate, or a guest. A Transfer correction does not record the guest name, the flight number, the note, the tabla, or the price. A return to assigned does not record a name, a phone, a plate, a guest, or the must-accept value. A handoff, a change of Partner, and a handoff taken back do not record a name, a contact, a plate, or a guest. An unavailability window does not record its instants. A platform rename, deactivation, or reactivation stores an empty object and no person's name. It is written with the action and never changed or removed.
 _Avoid_: history, event, activity
 
 **Driver**:
@@ -118,7 +122,7 @@ The language a user works in, Croatian or English. Each Tenant has a default loc
 _Avoid_: language
 
 **Work order**:
-The email sent when a Ride is assigned, when the office changes its Vehicle, when a Transfer correction changes a fact the Driver needs, when it is cleared, when it is reassigned, or when it is cancelled. It uses the Tenant's default locale and time zone. A Vehicle change uses changed and still states the cash price. A Transfer correction uses changed for pickup time, a place, the flight number, the guest, a count, the airport mark, the tabla, the note, the client, or the payment method, and for the price while payment is cash. A save that changes none of those sends nothing. A landing-time change sends nothing. Assign, and the new Driver on a reassign, use assigned. Clear, and the previous Driver on a reassign, use no longer yours and state no price. Cancel uses cancelled and states no price. A Ride with no Driver sends nothing. The office sees one result per Driver on the action: sent, no email, not sent yet and retried, or not sent because it is no longer current. The result names the Driver and not the address. The Ride stays saved when a send fails. The send is recorded in the mail outbox and tried again. The mail does not ask the Driver to accept and has no link. A cash Ride states the price on assigned and changed; card and invoice to agency do not. The audit entry stays the Ride change. It does not gain an "email sent" row.
+The email sent when a Ride is assigned, when the office changes its Vehicle, when a Transfer correction changes a fact the Driver needs, when it is cleared, when it is handed to a Partner, when it is reassigned, or when it is cancelled. It uses the Tenant's default locale and time zone. A Vehicle change uses changed and still states the cash price. A Transfer correction uses changed for pickup time, a place, the flight number, the guest, a count, the airport mark, the tabla, the note, the client, or the payment method, and for the price while payment is cash. A save that changes none of those sends nothing. A landing-time change sends nothing. Assign, and the new Driver on a reassign, use assigned. Clear, a handoff, and the previous Driver on a reassign, use no longer yours and state no price. Cancel uses cancelled and states no price. A Ride with no Driver sends nothing. The office sees one result per Driver on the action: sent, no email, not sent yet and retried, or not sent because it is no longer current. The result names the Driver and not the address. The Ride stays saved when a send fails. The send is recorded in the mail outbox and tried again. The mail does not ask the Driver to accept and has no link. A cash Ride states the price on assigned and changed; card and invoice to agency do not. The audit entry stays the Ride change. It does not gain an "email sent" row.
 _Avoid_: SMS, push
 
 **Failed mail**:
@@ -152,6 +156,26 @@ _Avoid_: conflict, roster change
 An assigned or accepted Ride that shares its Driver or its Vehicle with another assigned or accepted Ride, where the gap between them is shorter than the relocation gap, a true overlap included. Both Rides show it. It does not block and sends nothing.
 _Avoid_: ride_overlap, conflict
 
+**Capacity**:
+Whether a Driver, a Vehicle, or a Partner is taken or unavailable at a given time. It is about time, not seats.
+_Avoid_: seats, availability
+
+**Free**:
+A Driver or a Vehicle is free for a window when it is not archived, no occupying Ride overlaps the window, and no unavailability window covers any part of it. A Partner is free when it is not archived and no unavailability window covers any part of the window; a Ride handed to it does not occupy it. In Croatian it is Slobodan.
+_Avoid_: available
+
+**Unavailability window**:
+A from–to time during which the office has marked a Driver, a Vehicle, or a Partner as not available. It carries no reason. In Croatian it is Nedostupnost.
+_Avoid_: day off, leave, service, absence
+
+**Unavailability warning**:
+An assigned or accepted Ride whose Driver or Vehicle, or a handed-off Ride whose Partner, has an unavailability window covering part of its window. It is a warning and sends nothing. In Croatian it is Nedostupan.
+_Avoid_: conflict
+
+**Fully booked**:
+An unfinished Ride whose window has no free Driver with a free Vehicle and no free Partner. On an unassigned Ride it is a warning. On an assignment or a handoff it refuses the command, and confirming does not pass it. In Croatian it is Popunjeno.
+_Avoid_: no capacity, overbooked
+
 **Dispatcher**:
 Office staff of a Tenant who manage Transfers and Rides.
 _Avoid_: admin
@@ -164,7 +188,7 @@ The platform owner. A user with a row in `platform.superadmin` and no Tenant mem
 _Avoid_: admin, owner
 
 **Partner**:
-A subcontractor company a Ride is handed to. It has no login. A company that both books Transfers and takes Rides handed to it is a Client and a Partner, two records with no link between them. In Croatian it is Podizvođač; the Croatian word partner is not used. In the English UI it is Subcontractor.
+A subcontractor company the office can hand a Ride to. It has no login. A company that both books Transfers and takes Rides handed to it is a Client and a Partner, two records with no link between them. In Croatian it is Podizvođač; the Croatian word partner is not used. In the English UI it is Subcontractor.
 _Avoid_: agency, hotel, Client
 
 **Client**:
