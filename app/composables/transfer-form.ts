@@ -51,6 +51,8 @@ export function useTransferForm(options: {
   onClient?: (client: Client) => void
   onRecorded?: (rideId: string) => void
   onClose?: () => void
+  /** 409 stale_save. The form keeps what was typed. The caller reloads who and when. */
+  onStale?: () => Promise<void>
 }) {
   const { t } = useI18n()
   const toast = useToast()
@@ -630,6 +632,11 @@ export function useTransferForm(options: {
         return
       }
       overlapOpen.value = false
+      // A correction hands the refusal to the detail. Without that handler the form shows the error.
+      if (errorCode(error) === 'stale_save' && options.onStale) {
+        await options.onStale()
+        return
+      }
       formErrorKey.value = failureKey(error)
       markInvalid()
     }

@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import type { Driver, TransferDayRide } from '../../shared'
+import type { DisplayLocale, Driver, LiveRefreshOutcome, TransferDayRide } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 
 const props = defineProps<{
   drivers: Driver[]
-  loadDay: () => Promise<void>
+  rides: TransferDayRide[]
+  timeZone: string
+  locale: DisplayLocale
+  loadDay: () => Promise<LiveRefreshOutcome | void>
 }>()
 
 const emit = defineEmits<{
@@ -41,7 +44,11 @@ defineExpose({
   <RideClearDialog
     ref="clearDialog"
     :drivers="drivers"
+    :rides="rides"
+    :time-zone="timeZone"
+    :locale="locale"
     :load-day="reloadAfterSave"
+    :reload-day="() => props.loadDay()"
   />
   <RideMarkDoneDialog
     ref="markDoneDialog"

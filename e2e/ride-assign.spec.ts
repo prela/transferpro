@@ -1,6 +1,7 @@
 import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { formatInstant } from '../shared/format-instant'
 import { seedMember, seedTenant, seedVehicleRecord } from './fixtures/seed'
 import { chooseOption, openAudit, openListbox, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
 
@@ -227,7 +228,7 @@ test('submit stays disabled with only a driver', async ({ page }) => {
   await expect(submit).toBeDisabled()
 })
 
-test('assigning from a form opened before the ride was assigned shows the generic failure', async ({ page }) => {
+test('assigning from a form opened before the ride was assigned names who assigned it', async ({ page }) => {
   const tenant = await seedTenant('assign-again')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispecer')
   const guest = 'Iva Again'
@@ -250,11 +251,20 @@ test('assigning from a form opened before the ride was assigned shows the generi
     data: { version: 0, driverId, vehicleId },
   })
   expect(assigned.ok()).toBeTruthy()
+  const after = await page.request.get('/api/transfers', { params: { date: day } })
+  const rides = (await after.json() as { rides: { changedAt: string | null }[] }).rides
+  const changedAt = rides.find(ride => ride.changedAt !== null)?.changedAt
+  expect(changedAt).toEqual(expect.any(String))
+  const when = formatInstant(new Date(changedAt!), 'Europe/Zagreb', 'hr')
+
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
   // The form still holds version 0. The API assign claimed it, so this save is stale.
-  // Until the who-and-when screen, that 409 uses the generic assign failure.
-  await expect(page.getByRole('alert')).toContainText('Vožnja nije dodijeljena. Pokušajte ponovno.')
+  const alert = page.getByRole('alert').filter({ hasText: `Promijenio ${dispatcher.name} u ${when}` })
+  await expect(alert).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Vozač' })).toContainText(driverName)
   await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toBeVisible()
+  await alert.getByRole('button', { name: 'Osvježi', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Dodjela vožnje' })).toHaveCount(0)
 })
 
 test('a failed roster pre-fill leaves the chosen vehicle and shows no error', async ({ page }) => {
