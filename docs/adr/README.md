@@ -20,7 +20,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0002 | PostgreSQL + Drizzle | accepted |
 | ADR-0003 | Channels and external references | accepted |
 | ADR-0004 | Job queue: pg-boss on Postgres | accepted |
-| ADR-0005 | Ride states | accepted; partially superseded by ADR-0008 |
+| ADR-0005 | Ride states | accepted; partially superseded by ADR-0008 and ADR-0048 |
 | ADR-0006 | Driver acceptance | accepted; partially superseded by ADR-0008 |
 | ADR-0007 | No-show | accepted |
 | ADR-0008 | Office acceptance, confirmed by phone | accepted |
@@ -44,11 +44,12 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0026 | Driver work-order email | accepted; partially superseded by ADR-0045 |
 | ADR-0027 | Unclosed mark | accepted; partially superseded by ADR-0039 |
 | ADR-0028 | Live flight | accepted |
-| ADR-0029 | Ride occupation | accepted |
+| ADR-0029 | Ride occupation | accepted; partially superseded by ADR-0034 |
 | ADR-0030 | Landing alarm | accepted; partially superseded by ADR-0039 |
 | ADR-0031 | Maps for Locations behind a port | accepted |
 | ADR-0032 | Board warnings are derived on read | accepted |
 | ADR-0033 | v1 scope: price list, invoices through a provider, Client card, and Partner record | accepted |
+| ADR-0034 | Capacity as a module | accepted |
 | ADR-0036 | The Transfer is the order, and who owns the v1 modules | accepted |
 | ADR-0037 | Console mailer on preview | accepted; partially superseded by ADR-0042 |
 | ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted; partially superseded by ADR-0041 and ADR-0042 |
@@ -61,3 +62,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0045 | Mail outbox with retries | accepted |
 | ADR-0046 | Refuse a stale save | accepted |
 | ADR-0047 | Invitation outbox entry after the Better Auth commit | accepted |
+| ADR-0048 | A Ride handed off to a Partner | accepted |
