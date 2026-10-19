@@ -7,7 +7,7 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
 import { inviteLink, inviteResultSchema, memberListSchema, operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
-import { loadAppEnv, openTenantSession } from '../../../core/index'
+import { getLogger, loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
 import { acceptInvitation, createInvitation, parseInviteInput, previewInvitation, listPendingInvitations as readPendingInvitations, repairInvitationCookies, revokePendingInvitation as revokePendingInvitationImpl } from './invitation'
@@ -237,6 +237,12 @@ export async function inviteMember(headers: Headers, raw: unknown, outbox: Invit
     // The invitation exists. A port that failed before it could decide
     // anything must not hide the link. Nothing will retry this mail.
     mail = 'not_sent'
+    // No id and no email: the id is a bearer secret. A missing logger must
+    // not turn a created invitation into a 500.
+    try {
+      getLogger().warn({ event: 'invite.mail_not_recorded' })
+    }
+    catch {}
   }
   return inviteResultSchema.parse({ inviteUrl: inviteLink(handle.baseURL, created.invitationId), mail })
 }
@@ -274,10 +280,13 @@ export async function readInvitationForMail(tenantId: string, invitationId: stri
 
 /**
  * Invitee addresses for ids the caller's tenant session already listed,
- * keyed by invitation id. The app role cannot read them. Do not log the result.
+ * keyed by invitation id. Admin only, checked here so no caller can skip it.
+ * The app role cannot read them. Do not log the result.
  */
-export async function readInvitationEmails(tenantId: string, invitationIds: readonly string[]): Promise<Map<string, string>> {
-  return tenantRuntime().handle.invitationEmailsById(tenantId, invitationIds)
+export async function readInvitationEmails(viewer: Pick<Actor, 'context' | 'role'>, invitationIds: readonly string[]): Promise<Map<string, string>> {
+  if (viewer.role !== 'admin')
+    throw new TenantAccessError(403)
+  return tenantRuntime().handle.invitationEmailsById(viewer.context.tenantId, invitationIds)
 }
 
 /**

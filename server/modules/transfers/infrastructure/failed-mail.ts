@@ -194,7 +194,7 @@ export async function loadFailedInvitations(
     return []
   let emails: Map<string, string>
   try {
-    emails = await readInvitationEmails(context.tenantId, current.map(row => row.invitationId))
+    emails = await readInvitationEmails({ context, role }, current.map(row => row.invitationId))
   }
   catch {
     throw new Error('Office home read failed')

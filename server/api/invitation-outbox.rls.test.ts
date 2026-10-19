@@ -7,7 +7,7 @@ import { hashPassword } from 'better-auth/crypto'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { failedMailResendSchema, inviteResultSchema, officeHomeSchema } from '../../shared'
 import { configureLogger, openTenantSession } from '../core/index'
 import { captureLogs } from '../core/testing'
@@ -501,11 +501,21 @@ it('keeps the email and the invitation id out of every log line, and still retur
 it('returns the link with a not-sent mail when the mail port throws before it can decide', async () => {
   await tenant('iout-port')
   const admin = await signIn('iout-port-admin@example.test')
-  const result = await inviteMember(admin, { email: 'iout-port-invitee@example.test', role: 'driver' }, {
-    async deliver() {
-      throw new Error('Logger is not configured.')
-    },
-  })
-  expect(result.mail).toBe('not_sent')
-  expect(new URL(result.inviteUrl).hash).toMatch(/^#[0-9a-f-]{36}$/)
+  const warn = vi.spyOn(configureLogger('info'), 'warn')
+  try {
+    const result = await inviteMember(admin, { email: 'iout-port-invitee@example.test', role: 'driver' }, {
+      async deliver() {
+        throw new Error('Logger is not configured.')
+      },
+    })
+    expect(result.mail).toBe('not_sent')
+    expect(new URL(result.inviteUrl).hash).toMatch(/^#[0-9a-f-]{36}$/)
+    expect(warn).toHaveBeenCalledWith({ event: 'invite.mail_not_recorded' })
+    const text = JSON.stringify(warn.mock.calls)
+    expect(text).not.toContain(new URL(result.inviteUrl).hash.slice(1))
+    expect(text).not.toContain('iout-port-invitee')
+  }
+  finally {
+    warn.mockRestore()
+  }
 })
