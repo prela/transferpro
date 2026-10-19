@@ -1,3 +1,4 @@
+import path from 'node:path'
 import antfu from '@antfu/eslint-config'
 
 /**
@@ -500,6 +501,118 @@ const platformBoundaryImport = {
   },
 }
 
+/**
+ * ADR-0034: only transfers imports the capacity module, and only through
+ * its index.ts. Capacity may import tenancy, drivers, and vehicles, again
+ * only through their index.ts, and never transfers. Partners joins the
+ * list with the Partner ticket. Tests are held to the same lines, so a
+ * test reaches capacity internals only from inside capacity.
+ * `shared/capacity.ts` is the contract, not the module, and stays open.
+ */
+const capacityModuleImports = new Set(['tenancy', 'drivers', 'vehicles'])
+
+const capacityBoundaryImport = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      outsider: 'Only the transfers module imports capacity (ADR-0034).',
+      internals: 'Import the capacity module through its index.ts only (ADR-0034).',
+      dependency: 'Capacity imports only tenancy, drivers, and vehicles, through their index.ts, and never transfers (ADR-0034).',
+    },
+  },
+  create(context) {
+    const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
+    const inCapacity = filename.includes('/server/modules/capacity/')
+    const inTransfers = filename.includes('/server/modules/transfers/')
+
+    /** The module an import lands in, and the path inside it. Null when it is not a server module. */
+    function targetModule(source) {
+      let target
+      if (source.startsWith('.'))
+        target = path.posix.resolve(path.posix.dirname(filename), source)
+      else if (source.includes('server/modules/'))
+        target = `/${source.slice(source.indexOf('server/modules/'))}`
+      else
+        return null
+      const match = /\/server\/modules\/([^/]+)(\/.*)?$/.exec(target)
+      return match ? { name: match[1], rest: match[2] ?? '' } : null
+    }
+
+    function throughIndex(rest) {
+      return rest === '' || /^\/index(?:\.[cm]?[jt]s)?$/.test(rest)
+    }
+
+    /**
+     * @param {import('estree').Node} node
+     * @param {unknown} source
+     */
+    function check(node, source) {
+      if (typeof source !== 'string')
+        return
+      const target = targetModule(source)
+      if (!target)
+        return
+      if (inCapacity) {
+        if (target.name === 'capacity')
+          return
+        if (!capacityModuleImports.has(target.name) || !throughIndex(target.rest))
+          context.report({ node, messageId: 'dependency' })
+        return
+      }
+      if (target.name !== 'capacity')
+        return
+      if (!inTransfers)
+        context.report({ node, messageId: 'outsider' })
+      else if (!throughIndex(target.rest))
+        context.report({ node, messageId: 'internals' })
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ImportExpression(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source?.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportAllDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+    }
+  },
+}
+
+/**
+ * ADR-0034 and AGENTS.md: capacity's domain and application tiers reach
+ * the database, the framework, and the queue only through ports. The
+ * global driver list still applies; this adds Drizzle, Nuxt, h3, and
+ * Better Auth for those two tiers.
+ */
+const capacityCoreImports = {
+  paths: [
+    ...driverImports.paths,
+    // `#app` and `#imports` are listed here: a pattern group reads a leading `#` as a comment.
+    ...['drizzle-orm', 'nuxt', '#app', '#imports', 'h3', 'better-auth'].map(name => ({
+      name,
+      message: `Capacity's domain and application do not import ${name}; use a port (ADR-0034).`,
+    })),
+  ],
+  patterns: [
+    ...driverImports.patterns,
+    {
+      group: ['drizzle-orm/*', 'nuxt/*', 'better-auth/*'],
+      message: 'Capacity\'s domain and application do not import Drizzle, Nuxt, or Better Auth; use a port (ADR-0034).',
+    },
+  ],
+}
+
 export default antfu(
   {
     type: 'app',
@@ -520,6 +633,7 @@ export default antfu(
           'no-roster-transfers-import': rosterTransfersImport,
           'no-expiring-documents-transfers-import': expiringDocumentsTransfersImport,
           'no-platform-boundary-import': platformBoundaryImport,
+          'capacity-boundary-import': capacityBoundaryImport,
         },
       },
     },
@@ -535,6 +649,7 @@ export default antfu(
       'transferpro/no-roster-transfers-import': 'error',
       'transferpro/no-expiring-documents-transfers-import': 'error',
       'transferpro/no-platform-boundary-import': 'error',
+      'transferpro/capacity-boundary-import': 'error',
     },
   },
   {
@@ -560,6 +675,13 @@ export default antfu(
     rules: {
       'no-restricted-imports': 'off',
       'transferpro/no-dynamic-driver-import': 'off',
+    },
+  },
+  {
+    files: ['server/modules/capacity/domain/**/*.ts', 'server/modules/capacity/application/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': ['error', capacityCoreImports],
     },
   },
   {

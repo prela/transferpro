@@ -4,14 +4,15 @@ import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { canCorrectTransfer, changedTransferFields, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, occupiedEnd, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
+import { canCorrectTransfer, changedTransferFields, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
 import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
+import { correctionMovesWindow, lockTenantCapacity, tenantCapacityMinutes } from '../../capacity'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
-import { loadTenantSettings, mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { checkRideCapacity } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
-import { checkRideSchedule, lockTenantCapacity } from './ride-schedule'
 import { refuseStaleVersion, StaleSaveError } from './transfer-version'
 import { toInstant, toPrice } from './transfers'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
@@ -183,7 +184,7 @@ export async function correctTransferForOffice(
     await lockTenantCapacity(transaction)
   await writeTransfer(transaction, transferId, input, clearLanding, version, actorUserId)
   const relocationWarnings = occupation
-    ? await checkRideSchedule(transaction, {
+    ? await checkRideCapacity(transaction, {
         rideId: current.rideId,
         driverId: occupation.driverId,
         vehicleId: occupation.vehicleId,
@@ -234,7 +235,7 @@ export async function correctTransferForOffice(
  * The Driver and Vehicle already on an assigned or accepted Ride, when this
  * save moves the occupied window. A guest, a place, or a spacing change of
  * the same flight designator does not. An unassigned Ride is not judged.
- * ADR-0029.
+ * Whether the window moves is capacity's rule (ADR-0029, ADR-0034).
  */
 async function occupiedWindowMoves(
   transaction: TenantTransaction,
@@ -246,28 +247,13 @@ async function occupiedWindowMoves(
     return null
   if (current.state !== 'assigned' && current.state !== 'accepted')
     return null
-  const beforePickup = new Date(toInstant(current.pickupAt))
   const beforeLanding = current.landingAt == null ? null : new Date(toInstant(current.landingAt))
-  const afterPickup = new Date(input.pickupAt)
-  const afterLanding = clearLanding ? null : beforeLanding
-  if (beforePickup.getTime() === afterPickup.getTime() && sameInstant(beforeLanding, afterLanding))
-    return null
-  // The end uses the Tenant duration. A landing clear moves it only when
-  // the stored landing was not already the pickup.
-  if (beforePickup.getTime() === afterPickup.getTime()) {
-    const settings = await loadTenantSettings(transaction)
-    const beforeEnd = occupiedEnd(beforePickup, beforeLanding, settings.transferDurationMinutes)
-    const afterEnd = occupiedEnd(afterPickup, afterLanding, settings.transferDurationMinutes)
-    if (beforeEnd.getTime() === afterEnd.getTime())
-      return null
-  }
-  return { driverId: current.driverId, vehicleId: current.vehicleId }
-}
-
-function sameInstant(left: Date | null, right: Date | null): boolean {
-  if (left === null || right === null)
-    return left === right
-  return left.getTime() === right.getTime()
+  const moves = await correctionMovesWindow(
+    tenantCapacityMinutes(transaction),
+    { pickupAt: new Date(toInstant(current.pickupAt)), landingAt: beforeLanding },
+    { pickupAt: new Date(input.pickupAt), landingAt: clearLanding ? null : beforeLanding },
+  )
+  return moves ? { driverId: current.driverId, vehicleId: current.vehicleId } : null
 }
 
 /** A hidden Location cannot be written onto the booking. The Client has to exist. */

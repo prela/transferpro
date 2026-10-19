@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { judgeSchedule, occupiedEnd } from './ride-schedule'
+import { judgeSchedule, occupiedEnd } from './capacity'
 
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
 const otherDriverId = 'b2b2b2b2-2222-4222-8222-222222222222'

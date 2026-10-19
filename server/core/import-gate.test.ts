@@ -242,6 +242,78 @@ it('rejects an expiring-documents import of the transfers module', async () => {
   expect(await expiringDocumentsTransfersImport('server/modules/drivers/index.ts', source)).toEqual([])
 })
 
+async function capacityBoundary(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? [])
+    .filter(message => message.ruleId === 'transferpro/capacity-boundary-import')
+    .map(message => message.messageId)
+}
+
+it('lets only transfers import the capacity module', async () => {
+  const fromApi = `import { lockTenantCapacity } from '../modules/capacity'\n`
+  const fromModule = `import { lockTenantCapacity } from '../../capacity'\n`
+  expect(await capacityBoundary('server/api/leak.ts', fromApi)).toEqual(['outsider'])
+  expect(await capacityBoundary('server/api/rides.rls.test.ts', `await import('../modules/capacity/index')\n`)).toEqual(['outsider'])
+  expect(await capacityBoundary('server/modules/drivers/infrastructure/drivers.ts', fromModule)).toEqual(['outsider'])
+  expect(await capacityBoundary('server/modules/tenancy/index.ts', `export { lockTenantCapacity } from '../capacity'\n`)).toEqual(['outsider'])
+  expect(await capacityBoundary('server/modules/transfers/infrastructure/assign.ts', fromModule)).toEqual([])
+  expect(await capacityBoundary('server/modules/transfers/index.ts', `export { RideOverlapError } from '../capacity/index'\n`)).toEqual([])
+})
+
+it('keeps the shared capacity contract open to the browser, shared, and the server', async () => {
+  const contract = `import { judgeSchedule } from './capacity'\n`
+  expect(await capacityBoundary('shared/occupation-strip.ts', contract)).toEqual([])
+  expect(await capacityBoundary('app/composables/leak.ts', `import { judgeSchedule } from '../../shared/capacity'\n`)).toEqual([])
+  expect(await capacityBoundary('server/api/leak.ts', `import { judgeSchedule } from '../../shared/capacity'\n`)).toEqual([])
+})
+
+it('rejects a deep import of capacity internals, from transfers and its tests too', async () => {
+  for (const source of [
+    `import { lockTenantCapacity } from '../../capacity/infrastructure/lock'\n`,
+    `await import('../../capacity/domain/errors')\n`,
+    `export { judgeRideCapacity } from '../../capacity/application/judge-ride'\n`,
+  ]) {
+    expect(await capacityBoundary('server/modules/transfers/infrastructure/assign.ts', source), source).toEqual(['internals'])
+    expect(await capacityBoundary('server/modules/transfers/infrastructure/assign.test.ts', source), source).toEqual(['internals'])
+  }
+})
+
+it('lets capacity import only tenancy, drivers, and vehicles through their index, and never transfers', async () => {
+  const domainFile = 'server/modules/capacity/domain/leak.ts'
+  for (const source of [
+    `import { RideNotFoundError } from '../../transfers'\n`,
+    `await import('../../transfers/infrastructure/assign')\n`,
+    `import { loadClients } from '../../clients'\n`,
+    `import { rosteredDriversOnDates } from '../../roster'\n`,
+    `import { loadTenantSettings } from '../../tenancy/infrastructure/tenant-settings'\n`,
+  ])
+    expect(await capacityBoundary(domainFile, source), source).toEqual(['dependency'])
+
+  for (const source of [
+    `import { loadTenantSettings } from '../../tenancy'\n`,
+    `import { driverAssignState } from '../../drivers/index'\n`,
+    `import { vehiclePresence } from '../../vehicles'\n`,
+    `import { judgeOccupation } from '../domain/occupation'\n`,
+    `import { judgeSchedule } from '../../../../shared'\n`,
+  ])
+    expect(await capacityBoundary('server/modules/capacity/application/leak.ts', source), source).toEqual([])
+})
+
+it('keeps Drizzle, Nuxt, h3, and Better Auth out of capacity domain and application', async () => {
+  for (const filePath of ['server/modules/capacity/domain/leak.ts', 'server/modules/capacity/application/leak.ts']) {
+    for (const source of [
+      `import { sql } from 'drizzle-orm'\n`,
+      `import { pgTable } from 'drizzle-orm/pg-core'\n`,
+      `import { useRuntimeConfig } from '#imports'\n`,
+      `import { defineEventHandler } from 'h3'\n`,
+      `import { betterAuth } from 'better-auth'\n`,
+      `import { PgBoss } from 'pg-boss'\n`,
+    ])
+      expect(await restrictedImports(filePath, source), `${filePath}: ${source}`).not.toEqual([])
+  }
+  expect(await restrictedImports('server/modules/capacity/infrastructure/lock.ts', `import { sql } from 'drizzle-orm'\n`)).toEqual([])
+})
+
 it('blocks console outside the logger module', async () => {
   const outside = await consoleUse(
     'server/modules/tenancy/domain/leak.ts',

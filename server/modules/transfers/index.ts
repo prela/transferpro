@@ -28,6 +28,10 @@
  * Each of those mails a work order after the Ride is saved.
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
  * their index files, by id. Those modules do not import this one (ADR-0018).
+ * Whether a Driver or a Vehicle is taken is the capacity module's decision
+ * (ADR-0034). Transfers implements its occupation port, takes its Tenant
+ * lock, and re-exports its `RideOverlapError` for the routes, because only
+ * transfers imports capacity.
  * Search reads Transfers on every day by guest, Client reference, or flight
  * number. Today and later come first, earliest pickup first. Past
  * operational days follow, newest first. It is office-only. The query
@@ -36,6 +40,7 @@
  * days. It is office-only. The log names the member, the range, and the
  * row count. It does not name a person or a place, and it writes no audit.
  */
+export { RideOverlapError } from '../capacity'
 export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableError } from './infrastructure/accept'
 export { RideDriverArchivedError, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
 export { assignRide, rosterVehicleForRide } from './infrastructure/assign-access'
@@ -53,7 +58,6 @@ export { markNoShow, MarkNoShowInputError, NoShowTooEarlyError, RideNotNoShowErr
 export { readOfficeHome } from './infrastructure/office-home-access'
 export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './infrastructure/ride-change'
 export { exportRides } from './infrastructure/ride-export'
-export { RideOverlapError } from './infrastructure/ride-schedule'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'
 export { searchTransfers } from './infrastructure/transfer-search'
 export { StaleSaveError } from './infrastructure/transfer-version'

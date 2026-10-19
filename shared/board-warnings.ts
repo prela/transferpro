@@ -1,10 +1,10 @@
+import type { ScheduleRide } from './capacity'
 import type { ExpiringDocumentKind } from './expiring-documents'
-import type { ScheduleRide } from './ride-schedule'
 import type { RideState } from './transfer'
 import { z } from 'zod'
+import { overlappingRideIds as capacityOverlappingRideIds } from './capacity'
 import { isCalendarDate } from './date'
 import { EXPIRING_DOCUMENT_KINDS, expiringDocumentKindSchema } from './expiring-documents'
-import { judgeSchedule } from './ride-schedule'
 
 /**
  * What the day board shows on one Ride (issue #212). Derived when the day
@@ -60,8 +60,9 @@ export function emptyBoardWarnings(): BoardWarnings {
  * Warnings for one Ride. `pickupDate` is the calendar date of the pickup in
  * the Tenant time zone, which is not the operational day. `rosteredDriverId`
  * is the Driver the roster gives this Vehicle on that date, or null when
- * that Vehicle has no row. `others` are the other occupying Rides. The
- * overlap uses {@link judgeSchedule} unchanged, so a tight gap and a true
+ * that Vehicle has no row. `others` are the other occupying Rides, as the
+ * capacity module reads them. The overlap is capacity's board rule
+ * (`overlappingRideIds` in `./capacity`), so a tight gap and a true
  * overlap are one warning and a gap equal to the relocation gap is none.
  */
 export function deriveBoardWarnings(input: {
@@ -107,7 +108,7 @@ function overlappingRideIds(input: {
   const { ride } = input
   if (ride.driverId === null || ride.vehicleId === null)
     return []
-  const verdict = judgeSchedule(
+  return capacityOverlappingRideIds(
     {
       rideId: ride.rideId,
       pickupAt: ride.pickupAt,
@@ -119,10 +120,4 @@ function overlappingRideIds(input: {
     input.durationMinutes,
     input.gapMinutes,
   )
-  const ids: string[] = []
-  for (const clash of [...verdict.overlaps, ...verdict.tightGaps]) {
-    if (!ids.includes(clash.rideId))
-      ids.push(clash.rideId)
-  }
-  return ids
 }
