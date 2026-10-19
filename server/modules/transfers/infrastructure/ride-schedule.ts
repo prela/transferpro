@@ -1,4 +1,4 @@
-import type { ScheduleClash, ScheduleRide } from '../../../../shared'
+import type { ScheduleClash } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -6,6 +6,7 @@ import { judgeSchedule } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { loadTenantSettings } from '../../tenancy'
 import { RideNotFoundError } from './assign'
+import { readOccupyingRides, toScheduleRide } from './ride-occupation'
 
 /**
  * The Driver or the Vehicle is already occupied on another Ride.
@@ -28,16 +29,6 @@ const subjectRows = z.object({
   })),
 })
 
-const occupyingRows = z.object({
-  rows: z.array(z.object({
-    id: z.uuid(),
-    driverId: z.uuid(),
-    vehicleId: z.uuid(),
-    pickupAt: z.unknown(),
-    landingAt: z.unknown().nullable(),
-  })),
-})
-
 export interface ScheduleCheck {
   readonly rideId: string
   readonly driverId: string
@@ -46,11 +37,38 @@ export interface ScheduleCheck {
 }
 
 /**
+ * First key of the two-key advisory lock. Postgres keeps two-key locks
+ * apart from one-key locks, so this never meets the member lock, which
+ * is `pg_advisory_xact_lock(hashtext(organizationId))` (ADR-0014). 34 is ADR-0034.
+ */
+const CAPACITY_LOCK_SPACE = 34
+
+/**
+ * Take the Tenant capacity lock (ADR-0034) on this transaction. The Tenant
+ * is the session's `app.tenant_id`, never a request value; the uuid cast
+ * fails, rather than locking nothing, when the session has no Tenant.
+ * It waits with no timeout and is released at commit or rollback. Two
+ * capacity writes of one Tenant run one after the other. Another Tenant's
+ * key differs, so two Tenants never wait on each other.
+ */
+export async function lockTenantCapacity(transaction: TenantTransaction): Promise<void> {
+  await run(transaction, sql`
+    select pg_advisory_xact_lock(${sql.raw(String(CAPACITY_LOCK_SPACE))}, hashtext(current_setting('app.tenant_id')::uuid::text))
+  `)
+}
+
+/**
  * Assigned and accepted Rides occupy, including one already in progress.
  * Done, no-show, cancelled, and unassigned do not. The Ride being changed
  * is excluded. A true overlap refuses the command unless `confirm` is set.
  * A tight relocation gap is returned and does not refuse.
- * The other rows are locked `for share` so a second command sees this one.
+ *
+ * Lock order (ADR-0034). The caller has already locked its Transfer and
+ * Ride rows and made every refusal that needs no other row: role, input,
+ * `stale_save`, and state. It then takes `lockTenantCapacity`, and only
+ * after that reads a Driver, a Vehicle, or another Ride, this check included.
+ * Occupation is read without row locks, so no lock cycle can form with the
+ * Tenant lock, and the second of two concurrent commands sees the first.
  */
 export async function checkRideSchedule(
   transaction: TenantTransaction,
@@ -66,19 +84,11 @@ export async function checkRideSchedule(
   if (!subject)
     throw new RideNotFoundError()
 
-  const occupying = occupyingRows.parse(await run(transaction, sql`
-    select r.id,
-           r.driver_id as "driverId",
-           r.vehicle_id as "vehicleId",
-           t.pickup_at as "pickupAt",
-           t.landing_at as "landingAt"
-    from app.rides as r
-    join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
-    where r.id <> ${input.rideId}
-      and r.state in ('assigned', 'accepted')
-      and (r.driver_id = ${input.driverId} or r.vehicle_id = ${input.vehicleId})
-    for share
-  `)).rows.map(row => toScheduleRide(row))
+  const occupying = await readOccupyingRides(transaction, {
+    rideId: input.rideId,
+    driverId: input.driverId,
+    vehicleId: input.vehicleId,
+  })
 
   const verdict = judgeSchedule(
     toScheduleRide({
@@ -95,33 +105,6 @@ export async function checkRideSchedule(
   if (verdict.overlaps.length > 0 && !input.confirm)
     throw new RideOverlapError()
   return [...verdict.tightGaps]
-}
-
-function toScheduleRide(row: {
-  id: string
-  driverId: string
-  vehicleId: string
-  pickupAt: unknown
-  landingAt: unknown
-}): ScheduleRide {
-  return {
-    rideId: row.id,
-    driverId: row.driverId,
-    vehicleId: row.vehicleId,
-    pickupAt: toInstant(row.pickupAt),
-    landingAt: row.landingAt == null ? null : toInstant(row.landingAt),
-  }
-}
-
-function toInstant(value: unknown): Date {
-  if (value instanceof Date && !Number.isNaN(value.getTime()))
-    return value
-  if (typeof value === 'string') {
-    const parsed = new Date(value)
-    if (!Number.isNaN(parsed.getTime()))
-      return parsed
-  }
-  throw new Error('Ride pickup is not a timestamp.')
 }
 
 function run(transaction: TenantTransaction, query: ReturnType<typeof sql>): Promise<unknown> {

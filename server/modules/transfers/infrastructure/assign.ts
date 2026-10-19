@@ -10,7 +10,7 @@ import { driverAssignState, driverIsInTenant } from '../../drivers'
 import { vehicleIdForDriverOnDate } from '../../roster'
 import { loadTenantSettings, TenantSettingsMissingError } from '../../tenancy'
 import { vehiclePresence, vehiclePresenceForAssign } from '../../vehicles'
-import { checkRideSchedule } from './ride-schedule'
+import { checkRideSchedule, lockTenantCapacity } from './ride-schedule'
 import { claimTransferVersion, lockTransferRide, refuseStaleVersion } from './transfer-version'
 
 const assignedRows = z.object({
@@ -89,6 +89,8 @@ export class RideNotUnassignedError extends Error {
  * An archived Driver is not a new assignment. The name stays on the row.
  * The caller has already required a dispatcher or an admin.
  * The opened version is claimed with the assignment. A mismatch writes nothing.
+ * The Tenant capacity lock is held from before the Driver read to commit,
+ * so a concurrent assign of this Driver or Vehicle sees this one (ADR-0034).
  */
 export async function assignUnassignedRide(
   transaction: TenantTransaction,
@@ -103,6 +105,8 @@ export async function assignUnassignedRide(
   if (!assignTransitionAllowed(current.state))
     throw new RideNotUnassignedError()
 
+  // ADR-0034: after the row lock and the refusals above, before the Driver read.
+  await lockTenantCapacity(transaction)
   const driver = await driverAssignState(transaction, input.driverId)
   if (driver === null)
     throw new RideNotFoundError()
