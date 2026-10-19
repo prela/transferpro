@@ -19,7 +19,7 @@ Out of scope: Partner windows and the Partner handoff check (#206 step 21a-P), `
 - Capacity: `judgeRideCapacity` reads the windows through the `windows` port, and `CapacityVerdict.unavailable` is present only when it is non-empty. Transfers throws `RideUnavailableError` (409 `ride_unavailable`) before `RideOverlapError`, so when both apply the code is `ride_unavailable`. `confirm: true` passes both.
 - The board warning `unavailable: ['driver' | 'vehicle']` is derived on read by `readBoardUnavailability`, in one query, and only for assigned or accepted Rides. It shows as Nedostupan / Unavailable at the Warning tier, with the icon `i-lucide-calendar-off`.
 - Confirmation dialog: `RideOverlapDialog` takes `reason` (`overlap` | `unavailable`) from `capacityConfirmReason(code)`. The ADR-0012 body carries only the code, so the unavailable copy says that the same confirmation also covers an overlap.
-- UI: the section `UnavailabilityWindows.vue` sits in the edit panel, outside the record's own `UForm`. The whole-day shortcut (`wholeDaysWindow`) is on by default. `wholeDaysOf` shows a midnight-to-midnight window as days and reopens it with the shortcut on. The roster week grid reads `GET /api/unavailability?week=` and marks "Vozač nedostupan", and "Vozilo nedostupno" for the cell's roster Vehicle.
+- UI: the section `UnavailabilityWindows.vue` sits in the edit panel, outside the record's own `UForm`. The whole-day shortcut (`wholeDaysWindow`) is on by default. `wholeDaysOf` shows a midnight-to-midnight window as days and reopens it with the shortcut on. The roster week grid reads `GET /api/unavailability?week=` and marks "Vozač nedostupan", and "Vozilo nedostupno" for the cell's roster Vehicle. Any Vehicle away that day carries "(nedostupno)" in the picker. A window does not block the roster.
 - The covered-Rides notice is a neutral alert with an icon. The warning-coloured subtle alert failed axe contrast in light mode.
 - Coverage is unmeasured. No coverage provider is installed.
 
@@ -30,6 +30,18 @@ Out of scope: Partner windows and the Partner handoff check (#206 step 21a-P), `
   - the domain `errors.test.ts` and `judge-ride.test.ts`;
   - `server/api/rides/http.test.ts` and `server/api/transfers/http.test.ts`;
   - `shared/board-warnings.test.ts`, `shared/ride-attention.test.ts`, and `shared/audit-entry.test.ts`.
+
+## Code review (since bf18043)
+
+- **Spec:** every criterion is covered.
+  - Fixed: a Vehicle window that nobody has on the roster now shows in the roster picker. A new RLS case proves that `coveredRides` includes an accepted Ride.
+  - Owner checks: the DELETE grant goes to the shared app role, held by the restrictive policy. `unavailability_archived` is extra to the spec. The verdict names the kinds (`driver`, `vehicle`), not ids, which is enough for one Ride.
+- **Standards:** no hard violation. Judgement calls left as they are:
+  - The retention starter repeats the mail one. It has no close hook, because no test starts it and production stops with the server.
+  - The `confirmReason` branch repeats in the four confirming forms.
+  - `RideOverlapDialog` keeps its name.
+  - The optional `unavailable` fields keep the existing exact-equality tests unchanged.
+  - The `driverId`/`vehicleId` pair is the table's shape.
 
 ## Open questions
 
