@@ -6,7 +6,8 @@ import { clientHttpError, parseClientId } from './http'
 /**
  * PATCH /api/clients/:id
  * Correct the name, the kind, or both. An unknown id in this Tenant is 404.
- * A body that matches the row writes nothing and appends nothing.
+ * The body carries the version the form opened with; missing is 400, stale
+ * is 409 `stale_save`. A body that matches the row writes nothing and appends nothing.
  */
 export default defineEventHandler(async (event) => {
   const clientId = parseClientId(getRouterParam(event, 'id'))

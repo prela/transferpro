@@ -21,15 +21,23 @@ it('accepts a trimmed name and a kind, and refuses an empty name, a long name, a
 
 it('refuses an unknown key so a name is not joined by an email', () => {
   expect(() => parseCreateClient({ name: 'Mora', kind: 'agency', email: 'ana@example.test' })).toThrow(ClientInputError)
-  expect(() => parseClientPatch({ name: 'Mora', email: 'ana@example.test' })).toThrow(ClientInputError)
+  expect(() => parseClientPatch({ name: 'Mora', email: 'ana@example.test', version: 0 })).toThrow(ClientInputError)
 })
 
-it('accepts a correction of one field and an empty patch', () => {
-  expect(parseClientPatch({ name: '  Mora d.o.o.  ' })).toEqual({ name: 'Mora d.o.o.' })
-  expect(parseClientPatch({ kind: 'hotel' })).toEqual({ kind: 'hotel' })
-  expect(parseClientPatch({})).toEqual({})
-  expect(() => parseClientPatch({ name: ' ' })).toThrow(ClientInputError)
-  expect(() => parseClientPatch({ kind: 'guest' })).toThrow(ClientInputError)
+it('accepts a correction of one field and a patch with only the version', () => {
+  expect(parseClientPatch({ name: '  Mora d.o.o.  ', version: 0 })).toEqual({ name: 'Mora d.o.o.', version: 0 })
+  expect(parseClientPatch({ kind: 'hotel', version: 3 })).toEqual({ kind: 'hotel', version: 3 })
+  expect(parseClientPatch({ version: 0 })).toEqual({ version: 0 })
+  expect(() => parseClientPatch({ name: ' ', version: 0 })).toThrow(ClientInputError)
+  expect(() => parseClientPatch({ kind: 'guest', version: 0 })).toThrow(ClientInputError)
+})
+
+it('requires the version the form was opened with', () => {
+  expect(() => parseClientPatch({ name: 'Mora' })).toThrow(ClientInputError)
+  expect(() => parseClientPatch({})).toThrow(ClientInputError)
+  expect(() => parseClientPatch({ name: 'Mora', version: 1.5 })).toThrow(ClientInputError)
+  expect(() => parseClientPatch({ name: 'Mora', version: -1 })).toThrow(ClientInputError)
+  expect(() => parseClientPatch({ name: 'Mora', version: '0' })).toThrow(ClientInputError)
 })
 
 it('names the field the form got wrong', () => {
@@ -42,12 +50,16 @@ it('names the field the form got wrong', () => {
   expect(clientKindError('individual')).toBeNull()
 })
 
-it('lists a Client the Tenant can choose later', () => {
-  const listed = clientListSchema.parse({
-    clients: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }],
-  })
-  expect(listed.clients[0]).toEqual({ id: clientId, name: 'Agencija Mora', kind: 'agency' })
+it('lists a Client the Tenant can choose later, with who last changed it', () => {
+  const unchanged = { id: clientId, name: 'Agencija Mora', kind: 'agency', version: 0, changedAt: null, changedByName: null }
+  const listed = clientListSchema.parse({ clients: [unchanged] })
+  expect(listed.clients[0]).toEqual(unchanged)
+  const changed = { ...unchanged, version: 2, changedAt: '2026-10-19T09:30:00.000Z', changedByName: 'Dino Dispatcher' }
+  expect(clientListSchema.parse({ clients: [changed] }).clients[0]).toEqual(changed)
   expect(clientListSchema.safeParse({
-    clients: [{ id: clientId, name: 'Mora', kind: 'partner' }],
+    clients: [{ ...unchanged, kind: 'partner' }],
+  }).success).toBe(false)
+  expect(clientListSchema.safeParse({
+    clients: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }],
   }).success).toBe(false)
 })

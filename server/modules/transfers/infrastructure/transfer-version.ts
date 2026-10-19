@@ -1,23 +1,11 @@
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { rideStateSchema } from '../../../../shared'
+import { rideStateSchema, StaleSaveError } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 
-/**
- * The form's version is not the stored one. Nothing is written and no audit
- * entry is appended. The body stays the ADR-0012 shape: this name is not a
- * person's name. ADR-0046.
- */
-export class StaleSaveError extends Error {
-  readonly statusCode = 409
-  readonly code = 'stale_save'
-
-  constructor() {
-    super('Conflict')
-    this.name = 'StaleSaveError'
-  }
-}
+/** The class lives in shared so Clients can throw it too. ADR-0046. */
+export { StaleSaveError }
 
 const lockedRows = z.object({
   rows: z.array(z.object({

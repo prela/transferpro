@@ -48,7 +48,11 @@ const office = computed(() => isOfficeMember(session.value?.role))
     </section>
 
     <section v-else-if="session">
-      <ClientList v-if="office" />
+      <ClientList
+        v-if="office"
+        :time-zone="session.timeZone"
+        :locale="session.locale"
+      />
       <UAlert
         v-if="shellError"
         color="error"
