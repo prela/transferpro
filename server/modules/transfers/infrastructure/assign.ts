@@ -6,11 +6,12 @@ import { z } from 'zod'
 import { assignTransitionAllowed, calendarDateInTimeZone, RIDE_ASSIGNMENT_FIELDS, RosterInputError } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
+import { lockTenantCapacity } from '../../capacity'
 import { driverAssignState, driverIsInTenant } from '../../drivers'
 import { vehicleIdForDriverOnDate } from '../../roster'
 import { loadTenantSettings, TenantSettingsMissingError } from '../../tenancy'
 import { vehiclePresence, vehiclePresenceForAssign } from '../../vehicles'
-import { checkRideSchedule, lockTenantCapacity } from './ride-schedule'
+import { checkRideCapacity } from './capacity-check'
 import { claimTransferVersion, lockTransferRide, refuseStaleVersion } from './transfer-version'
 
 const assignedRows = z.object({
@@ -117,7 +118,7 @@ export async function assignUnassignedRide(
   if (presence === 'archived')
     throw new RideVehicleArchivedError()
 
-  const relocationWarnings = await checkRideSchedule(transaction, {
+  const relocationWarnings = await checkRideCapacity(transaction, {
     rideId: input.rideId,
     driverId: input.driverId,
     vehicleId: input.vehicleId,

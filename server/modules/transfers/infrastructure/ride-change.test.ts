@@ -2,10 +2,10 @@ import type { SQL } from 'drizzle-orm'
 import type { TenantTransaction } from '../../../core/index'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
+import { RideOverlapError } from '../../capacity'
 import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
 import { changeRideVehicle, clearAssignedRide, reassignAssignedRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './ride-change'
 import { readOccupyingRides } from './ride-occupation'
-import { RideOverlapError } from './ride-schedule'
 import { StaleSaveError } from './transfer-version'
 
 // The reader still runs against the fake transaction; the spy only records calls.

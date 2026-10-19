@@ -1,5 +1,8 @@
 /**
- * How a Ride occupies its Driver and its Vehicle (ADR-0029).
+ * The Capacity contract (ADR-0034): how a Ride occupies its Driver and its
+ * Vehicle (ADR-0029), and the judge. The server module `capacity`, the
+ * browser pre-check, the board warnings, and the occupation strip all use
+ * this one rule, so what the screen shows is what the save checks.
  * The minutes live on the Tenant: transfer duration and relocation gap.
  * A No-show wait is not this duration.
  */
@@ -64,6 +67,27 @@ export function judgeSchedule(
     }
   }
   return { overlaps, tightGaps }
+}
+
+/**
+ * The board's overlap warning (ADR-0034). The other Rides that truly
+ * overlap `subject` or sit inside the relocation gap, each named once, in
+ * the order given. A tight gap and a true overlap are one warning, and a
+ * gap equal to the relocation gap is none.
+ */
+export function overlappingRideIds(
+  subject: ScheduleRide,
+  others: readonly ScheduleRide[],
+  durationMinutes: number,
+  gapMinutes: number,
+): string[] {
+  const verdict = judgeSchedule(subject, others, durationMinutes, gapMinutes)
+  const ids: string[] = []
+  for (const clash of [...verdict.overlaps, ...verdict.tightGaps]) {
+    if (!ids.includes(clash.rideId))
+      ids.push(clash.rideId)
+  }
+  return ids
 }
 
 function sharedResources(subject: ScheduleRide, other: ScheduleRide): ScheduleResource[] {

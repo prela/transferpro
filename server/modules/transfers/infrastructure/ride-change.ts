@@ -7,12 +7,13 @@ import { z } from 'zod'
 import { parseChangeRideVehicle, parseClearRide, parseReassignRide, RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideChangeAllowed } from '../../../../shared'
 import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
+import { lockTenantCapacity } from '../../capacity'
 import { driverAssignState } from '../../drivers'
 import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { vehiclePresenceForAssign } from '../../vehicles'
 import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
+import { checkRideCapacity } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
-import { checkRideSchedule, lockTenantCapacity } from './ride-schedule'
 import { claimTransferVersion, lockTransferRide, refuseStaleVersion } from './transfer-version'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
@@ -121,7 +122,7 @@ export async function changeRideVehicle(
   if (presence === 'archived')
     throw new RideVehicleArchivedError()
 
-  const relocationWarnings = await checkRideSchedule(transaction, {
+  const relocationWarnings = await checkRideCapacity(transaction, {
     rideId: input.rideId,
     driverId: current.driverId,
     vehicleId: input.vehicleId,
@@ -246,7 +247,7 @@ export async function reassignAssignedRide(
   if (presence === 'archived')
     throw new RideVehicleArchivedError()
 
-  const relocationWarnings = await checkRideSchedule(transaction, {
+  const relocationWarnings = await checkRideCapacity(transaction, {
     rideId: input.rideId,
     driverId: input.driverId,
     vehicleId: input.vehicleId,

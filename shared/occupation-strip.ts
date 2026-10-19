@@ -1,8 +1,8 @@
-import type { ScheduleRide } from './ride-schedule'
+import type { ScheduleRide } from './capacity'
 import type { RosterAssignment } from './roster'
 import type { RideState } from './transfer'
+import { judgeSchedule, occupiedEnd } from './capacity'
 import { isCalendarDate, localDayBounds, wallClockInTimeZone } from './date'
-import { judgeSchedule, occupiedEnd } from './ride-schedule'
 import { OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from './tenant-settings'
 
 /**
