@@ -18,8 +18,9 @@ import { vehicles } from './vehicles'
  * column. `pending` is still being tried. `sent` went out. `failed` is
  * after the automatic attempts. `stale` no longer matters.
  * The composite foreign keys refuse another Tenant's Ride, Driver, or Vehicle.
- * There is no DELETE grant. ADR-0045 allows a later retention job to delete
- * rows older than 90 days; that grant is not in this migration.
+ * The app role may DELETE, for the daily job that removes entries older than
+ * 90 days in every state (ADR-0045, migration 0048). No other app table
+ * gained a DELETE grant with it.
  * The partial index is only the failed rows, so the Home refresh does not
  * walk sent and pending mail. Current-ness is decided after that read.
  * FORCE RLS and the grants are in the migration. drizzle-kit cannot emit them.
