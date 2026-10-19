@@ -10,7 +10,7 @@ import { driverAssignState, driverIsInTenant } from '../../drivers'
 import { vehicleIdForDriverOnDate } from '../../roster'
 import { loadTenantSettings, TenantSettingsMissingError } from '../../tenancy'
 import { vehiclePresence, vehiclePresenceForAssign } from '../../vehicles'
-import { checkRideSchedule } from './ride-schedule'
+import { checkRideSchedule, lockTenantCapacity } from './ride-schedule'
 import { claimTransferVersion, lockTransferRide, refuseStaleVersion } from './transfer-version'
 
 const assignedRows = z.object({
@@ -103,6 +103,8 @@ export async function assignUnassignedRide(
   if (!assignTransitionAllowed(current.state))
     throw new RideNotUnassignedError()
 
+  // ADR-0034: after the row lock and the refusals above, before the Driver read.
+  await lockTenantCapacity(transaction)
   const driver = await driverAssignState(transaction, input.driverId)
   if (driver === null)
     throw new RideNotFoundError()

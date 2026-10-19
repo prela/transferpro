@@ -12,7 +12,7 @@ import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../te
 import { vehiclePresenceForAssign } from '../../vehicles'
 import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
 import { mailOutboxQueue } from './mail-outbox-worker'
-import { checkRideSchedule } from './ride-schedule'
+import { checkRideSchedule, lockTenantCapacity } from './ride-schedule'
 import { claimTransferVersion, lockTransferRide, refuseStaleVersion } from './transfer-version'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
@@ -113,6 +113,8 @@ export async function changeRideVehicle(
   if (current.vehicleId === input.vehicleId)
     throw new RideVehicleUnchangedError()
 
+  // ADR-0034: after the row lock and the refusals above, before the Vehicle read.
+  await lockTenantCapacity(transaction)
   const presence = await vehiclePresenceForAssign(transaction, input.vehicleId)
   if (presence === 'missing')
     throw new RideNotFoundError()
@@ -164,7 +166,9 @@ export async function changeRideVehicle(
  * Vehicle, and the copied flag are cleared together. `ride.cleared` names
  * the actor and the ids that were on the Ride. It does not store a plate,
  * a phone, or the must-accept value. The caller has already required a
- * dispatcher or an admin. A stale version writes nothing.
+ * dispatcher or an admin. A stale version writes nothing. A clear frees
+ * the Driver and the Vehicle, so it takes no Tenant capacity lock and
+ * judges no schedule (ADR-0029, ADR-0034).
  */
 export async function clearAssignedRide(
   transaction: TenantTransaction,
@@ -228,6 +232,8 @@ export async function reassignAssignedRide(
   if (current.driverId === input.driverId)
     throw new RideSameDriverError()
 
+  // ADR-0034: after the row lock and the refusals above, before the Driver read.
+  await lockTenantCapacity(transaction)
   const driver = await driverAssignState(transaction, input.driverId)
   if (driver === null)
     throw new RideNotFoundError()

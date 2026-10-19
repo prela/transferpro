@@ -4,8 +4,12 @@ import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
 import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
 import { changeRideVehicle, clearAssignedRide, reassignAssignedRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './ride-change'
+import { readOccupyingRides } from './ride-occupation'
 import { RideOverlapError } from './ride-schedule'
 import { StaleSaveError } from './transfer-version'
+
+// The reader still runs against the fake transaction; the spy only records calls.
+vi.mock('./ride-occupation', { spy: true })
 
 const actorUserId = '7c2f1d4b-3333-4333-8333-333333333333'
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
@@ -52,7 +56,7 @@ function fakeTransaction(script: Script) {
           }],
         }
       }
-      if (text.includes('for share') && text.includes('app.rides'))
+      if (isOccupationRead(text))
         return { rows: script.occupying ?? [] }
       if (text.includes('landing_at') && text.includes('app.rides')) {
         return {
@@ -141,6 +145,15 @@ function fakeTransaction(script: Script) {
     }),
   }
   return { transaction, queries }
+}
+
+/** The other Rides that occupy the Driver or the Vehicle. It holds no row lock (ADR-0034). */
+function isOccupationRead(text: string): boolean {
+  return text.includes('app.rides') && text.includes('r.state in')
+}
+
+function isCapacityLock(text: string): boolean {
+  return text.includes('pg_advisory_xact_lock')
 }
 
 function wrote(queries: Array<{ sql: string }>): boolean {
@@ -353,10 +366,51 @@ it('refuses a reassignment when the Ride is not open, and writes nothing', async
 const otherRideId = 'e2e2e2e2-3333-4333-8333-333333333333'
 
 it('does not check the schedule when a Ride is cleared', async () => {
+  vi.mocked(readOccupyingRides).mockClear()
   const { transaction, queries } = fakeTransaction({ state: 'assigned' })
   await clearAssignedRide(transaction, actorUserId, rideId, 0)
   expect(queries.some(query => query.sql.includes('landing_at'))).toBe(false)
-  expect(queries.some(query => query.sql.includes('for share') && query.sql.includes('app.rides'))).toBe(false)
+  expect(readOccupyingRides).not.toHaveBeenCalled()
+})
+
+it('reads the occupation of the Driver and the Vehicle a vehicle change keeps or writes', async () => {
+  vi.mocked(readOccupyingRides).mockClear()
+  const { transaction } = fakeTransaction({})
+  await changeRideVehicle(transaction, actorUserId, { rideId, vehicleId: otherVehicleId, version: 0 })
+  expect(readOccupyingRides).toHaveBeenCalledExactlyOnceWith(transaction, { rideId, driverId, vehicleId: otherVehicleId })
+})
+
+it('takes the Tenant capacity lock on a vehicle change and a reassignment, after the Ride lock and before any other read', async () => {
+  const changed = fakeTransaction({})
+  await changeRideVehicle(changed.transaction, actorUserId, { rideId, vehicleId: otherVehicleId, version: 0 })
+  const moved = fakeTransaction({ nextMustAccept: false })
+  await reassignAssignedRide(moved.transaction, actorUserId, { rideId, version: 0, driverId: otherDriverId, vehicleId: otherVehicleId })
+  for (const { queries } of [changed, moved]) {
+    const position = (match: (text: string) => boolean) => queries.findIndex(query => match(query.sql))
+    const lock = position(isCapacityLock)
+    expect(queries.filter(query => isCapacityLock(query.sql))).toHaveLength(1)
+    expect(lock).toBeGreaterThan(position(text => text.includes('for update')))
+    expect(lock).toBeLessThan(position(text => text.includes('from app.vehicles')))
+    expect(lock).toBeLessThan(position(isOccupationRead))
+    expect(queries.find(query => isOccupationRead(query.sql))?.sql).not.toContain('for share')
+  }
+  const driverRead = moved.queries.findIndex(query => query.sql.includes('from app.drivers'))
+  expect(moved.queries.findIndex(query => isCapacityLock(query.sql))).toBeLessThan(driverRead)
+})
+
+it('takes no Tenant lock on a clear, or on a refusal that needs no other row', async () => {
+  const cleared = fakeTransaction({ state: 'assigned' })
+  await clearAssignedRide(cleared.transaction, actorUserId, rideId, 0)
+  const sameVehicle = fakeTransaction({})
+  await expect(changeRideVehicle(sameVehicle.transaction, actorUserId, { rideId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideVehicleUnchangedError)
+  const sameDriver = fakeTransaction({})
+  await expect(reassignAssignedRide(sameDriver.transaction, actorUserId, { rideId, version: 0, driverId, vehicleId: otherVehicleId })).rejects.toBeInstanceOf(RideSameDriverError)
+  const stale = fakeTransaction({ version: 2 })
+  await expect(changeRideVehicle(stale.transaction, actorUserId, { rideId, vehicleId: otherVehicleId, version: 0 })).rejects.toBeInstanceOf(StaleSaveError)
+  const notOpen = fakeTransaction({ state: 'done', driverId: null, vehicleId: null, mustAccept: null })
+  await expect(reassignAssignedRide(notOpen.transaction, actorUserId, { rideId, version: 0, driverId: otherDriverId, vehicleId: otherVehicleId })).rejects.toBeInstanceOf(RideNotOpenError)
+  for (const { queries } of [cleared, sameVehicle, sameDriver, stale, notOpen])
+    expect(queries.some(query => isCapacityLock(query.sql))).toBe(false)
 })
 
 it('refuses a vehicle change that overlaps the same Vehicle, and writes nothing', async () => {

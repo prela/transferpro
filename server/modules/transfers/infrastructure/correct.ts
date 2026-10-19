@@ -11,7 +11,7 @@ import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
 import { loadTenantSettings, mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { mailOutboxQueue } from './mail-outbox-worker'
-import { checkRideSchedule } from './ride-schedule'
+import { checkRideSchedule, lockTenantCapacity } from './ride-schedule'
 import { refuseStaleVersion, StaleSaveError } from './transfer-version'
 import { toInstant, toPrice } from './transfers'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
@@ -177,6 +177,10 @@ export async function correctTransferForOffice(
   // the row after this write, so a 409 rolls the clear back with the booking.
   const clearLanding = flightNumberChangeClearsLanding(stored.flightNumber, input.flightNumber)
   const occupation = await occupiedWindowMoves(transaction, current, input, clearLanding)
+  // ADR-0034: only a judged correction is a capacity write. The lock comes
+  // after the Transfer lock and the refusals above, before another Ride is read.
+  if (occupation)
+    await lockTenantCapacity(transaction)
   await writeTransfer(transaction, transferId, input, clearLanding, version, actorUserId)
   const relocationWarnings = occupation
     ? await checkRideSchedule(transaction, {

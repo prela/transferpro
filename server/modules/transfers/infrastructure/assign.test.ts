@@ -95,7 +95,7 @@ function fakeTransaction(script: Script) {
           }],
         }
       }
-      if (text.includes('for share') && text.includes('app.rides'))
+      if (isOccupationRead(text))
         return { rows: script.occupying ?? [] }
       if (text.includes('landing_at') && text.includes('app.rides')) {
         return {
@@ -140,6 +140,15 @@ function fakeTransaction(script: Script) {
     }),
   }
   return { transaction, queries }
+}
+
+/** The other Rides that occupy the Driver or the Vehicle. It holds no row lock (ADR-0034). */
+function isOccupationRead(text: string): boolean {
+  return text.includes('app.rides') && text.includes('r.state in')
+}
+
+function isCapacityLock(text: string): boolean {
+  return text.includes('pg_advisory_xact_lock')
 }
 
 function wroteAssignment(queries: Array<{ sql: string }>): boolean {
@@ -404,7 +413,7 @@ it('refuses an assign that truly overlaps the same Driver, and writes nothing', 
   })
   await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).rejects.toBeInstanceOf(RideOverlapError)
   expect(wroteAssignment(queries)).toBe(false)
-  const occupying = queries.find(query => query.sql.includes('for share') && query.sql.includes('app.rides'))
+  const occupying = queries.find(query => isOccupationRead(query.sql))
   expect(occupying?.sql).toContain('\'assigned\'')
   expect(occupying?.sql).toContain('\'accepted\'')
   expect(occupying?.sql).not.toContain('\'done\'')
@@ -484,4 +493,35 @@ it('refuses a stale version before it writes the ride or an audit entry', async 
   })).rejects.toBeInstanceOf(StaleSaveError)
   expect(wroteAssignment(queries)).toBe(false)
   expect(queries.some(query => query.sql.includes('update app.transfers'))).toBe(false)
+})
+
+it('takes the Tenant capacity lock after the Ride lock and before the Driver, the Vehicle, and the occupation reads', async () => {
+  const { transaction, queries } = fakeTransaction({})
+  await assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })
+  const position = (match: (text: string) => boolean) => queries.findIndex(query => match(query.sql))
+  const lock = position(isCapacityLock)
+  expect(queries.filter(query => isCapacityLock(query.sql))).toHaveLength(1)
+  expect(lock).toBeGreaterThan(position(text => text.includes('for update')))
+  expect(lock).toBeLessThan(position(text => text.includes('from app.drivers')))
+  expect(lock).toBeLessThan(position(text => text.includes('from app.vehicles')))
+  expect(lock).toBeLessThan(position(isOccupationRead))
+  // The Tenant comes from the session, not from the request.
+  expect(queries[lock]?.sql).toContain('current_setting(\'app.tenant_id\')')
+  expect(queries[lock]?.params).toEqual([])
+  const occupying = queries.find(query => isOccupationRead(query.sql))
+  expect(occupying?.sql).not.toContain('for share')
+  expect(occupying?.sql).not.toContain('for update')
+})
+
+it('refuses a missing Ride, a stale version, and a Ride that is not unassigned before it takes the Tenant lock', async () => {
+  const refusals: Array<[Script, new () => Error]> = [
+    [{ rideState: 'missing' }, RideNotFoundError],
+    [{ version: 3 }, StaleSaveError],
+    [{ rideState: 'assigned' }, RideNotUnassignedError],
+  ]
+  for (const [script, refusal] of refusals) {
+    const { transaction, queries } = fakeTransaction(script)
+    await expect(assignUnassignedRide(transaction, actorUserId, { rideId, driverId, vehicleId, version: 0 })).rejects.toBeInstanceOf(refusal)
+    expect(queries.some(query => isCapacityLock(query.sql))).toBe(false)
+  }
 })
