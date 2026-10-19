@@ -169,6 +169,14 @@ function detailText(entry: AuditEntry): string {
     case 'roster.cleared':
       // The field name only. The ids stay on the row; a plate or a driver name does not.
       return t('roster.vehicle')
+    case 'unavailability.added':
+    case 'unavailability.changed':
+    case 'unavailability.removed':
+      // Whose window and the field names. The instants are never on the row (ADR-0034).
+      return [
+        t(entry.data.driverId === null ? 'unavailability.ofVehicle' : 'unavailability.ofDriver'),
+        entry.data.fields.map(field => t(`unavailability.fields.${field}`)).join(', '),
+      ].join(' · ')
     case 'tenant.renamed':
     case 'tenant.suspended':
     case 'tenant.reactivated':

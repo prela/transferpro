@@ -238,6 +238,11 @@
         "renamed": "Platforma je preimenovala tvrtku",
         "suspended": "Platforma je deaktivirala tvrtku",
         "reactivated": "Platforma je ponovno aktivirala tvrtku"
+      },
+      "unavailability": {
+        "added": "Nedostupnost dodana",
+        "changed": "Nedostupnost promijenjena",
+        "removed": "Nedostupnost uklonjena"
       }
     }
   },
@@ -947,5 +952,14 @@
     "nameInvalid": "Unesite naziv od najviše 120 znakova.",
     "notFound": "Ta tvrtka nije pronađena.",
     "saveFailed": "Naziv nije spremljen. Pokušajte ponovno."
+  },
+  "unavailability": {
+    "ofDriver": "Vozač",
+    "ofVehicle": "Vozilo",
+    "fields": {
+      "startsAt": "Od",
+      "endsAt": "Do",
+      "removed": "Uklonjeno"
+    }
   }
 }

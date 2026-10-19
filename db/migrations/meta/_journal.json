@@ -344,6 +344,13 @@
       "when": 1791400038000,
       "tag": "0048_mail_outbox_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791400039000,
+      "tag": "0049_unavailability_windows",
+      "breakpoints": true
     }
   ]
 }

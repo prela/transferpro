@@ -238,6 +238,11 @@
         "renamed": "The platform renamed the firm",
         "suspended": "The platform deactivated the firm",
         "reactivated": "The platform reactivated the firm"
+      },
+      "unavailability": {
+        "added": "Unavailability added",
+        "changed": "Unavailability changed",
+        "removed": "Unavailability removed"
       }
     }
   },
@@ -947,5 +952,14 @@
     "nameInvalid": "Enter a name of at most 120 characters.",
     "notFound": "That company was not found.",
     "saveFailed": "The name was not saved. Try again."
+  },
+  "unavailability": {
+    "ofDriver": "Driver",
+    "ofVehicle": "Vehicle",
+    "fields": {
+      "startsAt": "From",
+      "endsAt": "To",
+      "removed": "Removed"
+    }
   }
 }
