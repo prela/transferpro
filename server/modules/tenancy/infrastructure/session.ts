@@ -11,7 +11,7 @@ import { loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
 import { acceptInvitation, createInvitation, parseInviteInput, previewInvitation, listPendingInvitations as readPendingInvitations, repairInvitationCookies, revokePendingInvitation as revokePendingInvitationImpl } from './invitation'
-import { mailerForApp } from './mailer'
+import { mailerForApp, ResendTransportError } from './mailer'
 import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, removeMember as removeMemberImpl } from './member-management'
 import { changeTenantSettings, loadTenantSettings, TenantSettingsMissingError } from './tenant-settings'
 
@@ -222,11 +222,22 @@ export async function inviteMember(headers: Headers, raw: unknown, outbox: Invit
     })
     return { context, invitationId }
   })
-  const mail = await outbox.deliver({
-    context: created.context,
-    invitationId: created.invitationId,
-    open: run => db.transaction(transaction => openTenantSession(transaction, created.context, () => run(transaction))),
-  })
+  let mail: InvitationMailOutcome
+  try {
+    mail = await outbox.deliver({
+      context: created.context,
+      invitationId: created.invitationId,
+      open: run => db.transaction(transaction => openTenantSession(transaction, created.context, () => run(transaction))),
+    })
+  }
+  catch (error) {
+    // The test server must not keep a live Resend transport running.
+    if (error instanceof ResendTransportError)
+      throw error
+    // The invitation exists. A port that failed before it could decide
+    // anything must not hide the link. Nothing will retry this mail.
+    mail = 'not_sent'
+  }
   return inviteResultSchema.parse({ inviteUrl: inviteLink(handle.baseURL, created.invitationId), mail })
 }
 
