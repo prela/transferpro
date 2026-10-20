@@ -229,6 +229,49 @@ const locationsTransfersImport = {
   },
 }
 
+const partnersTransfersImport = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      banned: 'The Partners module does not import the transfers module (ADR-0036, ADR-0049).',
+    },
+  },
+  create(context) {
+    /**
+     * @param {import('estree').Node} node
+     * @param {unknown} source
+     */
+    function check(node, source) {
+      if (typeof source !== 'string' || !(/(?:^|\/)transfers(?:\/|$)/).test(source))
+        return
+      const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
+      if (!filename.includes('/server/modules/partners/'))
+        return
+      context.report({ node, messageId: 'banned' })
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ImportExpression(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source?.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportAllDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+    }
+  },
+}
+
 const clientsTransfersImport = {
   meta: {
     type: 'problem',
@@ -273,7 +316,7 @@ const clientsTransfersImport = {
 }
 
 /**
- * Transfers may name a Client, a Location, or a Vehicle only through that module's index.
+ * Transfers may name a Client, a Location, a Vehicle, or a Partner only through that module's index.
  * A deep import of infrastructure would couple the booking to the catalog's internals.
  */
 const transfersCatalogDeepImport = {
@@ -281,7 +324,7 @@ const transfersCatalogDeepImport = {
     type: 'problem',
     schema: [],
     messages: {
-      banned: 'Transfers reach Clients, Locations, and Vehicles through their index.ts only (ADR-0018).',
+      banned: 'Transfers reach Clients, Locations, Vehicles, and Partners through their index.ts only (ADR-0018).',
     },
   },
   create(context) {
@@ -290,7 +333,7 @@ const transfersCatalogDeepImport = {
      * @param {unknown} source
      */
     function check(node, source) {
-      if (typeof source !== 'string' || !/(?:^|\/)(?:clients|locations|vehicles)\/infrastructure(?:\/|$)/.test(source))
+      if (typeof source !== 'string' || !/(?:^|\/)(?:clients|locations|vehicles|partners)\/infrastructure(?:\/|$)/.test(source))
         return
       const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
       if (!filename.includes('/server/modules/transfers/'))
@@ -505,7 +548,7 @@ const platformBoundaryImport = {
  * ADR-0034: only transfers imports the capacity module, and only through
  * its index.ts. Capacity may import tenancy, drivers, and vehicles, again
  * only through their index.ts, and never transfers. Partners joins the
- * list with the Partner ticket. Tests are held to the same lines, so a
+ * list in the Partner windows ticket (#357). Tests are held to the same lines, so a
  * test reaches capacity internals only from inside capacity.
  * `shared/capacity.ts` is the contract, not the module, and stays open.
  */
@@ -629,6 +672,7 @@ export default antfu(
           'no-vehicles-transfers-import': vehiclesTransfersImport,
           'no-locations-transfers-import': locationsTransfersImport,
           'no-clients-transfers-import': clientsTransfersImport,
+          'no-partners-transfers-import': partnersTransfersImport,
           'no-transfers-catalog-deep-import': transfersCatalogDeepImport,
           'no-roster-transfers-import': rosterTransfersImport,
           'no-expiring-documents-transfers-import': expiringDocumentsTransfersImport,
@@ -645,6 +689,7 @@ export default antfu(
       'transferpro/no-vehicles-transfers-import': 'error',
       'transferpro/no-locations-transfers-import': 'error',
       'transferpro/no-clients-transfers-import': 'error',
+      'transferpro/no-partners-transfers-import': 'error',
       'transferpro/no-transfers-catalog-deep-import': 'error',
       'transferpro/no-roster-transfers-import': 'error',
       'transferpro/no-expiring-documents-transfers-import': 'error',

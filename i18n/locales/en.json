@@ -248,6 +248,12 @@
         "added": "Contact person added",
         "changed": "Contact person corrected",
         "removed": "Contact person removed"
+      },
+      "partner": {
+        "created": "Subcontractor added",
+        "changed": "Subcontractor corrected",
+        "archived": "Subcontractor archived",
+        "restored": "Subcontractor restored"
       }
     }
   },
@@ -706,6 +712,14 @@
       "transportLicenceExpiresOn": "Transport licence",
       "memberUserId": "Member",
       "mustAccept": "Must accept"
+    }
+  },
+  "partners": {
+    "fields": {
+      "name": "Name",
+      "phone": "Phone",
+      "email": "Email",
+      "note": "Note"
     }
   },
   "vehicles": {
