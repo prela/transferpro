@@ -1,8 +1,16 @@
 import { expect, test } from '@playwright/test'
 import pg from 'pg'
-import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { instantFromWallClock } from '../shared/date'
+import { operationalDay, pinOperationalClock, previousOperationalNoon } from './fixtures/operational-clock'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { openUserMenu, signIn, switchLocale, switchTheme } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // Noon on the current operational day is still ahead at 05:00, so it is
+  // not in Pozornost. Yesterday's noon is already past at 04:55, 05:00,
+  // and 05:05, and the board opens on that same day.
+  await pinOperationalClock(page, previousOperationalNoon())
+})
 
 function required(name: string): string {
   const value = process.env[name]
@@ -74,7 +82,7 @@ test('the office Ride and the Driver Ride show an expected arrival in both langu
   const endLocationId = await createdId(await page.request.post('/api/locations', {
     data: { name: 'Hotel Dolazak', kind: 'hotel' },
   }))
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   const recorded = await page.request.post('/api/transfers', {
     data: {
       clientId,

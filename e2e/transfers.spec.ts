@@ -1,8 +1,14 @@
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { addCalendarDays, operationalDateInTimeZone } from '../shared/date'
+import { addCalendarDays } from '../shared/date'
+import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, openListbox, signIn, switchLocale, switchTheme } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // One instant for the seed and the board, including across 05:00.
+  await pinOperationalClock(page)
+})
 
 async function chooseMenu(page: Page, dialog: Locator, field: string, option: string) {
   await chooseOption(page, dialog.getByRole('button', { name: field, exact: true }), option)
@@ -64,7 +70,7 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
 
   // Noon on the operational day the board opens on. A calendar-date noon
   // before 05:00 is the next operational day, and a later reload drops the Ride.
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   const tooEarly = addCalendarDays(day, -40)
   await chooseMenu(page, dialog, 'Naručitelj', clientName)
   await chooseMenu(page, dialog, 'Polazište', startPlace)

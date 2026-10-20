@@ -1,8 +1,14 @@
 import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
+import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { openRideMenu, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // One instant for the seed and the board, including across 05:00.
+  await pinOperationalClock(page)
+})
 
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
 const waitingGuest = 'Nika Phone'
@@ -45,7 +51,7 @@ async function addVehicle(page: Page, registrationPlate: string): Promise<string
 }
 
 /**
- * Records one Ride on the operational day the board opens on.
+ * Records one Ride on the pinned operational day the board opens on.
  * `wall` is 05:00 or later, so the Ride stays on that day. Noon on the
  * calendar date, when now is before 05:00, is the next operational day.
  * Returns that day and the Ride id.
@@ -55,7 +61,7 @@ async function recordTodayRide(page: Page, guest: string, wall: string, places: 
   startLocationId: string
   endLocationId: string
 }): Promise<{ day: string, rideId: string }> {
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   const recorded = await page.request.post('/api/transfers', {
     data: {
       clientId: places.clientId,

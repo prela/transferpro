@@ -1,8 +1,14 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { instantFromWallClock } from '../shared/date'
+import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { openAudit, openRideMenu, openUserMenu, signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // One instant for the seed and the board, including across 05:00.
+  await pinOperationalClock(page)
+})
 
 const landingWall = '2026-01-15T10:30'
 const landingHr = '15. 01. 2026. 10:30'
@@ -43,7 +49,7 @@ test('the office and the Driver record a landing time in both languages and both
   const clientId = await createdId(page, '/api/clients', { name: 'Klijent Slijetanje', kind: 'agency' })
   const startLocationId = await createdId(page, '/api/locations', { name: 'Zracna Slijetanje', kind: 'airport' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Hotel Slijetanje', kind: 'hotel' })
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   const recorded = await page.request.post('/api/transfers', {
     data: {
       clientId,
@@ -131,7 +137,7 @@ test('@phone a driver records a landing time from the next ride', async ({ page 
   const clientId = await createdId(page, '/api/clients', { name: 'Klijent Slijetanje', kind: 'agency' })
   const startLocationId = await createdId(page, '/api/locations', { name: 'Zracna Slijetanje', kind: 'airport' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Hotel Slijetanje', kind: 'hotel' })
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   const recorded = await page.request.post('/api/transfers', {
     data: {
       clientId,

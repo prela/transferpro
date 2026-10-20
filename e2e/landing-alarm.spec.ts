@@ -2,8 +2,14 @@ import type { APIResponse } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import pg from 'pg'
 import { operationalDateInTimeZone } from '../shared/date'
+import { operationalDay, operationalNow, pinOperationalClock } from './fixtures/operational-clock'
 import { seedTenant } from './fixtures/seed'
-import { signIn, switchLocale, switchTheme } from './fixtures/ui'
+import { hydrated, signIn, switchLocale, switchTheme } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // One instant for the pickup offsets and the board, including across 05:00.
+  await pinOperationalClock(page)
+})
 
 function required(name: string): string {
   const value = process.env[name]
@@ -71,7 +77,7 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
   // Near the operational-day start that pickup can fall on the previous day;
   // the board selects that day explicitly after every remount.
   const timeZone = 'Europe/Zagreb'
-  const now = new Date()
+  const now = operationalNow(page)
   const pickup = new Date(now.getTime() - 90 * 60 * 1000)
   const landing = new Date(now.getTime() - 150 * 60 * 1000)
   async function record(guestName: string): Promise<string> {
@@ -127,11 +133,19 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
   await switchTheme(page, 'light')
 
   await page.goto('/transfers')
-  // switchLocale / switchTheme remount the board on today's operational day.
-  // Re-select the pickup day after every return (same gap as the first fill).
+  // A pickup 90 minutes before 05:00 is the previous operational day. Filling
+  // that day writes it into the URL, and a locale or theme return keeps it.
+  // Open the pinned day first, then select the pickup day again. The value
+  // checks stay: the board is on the pinned day, then on the pickup day.
   const pickupDay = operationalDateInTimeZone(timeZone, pickup)
   async function showPickupDay(): Promise<void> {
-    const today = operationalDateInTimeZone(timeZone, new Date())
+    const today = operationalDay(page)
+    const url = new URL(page.url())
+    if (url.pathname !== '/transfers' || url.searchParams.get('day') !== today)
+      await page.goto(`/transfers?day=${today}`)
+    // The server paints the operational day before Vue starts. A fill in
+    // that gap is overwritten (same rule as the other board specs).
+    await hydrated(page)
     await expect(page.locator('#transfer-day')).toHaveValue(today)
     await page.locator('#transfer-day').fill(pickupDay)
     await expect(page.locator('#transfer-day')).toHaveValue(pickupDay)
