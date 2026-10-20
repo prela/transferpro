@@ -63,7 +63,11 @@ async function openCorrection(page: Page, guest: string, locale: Locale) {
   await page.goto('/transfers')
   if (isPhone(page)) {
     await page.getByRole('listitem').filter({ hasText: guest }).click()
-    await page.getByRole('button', { name: text.more, exact: true }).click()
+    // The shell bar is also named Više until this detail is open. The pinned
+    // clock can leave that bar up for the next click, so wait and stay inside.
+    const detail = page.getByRole('dialog', { name: guest, exact: true })
+    await expect(detail).toBeVisible()
+    await detail.getByRole('button', { name: text.more, exact: true }).click()
   }
   else {
     await page.getByRole('button', { name: text.actions(guest), exact: true }).click()
