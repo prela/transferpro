@@ -243,6 +243,11 @@
         "added": "Nedostupnost dodana",
         "changed": "Nedostupnost promijenjena",
         "removed": "Nedostupnost uklonjena"
+      },
+      "contact_person": {
+        "added": "Kontakt osoba dodana",
+        "changed": "Kontakt osoba ispravljena",
+        "removed": "Kontakt osoba uklonjena"
       }
     }
   },
@@ -300,6 +305,47 @@
       "agency": "Agencija",
       "hotel": "Hotel",
       "individual": "Osoba"
+    },
+    "tabs": {
+      "data": "Podaci",
+      "contacts": "Kontakti"
+    },
+    "contacts": {
+      "add": "Dodaj kontakt osobu",
+      "edit": "Ispravi kontakt osobu",
+      "name": "Ime",
+      "role": "Uloga",
+      "phone": "Telefon",
+      "email": "E-pošta",
+      "nameEmpty": "Unesite ime.",
+      "nameTooLong": "Ime može imati najviše 200 znakova.",
+      "roleTooLong": "Uloga može imati najviše 100 znakova.",
+      "phoneTooLong": "Telefon može imati najviše 40 znakova.",
+      "emailInvalid": "Unesite ispravnu e-poštu.",
+      "unreachable": "Unesite telefon, e-poštu ili oboje.",
+      "submit": "Dodaj kontakt osobu",
+      "submitting": "Dodavanje kontakt osobe",
+      "save": "Spremi",
+      "saving": "Spremanje",
+      "cancel": "Odustani",
+      "remove": "Ukloni",
+      "removeNamed": "Ukloni {name}",
+      "confirmRemove": "Ukloniti ovu kontakt osobu? Više se ne prikazuje.",
+      "empty": "Nema kontakt osoba.",
+      "loading": "Učitavanje kontakt osoba",
+      "loadFailed": "Kontakt osobe nije bilo moguće učitati. Pokušajte ponovno.",
+      "rejected": "Kontakt osoba nije prihvaćena.",
+      "notFound": "Ta kontakt osoba više nije na popisu.",
+      "forbidden": "Vozač ne može mijenjati kontakt osobe.",
+      "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
+      "saveFailed": "Kontakt osoba nije spremljena. Pokušajte ponovno.",
+      "fields": {
+        "name": "Ime",
+        "role": "Uloga",
+        "phone": "Telefon",
+        "email": "E-pošta",
+        "removed": "Uklonjeno"
+      }
     }
   },
   "locations": {

@@ -10,6 +10,8 @@ export type { Client, ClientKind, ClientKindError, ClientList, ClientListEntry, 
 export { parseCommandDay } from './command-day'
 export { barePath, companySettingsRedirect, companySettingsTab, isCompanySettingsPath } from './company-settings'
 export type { CompanySettingsTab } from './company-settings'
+export { addedContactPersonFields, CONTACT_PERSON_ADDED_FIELD_LISTS, CONTACT_PERSON_CHANGED_FIELD_LISTS, CONTACT_PERSON_FIELDS, CONTACT_PERSON_NAME_MAX_LENGTH, CONTACT_PERSON_ROLE_MAX_LENGTH, contactPersonAddedFieldsSchema, contactPersonChangedFieldsSchema, ContactPersonInputError, contactPersonListSchema, contactPersonSchema, parseContactPersonPatch, parseCreateContactPerson, parseRemoveContactPerson } from './contact-person'
+export type { ContactPerson, ContactPersonField, ContactPersonList, ContactPersonPatch, ContactPersonWrite, RemoveContactPerson } from './contact-person'
 export { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, isCalendarDate, localDayBounds, mondayOfWeek, operationalDateInTimeZone, wallClockInTimeZone, weekDates } from './date'
 export { groupDayPrint } from './day-print'
 export type { DayPrintGroup, DayPrintRide } from './day-print'

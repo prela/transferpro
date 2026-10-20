@@ -163,6 +163,19 @@ it('the table refuses data that does not match its action, for every writer', as
     ['client.created', subject, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","kind":"agency"}'],
     ['client.name_changed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","from":"Mora","to":"Mora d.o.o."}'],
     ['client.kind_changed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","from":"hotel","to":"partner"}'],
+    // A contact person records the Client id, the contact id, and field names. Never the name, the role, the phone, or the email.
+    ['contact_person.added', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["name","phone"],"name":"Ana Booking"}'],
+    ['contact_person.added', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["name","phone"],"phone":"+385911110364"}'],
+    ['contact_person.added', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["name","email"],"email":"booking@example.test"}'],
+    ['contact_person.added', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["name","role","phone"],"role":"booking"}'],
+    ['contact_person.added', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["phone"]}'],
+    ['contact_person.added', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["name"]}'],
+    ['contact_person.added', subject, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["name","phone"]}'],
+    ['contact_person.changed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["phone"],"phone":"+385911110364"}'],
+    ['contact_person.changed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["removed"]}'],
+    ['contact_person.removed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["name"]}'],
+    ['contact_person.removed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["removed"],"email":"booking@example.test"}'],
+    ['contact_person.removed', subject, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["removed"]}'],
   ]
   for (const values of mismatches) {
     expect(await refusal(appPool, tenant, append, [values[0], actor, ...values.slice(1)]), values.join(' ')).toMatchObject({ code: '23514' })
@@ -455,6 +468,31 @@ it('append_entry accepts a decline with the Ride id, the Driver id, the Vehicle 
   ])
   expect(extraKey).toMatchObject({ code: '23514' })
   expect(await entriesOf(tenant)).toHaveLength(1)
+})
+
+it('append_entry accepts a contact person add, correction, and removal with ids and field names only', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const contactPersonId = '8e4b3f6d-5555-4555-8555-555555555555'
+  const append = `select audit.append_entry($1, $2, null, $3::jsonb)`
+  const added = { clientId, contactPersonId, fields: ['name', 'role', 'phone', 'email'] }
+  const changed = { clientId, contactPersonId, fields: ['role'] }
+  const removed = { clientId, contactPersonId, fields: ['removed'] }
+  await inSession(appPool, tenant, client => client.query(append, ['contact_person.added', actor, JSON.stringify(added)]))
+  await inSession(appPool, tenant, client => client.query(append, ['contact_person.changed', actor, JSON.stringify(changed)]))
+  await inSession(appPool, tenant, client => client.query(append, ['contact_person.removed', actor, JSON.stringify(removed)]))
+  // The three rows can share one timestamp, so the table read has no stable order.
+  const rows = (await entriesOf(tenant)).sort((left, right) => left.action.localeCompare(right.action))
+  expect(rows).toEqual([
+    { tenant_id: tenant, action: 'contact_person.added', actor_user_id: actor, subject_user_id: null, data: added },
+    { tenant_id: tenant, action: 'contact_person.changed', actor_user_id: actor, subject_user_id: null, data: changed },
+    { tenant_id: tenant, action: 'contact_person.removed', actor_user_id: actor, subject_user_id: null, data: removed },
+  ])
+  const text = JSON.stringify(rows)
+  expect(text).not.toContain('Ana Booking')
+  expect(text).not.toContain('+385911110364')
+  expect(text).not.toContain('booking@example.test')
 })
 
 it('the owner cannot update, delete, or truncate an entry either', async () => {

@@ -30,6 +30,8 @@ const saving = ref(false)
  */
 const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
+/** Podaci is the name and the kind. Kontakti is this Client's contact persons. */
+const cardTab = ref<'data' | 'contacts'>('data')
 /** The panel title stays the name that was opened, not the half-typed correction. */
 const openedName = ref('')
 /** The version the edit form opened with. Only Osvježi replaces it (ADR-0046). */
@@ -55,6 +57,11 @@ interface ClientForm {
   name: string
   kind: ClientKind
 }
+
+const cardTabs = computed(() => [
+  { label: t('clients.tabs.data'), value: 'data' as const },
+  { label: t('clients.tabs.contacts'), value: 'contacts' as const },
+])
 
 const kindItems = computed(() => [
   { label: t('clients.kinds.agency'), value: 'agency' as const },
@@ -134,6 +141,7 @@ async function rereadClients(): Promise<boolean> {
 
 function openAdd() {
   editingId.value = null
+  cardTab.value = 'data'
   openedName.value = ''
   state.name = ''
   state.kind = undefined
@@ -144,6 +152,7 @@ function openAdd() {
 
 function openEdit(client: ClientListEntry) {
   editingId.value = client.id
+  cardTab.value = 'data'
   openedName.value = client.name
   openedVersion.value = client.version
   state.name = client.name
@@ -314,97 +323,116 @@ onMounted(loadClients)
     </template>
 
     <template #body="{ phone }">
-      <StaleSaveAlert
-        v-if="staleNotice"
-        :changed-by-name="staleRow?.changedByName ?? null"
-        :changed-at="staleRow?.changedAt ?? null"
+      <UTabs
+        v-if="formMode === 'edit'"
+        v-model="cardTab"
+        :items="cardTabs"
+        :content="false"
+        :size="phone ? 'xl' : 'sm'"
+        class="mb-4"
+      />
+      <div v-show="formMode !== 'edit' || cardTab === 'data'">
+        <StaleSaveAlert
+          v-if="staleNotice"
+          :changed-by-name="staleRow?.changedByName ?? null"
+          :changed-at="staleRow?.changedAt ?? null"
+          :time-zone="timeZone"
+          :locale="locale"
+          :phone="phone"
+          :pending="refreshing"
+          @refresh="refreshStale"
+        />
+        <UAlert
+          v-if="formErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mb-4"
+          :description="t(formErrorKey)"
+        />
+        <UForm
+          id="client-form"
+          :schema="schema"
+          :state="state"
+          :validate-on="[]"
+          class="space-y-4"
+          :class="commandInputClass"
+          @submit="onSubmit"
+          @error="formErrorKey = null"
+        >
+          <UFormField
+            :label="t('clients.name')"
+            name="name"
+            :size="phone ? 'xl' : 'sm'"
+          >
+            <UInput
+              v-model="state.name"
+              name="name"
+              type="text"
+              autocomplete="off"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('clients.kind')"
+            name="kind"
+            :size="phone ? 'xl' : 'sm'"
+          >
+            <USelect
+              v-model="state.kind"
+              name="kind"
+              :items="kindItems"
+              :placeholder="t('clients.chooseKind')"
+              class="w-full"
+            />
+            <template #error="{ error }">
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
+            </template>
+          </UFormField>
+        </UForm>
+      </div>
+      <ClientContactPersons
+        v-if="formMode === 'edit' && editingId && cardTab === 'contacts'"
+        :client-id="editingId"
+        :phone="phone"
         :time-zone="timeZone"
         :locale="locale"
-        :phone="phone"
-        :pending="refreshing"
-        @refresh="refreshStale"
       />
-      <UAlert
-        v-if="formErrorKey"
-        color="error"
-        variant="subtle"
-        role="alert"
-        class="mb-4"
-        :description="t(formErrorKey)"
-      />
-      <UForm
-        id="client-form"
-        :schema="schema"
-        :state="state"
-        :validate-on="[]"
-        class="space-y-4"
-        :class="commandInputClass"
-        @submit="onSubmit"
-        @error="formErrorKey = null"
-      >
-        <UFormField
-          :label="t('clients.name')"
-          name="name"
-          :size="phone ? 'xl' : 'sm'"
-        >
-          <UInput
-            v-model="state.name"
-            name="name"
-            type="text"
-            autocomplete="off"
-            class="w-full"
-          />
-          <template #error="{ error }">
-            <span
-              v-if="error"
-              role="alert"
-            >{{ error }}</span>
-          </template>
-        </UFormField>
-        <UFormField
-          :label="t('clients.kind')"
-          name="kind"
-          :size="phone ? 'xl' : 'sm'"
-        >
-          <USelect
-            v-model="state.kind"
-            name="kind"
-            :items="kindItems"
-            :placeholder="t('clients.chooseKind')"
-            class="w-full"
-          />
-          <template #error="{ error }">
-            <span
-              v-if="error"
-              role="alert"
-            >{{ error }}</span>
-          </template>
-        </UFormField>
-      </UForm>
     </template>
     <template #footer="{ phone }">
-      <UButton
-        type="button"
-        color="neutral"
-        variant="outline"
-        :size="commandControlSize(phone)"
-        class="w-full justify-center sm:w-auto"
-        :class="commandControlClass(phone)"
-        :disabled="saving"
-        @click="formOpen = false"
-      >
-        {{ t('clients.cancel') }}
-      </UButton>
-      <UButton
-        type="submit"
-        form="client-form"
-        :size="commandControlSize(phone)"
-        class="w-full justify-center sm:w-auto"
-        :class="commandControlClass(phone)"
-        :loading="saving"
-      >
-        {{ submitLabel }}
-      </UButton>
+      <template v-if="formMode !== 'edit' || cardTab === 'data'">
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          :size="commandControlSize(phone)"
+          class="w-full justify-center sm:w-auto"
+          :class="commandControlClass(phone)"
+          :disabled="saving"
+          @click="formOpen = false"
+        >
+          {{ t('clients.cancel') }}
+        </UButton>
+        <UButton
+          type="submit"
+          form="client-form"
+          :size="commandControlSize(phone)"
+          class="w-full justify-center sm:w-auto"
+          :class="commandControlClass(phone)"
+          :loading="saving"
+        >
+          {{ submitLabel }}
+        </UButton>
+      </template>
     </template>
   </CatalogPanel>
 </template>

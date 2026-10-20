@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { clientKindSchema } from './client'
+import { contactPersonAddedFieldsSchema, contactPersonChangedFieldsSchema } from './contact-person'
 import { driverFieldSchema } from './driver'
 import { locationFieldSchema } from './location'
 import { RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideAssignmentFieldSchema, rideVehicleChangeFieldSchema } from './ride-assignment'
@@ -63,6 +64,9 @@ export const auditActions = [
   'unavailability.added',
   'unavailability.changed',
   'unavailability.removed',
+  'contact_person.added',
+  'contact_person.changed',
+  'contact_person.removed',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -638,6 +642,43 @@ const unavailabilityRemoved = z.object({
   data: unavailabilityData(z.tuple([z.literal('removed')])),
 })
 
+/*
+ * A contact person (ADR-0049) names the Client and the contact person, and
+ * the fields that were written. The name, the role, the phone, and the email
+ * stay on the contact row. A removed person records that it was removed.
+ */
+const contactPersonData = {
+  clientId,
+  contactPersonId: z.uuid(),
+}
+
+const contactPersonAdded = z.object({
+  action: z.literal('contact_person.added'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    ...contactPersonData,
+    fields: contactPersonAddedFieldsSchema,
+  }),
+})
+
+const contactPersonChanged = z.object({
+  action: z.literal('contact_person.changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    ...contactPersonData,
+    fields: contactPersonChangedFieldsSchema,
+  }),
+})
+
+const contactPersonRemoved = z.object({
+  action: z.literal('contact_person.removed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    ...contactPersonData,
+    fields: z.tuple([z.literal('removed')]),
+  }),
+})
+
 /** What happened: the action, the member it was done to, and its data. */
 export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
@@ -687,6 +728,9 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   unavailabilityAdded,
   unavailabilityChanged,
   unavailabilityRemoved,
+  contactPersonAdded,
+  contactPersonChanged,
+  contactPersonRemoved,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -822,6 +866,9 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   unavailabilityAdded.extend(listed),
   unavailabilityChanged.extend(listed),
   unavailabilityRemoved.extend(listed),
+  contactPersonAdded.extend(listed),
+  contactPersonChanged.extend(listed),
+  contactPersonRemoved.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

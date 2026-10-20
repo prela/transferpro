@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, CLIENT_KINDS, DRIVER_FIELDS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_LANDING_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, CLIENT_KINDS, CONTACT_PERSON_ADDED_FIELD_LISTS, CONTACT_PERSON_CHANGED_FIELD_LISTS, DRIVER_FIELDS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_LANDING_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -261,6 +261,15 @@ function unavailabilityIds(data: AnyPgColumn) {
 
 const windowTimeFieldsJson = sql.raw(`'["startsAt","endsAt"]'::jsonb`)
 
+/**
+ * `fields` is one of the canonical arrays. Equality refuses a phone number,
+ * a name, or a different order, so those cannot sit in a row that is never deleted.
+ */
+function contactPersonFields(data: AnyPgColumn, lists: readonly (readonly string[])[]) {
+  const allowed = lists.map(list => `'${JSON.stringify(list)}'::jsonb`).join(', ')
+  return sql`${keysOnly(data, 'clientId', 'contactPersonId', 'fields')} and ${uuidText(data, 'clientId')} and ${uuidText(data, 'contactPersonId')} and ${data} -> ${sql.raw(`'fields'`)} in (${sql.raw(allowed)})`
+}
+
 /** A change names the instants it moved: one of them, or both once each. */
 function unavailabilityChangedFields(data: AnyPgColumn) {
   const fields = sql.raw(`'fields'`)
@@ -338,6 +347,9 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'unavailability.added' then ${table.subjectUserId} is null and ${unavailabilityIds(table.data)} and ${table.data} -> 'fields' = ${windowTimeFieldsJson}
     when 'unavailability.changed' then ${table.subjectUserId} is null and ${unavailabilityIds(table.data)} and ${unavailabilityChangedFields(table.data)}
     when 'unavailability.removed' then ${table.subjectUserId} is null and ${unavailabilityIds(table.data)} and ${table.data} -> 'fields' = '["removed"]'::jsonb
+    when 'contact_person.added' then ${table.subjectUserId} is null and ${contactPersonFields(table.data, CONTACT_PERSON_ADDED_FIELD_LISTS)}
+    when 'contact_person.changed' then ${table.subjectUserId} is null and ${contactPersonFields(table.data, CONTACT_PERSON_CHANGED_FIELD_LISTS)}
+    when 'contact_person.removed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'contactPersonId', 'fields')} and ${uuidText(table.data, 'clientId')} and ${uuidText(table.data, 'contactPersonId')} and ${table.data} -> 'fields' = '["removed"]'::jsonb
     when 'tenant.renamed' then ${table.subjectUserId} is null and ${emptyData(table.data)}
     when 'tenant.suspended' then ${table.subjectUserId} is null and ${emptyData(table.data)}
     when 'tenant.reactivated' then ${table.subjectUserId} is null and ${emptyData(table.data)}
