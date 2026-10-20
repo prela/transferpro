@@ -14,11 +14,11 @@ The alternatives were a phone and an email on the Client itself; a primary conta
 
 ### Client card
 
-A Client may have contact persons. Each has a name, may have a role as free text, and has a phone, an email, or both. A Client of any kind may have several, and none is the main one. They live in a child table of `clients`, keyed by the Tenant and the Client together, with the full RLS set. `app.clients` does not change.
+A Client may have contact persons. Each has a name of at most 200 characters, may have a role as free text of at most 100 characters, and has a phone, an email, or both. A Client of any kind may have several, and none is the main one. They live in a child table of `clients`, keyed by the Tenant and the Client together, with the full RLS set. `app.clients` does not change.
 
 Removing a contact person marks it removed, and it no longer shows. A daily job of `clients` deletes contact persons removed more than 90 days ago. This record is the ADR that allows that `DELETE` grant. The grant is limited to that table, and a restrictive policy lets it delete only rows removed more than 90 days ago, as ADR-0034 does for unavailability windows. Correcting a contact person overwrites the old value.
 
-A Client has at most one Client note, a standing text that a correction replaces. It lives in its own child table of `clients`, one row per Client. There is no list of dated notes.
+A Client has at most one Client note, a standing text of at most 2000 characters that a correction replaces. Saving an empty note clears it. It lives in its own child table of `clients`, one row per Client. There is no list of dated notes.
 
 Each contact person and the Client note carry their own version (ADR-0046). A correction or a removal made from an older version is a stale save. Adding a contact person needs no version. Two first saves of the same Client note at once leave one, and the other is a stale save. A contact or note save does not change the Client's own version.
 
@@ -34,7 +34,9 @@ A Partner has a name, and may have one phone, one email, and a note, all on its 
 
 ### Ride history and where the card shows
 
-The Ride history of a Client, and of a Partner, is a read in `transfers` by that id, office only. It lists the Rides of every state, newest pickup first, and counts the total, done, No-show, and cancelled. `clients` and `partners` never read transfers.
+The Ride history of a Client, and of a Partner, is a read in `transfers` by that id, office only. It lists the Rides of every state, newest pickup first, 50 rows per page, and counts the total, done, No-show, and cancelled. v1 adds no index on `client_id` for it. `clients` and `partners` never read transfers.
+
+Every route for contact persons, the Client note, Partners, and the Ride history is office only: an Admin or a Dispatcher. A Driver gets 403.
 
 The Ride detail shows the Client's contact persons and Client note, and, on a handed-off Ride, the Partner's phone and email. The Transfer form shows the Client note once a Client is chosen. `transfers` reads them through the public entries of `clients` and `partners`. The Driver's phone shows none of them. The Client list search stays by name.
 
