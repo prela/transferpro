@@ -153,6 +153,105 @@ test('a typed Client reference survives save, correction, and reload', async ({ 
   await expect(page.getByRole('dialog').getByLabel('Referenca naručitelja')).toHaveValue('V-20')
 })
 
+/**
+ * A lost create (ADR-0035, issue #388). The request is stored, then the
+ * response is dropped. The same entry key makes the retry one Transfer.
+ */
+async function dropNextCreateResponse(page: Page) {
+  let dropped = false
+  await page.route('**/api/transfers', async (route) => {
+    if (dropped || route.request().method() !== 'POST') {
+      await route.continue()
+      return
+    }
+    dropped = true
+    // The server stores the Transfer. The browser never sees the answer.
+    await route.fetch()
+    await route.abort()
+  })
+}
+
+test.describe('an already saved entry', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`a lost answer keeps the typed values and Razumijem opens the one Transfer (${theme})`, async ({ page }) => {
+      test.setTimeout(120_000)
+      const tenant = await seedTenant(`transfer-already-${theme}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      await createdId(page, '/api/clients', { name: 'Agencija Ključ', kind: 'agency' })
+      await createdId(page, '/api/locations', { name: 'Polazak Ključ', kind: 'address' })
+      await createdId(page, '/api/locations', { name: 'Dolazak Ključ', kind: 'hotel' })
+      const dialog = await openForm(page)
+      await chooseMenu(page, dialog, 'Naručitelj', 'Agencija Ključ')
+      await chooseMenu(page, dialog, 'Polazište', 'Polazak Ključ')
+      await chooseMenu(page, dialog, 'Odredište', 'Dolazak Ključ')
+      const day = operationalDay(page)
+      await dialog.getByLabel('Vrijeme preuzimanja').fill(`${day}T12:00`)
+      await dialog.getByLabel('Ime gosta').fill('Ana Prva')
+      await dialog.getByLabel('Cijena (EUR)').fill('18')
+      await chooseOption(page, dialog.getByRole('combobox', { name: 'Plaćanje' }), 'Gotovina')
+
+      await dropNextCreateResponse(page)
+      await dialog.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+      await expect(dialog.getByText('Transfer nije zabilježen. Pokušajte ponovno.')).toBeVisible()
+      await dialog.getByLabel('Ime gosta').fill('Ana Druga')
+      await page.unroute('**/api/transfers')
+
+      await dialog.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+      const notice = dialog.getByRole('status').filter({ hasText: 'Ovaj transfer je već spremljen' })
+      await expect(notice.getByText('Ovaj transfer je već spremljen')).toBeVisible()
+      await expect(notice.getByText('Unos je spremljen ranije. Izmjene nakon toga nisu spremljene. Vidite ih ispod; unesite ih ispravkom spremljenog transfera.')).toBeVisible()
+      await expect(dialog.getByLabel('Ime gosta')).toHaveValue('Ana Druga')
+      await expect(dialog.getByLabel('Ime gosta')).toBeDisabled()
+      await expect(dialog.getByLabel('Cijena (EUR)')).toHaveValue('18')
+      await page.mouse.move(0, 0)
+      await expectNoAxeViolations(page)
+
+      await notice.getByRole('button', { name: 'Razumijem', exact: true }).click()
+      // The slideover title and the detail heading both name the saved guest.
+      await expect(page.getByRole('heading', { name: 'Ana Prva' }).first()).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Radnje: Ana Prva' })).toHaveCount(1)
+      await expect(page.getByText('Ana Druga')).toHaveCount(0)
+    })
+  }
+
+  test('the already-saved notice in English', async ({ page }) => {
+    test.setTimeout(120_000)
+    const tenant = await seedTenant('transfer-already-en')
+    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+    await switchLocale(page, 'en')
+    await createdId(page, '/api/clients', { name: 'Agency Key', kind: 'agency' })
+    await createdId(page, '/api/locations', { name: 'Start Key', kind: 'address' })
+    await createdId(page, '/api/locations', { name: 'End Key', kind: 'hotel' })
+    await page.goto('/transfers')
+    await hydrated(page)
+    await page.getByRole('button', { name: 'Record a transfer', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await chooseMenu(page, dialog, 'Client', 'Agency Key')
+    await chooseMenu(page, dialog, 'Where it starts', 'Start Key')
+    await chooseMenu(page, dialog, 'Where it ends', 'End Key')
+    const day = operationalDay(page)
+    await dialog.getByLabel('Pickup time').fill(`${day}T12:00`)
+    await dialog.getByLabel('Guest name').fill('Ana First')
+    await dialog.getByLabel('Price (EUR)').fill('18')
+    await chooseOption(page, dialog.getByRole('combobox', { name: 'Payment' }), 'Cash')
+
+    await dropNextCreateResponse(page)
+    await dialog.getByRole('button', { name: 'Record transfer', exact: true }).click()
+    await expect(dialog.getByText('The transfer was not recorded. Try again.')).toBeVisible()
+    await page.unroute('**/api/transfers')
+    await dialog.getByRole('button', { name: 'Record transfer', exact: true }).click()
+    const notice = dialog.getByRole('status').filter({ hasText: 'This Transfer is already saved' })
+    await expect(notice.getByText('This Transfer is already saved')).toBeVisible()
+    await expect(notice.getByText('This entry was saved earlier. Changes made after that were not saved. They are shown below; enter them as a correction of the saved Transfer.')).toBeVisible()
+    await expect(notice.getByRole('button', { name: 'Got it', exact: true })).toBeVisible()
+    await notice.getByRole('button', { name: 'Got it', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Ana First' }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Actions: Ana First' })).toHaveCount(1)
+  })
+})
+
 test.describe('@phone', () => {
   for (const theme of ['light', 'dark'] as const) {
     test(`the transfer form follows ${theme} and passes axe`, async ({ page }) => {

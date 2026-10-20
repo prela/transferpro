@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { applyTransferDraftEvent, recallTransferDraft, rememberTransferDraft, TRANSFER_DRAFT_TTL_MS, transferDraftIsBlank, transferDraftKey, transferMoreHasValue } from './transfer-draft'
+import { applyTransferDraftEvent, recallTransferDraft, rememberTransferDraft, TRANSFER_DRAFT_TTL_MS, transferDraftIsBlank, transferDraftKey, transferEntryKey, transferMoreHasValue } from './transfer-draft'
 
 /**
  * The new-Transfer draft (issue #259). Expected outcomes are the ADR-0038
@@ -112,6 +112,63 @@ it('stores the booking the form shows and nothing that would identify an email',
   ])
   expect(stored).not.toHaveProperty('email')
   expect(recallTransferDraft(store, USER, TENANT, NOW)?.flight).toBe('OU384')
+})
+
+const ENTRY_KEY = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+
+it('creates an entry key for a blank form, a duplicate, and a return journey, and none for a correction', () => {
+  const issued = [
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222',
+    '33333333-3333-4333-8333-333333333333',
+  ]
+  let next = 0
+  const random = () => issued[next++]!
+
+  // ADR-0035: each new entry gets its own key. A correction refuses one.
+  expect(transferEntryKey('blank', random)).toBe(issued[0])
+  expect(transferEntryKey('duplicate', random)).toBe(issued[1])
+  expect(transferEntryKey('return', random)).toBe(issued[2])
+  expect(transferEntryKey('correction', random)).toBeNull()
+  expect(next).toBe(3)
+})
+
+it('keeps the entry key across a reload, and keeps the draft after already recorded until the notice is confirmed', () => {
+  const store = memory()
+  rememberTransferDraft(store, USER, TENANT, fields({ externalId: ENTRY_KEY }), NOW)
+
+  // A reload reads the same key. The blank clock does not count as a draft,
+  // so a key on an otherwise empty form is not stored.
+  expect(recallTransferDraft(store, USER, TENANT, NOW)?.externalId).toBe(ENTRY_KEY)
+  const blankWithKey = fields({
+    guest: '',
+    price: '',
+    payment: null,
+    flight: '',
+    airportMark: false,
+    tabla: '',
+    clientReference: '',
+    luggage: '0',
+    childSeats: '0',
+    note: '',
+    pickupWall: '2026-10-16T12:00',
+    externalId: ENTRY_KEY,
+  })
+  expect(transferDraftIsBlank(blankWithKey, '2026-10-16T12:00')).toBe(true)
+
+  const kept = memory()
+  rememberTransferDraft(kept, USER, TENANT, fields({ externalId: ENTRY_KEY }), NOW)
+  applyTransferDraftEvent(kept, USER, TENANT, 'already-recorded')
+  expect(recallTransferDraft(kept, USER, TENANT, NOW)?.externalId).toBe(ENTRY_KEY)
+  expect(recallTransferDraft(kept, USER, TENANT, NOW)?.guest).toBe('Ana Anić')
+
+  applyTransferDraftEvent(kept, USER, TENANT, 'save')
+  expect(recallTransferDraft(kept, USER, TENANT, NOW)).toBeNull()
+
+  const discarded = memory()
+  rememberTransferDraft(discarded, USER, TENANT, fields({ externalId: ENTRY_KEY }), NOW)
+  applyTransferDraftEvent(discarded, USER, TENANT, 'discard')
+  expect(discarded.getItem(transferDraftKey(USER, TENANT))).toBeNull()
 })
 
 it('treats a blank new Transfer as nothing to keep, and opens Više only when one of its fields has a value', () => {
