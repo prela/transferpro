@@ -1,6 +1,6 @@
 # Channels and external references
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0035
 
 Damir accepted this on 14 October 2026. The Charter listed this record as a candidate, and the index carried it as proposed with no file; this is its first text. It supersedes no ADR. ADR-0035 decides how an entry is written: the transaction, the event log, the outbox, and retry.
 

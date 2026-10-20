@@ -18,7 +18,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | --- | --- | --- |
 | ADR-0001 | Multi-tenancy: Better Auth organizations + `tenant_id` + Postgres RLS | accepted |
 | ADR-0002 | PostgreSQL + Drizzle | accepted |
-| ADR-0003 | Channels and external references | accepted |
+| ADR-0003 | Channels and external references | accepted; partially superseded by ADR-0035 |
 | ADR-0004 | Job queue: pg-boss on Postgres | accepted |
 | ADR-0005 | Ride states | accepted; partially superseded by ADR-0008 and ADR-0048 |
 | ADR-0006 | Driver acceptance | accepted; partially superseded by ADR-0008 |
@@ -50,6 +50,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0032 | Board warnings are derived on read | accepted |
 | ADR-0033 | v1 scope: price list, invoices through a provider, Client card, and Partner record | accepted |
 | ADR-0034 | Capacity as a module | accepted |
+| ADR-0035 | Idempotent manual entry, and reactions to a change without an event log | accepted |
 | ADR-0036 | The Transfer is the order, and who owns the v1 modules | accepted |
 | ADR-0037 | Console mailer on preview | accepted; partially superseded by ADR-0042 |
 | ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted; partially superseded by ADR-0041 and ADR-0042 |

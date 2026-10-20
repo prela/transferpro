@@ -240,7 +240,7 @@ The number under which the Client keeps a booking, such as a voucher number. It 
 _Avoid_: voucher id, external id
 
 **ExternalRef**:
-The Channel and that channel's own identity for one Transfer. No two Transfers of a Tenant share one. On manual entry, Transferpro gives each entry its own, and the office does not type it.
+The Channel and that channel's own identity for one Transfer. No two Transfers of a Tenant share one. On manual entry, Transferpro gives each entry its own, and the office does not type it. Repeating the same entry returns the existing Transfer and changes nothing.
 _Avoid_: voucher, Client reference
 
 **Work package (WP)**:
