@@ -1,9 +1,15 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { addCalendarDays, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { addCalendarDays, instantFromWallClock } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // One instant for the seed and the board, including across 05:00.
+  await pinOperationalClock(page)
+})
 
 /**
  * Transfers day table (issue #254). The phone project runs the @phone
@@ -66,7 +72,7 @@ test('reloading the URL restores the day and the filter', async ({ page }) => {
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await page.goto('/transfers')
   await hydrated(page)
-  const today = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const today = operationalDay(page)
   const next = addCalendarDays(today, 1)
   await page.locator('#transfer-day').fill(next)
   await expect(page).toHaveURL(new RegExp(`day=${next}`))
@@ -81,7 +87,7 @@ test('desktop columns fit 1366 and a row stays compact', async ({ page }) => {
   const tenant = await seedTenant('transfers-columns')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   const spot = await places(page)
-  const day = addCalendarDays(operationalDateInTimeZone('Europe/Zagreb', new Date()), 1)
+  const day = addCalendarDays(operationalDay(page), 1)
   await record(page, 'Ana Stupac', day, '12:00', spot)
   await page.setViewportSize({ width: 1366, height: 768 })
   await page.goto(`/transfers?day=${day}`)
@@ -106,7 +112,7 @@ test('a refresh keeps the filter and does not empty the list', async ({ page }) 
   const tenant = await seedTenant('transfers-refresh')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   const spot = await places(page)
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   await record(page, 'Mia Ostaje', day, '16:00', spot)
   await page.goto('/transfers')
   const row = page.getByRole('row', { name: 'Mia Ostaje' })
@@ -142,7 +148,7 @@ test.describe('@phone', () => {
       if (phone) {
         await expect(page.getByRole('columnheader', { name: 'Vrijeme' })).toHaveCount(0)
         const spot = await places(page)
-        const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+        const day = operationalDay(page)
         await record(page, 'Iva Telefon', day, '15:00', spot)
         await page.reload()
         const card = page.getByRole('listitem').filter({ hasText: 'Iva Telefon' })

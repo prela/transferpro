@@ -1,9 +1,15 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { seedTenant } from './fixtures/seed'
 import { chooseOption, hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // One instant for the seed and the board, including across 05:00.
+  await pinOperationalClock(page)
+})
 
 /**
  * Transfers quick filters, within-day search, and the seven-day unassigned
@@ -69,7 +75,7 @@ test('search, Client, and Driver filters narrow the day and stay in the URL', as
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,
   })
-  const day = addCalendarDays(operationalDateInTimeZone('Europe/Zagreb', new Date()), 1)
+  const day = addCalendarDays(operationalDay(page), 1)
   const ana = {
     clientId: anaClient,
     startLocationId,
@@ -127,7 +133,7 @@ test('the seven-day note names tomorrow and opens that day', async ({ page }) =>
   const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Bilješka', kind: 'address' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Bilješka', kind: 'hotel' })
   const spot = { clientId, startLocationId, endLocationId }
-  const today = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const today = operationalDay(page)
   const tomorrow = addCalendarDays(today, 1)
   const tooFar = addCalendarDays(today, 8)
   await record(page, 'Danas Gost', today, '12:00', spot)
@@ -155,7 +161,7 @@ test.describe('@phone', () => {
       const clientId = await createdId(page, '/api/clients', { name: 'Klijent Telefon', kind: 'agency' })
       const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Telefon', kind: 'address' })
       const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Telefon', kind: 'hotel' })
-      const today = operationalDateInTimeZone('Europe/Zagreb', new Date())
+      const today = operationalDay(page)
       await record(page, 'Sutra Telefon', addCalendarDays(today, 1), '15:00', {
         clientId,
         startLocationId,

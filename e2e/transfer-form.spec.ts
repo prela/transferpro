@@ -1,9 +1,14 @@
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, hydrated, openListbox, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // One instant for the seed and the board, including across 05:00.
+  await pinOperationalClock(page)
+})
 
 /**
  * Transfer form in the Ride panel (issue #259): Više, quick add, and the
@@ -119,7 +124,7 @@ test('a typed Client reference survives save, correction, and reload', async ({ 
   await chooseMenu(page, dialog, 'Naručitelj', 'Agencija Referenca')
   await chooseMenu(page, dialog, 'Polazište', 'Polazak Referenca')
   await chooseMenu(page, dialog, 'Odredište', 'Dolazak Referenca')
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   await dialog.getByLabel('Vrijeme preuzimanja').fill(`${day}T12:00`)
   await dialog.getByLabel('Ime gosta').fill('Ana Referenca')
   await dialog.getByLabel('Cijena (EUR)').fill('18')

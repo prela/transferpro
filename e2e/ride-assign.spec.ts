@@ -1,9 +1,15 @@
 import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { formatInstant } from '../shared/format-instant'
+import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { seedMember, seedTenant, seedVehicleRecord } from './fixtures/seed'
 import { chooseOption, openAudit, openListbox, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // One instant for the seed and the board, including across 05:00.
+  await pinOperationalClock(page)
+})
 
 const phone = '+385911112233'
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
@@ -56,7 +62,7 @@ async function recordTodayRide(page: Page, guest: string, wall = '12:00'): Promi
   const endLocationId = await createdId(await page.request.post('/api/locations', {
     data: { name: `Dolazak ${guest}`, kind: 'hotel' },
   }))
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   const pickupAt = instantFromWallClock(`${day}T${wall}`, 'Europe/Zagreb').toISOString()
   const recorded = await page.request.post('/api/transfers', {
     data: {
