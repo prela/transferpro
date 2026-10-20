@@ -1,3 +1,8 @@
+// Above the Ride and catalog slideover (z-60). Reka copies this z-index
+// onto the popper wrapper. auto paints under that panel, and the panel
+// keeps pointer-events: none, so the menu is clickable and invisible.
+const popperZ = 'z-[70]'
+
 export default defineAppConfig({
   ui: {
     colors: {
@@ -5,6 +10,12 @@ export default defineAppConfig({
       primary: 'blue',
       neutral: 'slate',
     },
+    dropdownMenu: { slots: { content: popperZ } },
+    select: { slots: { content: popperZ } },
+    selectMenu: { slots: { content: popperZ } },
+    inputMenu: { slots: { content: popperZ } },
+    popover: { slots: { content: popperZ } },
+    tooltip: { slots: { content: popperZ } },
     button: {
       compoundVariants: [
         {
