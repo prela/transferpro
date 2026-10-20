@@ -760,3 +760,36 @@ it('records an unavailability window by ids and field names only, never the inst
   expect(auditFactSchema.safeParse({ ...added, data: { ...added.data, driverId: null } }).success).toBe(false)
   expect(auditFactSchema.safeParse({ ...added, data: { ...added.data, reason: 'sick' } }).success).toBe(false)
 })
+
+it('records a contact person by the Client id, the contact person id, and the field names', () => {
+  const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const contactPersonId = '1d2c3b4a-6666-4666-8666-666666666666'
+  const added = {
+    action: 'contact_person.added' as const,
+    subjectUserId: null,
+    data: { clientId, contactPersonId, fields: ['name', 'role', 'phone'] as const },
+  }
+  expect(auditFactSchema.parse(added)).toEqual(added)
+  const changed = {
+    action: 'contact_person.changed' as const,
+    subjectUserId: null,
+    data: { clientId, contactPersonId, fields: ['email'] as const },
+  }
+  expect(auditFactSchema.parse(changed)).toEqual(changed)
+  const removed = {
+    action: 'contact_person.removed' as const,
+    subjectUserId: null,
+    data: { clientId, contactPersonId, fields: ['removed'] as const },
+  }
+  expect(auditFactSchema.parse(removed)).toEqual(removed)
+
+  // A name, a role, a phone, or an email would stay forever on a row that is never deleted.
+  expect(auditFactSchema.safeParse({ ...added, data: { ...added.data, name: 'Ana Booking' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...added, data: { ...added.data, role: 'accounting' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...changed, data: { ...changed.data, phone: '+385911110364' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...changed, data: { ...changed.data, email: 'booking@example.test' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...added, data: { ...added.data, fields: ['phone'] } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...changed, data: { ...changed.data, fields: ['email', 'name'] } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...removed, data: { ...removed.data, fields: ['name'] } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...added, subjectUserId: memberId }).success).toBe(false)
+})

@@ -8,3 +8,4 @@ export { ClientNotFoundError, createClient, listClients, updateClient } from './
  * This module does not import transfers (ADR-0018).
  */
 export { loadClient, loadClients } from './infrastructure/clients'
+export { ContactPersonNotFoundError, createContactPerson, listContactPersons, removeClientContactPerson, updateContactPerson } from './infrastructure/contact-person-access'

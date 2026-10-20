@@ -243,6 +243,11 @@
         "added": "Unavailability added",
         "changed": "Unavailability changed",
         "removed": "Unavailability removed"
+      },
+      "contact_person": {
+        "added": "Contact person added",
+        "changed": "Contact person corrected",
+        "removed": "Contact person removed"
       }
     }
   },
@@ -300,6 +305,47 @@
       "agency": "Agency",
       "hotel": "Hotel",
       "individual": "Individual"
+    },
+    "tabs": {
+      "data": "Details",
+      "contacts": "Contacts"
+    },
+    "contacts": {
+      "add": "Add a contact person",
+      "edit": "Correct contact person",
+      "name": "Name",
+      "role": "Role",
+      "phone": "Phone",
+      "email": "Email",
+      "nameEmpty": "Enter a name.",
+      "nameTooLong": "A name can be at most 200 characters.",
+      "roleTooLong": "A role can be at most 100 characters.",
+      "phoneTooLong": "A phone can be at most 40 characters.",
+      "emailInvalid": "Enter a valid email.",
+      "unreachable": "Enter a phone, an email, or both.",
+      "submit": "Add contact person",
+      "submitting": "Adding contact person",
+      "save": "Save",
+      "saving": "Saving",
+      "cancel": "Cancel",
+      "remove": "Remove",
+      "removeNamed": "Remove {name}",
+      "confirmRemove": "Remove this contact person? They disappear from the card.",
+      "empty": "No contact persons yet.",
+      "loading": "Loading contact persons",
+      "loadFailed": "Contact persons could not be loaded. Try again.",
+      "rejected": "The contact person was not accepted.",
+      "notFound": "That contact person is no longer on the list.",
+      "forbidden": "A driver cannot change contact persons.",
+      "signedOut": "You are signed out. Sign in and try again.",
+      "saveFailed": "The contact person was not saved. Try again.",
+      "fields": {
+        "name": "Name",
+        "role": "Role",
+        "phone": "Phone",
+        "email": "Email",
+        "removed": "Removed"
+      }
     }
   },
   "locations": {

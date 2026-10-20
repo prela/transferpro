@@ -177,6 +177,12 @@ function detailText(entry: AuditEntry): string {
         t(entry.data.driverId === null ? 'unavailability.ofVehicle' : 'unavailability.ofDriver'),
         entry.data.fields.map(field => t(`unavailability.fields.${field}`)).join(', '),
       ].join(' · ')
+    case 'contact_person.added':
+    case 'contact_person.changed':
+      // Field names only. The name, the role, the phone, and the email stay on the contact row.
+      return entry.data.fields.map(field => t(`clients.contacts.fields.${field}`)).join(', ')
+    case 'contact_person.removed':
+      return t('clients.contacts.fields.removed')
     case 'tenant.renamed':
     case 'tenant.suspended':
     case 'tenant.reactivated':
