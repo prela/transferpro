@@ -4,22 +4,22 @@ Out of scope: a shared JobQueue test double, and a shared registrar with the una
 
 ## Decisions
 
-- Migration `0052_contact_person_retention` grants `DELETE` on `app.client_contact_persons` to `transferpro_app` only, as ADR-0049 allows. It deletes no rows. The restrictive policy `client_contact_persons_retention_delete` allows a delete only when `removed_at < now() - interval '90 days'`. A live row has null `removed_at`, so the predicate fails and the delete removes nothing.
+- Migration `0053_contact_person_retention` grants `DELETE` on `app.client_contact_persons` to `transferpro_app` only, as ADR-0049 allows. It deletes no rows. The restrictive policy `client_contact_persons_retention_delete` allows a delete only when `removed_at < now() - interval '90 days'`. A live row has null `removed_at`, so the predicate fails and the delete removes nothing.
 - The same migration adds `app.tenants_with_contact_persons_removed_before(timestamptz)`: `SECURITY DEFINER`, `STABLE`, `search_path = pg_catalog, pg_temp`, Tenant ids only, `REVOKE ALL FROM PUBLIC`, `EXECUTE` to `transferpro_app` only.
-- Develop already has `0051_partners` at `when` 1791400041000. This job is `0052`, `when` 1791400042000 (previous plus 1000). `drizzle-kit check` passes. The open external-ref branch also claims `0052` and that same `when`. Whichever of the two merges second has to move its `when` up by 1000 and take the next number, or the later migration is skipped.
+- Develop has `0052_transfer_external_ref` at `when` 1791400042000. This job is `0053`, `when` 1791400043000 (that value plus 1000). `drizzle-kit check` passes.
 - The daily tick is `45 3 * * *` UTC, queue `contact-person-retention`. It publishes `contact-person-retention-tenant` with `{ askedAt }` for each Tenant the listing function returns. The job uses its own pg-boss queue, the unavailability shape. The cutoff is 90 whole 24-hour days before the earlier of `askedAt` and the worker clock, so a row removed exactly 90 days ago stays and a future payload cannot delete a newer row.
 - One log line per job: `{ event: 'contact_person.retention_deleted', deleted }`. `tenant_id` comes from the session log scope.
 - `server/plugins/contact-person-retention.ts` imports `startContactPersonRetention` from the clients module index.
 - Flagged test change: `contact-person.rls.test.ts` no longer expects `42501` when the app role deletes a live contact person. The grant makes that false. The delete removes 0 rows and the row is still there. Rows removed 89 and 91 days ago, and another Tenant's rows, are covered in `retention.rls.test.ts`. The mail retention DELETE-grant pin adds `app.client_contact_persons`. No test was removed.
-- Results after merging `origin/develop` (`f5a1acf`):
-  - `pnpm exec nuxi build`, `pnpm lint`, `pnpm typecheck`, and `pnpm test` (836) passed.
-  - `pnpm test:e2e` passed in full: 295 tests in 3.8m, on database `transferpro_e2e` only.
-  - `pnpm test:rls` passed in full (52 files, 377 tests) on a fresh `transferpro_e2e` migrated through 0052. The dev database `transferpro` was not reset. It already has other `created_at` values at 1791400041000 and 1791400042000, so a migrate of this branch there would skip 0052.
+- Results:
+  - Before this rebase, `pnpm exec nuxi build`, `pnpm lint`, `pnpm typecheck`, and `pnpm test` (836) passed, and `pnpm test:e2e` passed (295 tests, `transferpro_e2e` only).
+  - After the rebase onto `origin/develop` (`47002a2`), `pnpm test:rls` on the dev database `transferpro` was 382 passed and 1 failed. The failure is `outbox.rls.test.ts`, "refuses an assigned work order that names a vehicle": the local `mail_outbox_shape` check is missing the vehicle clause from `0045`. That drift is older than this job.
+  - The same suite on a fresh `transferpro_e2e` migrated through `0053` passed: 52 files, 383 tests.
   - `pnpm audit --audit-level=high` exited 1 on pre-existing highs in vite and launch-editor (GHSA-587h-7wmj-h5pm). This slice adds no dependency.
 
 ## Code review
 
-Fixed point `0acd2c8`. Reviewed commit `a851529`, before the merge moved the migration from 0051 to 0052. Both axes ran on the full model, not a fast one. No code change came out of the review. The SQL of the grant, the policy, and the listing function is the same in 0052.
+Fixed point `0acd2c8`. Reviewed commit `a851529`, before the rebase moved the migration to `0053`. Both axes ran on the full model, not a fast one. No code change came out of the review. The SQL of the grant, the policy, and the listing function is the same in `0053`.
 
 ### Standards
 
