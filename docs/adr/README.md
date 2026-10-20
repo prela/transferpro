@@ -63,3 +63,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0046 | Refuse a stale save | accepted |
 | ADR-0047 | Invitation outbox entry after the Better Auth commit | accepted |
 | ADR-0048 | A Ride handed off to a Partner | accepted |
+| ADR-0049 | Client card and Partner record | accepted |
