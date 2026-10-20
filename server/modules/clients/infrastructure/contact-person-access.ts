@@ -8,7 +8,7 @@ export { ClientNotFoundError, ContactPersonNotFoundError }
 
 function officeOnly(role: string): void {
   // A driver does not keep the Client card. Listing contacts is office work.
-  if (role === 'driver')
+  if (role !== 'admin' && role !== 'dispatcher')
     throw new TenantAccessError(403)
 }
 
