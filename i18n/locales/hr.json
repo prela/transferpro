@@ -248,6 +248,12 @@
         "added": "Kontakt osoba dodana",
         "changed": "Kontakt osoba ispravljena",
         "removed": "Kontakt osoba uklonjena"
+      },
+      "partner": {
+        "created": "Podizvođač dodan",
+        "changed": "Podizvođač ispravljen",
+        "archived": "Podizvođač arhiviran",
+        "restored": "Podizvođač vraćen"
       }
     }
   },
@@ -706,6 +712,14 @@
       "transportLicenceExpiresOn": "Dozvola za prijevoz",
       "memberUserId": "Član",
       "mustAccept": "Mora prihvatiti"
+    }
+  },
+  "partners": {
+    "fields": {
+      "name": "Naziv",
+      "phone": "Telefon",
+      "email": "E-pošta",
+      "note": "Napomena"
     }
   },
   "vehicles": {

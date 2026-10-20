@@ -793,3 +793,41 @@ it('records a contact person by the Client id, the contact person id, and the fi
   expect(auditFactSchema.safeParse({ ...removed, data: { ...removed.data, fields: ['name'] } }).success).toBe(false)
   expect(auditFactSchema.safeParse({ ...added, subjectUserId: memberId }).success).toBe(false)
 })
+
+it('records a Partner by id and field names, and refuses the name, the phone, the email, and the note', () => {
+  const partnerId = '2e3d4c5b-7777-4777-8777-777777777777'
+  const created = {
+    action: 'partner.created' as const,
+    subjectUserId: null,
+    data: { partnerId, fields: ['name', 'phone', 'email', 'note'] as const },
+  }
+  expect(auditFactSchema.parse(created)).toEqual(created)
+  const changed = {
+    action: 'partner.changed' as const,
+    subjectUserId: null,
+    data: { partnerId, fields: ['note'] as const },
+  }
+  expect(auditFactSchema.parse(changed)).toEqual(changed)
+  const archived = {
+    action: 'partner.archived' as const,
+    subjectUserId: null,
+    data: { partnerId },
+  }
+  expect(auditFactSchema.parse(archived)).toEqual(archived)
+  const restored = {
+    action: 'partner.restored' as const,
+    subjectUserId: null,
+    data: { partnerId },
+  }
+  expect(auditFactSchema.parse(restored)).toEqual(restored)
+
+  // A name, a phone, an email, or a note would stay forever on a row that is never deleted.
+  expect(auditFactSchema.safeParse({ ...created, data: { ...created.data, name: 'Mora Transfer' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...created, data: { ...created.data, phone: '+385911110000' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...changed, data: { ...changed.data, email: 'office@mora.example' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...changed, data: { ...changed.data, note: 'Call the desk.' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...created, data: { ...created.data, fields: ['phone'] } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...changed, data: { ...changed.data, fields: ['email', 'name'] } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...archived, data: { partnerId, name: 'Mora Transfer' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...created, subjectUserId: memberId }).success).toBe(false)
+})

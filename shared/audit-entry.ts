@@ -3,6 +3,7 @@ import { clientKindSchema } from './client'
 import { contactPersonAddedFieldsSchema, contactPersonChangedFieldsSchema } from './contact-person'
 import { driverFieldSchema } from './driver'
 import { locationFieldSchema } from './location'
+import { partnerChangedFieldsSchema, partnerCreatedFieldsSchema } from './partner'
 import { RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideAssignmentFieldSchema, rideVehicleChangeFieldSchema } from './ride-assignment'
 import { rosterDateSchema } from './roster'
 import { tenantRoleSchema } from './tenant-role'
@@ -67,6 +68,10 @@ export const auditActions = [
   'contact_person.added',
   'contact_person.changed',
   'contact_person.removed',
+  'partner.created',
+  'partner.changed',
+  'partner.archived',
+  'partner.restored',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -679,6 +684,48 @@ const contactPersonRemoved = z.object({
   }),
 })
 
+/*
+ * A Partner is not a member (ADR-0049). The id says which row. The data
+ * names the fields that were written and nothing else: a name, a phone,
+ * an email, or a note would stay forever on a row that is never deleted.
+ * Archive and restore name the row and nothing else.
+ */
+const partnerId = z.uuid()
+
+const partnerCreated = z.object({
+  action: z.literal('partner.created'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    partnerId,
+    fields: partnerCreatedFieldsSchema,
+  }),
+})
+
+const partnerChanged = z.object({
+  action: z.literal('partner.changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    partnerId,
+    fields: partnerChangedFieldsSchema,
+  }),
+})
+
+const partnerArchived = z.object({
+  action: z.literal('partner.archived'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    partnerId,
+  }),
+})
+
+const partnerRestored = z.object({
+  action: z.literal('partner.restored'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    partnerId,
+  }),
+})
+
 /** What happened: the action, the member it was done to, and its data. */
 export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
@@ -731,6 +778,10 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   contactPersonAdded,
   contactPersonChanged,
   contactPersonRemoved,
+  partnerCreated,
+  partnerChanged,
+  partnerArchived,
+  partnerRestored,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -869,6 +920,10 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   contactPersonAdded.extend(listed),
   contactPersonChanged.extend(listed),
   contactPersonRemoved.extend(listed),
+  partnerCreated.extend(listed),
+  partnerChanged.extend(listed),
+  partnerArchived.extend(listed),
+  partnerRestored.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

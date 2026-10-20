@@ -176,6 +176,15 @@ it('the table refuses data that does not match its action, for every writer', as
     ['contact_person.removed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["name"]}'],
     ['contact_person.removed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["removed"],"email":"booking@example.test"}'],
     ['contact_person.removed', subject, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["removed"]}'],
+    // A Partner records the id and field names. Never the name, the phone, the email, or the note.
+    ['partner.created', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["name"],"name":"Mora Transfer"}'],
+    ['partner.created', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["name","phone"],"phone":"+385911110379"}'],
+    ['partner.created', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["name","email"],"email":"office@mora.example"}'],
+    ['partner.changed', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["note"],"note":"Call the desk."}'],
+    ['partner.created', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["phone"]}'],
+    ['partner.changed', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["email","name"]}'],
+    ['partner.archived', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","name":"Mora Transfer"}'],
+    ['partner.restored', subject, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777"}'],
   ]
   for (const values of mismatches) {
     expect(await refusal(appPool, tenant, append, [values[0], actor, ...values.slice(1)]), values.join(' ')).toMatchObject({ code: '23514' })
@@ -493,6 +502,28 @@ it('append_entry accepts a contact person add, correction, and removal with ids 
   expect(text).not.toContain('Ana Booking')
   expect(text).not.toContain('+385911110364')
   expect(text).not.toContain('booking@example.test')
+})
+
+it('append_entry accepts a Partner create, change, archive, and restore with the id and field names only', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const partnerId = '2e3d4c5b-7777-4777-8777-777777777777'
+  const append = `select audit.append_entry($1, $2, null, $3::jsonb)`
+  const created = { partnerId, fields: ['name', 'phone', 'email', 'note'] }
+  const changed = { partnerId, fields: ['note'] }
+  const archived = { partnerId }
+  const restored = { partnerId }
+  await inSession(appPool, tenant, client => client.query(append, ['partner.created', actor, JSON.stringify(created)]))
+  await inSession(appPool, tenant, client => client.query(append, ['partner.changed', actor, JSON.stringify(changed)]))
+  await inSession(appPool, tenant, client => client.query(append, ['partner.archived', actor, JSON.stringify(archived)]))
+  await inSession(appPool, tenant, client => client.query(append, ['partner.restored', actor, JSON.stringify(restored)]))
+  const rows = (await entriesOf(tenant)).sort((left, right) => left.action.localeCompare(right.action))
+  expect(rows).toEqual([
+    { tenant_id: tenant, action: 'partner.archived', actor_user_id: actor, subject_user_id: null, data: archived },
+    { tenant_id: tenant, action: 'partner.changed', actor_user_id: actor, subject_user_id: null, data: changed },
+    { tenant_id: tenant, action: 'partner.created', actor_user_id: actor, subject_user_id: null, data: created },
+    { tenant_id: tenant, action: 'partner.restored', actor_user_id: actor, subject_user_id: null, data: restored },
+  ])
 })
 
 it('the owner cannot update, delete, or truncate an entry either', async () => {
