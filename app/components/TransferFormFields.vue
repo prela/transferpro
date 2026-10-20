@@ -17,10 +17,6 @@ if (!api)
 
 const controlClass = computed(() => props.controlSize === 'xl' ? 'min-h-12' : 'h-7 min-h-7')
 
-// The Ride panel slideover is z-60. A portaled menu with no z-index sits under
-// that layer, so a click on an option lands on the field behind it.
-const menuUi = { content: 'z-[70]' }
-
 const {
   clientId,
   pickupWall,
@@ -318,7 +314,6 @@ onUnmounted(() => {
         name="client-kind"
         :items="clientKindItems"
         :placeholder="t('clients.chooseKind')"
-        :ui="menuUi"
         class="w-full"
       />
       <template #error="{ error }">
@@ -376,7 +371,6 @@ onUnmounted(() => {
         name="place-kind"
         :items="kindItems"
         :placeholder="t('locations.chooseKind')"
-        :ui="menuUi"
         class="w-full"
       />
       <template #error="{ error }">
@@ -400,7 +394,6 @@ onUnmounted(() => {
         :ignore-filter="true"
         :trailing-icon="false"
         :content="{ hideWhenEmpty: true }"
-        :ui="menuUi"
         @update:model-value="onAddressInput"
       >
         <template #content-bottom>
@@ -471,7 +464,6 @@ onUnmounted(() => {
         :items="clientItems"
         :placeholder="t('transfers.chooseClient')"
         :create-item="{ when: 'always', position: 'bottom' }"
-        :ui="menuUi"
         class="w-full"
         @create="onCreateClient"
       >
@@ -517,7 +509,6 @@ onUnmounted(() => {
         :items="locationItems"
         :placeholder="t('transfers.chooseLocation')"
         :create-item="{ when: 'always', position: 'bottom' }"
-        :ui="menuUi"
         class="w-full"
         @create="onCreateStart"
       >
@@ -545,7 +536,6 @@ onUnmounted(() => {
         :items="locationItems"
         :placeholder="t('transfers.chooseLocation')"
         :create-item="{ when: 'always', position: 'bottom' }"
-        :ui="menuUi"
         class="w-full"
         @create="onCreateEnd"
       >
@@ -628,7 +618,6 @@ onUnmounted(() => {
         name="payment"
         :items="paymentItems"
         :placeholder="t('transfers.choosePayment')"
-        :ui="menuUi"
         class="w-full"
       />
       <template #error="{ error }">

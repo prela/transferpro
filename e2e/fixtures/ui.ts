@@ -152,13 +152,23 @@ export async function openListbox(page: Page, trigger: Locator): Promise<Locator
   await hydrated(page)
   await expect(trigger).toBeVisible()
   await expect(trigger).toBeEnabled()
-  const opened = await trigger.elementHandle()
+  let opened = await trigger.elementHandle()
   if (await trigger.getAttribute('aria-expanded') !== 'true') {
-    // A suggestion list left open by the previous field stays open when this
-    // trigger is opened from the keyboard. Escape closes that list. It is
-    // sent only while one is open, so it does not dismiss the dialog.
-    if (await page.locator('[role="listbox"][data-state="open"]').count() > 0)
+    // A create-item click leaves the previous suggestion list open: its
+    // handler prevents the select that would close it. Escape dismisses that
+    // list, and only while one is open, so it does not dismiss the dialog.
+    // The key waits until that node is out of the document. Closing focuses
+    // its trigger, and an earlier ArrowDown lands there and opens it again.
+    const openList = page.locator('[role="listbox"][data-state="open"]')
+    if (await openList.count() > 0) {
+      const leaving = await openList.first().elementHandle()
       await page.keyboard.press('Escape')
+      if (leaving)
+        await page.waitForFunction(node => !node.isConnected, leaving)
+    }
+    // Taken again after the previous list closes. That close re-renders the
+    // form, and a handle from before it would keep the old aria-expanded.
+    opened = await trigger.elementHandle()
     if (await trigger.getAttribute('role') === 'combobox')
       await trigger.press('ArrowDown')
     else
