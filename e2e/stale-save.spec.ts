@@ -5,7 +5,7 @@ import { formatInstant } from '../shared/format-instant'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { operationalDay, operationalNow, pinOperationalClock } from './fixtures/operational-clock'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn, switchLocale, useTheme } from './fixtures/ui'
+import { hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
 
 test.beforeEach(async ({ page }) => {
   // One instant for the seed and the board, including across 05:00.
@@ -61,6 +61,8 @@ async function createdId(page: Page, path: string, data: unknown): Promise<strin
 async function openCorrection(page: Page, guest: string, locale: Locale) {
   const text = copy[locale]
   await page.goto('/transfers')
+  // The server paints the row before Vue starts. A click in that gap misses the menu.
+  await hydrated(page)
   if (isPhone(page)) {
     await page.getByRole('listitem').filter({ hasText: guest }).click()
     await page.getByRole('button', { name: text.more, exact: true }).click()
@@ -347,6 +349,7 @@ test('a refused clear names who removed the assignment, and Osvježi closes the 
 
     await signIn(other, colleague.email, colleague.password, tenant.name)
     await page.goto('/transfers')
+    await hydrated(page)
     await page.getByRole('button', { name: text.actions(guest), exact: true }).click()
     await page.getByRole('menuitem', { name: 'Ukloni dodjelu', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: 'Uklanjanje dodjele' })

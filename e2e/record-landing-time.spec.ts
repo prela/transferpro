@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 import { instantFromWallClock } from '../shared/date'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { openAudit, openRideMenu, openUserMenu, signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'
+import { hydrated, openAudit, openRideMenu, openUserMenu, signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'
 
 test.beforeEach(async ({ page }) => {
   // One instant for the seed and the board, including across 05:00.
@@ -69,6 +69,7 @@ test('the office and the Driver record a landing time in both languages and both
   const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
 
   await page.goto('/transfers')
+  await hydrated(page)
   await openRideMenu(page, guest)
   await page.getByRole('menuitem', { name: 'Zabilježi slijetanje', exact: true }).click()
   await page.locator('#landing-time').fill(landingWall)

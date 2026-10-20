@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 import { instantFromWallClock } from '../shared/date'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
+import { hydrated, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 test.beforeEach(async ({ page }) => {
   // One instant for the seed and the board, including across 05:00.
@@ -94,6 +94,7 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   expect((await page.request.post(`/api/rides/${finishedRideId}/cancel`, { data: {} })).ok()).toBeTruthy()
 
   await page.goto('/transfers')
+  await hydrated(page)
   // A closed Ride still has no correction. Duplicate and return stay on the
   // menu: they only prefill a new Transfer (issue #260).
   await page.getByRole('button', { name: `Radnje: ${finishedGuest}` }).click()
@@ -223,6 +224,7 @@ test('a pickup correction that overlaps asks, and cancel leaves the slideover op
   expect((await page.request.post(`/api/rides/${moving}/assign`, { data: { version: 0, driverId, vehicleId: movingVehicleId } })).ok()).toBeTruthy()
 
   await page.goto('/transfers')
+  await hydrated(page)
   await page.getByRole('button', { name: `Radnje: ${movingGuest}` }).click()
   await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()
   const slideover = page.getByRole('dialog', { name: 'Ispravi ovaj transfer' })
@@ -308,6 +310,7 @@ test('the correction overlap question is in English in the dark theme', async ({
   expect((await page.request.post(`/api/rides/${moving}/assign`, { data: { version: 0, driverId, vehicleId: movingVehicleId } })).ok()).toBeTruthy()
 
   await page.goto('/transfers')
+  await hydrated(page)
   await page.getByRole('button', { name: 'Actions: Nika Clash' }).click()
   await page.getByRole('menuitem', { name: 'Correct transfer', exact: true }).click()
   const slideover = page.getByRole('dialog', { name: 'Correct this transfer' })

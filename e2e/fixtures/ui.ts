@@ -266,6 +266,8 @@ export async function openMembers(page: Page) {
   await page.goto('/settings?tab=members')
   await expect(page.getByRole('heading', { level: 1, name: 'Postavke tvrtke' })).toBeVisible()
   await expect(page.getByRole('button', { name: '+ Pozovi člana', exact: true })).toBeVisible()
+  // The heading is in the server HTML. A Radnje click before Vue hydrates does nothing.
+  await hydrated(page)
 }
 
 /** The invitation modal. Sending again is a new invitation, after this one closes. */

@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, expectNoInvitationCookie, invite, openAudit, signIn } from './fixtures/ui'
+import { chooseOption, expectNoInvitationCookie, hydrated, invite, openAudit, signIn } from './fixtures/ui'
 
 test('an admin opens the audit log from the sidebar, newest first, and can refresh', async ({ page }) => {
   const tenant = await seedTenant('audit-admin')
@@ -12,6 +12,7 @@ test('an admin opens the audit log from the sidebar, newest first, and can refre
   await expect(nav.getByRole('link', { name: 'Revizija', exact: true })).toBeVisible()
 
   await page.goto('/settings?tab=members')
+  await hydrated(page)
   const member = page.getByRole('row', { name: driver.name })
   await member.getByRole('button', { name: `Radnje: ${driver.name}` }).click()
   await page.getByRole('menuitem', { name: 'Promijeni ulogu', exact: true }).click()
