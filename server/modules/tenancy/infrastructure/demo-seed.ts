@@ -261,13 +261,14 @@ async function insertRide(client: PoolClient, picture: DemoPicture, row: DemoRid
   if (clientId === undefined || startId === undefined || endId === undefined)
     throw new DemoSeedError('Could not seed the demo tenant.')
 
+  // external_id reuses this Transfer's id. The office never sees it (ADR-0035).
   await client.query(
     `insert into app.transfers (
        tenant_id, id, client_id, pickup_at, start_location_id, end_location_id,
        passenger_count, guest_name, flight_number, landing_at, price, payment,
-       airport_mark, luggage_count, child_seat_count, note, tabla
+       airport_mark, luggage_count, child_seat_count, note, tabla, external_id
      )
-     values ($1, $2, $3, $4, $5, $6, 2, $7, $8, $9, $10, $11, $12, 1, 0, $13, $14)`,
+     values ($1, $2, $3, $4, $5, $6, 2, $7, $8, $9, $10, $11, $12, 1, 0, $13, $14, $2)`,
     [
       picture.tenantId,
       row.transferId,

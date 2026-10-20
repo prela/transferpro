@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCorrectTransfer, parseCreateTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
+import { canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -68,6 +68,19 @@ it('accepts confirm on a correction and refuses it on a new Transfer', () => {
   expect(() => parseCorrectTransfer(body, now)).toThrow(TransferInputError)
   expect(() => parseCorrectTransfer({ ...body, version: -1 }, now)).toThrow(TransferInputError)
   expect(() => parseCreateTransfer({ ...body, confirm: true }, now)).toThrow(TransferInputError)
+})
+
+it('accepts an optional external id on a new Transfer and refuses it on a correction', () => {
+  const externalId = 'c3c3c3c3-3333-4333-8333-333333333333'
+  expect(parseRecordTransfer(body, now).externalId).toBeNull()
+  expect(parseRecordTransfer({ ...body, externalId }, now)).toMatchObject({
+    externalId,
+    input: { guestName: guest },
+  })
+  expect(parseCreateTransfer({ ...body, externalId }, now).guestName).toBe(guest)
+  expect(() => parseRecordTransfer({ ...body, externalId: 'not-a-uuid' }, now)).toThrow(TransferInputError)
+  expect(() => parseCorrectTransfer({ ...body, version: 0, externalId }, now)).toThrow(TransferInputError)
+  expect(() => parseCorrectTransfer({ ...body, version: 0, channel: 'manual' }, now)).toThrow(TransferInputError)
 })
 
 it('stores a blank tabla as empty text and trims a meet sign of at most 200 characters', () => {

@@ -1,5 +1,5 @@
-import type { RecordedTransfer, TransferDay } from '../../../../shared'
-import { operationalDateInTimeZone, parseCreateTransfer, parseTransferDay } from '../../../../shared'
+import type { RecordedCreate, TransferDay } from '../../../../shared'
+import { operationalDateInTimeZone, parseRecordTransfer, parseTransferDay } from '../../../../shared'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { applyBoardWarnings } from './board-warnings'
 import { loadDeclineAlertsForDay, loadRidesForDay, recordTransfer } from './transfers'
@@ -15,14 +15,15 @@ function officeOnly(role: string): void {
 /**
  * Record a Transfer and its one unassigned Ride.
  * The body is parsed first, so an invalid guest name never opens a session.
- * A driver is 403. The inserts and `transfer.created` commit together.
- * `loadLocation` does not check the role, so the allow-list runs first.
+ * A driver is 403 before the external-id lookup. A repeat returns the stored
+ * Transfer with `alreadyRecorded` and writes nothing. A new one returns
+ * `alreadyRecorded: false`. Both are the caller's HTTP 200.
  */
-export async function createTransfer(headers: Headers, raw: unknown): Promise<RecordedTransfer> {
-  const input = parseCreateTransfer(raw)
+export async function createTransfer(headers: Headers, raw: unknown): Promise<RecordedCreate> {
+  const { input, externalId } = parseRecordTransfer(raw)
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return recordTransfer(transaction, actor.userId, input)
+    return recordTransfer(transaction, actor.userId, input, externalId)
   })
 }
 

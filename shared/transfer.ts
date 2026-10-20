@@ -295,6 +295,16 @@ export const recordedTransferSchema = z.object({
 
 export type RecordedTransfer = z.infer<typeof recordedTransferSchema>
 
+/**
+ * POST /api/transfers. `alreadyRecorded` is true when this external id was
+ * already stored and the body was not applied. A correction does not use it.
+ */
+export const recordedCreateSchema = recordedTransferSchema.extend({
+  alreadyRecorded: z.boolean(),
+})
+
+export type RecordedCreate = z.infer<typeof recordedCreateSchema>
+
 /** One row of the day list: the Ride and the Transfer it executes. */
 export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   rideId: z.uuid(),
@@ -374,12 +384,10 @@ export function sameLocationError(startLocationId: string, endLocationId: string
 }
 
 /**
- * POST /api/transfers. The airport mark is required, so a flight number
- * cannot stand in for it. An unknown key is refused. The pickup window and
- * the same-place rule are applied in {@link parseCreateTransfer}, which is
- * the boundary the route calls, so a refused body never opens a session.
+ * The booking fields. A correction uses this shape alone, so `externalId`
+ * is an unknown key there and is refused (ADR-0035).
  */
-export const createTransferSchema = z.strictObject({
+const transferBookingSchema = z.strictObject({
   clientId: z.uuid(),
   pickupAt: z.iso.datetime(),
   startLocationId: z.uuid(),
@@ -395,6 +403,18 @@ export const createTransferSchema = z.strictObject({
   note: noteSchema.optional(),
   tabla: tablaSchema,
   clientReference: clientReferenceSchema.optional(),
+})
+
+/**
+ * POST /api/transfers. The airport mark is required, so a flight number
+ * cannot stand in for it. An unknown key is refused. `externalId` is
+ * optional in this ticket: absent means the server assigns one, and that
+ * create is not idempotent. The pickup window and the same-place rule are
+ * applied in {@link parseRecordTransfer}, which is the boundary the route
+ * calls, so a refused body never opens a session.
+ */
+export const createTransferSchema = transferBookingSchema.extend({
+  externalId: z.uuid().optional(),
 })
 
 export interface CreateTransfer {
@@ -425,13 +445,33 @@ export class TransferInputError extends Error {
   }
 }
 
+type BookingBody = z.infer<typeof transferBookingSchema>
+
 /**
  * Accepts a new Transfer. Any other body throws first, so the caller does not
  * open a session. `now` is the clock for the pickup window. The route leaves
- * it unset. Tests pass a fixed instant.
+ * it unset. Tests pass a fixed instant. `externalId` is accepted and dropped
+ * here; {@link parseRecordTransfer} is what keeps it.
  */
 export function parseCreateTransfer(raw: unknown, now: Date = new Date()): CreateTransfer {
-  const parsed = createTransferSchema.superRefine((value, ctx) => {
+  return parseRecordTransfer(raw, now).input
+}
+
+/**
+ * The create body, split into the booking and the optional ExternalRef.
+ * A missing `externalId` is null: the server assigns a random one, and that
+ * create is not idempotent. The id is not part of {@link CreateTransfer}.
+ */
+export function parseRecordTransfer(raw: unknown, now: Date = new Date()): { input: CreateTransfer, externalId: string | null } {
+  const parsed = readBooking(createTransferSchema, raw, now)
+  return {
+    input: toCreateTransfer(parsed),
+    externalId: parsed.externalId ?? null,
+  }
+}
+
+function readBooking<T extends BookingBody>(schema: z.ZodType<T>, raw: unknown, now: Date): T {
+  const parsed = schema.superRefine((value, ctx) => {
     if (pickupAtError(value.pickupAt, now)) {
       ctx.addIssue({
         code: 'custom',
@@ -449,32 +489,37 @@ export function parseCreateTransfer(raw: unknown, now: Date = new Date()): Creat
   }).safeParse(raw)
   if (!parsed.success)
     throw new TransferInputError()
-  const cents = priceCents(parsed.data.price)
+  return parsed.data
+}
+
+function toCreateTransfer(parsed: BookingBody): CreateTransfer {
+  const cents = priceCents(parsed.price)
   if (cents === null)
     throw new TransferInputError()
   return {
-    clientId: parsed.data.clientId,
-    pickupAt: parsed.data.pickupAt,
-    startLocationId: parsed.data.startLocationId,
-    endLocationId: parsed.data.endLocationId,
-    passengerCount: parsed.data.passengerCount,
-    guestName: parsed.data.guestName,
-    flightNumber: parsed.data.flightNumber === undefined ? null : parsed.data.flightNumber,
+    clientId: parsed.clientId,
+    pickupAt: parsed.pickupAt,
+    startLocationId: parsed.startLocationId,
+    endLocationId: parsed.endLocationId,
+    passengerCount: parsed.passengerCount,
+    guestName: parsed.guestName,
+    flightNumber: parsed.flightNumber === undefined ? null : parsed.flightNumber,
     price: formatPriceCents(cents),
-    payment: parsed.data.payment,
-    airportMark: parsed.data.airportMark,
-    luggageCount: parsed.data.luggageCount,
-    childSeatCount: parsed.data.childSeatCount,
-    note: parsed.data.note === undefined ? null : parsed.data.note,
-    tabla: parsed.data.tabla,
-    clientReference: parsed.data.clientReference === undefined ? null : parsed.data.clientReference,
+    payment: parsed.payment,
+    airportMark: parsed.airportMark,
+    luggageCount: parsed.luggageCount,
+    childSeatCount: parsed.childSeatCount,
+    note: parsed.note === undefined ? null : parsed.note,
+    tabla: parsed.tabla,
+    clientReference: parsed.clientReference === undefined ? null : parsed.clientReference,
   }
 }
 
 /**
- * PATCH /api/transfers/:id. The booking is the record body. `confirm` is
- * optional and only means the office has already seen a true overlap.
- * The record route does not accept it.
+ * PATCH /api/transfers/:id. The booking is the record body, without the
+ * ExternalRef. `confirm` is optional and only means the office has already
+ * seen a true overlap. The record route does not accept it. `externalId`
+ * is an unknown field and is 400: a correction cannot change the key.
  */
 const correctionEnvelopeSchema = z.object({
   confirm: z.boolean().optional(),
@@ -487,7 +532,8 @@ export function parseCorrectTransfer(raw: unknown, now: Date = new Date()): { in
   if (!envelope.success)
     throw new TransferInputError()
   const { confirm, version, ...booking } = envelope.data
-  return { input: parseCreateTransfer(booking, now), confirm: confirm === true, version }
+  // The booking schema has no key. A body that sends one fails here.
+  return { input: toCreateTransfer(readBooking(transferBookingSchema, booking, now)), confirm: confirm === true, version }
 }
 
 /**

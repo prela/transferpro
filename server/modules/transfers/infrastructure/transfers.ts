@@ -1,9 +1,11 @@
 import type { SQL } from 'drizzle-orm'
-import type { CreateTransfer, DeclineAlert, Ride, Transfer, TransferDayRide, TransferField } from '../../../../shared'
-import type { TenantTransaction } from '../../../core/index'
+import type { CreateTransfer, DeclineAlert, RecordedCreate, Ride, Transfer, TransferDayRide, TransferField } from '../../../../shared'
+import type { Logger, TenantTransaction } from '../../../core/index'
+import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { emptyBoardWarnings, landingAlarmOn, localDayBounds, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, transferPriceSchema } from '../../../../shared'
+import { getLogger } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
@@ -72,15 +74,31 @@ const transferColumns = sql`
 /**
  * Insert one Transfer and its one unassigned Ride, then append
  * `transfer.created` on this transaction. The entry names ids and field
- * names. It does not store the guest name, the flight, the note, the tabla, the Client reference, or the price.
+ * names. It does not store the guest name, the flight, the note, the tabla,
+ * the Client reference, the price, the channel, or the external id.
  * The caller has already required a dispatcher or an admin, and has already
- * checked that role before loading the Client and the Locations.
+ * checked that role before this lookup. A repeat of the same manual
+ * external id returns the stored Transfer and writes nothing.
+ * `externalId` null means the server assigns a random one.
  */
 export async function recordTransfer(
   transaction: TenantTransaction,
   actorUserId: string,
   input: CreateTransfer,
-): Promise<{ transfer: Transfer, ride: Ride }> {
+  externalId: string | null = null,
+  log?: Logger,
+): Promise<RecordedCreate> {
+  const storedExternalId = externalId ?? randomUUID()
+  // A known key is resolved before any catalog read, so a different payload
+  // is not applied and a missing Client does not turn a repeat into an error.
+  if (externalId !== null) {
+    const existing = await loadManualTransfer(transaction, externalId)
+    if (existing) {
+      logAlreadyRecorded(log, existing.transfer.id)
+      return { ...existing, alreadyRecorded: true }
+    }
+  }
+
   const client = (await loadClients(transaction)).find(row => row.id === input.clientId)
   if (!client)
     throw new ClientNotFoundError()
@@ -96,19 +114,28 @@ export async function recordTransfer(
     insert into app.transfers (
       client_id, pickup_at, start_location_id, end_location_id,
       passenger_count, guest_name, flight_number, price, payment,
-      airport_mark, luggage_count, child_seat_count, note, tabla, client_reference
+      airport_mark, luggage_count, child_seat_count, note, tabla, client_reference,
+      channel, external_id
     )
     values (
       ${input.clientId}, ${input.pickupAt}, ${input.startLocationId}, ${input.endLocationId},
       ${input.passengerCount}, ${input.guestName}, ${input.flightNumber}, ${input.price}, ${input.payment},
       ${input.airportMark}, ${input.luggageCount}, ${input.childSeatCount}, ${input.note}, ${input.tabla},
-      ${input.clientReference}
+      ${input.clientReference}, 'manual', ${storedExternalId}
     )
+    on conflict (tenant_id, channel, external_id) do nothing
     returning ${transferColumns}
   `))
   const transferRow = inserted.rows[0]
-  if (!transferRow)
-    throw new Error('Transfer write failed')
+  // The other request committed this key while we were inserting. Read it.
+  // The conflict writes no row, so the audit entry below does not run.
+  if (!transferRow) {
+    const existing = await loadManualTransfer(transaction, storedExternalId)
+    if (!existing)
+      throw new Error('Transfer write failed')
+    logAlreadyRecorded(log, existing.transfer.id)
+    return { ...existing, alreadyRecorded: true }
+  }
   const transfer = toTransfer(transferRow)
 
   const rideInserted = z.object({ rows: z.array(rideRowSchema) }).parse(await writeTransfer(transaction, sql`
@@ -134,7 +161,72 @@ export async function recordTransfer(
       fields: createdFields(input),
     },
   })
-  return { transfer, ride }
+  return { transfer, ride, alreadyRecorded: false }
+}
+
+/**
+ * The manual Transfer already stored under this external id, and its Ride.
+ * Channel and external id are not selected. A miss is null.
+ */
+async function loadManualTransfer(
+  transaction: TenantTransaction,
+  externalId: string,
+): Promise<{ transfer: Transfer, ride: Ride } | null> {
+  const selected = z.object({
+    rows: z.array(transferRowSchema.extend({
+      rideId: z.uuid(),
+      state: rideStateSchema,
+      driverId: z.uuid().nullable(),
+      vehicleId: z.uuid().nullable(),
+      mustAccept: z.boolean().nullable(),
+    })),
+  }).parse(await writeTransfer(transaction, sql`
+    select
+      t.id,
+      t.client_id as "clientId",
+      t.pickup_at as "pickupAt",
+      t.start_location_id as "startLocationId",
+      t.end_location_id as "endLocationId",
+      t.passenger_count as "passengerCount",
+      t.guest_name as "guestName",
+      t.flight_number as "flightNumber",
+      t.price,
+      t.payment,
+      t.airport_mark as "airportMark",
+      t.luggage_count as "luggageCount",
+      t.child_seat_count as "childSeatCount",
+      t.note,
+      t.tabla,
+      t.client_reference as "clientReference",
+      r.id as "rideId",
+      r.state,
+      r.driver_id as "driverId",
+      r.vehicle_id as "vehicleId",
+      r.must_accept as "mustAccept"
+    from app.transfers as t
+    join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
+    where t.channel = 'manual' and t.external_id = ${externalId}
+  `))
+  const row = selected.rows[0]
+  if (!row)
+    return null
+  const { rideId, state, driverId, vehicleId, mustAccept, ...transferRow } = row
+  return {
+    transfer: toTransfer(transferRow),
+    ride: {
+      id: rideId,
+      transferId: transferRow.id,
+      state,
+      driverId,
+      vehicleId,
+      mustAccept,
+    },
+  }
+}
+
+/** One info line. The external id, the guest, and the payload stay off it. */
+function logAlreadyRecorded(log: Logger | undefined, transferId: string): void {
+  ;(log ?? getLogger()).info({ event: 'transfer.already_recorded', transferId }, 'transfer.already_recorded')
 }
 
 /**

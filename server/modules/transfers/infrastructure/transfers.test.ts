@@ -4,6 +4,7 @@ import { Writable } from 'node:stream'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it, vi } from 'vitest'
 import { createLogger, handleLoggedError } from '../../../core/index'
+import { captureLogs } from '../../../core/testing'
 import { ClientNotFoundError } from '../../clients'
 import { LocationArchivedError } from '../../locations'
 import { loadRidesForDay, recordTransfer } from './transfers'
@@ -54,6 +55,8 @@ function fakeTransaction(options: {
   locations?: FakeLocation[]
   dayRows?: unknown[]
   failInsert?: { message: string }
+  /** A manual Transfer already stored under the looked-up external id. */
+  existing?: Record<string, unknown>[]
 }) {
   const queries: Array<{ sql: string, params: unknown[] }> = []
   const transaction: TenantTransaction = {
@@ -61,6 +64,9 @@ function fakeTransaction(options: {
       const compiled = dialect.sqlToQuery(query)
       queries.push(compiled)
       const text = compiled.sql
+      // The idempotent read. The insert also names external_id, and it has no WHERE.
+      if (text.includes('external_id') && text.includes('where'))
+        return { rows: options.existing ?? [] }
       if (options.failInsert && text.includes('insert into app.transfers'))
         throw new Error(options.failInsert.message)
       if (text.includes('from app.clients'))
@@ -175,6 +181,7 @@ it('records one unassigned Ride and names fields, not the guest, the flight, the
       vehicleId: null,
       mustAccept: null,
     },
+    alreadyRecorded: false,
   })
   const payload = auditPayloads(queries)
   expect(payload).toEqual([
@@ -193,6 +200,49 @@ it('records one unassigned Ride and names fields, not the guest, the flight, the
   expect(auditText).not.toContain(note)
   expect(auditText).not.toContain('42.50')
   expect(queries.filter(query => query.sql.includes('insert into app.rides'))).toHaveLength(1)
+})
+
+it('returns the stored Transfer when the manual external id is already recorded and writes nothing', async () => {
+  const externalId = 'f4f4f4f4-4444-4444-8444-444444444444'
+  const logs = captureLogs()
+  const { transaction, queries } = fakeTransaction({
+    existing: [{
+      id: transferId,
+      clientId,
+      pickupAt: '2026-10-06T22:30:00.000Z',
+      startLocationId,
+      endLocationId,
+      passengerCount: 2,
+      guestName: guest,
+      flightNumber: flight,
+      price: '42.50',
+      payment: 'cash',
+      airportMark: false,
+      luggageCount: 1,
+      childSeatCount: 0,
+      note,
+      tabla: '',
+      clientReference: null,
+      rideId,
+      state: 'unassigned',
+      driverId: null,
+      vehicleId: null,
+      mustAccept: null,
+    }],
+  })
+  await expect(recordTransfer(transaction, actorUserId, { ...input, guestName: 'Netko Drugi' }, externalId, logs.logger)).resolves.toMatchObject({
+    alreadyRecorded: true,
+    transfer: { id: transferId, guestName: guest },
+    ride: { id: rideId, state: 'unassigned' },
+  })
+  expect(queries.some(query => query.sql.includes('insert into app.transfers'))).toBe(false)
+  expect(queries.some(query => query.params[0] === 'transfer.created')).toBe(false)
+  const line = logs.lines()[0]
+  expect(line).toMatchObject({ event: 'transfer.already_recorded', transferId })
+  const text = JSON.stringify(line)
+  expect(text).not.toContain(externalId)
+  expect(text).not.toContain(guest)
+  expect(text).not.toContain('Netko Drugi')
 })
 
 it('stores a tabla as its own fact, names the field, and keeps the words off the audit entry', async () => {

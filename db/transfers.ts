@@ -59,6 +59,12 @@ export const transfers = tenantTable('transfers', {
   tabla: text('tabla').notNull().default(''),
   // The Client's own booking number. Optional, not unique, and not an ExternalRef.
   clientReference: text('client_reference'),
+  // Manual entry is the only channel in v1 (ADR-0035). The office never sends this.
+  channel: text('channel').notNull().default('manual'),
+  // The channel's own identity for this Transfer. Text, so a later channel can
+  // store its own booking id. No default: the migration fills stored rows once,
+  // then drops that default. An insert that omits it fails.
+  externalId: text('external_id').notNull(),
   // One version covers this Transfer and its Ride (ADR-0046). A constant
   // default leaves existing rows at 0 without a table rewrite. The time and
   // the member stay null until an office data save.
@@ -69,6 +75,8 @@ export const transfers = tenantTable('transfers', {
   dataChangedBy: text('data_changed_by'),
 }, table => [
   uniqueIndex('transfers_tenant_id_id').on(table.tenantId, table.id),
+  // One ExternalRef per Tenant. The same external_id may exist in another Tenant.
+  uniqueIndex('transfers_tenant_channel_external_id').on(table.tenantId, table.channel, table.externalId),
   // The day list reads one Tenant's pickups in instant order.
   index('transfers_tenant_pickup_at').on(table.tenantId, table.pickupAt),
   foreignKey({
@@ -96,6 +104,8 @@ export const transfers = tenantTable('transfers', {
   check('transfers_note', sql`${table.note} is null or (${table.note} = btrim(${table.note}) and length(${table.note}) between 1 and ${noteMax})`),
   check('transfers_tabla', sql`${table.tabla} = btrim(${table.tabla}) and length(${table.tabla}) <= ${tablaMax}`),
   check('transfers_client_reference', sql`${table.clientReference} is null or (${table.clientReference} = btrim(${table.clientReference}) and length(${table.clientReference}) between 1 and ${referenceMax})`),
+  // The known channels. v1 has manual entry only.
+  check('transfers_channel', sql`${table.channel} in ('manual')`),
   check('transfers_version', sql`${table.version} >= 0`),
   // Version 0 has no recorded change. A later version names when and who.
   check('transfers_data_change', sql`(${table.version} = 0 and ${table.dataChangedAt} is null and ${table.dataChangedBy} is null) or (${table.version} >= 1 and ${table.dataChangedAt} is not null and ${table.dataChangedBy} <> '')`),

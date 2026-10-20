@@ -87,8 +87,8 @@ const transferInsert = `
   insert into app.transfers (
     client_id, pickup_at, start_location_id, end_location_id,
     passenger_count, guest_name, flight_number, price, payment,
-    airport_mark, luggage_count, child_seat_count, note
-  ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    airport_mark, luggage_count, child_seat_count, note, external_id
+  ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, gen_random_uuid()::text)
 `
 
 it('forces row level security on transfers and rides', async () => {
@@ -130,8 +130,8 @@ it('tenant B cannot read or write Tenant A decline alerts', async () => {
     const transfer = await client.query<{ id: string }>(
       `insert into app.transfers (
         client_id, pickup_at, start_location_id, end_location_id,
-        passenger_count, guest_name, price, payment, airport_mark, luggage_count, child_seat_count
-      ) values ($1, '2026-10-06T22:30:00.000Z', $2, $3, 1, 'Gost Odbij', 10.00, 'cash', false, 0, 0)
+        passenger_count, guest_name, price, payment, airport_mark, luggage_count, child_seat_count, external_id
+      ) values ($1, '2026-10-06T22:30:00.000Z', $2, $3, 1, 'Gost Odbij', 10.00, 'cash', false, 0, 0, gen_random_uuid()::text)
       returning id`,
       [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id],
     )
@@ -185,8 +185,8 @@ it('tenant B cannot read or change Tenant A transfers or rides, and a second Rid
       `insert into app.transfers (
         client_id, pickup_at, start_location_id, end_location_id,
         passenger_count, guest_name, flight_number, price, payment,
-        airport_mark, luggage_count, child_seat_count, note, tabla
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        airport_mark, luggage_count, child_seat_count, note, tabla, external_id
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, gen_random_uuid()::text)
       returning id`,
       [
         clientRow.rows[0]?.id,
@@ -241,8 +241,8 @@ it('tenant B cannot read or change Tenant A transfers or rides, and a second Rid
 
   await expect(withTenant(tenantB, client =>
     client.query(
-      `insert into app.transfers (tenant_id, client_id, pickup_at, start_location_id, end_location_id, passenger_count, guest_name, price, payment, airport_mark, luggage_count, child_seat_count)
-       values ($1, $2, '2026-10-06T10:00:00.000Z', $2, $2, 1, 'Skriveno', 10, 'cash', false, 0, 0)`,
+      `insert into app.transfers (tenant_id, client_id, pickup_at, start_location_id, end_location_id, passenger_count, guest_name, price, payment, airport_mark, luggage_count, child_seat_count, external_id)
+       values ($1, $2, '2026-10-06T10:00:00.000Z', $2, $2, 1, 'Skriveno', 10, 'cash', false, 0, 0, gen_random_uuid()::text)`,
       [tenantA, seeded.clientId],
     ))).rejects.toMatchObject({ code: '42501' })
 
@@ -286,8 +286,8 @@ it('tenant B cannot read a Client reference stored by Tenant A', async () => {
       `insert into app.transfers (
         client_id, pickup_at, start_location_id, end_location_id,
         passenger_count, guest_name, price, payment, airport_mark,
-        luggage_count, child_seat_count, client_reference
-      ) values ($1, '2026-10-06T10:00:00.000Z', $2, $3, 1, 'Ana Anić', 10, 'cash', false, 0, 0, 'V-19')
+        luggage_count, child_seat_count, client_reference, external_id
+      ) values ($1, '2026-10-06T10:00:00.000Z', $2, $3, 1, 'Ana Anić', 10, 'cash', false, 0, 0, 'V-19', gen_random_uuid()::text)
       returning client_reference`,
       [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id],
     )
@@ -314,8 +314,8 @@ it('tenant B cannot read a Client reference stored by Tenant A', async () => {
       `insert into app.transfers (
         client_id, pickup_at, start_location_id, end_location_id,
         passenger_count, guest_name, price, payment, airport_mark,
-        luggage_count, child_seat_count, client_reference
-      ) values ($1, '2026-10-06T11:00:00.000Z', $2, $3, 1, 'Ana Anić', 10, 'cash', false, 0, 0, $4)`,
+        luggage_count, child_seat_count, client_reference, external_id
+      ) values ($1, '2026-10-06T11:00:00.000Z', $2, $3, 1, 'Ana Anić', 10, 'cash', false, 0, 0, $4, gen_random_uuid()::text)`,
       [row?.client_id, row?.start_location_id, row?.end_location_id, `  V-19  `],
     )
   })).rejects.toMatchObject({ code: '23514' })
@@ -523,8 +523,8 @@ it('tenant B cannot read or write Tenant A landing time, and the ask lists only 
       `insert into app.transfers (
         client_id, pickup_at, start_location_id, end_location_id,
         passenger_count, guest_name, flight_number, price, payment,
-        airport_mark, luggage_count, child_seat_count, landing_at
-      ) values ($1, now(), $2, $3, 1, 'Ana Anić', 'OU 384', 10, 'cash', true, 0, 0, $4)
+        airport_mark, luggage_count, child_seat_count, landing_at, external_id
+      ) values ($1, now(), $2, $3, 1, 'Ana Anić', 'OU 384', 10, 'cash', true, 0, 0, $4, gen_random_uuid()::text)
       returning id`,
       [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id, landing],
     )
@@ -549,8 +549,8 @@ it('tenant B cannot read or write Tenant A landing time, and the ask lists only 
       `insert into app.transfers (
         client_id, pickup_at, start_location_id, end_location_id,
         passenger_count, guest_name, flight_number, price, payment,
-        airport_mark, luggage_count, child_seat_count
-      ) values ($1, now(), $2, $3, 1, 'Iva Druga', 'OU 392', 10, 'cash', false, 0, 0)`,
+        airport_mark, luggage_count, child_seat_count, external_id
+      ) values ($1, now(), $2, $3, 1, 'Iva Druga', 'OU 392', 10, 'cash', false, 0, 0, gen_random_uuid()::text)`,
       [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id],
     )
   })
@@ -661,8 +661,8 @@ it('tenant B cannot read or write Tenant A expected arrival', async () => {
       `insert into app.transfers (
         client_id, pickup_at, start_location_id, end_location_id,
         passenger_count, guest_name, flight_number, price, payment,
-        airport_mark, luggage_count, child_seat_count, expected_arrival_at, expected_arrival_basis_at
-      ) values ($1, now(), $2, $3, 1, 'Ana Dolazak', 'OU 384', 10, 'cash', true, 0, 0, $4, $4)
+        airport_mark, luggage_count, child_seat_count, expected_arrival_at, expected_arrival_basis_at, external_id
+      ) values ($1, now(), $2, $3, 1, 'Ana Dolazak', 'OU 384', 10, 'cash', true, 0, 0, $4, $4, gen_random_uuid()::text)
       returning id`,
       [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id, arrival],
     )
