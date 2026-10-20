@@ -192,6 +192,21 @@ it('rejects a Clients import of the transfers module', async () => {
   expect(await clientsTransfersImport('server/modules/locations/index.ts', source)).toEqual([])
 })
 
+async function partnersTransfersImport(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? []).filter(message =>
+    message.ruleId === 'transferpro/no-partners-transfers-import',
+  )
+}
+
+it('rejects a Partners import of the transfers module', async () => {
+  const source = `import { bookRide } from '../../transfers'\n`
+  const dynamic = `await import('../transfers/index')\n`
+  expect(await partnersTransfersImport('server/modules/partners/infrastructure/partners.ts', source)).not.toEqual([])
+  expect(await partnersTransfersImport('server/modules/partners/index.ts', dynamic)).not.toEqual([])
+  expect(await partnersTransfersImport('server/modules/clients/index.ts', source)).toEqual([])
+})
+
 async function transfersCatalogDeepImport(filePath: string, source: string) {
   const [result] = await eslint.lintText(source, { filePath })
   return (result?.messages ?? []).filter(message =>
@@ -199,15 +214,18 @@ async function transfersCatalogDeepImport(filePath: string, source: string) {
   )
 }
 
-it('rejects a Transfers deep import of Clients, Locations, or Vehicles', async () => {
+it('rejects a Transfers deep import of Clients, Locations, Vehicles, or Partners', async () => {
   const clients = `import { loadClients } from '../../clients/infrastructure/clients'\n`
   const locations = `await import('../locations/infrastructure/locations')\n`
   const vehicles = `import { loadVehicle } from '../../vehicles/infrastructure/vehicles'\n`
+  const partners = `import { loadActivePartnerIds } from '../../partners/infrastructure/partners'\n`
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', clients)).not.toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/index.ts', locations)).not.toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/driver-ride-access.ts', vehicles)).not.toEqual([])
+  expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', partners)).not.toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', `import { loadClients } from '../../clients'\n`)).toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/driver-ride-access.ts', `import { loadVehicle } from '../../vehicles'\n`)).toEqual([])
+  expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', `import { loadActivePartnerIds } from '../../partners'\n`)).toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/locations/infrastructure/locations.ts', clients)).toEqual([])
 })
 

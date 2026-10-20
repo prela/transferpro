@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, CLIENT_KINDS, CONTACT_PERSON_ADDED_FIELD_LISTS, CONTACT_PERSON_CHANGED_FIELD_LISTS, DRIVER_FIELDS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_LANDING_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, CLIENT_KINDS, CONTACT_PERSON_ADDED_FIELD_LISTS, CONTACT_PERSON_CHANGED_FIELD_LISTS, DRIVER_FIELDS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, PARTNER_CHANGED_FIELD_LISTS, PARTNER_CREATED_FIELD_LISTS, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_LANDING_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -270,6 +270,15 @@ function contactPersonFields(data: AnyPgColumn, lists: readonly (readonly string
   return sql`${keysOnly(data, 'clientId', 'contactPersonId', 'fields')} and ${uuidText(data, 'clientId')} and ${uuidText(data, 'contactPersonId')} and ${data} -> ${sql.raw(`'fields'`)} in (${sql.raw(allowed)})`
 }
 
+/**
+ * `fields` is one of the canonical Partner arrays. Equality refuses a name,
+ * a phone, an email, a note, or a different order.
+ */
+function partnerFields(data: AnyPgColumn, lists: readonly (readonly string[])[]) {
+  const allowed = lists.map(list => `'${JSON.stringify(list)}'::jsonb`).join(', ')
+  return sql`${keysOnly(data, 'partnerId', 'fields')} and ${uuidText(data, 'partnerId')} and ${data} -> ${sql.raw(`'fields'`)} in (${sql.raw(allowed)})`
+}
+
 /** A change names the instants it moved: one of them, or both once each. */
 function unavailabilityChangedFields(data: AnyPgColumn) {
   const fields = sql.raw(`'fields'`)
@@ -350,6 +359,10 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'contact_person.added' then ${table.subjectUserId} is null and ${contactPersonFields(table.data, CONTACT_PERSON_ADDED_FIELD_LISTS)}
     when 'contact_person.changed' then ${table.subjectUserId} is null and ${contactPersonFields(table.data, CONTACT_PERSON_CHANGED_FIELD_LISTS)}
     when 'contact_person.removed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'contactPersonId', 'fields')} and ${uuidText(table.data, 'clientId')} and ${uuidText(table.data, 'contactPersonId')} and ${table.data} -> 'fields' = '["removed"]'::jsonb
+    when 'partner.created' then ${table.subjectUserId} is null and ${partnerFields(table.data, PARTNER_CREATED_FIELD_LISTS)}
+    when 'partner.changed' then ${table.subjectUserId} is null and ${partnerFields(table.data, PARTNER_CHANGED_FIELD_LISTS)}
+    when 'partner.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'partnerId')} and ${uuidText(table.data, 'partnerId')}
+    when 'partner.restored' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'partnerId')} and ${uuidText(table.data, 'partnerId')}
     when 'tenant.renamed' then ${table.subjectUserId} is null and ${emptyData(table.data)}
     when 'tenant.suspended' then ${table.subjectUserId} is null and ${emptyData(table.data)}
     when 'tenant.reactivated' then ${table.subjectUserId} is null and ${emptyData(table.data)}

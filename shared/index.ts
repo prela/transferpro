@@ -46,6 +46,8 @@ export { buildOfficeHome, failedMailResendSchema, HOME_ATTENTION_KINDS, OFFICE_H
 export type { HomeAttentionKind, OfficeHome, OfficeHomeAttentionGroup, OfficeHomeBlockRide, OfficeHomeBlocks, OfficeHomeCountKey, OfficeHomeDecline, OfficeHomeMark, OfficeHomeRide } from './office-home'
 export { accountInitials, officeNav, officePhoneBar } from './office-nav'
 export type { OfficeNavGroup, OfficeNavLabels, OfficeNavLink, OfficeNavRole } from './office-nav'
+export { parseCreatePartner, parsePartnerPatch, PARTNER_CHANGED_FIELD_LISTS, PARTNER_CREATED_FIELD_LISTS, PARTNER_FIELDS, PARTNER_NAME_MAX_LENGTH, PARTNER_NOTE_MAX_LENGTH, partnerChangedFields, partnerChangedFieldsSchema, partnerCreatedFields, partnerCreatedFieldsSchema, PartnerInputError, partnerListSchema, partnerNameSchema, partnerNoteSchema, partnerSchema } from './partner'
+export type { CreatePartner, Partner, PartnerField, PartnerList, PartnerPatch } from './partner'
 export { companyAccountListSchema, companyAccountSchema, parsePlatformTenantListQuery, parseRenameTenantAccount, PLATFORM_TENANT_PAGE_SIZE, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './platform-account'
 export type { CompanyAccount, CompanyAccountList, PlatformActor, PlatformShell } from './platform-account'
 export { includeArchivedQuerySchema, parseIncludeArchivedQuery, QueryParamError } from './query'
