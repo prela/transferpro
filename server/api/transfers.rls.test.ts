@@ -1,20 +1,26 @@
 import type { TenantRole } from '../../shared'
+import type { TenantTransaction } from '../core/index'
 import { loadEnvFile } from 'node:process'
 import { hashPassword } from 'better-auth/crypto'
+import { sql } from 'drizzle-orm'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../../shared'
+import { configureLogger } from '../core/index'
 import { captureLogs } from '../core/testing'
 import { createClient, updateClient } from '../modules/clients'
 import { createDriver, updateDriver } from '../modules/drivers'
 import { archiveLocation, createLocation } from '../modules/locations'
-import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale } from '../modules/tenancy'
+import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale, withTenantFromSession } from '../modules/tenancy'
 import { acceptRide, assignRide as assignRideRaw, correctTransfer as correctTransferRaw, declineRide, listTransferDay, listUpcomingRides, readOfficeHome } from '../modules/transfers'
 import { createVehicle } from '../modules/vehicles'
 import getTransfers from './transfers.get'
 import postTransfer from './transfers.post'
 import patchTransfer from './transfers/[id].patch'
+import getRideExport from './transfers/export.get'
+import getTransferSearch from './transfers/search.get'
 
 /**
  * GET, POST, and PATCH /api/transfers.
@@ -23,6 +29,7 @@ import patchTransfer from './transfers/[id].patch'
  */
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
+configureLogger('info')
 
 function required(name: string): string {
   const value = process.env[name]
@@ -46,8 +53,12 @@ const authUrl = required('BETTER_AUTH_URL')
 
 const app = createApp()
 app.use('/api/transfers', (event) => {
-  const pathOnly = (event.path.split('?')[0] ?? '/').replace(/\/$/, '')
+  const pathOnly = (event.path.split('?')[0] ?? '/').replace(/\/$/, '').replace(/^\/api\/transfers/, '')
   // The mount strips `/api/transfers`, so a correction is `/<id>`.
+  if (pathOnly === '/search')
+    return getTransferSearch(event)
+  if (pathOnly === '/export')
+    return getRideExport(event)
   if (event.method === 'PATCH') {
     event.context.params = { id: pathOnly.split('/').filter(Boolean).at(-1) ?? '' }
     return patchTransfer(event)
@@ -293,8 +304,9 @@ async function seedRide(
   const inserted = await ownerPool.query<{ id: string }>(
     `insert into app.transfers (
       tenant_id, client_id, pickup_at, start_location_id, end_location_id,
-      passenger_count, guest_name, price, payment, airport_mark, luggage_count, child_seat_count
-    ) values ($1, $2, $3, $4, $5, 1, $6, 10.00, 'cash', false, 0, 0)
+      passenger_count, guest_name, price, payment, airport_mark, luggage_count, child_seat_count,
+      external_id
+    ) values ($1, $2, $3, $4, $5, 1, $6, 10.00, 'cash', false, 0, 0, gen_random_uuid()::text)
     returning id`,
     [tenantId, clientId, pickupAt, startId, endId, guestName],
   )
@@ -2370,4 +2382,338 @@ it('does not show another tenant author, and a member who left has no name', asy
   const formerText = JSON.stringify(await listTransferDay(office.dispatcher, day))
   expect(formerText).not.toContain('Bivši Član')
   expect(formerText).not.toContain(leftId)
+})
+
+function carriesExternalRef(value: unknown): boolean {
+  if (Array.isArray(value))
+    return value.some(carriesExternalRef)
+  if (value !== null && typeof value === 'object') {
+    return Object.entries(value).some(([key, item]) =>
+      key === 'channel' || key === 'externalId' || key === 'external_id' || carriesExternalRef(item))
+  }
+  return false
+}
+
+async function externalRef(transferId: string) {
+  const result = await ownerPool.query<{ channel: string, external_id: string }>(
+    `select channel, external_id from app.transfers where id = $1`,
+    [transferId],
+  )
+  return result.rows[0]
+}
+
+async function createdAudits(tenantId: string) {
+  const result = await ownerPool.query<{ action: string, data: unknown }>(
+    `select action::text as action, data
+     from app.audit_entry
+     where tenant_id = $1 and action = 'transfer.created'`,
+    [tenantId],
+  )
+  return result.rows
+}
+
+async function jobCount(tenantId: string) {
+  const result = await ownerPool.query<{ count: string }>(
+    `select count(*) from pgboss.job where data::text like $1`,
+    [`%${tenantId}%`],
+  )
+  return Number(result.rows[0]?.count)
+}
+
+const backendRows = z.object({ rows: z.array(z.object({ pid: z.number().int() })) })
+
+async function backendPid(transaction: TenantTransaction): Promise<number> {
+  const pid = backendRows.parse(await transaction.execute(sql`select pg_backend_pid() as pid`)).rows[0]?.pid
+  if (pid === undefined)
+    throw new Error('no backend pid')
+  return pid
+}
+
+/** `waited` when the route is blocked by the held insert before it answers. */
+async function answeredOrWaited(holder: number, sent: Promise<Response>): Promise<'answered' | 'waited'> {
+  const route = { answered: false }
+  void sent.then(() => {
+    route.answered = true
+  }, () => {
+    route.answered = true
+  })
+  const watcher = await appPool.connect()
+  try {
+    while (!route.answered) {
+      const blocked = await watcher.query(
+        'select pid from pg_stat_activity where $1 = any(pg_blocking_pids(pid))',
+        [holder],
+      )
+      if ((blocked.rowCount ?? 0) > 0 && !route.answered)
+        return 'waited'
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    return 'answered'
+  }
+  finally {
+    watcher.release()
+  }
+}
+
+/**
+ * Insert one manual Transfer in a real Tenant session and keep that
+ * transaction open while the route posts the same external id.
+ */
+async function whileTransferHeld(
+  session: Headers,
+  held: {
+    clientId: string
+    startId: string
+    endId: string
+    pickupAt: string
+    externalId: string
+    guestName: string
+  },
+  second: () => Promise<Response>,
+): Promise<{ order: 'answered' | 'waited', response: Response }> {
+  let sent: Promise<Response> | undefined
+  const order = await withTenantFromSession(session, async ({ transaction }) => {
+    await transaction.execute(sql`
+      insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, price, payment, airport_mark,
+        luggage_count, child_seat_count, channel, external_id
+      ) values (
+        ${held.clientId}, ${held.pickupAt}, ${held.startId}, ${held.endId},
+        1, ${held.guestName}, 10.00, 'cash', false,
+        0, 0, 'manual', ${held.externalId}
+      )
+    `)
+    await transaction.execute(sql`
+      insert into app.rides (transfer_id, state)
+      select id, 'unassigned' from app.transfers
+      where channel = 'manual' and external_id = ${held.externalId}
+    `)
+    sent = second()
+    return answeredOrWaited(await backendPid(transaction), sent)
+  })
+  if (!sent)
+    throw new Error('second command was not sent')
+  return { order, response: await sent }
+}
+
+it('records the same manual external id once, and a body without the key still records', async () => {
+  const created = await tenant('htr-ext-once', 'Hana Admin')
+  const dispatcher = await signIn('htr-ext-once-admin@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Ključ', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Polazak Ključ', kind: 'address' })
+  const end = await createLocation(dispatcher, { name: 'Dolazak Ključ', kind: 'hotel' })
+  const pickupAt = pickupInsideWindow()
+  const externalId = 'a7a7a7a7-1717-4171-8171-171717171717'
+  const body = correctionBody(client.id, start.id, end.id, pickupAt, { guestName: 'Ana Ključ' })
+  const info = vi.spyOn(configureLogger('info'), 'info')
+
+  const first = await call('POST', '/api/transfers', dispatcher, { ...body, externalId })
+  expect(first.status).toBe(200)
+  const recorded = await first.json() as { alreadyRecorded: boolean, transfer: { id: string, guestName: string }, ride: { id: string } }
+  expect(recorded.alreadyRecorded).toBe(false)
+  expect(carriesExternalRef(recorded)).toBe(false)
+  expect(await externalRef(recorded.transfer.id)).toEqual({ channel: 'manual', external_id: externalId })
+
+  const jobs = await jobCount(created.tenantId)
+  const repeat = await call('POST', '/api/transfers', dispatcher, {
+    ...body,
+    externalId,
+    guestName: 'Netko Drugi',
+    price: 99,
+  })
+  expect(repeat.status).toBe(200)
+  const again = await repeat.json() as { alreadyRecorded: boolean, transfer: { id: string, guestName: string, price: string }, ride: { id: string } }
+  expect(again).toMatchObject({
+    alreadyRecorded: true,
+    transfer: { id: recorded.transfer.id, guestName: 'Ana Ključ', price: '42.50' },
+    ride: { id: recorded.ride.id },
+  })
+  expect(carriesExternalRef(again)).toBe(false)
+  expect(await tenantCounts(created.tenantId)).toMatchObject({ transfers: 1, rides: 1 })
+  const audits = await createdAudits(created.tenantId)
+  expect(audits).toHaveLength(1)
+  expect(audits[0]?.action).toBe('transfer.created')
+  expect(JSON.stringify(audits)).not.toContain(externalId)
+  expect(JSON.stringify(audits)).not.toContain('channel')
+  expect(JSON.stringify(audits)).not.toContain('Ana Ključ')
+  expect(await jobCount(created.tenantId)).toBe(jobs)
+  expect(await externalRef(recorded.transfer.id)).toEqual({ channel: 'manual', external_id: externalId })
+  const logged = info.mock.calls.filter((callArgs) => {
+    const payload = callArgs[0]
+    return payload !== null && typeof payload === 'object' && 'event' in payload && payload.event === 'transfer.already_recorded'
+  })
+  expect(logged).toEqual([[{ event: 'transfer.already_recorded', transferId: recorded.transfer.id }, 'transfer.already_recorded']])
+  info.mockRestore()
+
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date(pickupAt))
+  const listed = await call('GET', `/api/transfers?date=${day}`, dispatcher)
+  expect(listed.status).toBe(200)
+  expect(carriesExternalRef(await listed.json())).toBe(false)
+  const found = await call('GET', '/api/transfers/search?q=Ključ', dispatcher)
+  expect(found.status).toBe(200)
+  expect(carriesExternalRef(await found.json())).toBe(false)
+  const calendar = calendarDateInTimeZone('Europe/Zagreb', new Date(pickupAt))
+  const file = await call('GET', `/api/transfers/export?from=${calendar}&to=${calendar}`, dispatcher)
+  expect(file.status).toBe(200)
+  const csv = await file.text()
+  expect(csv).not.toContain('external')
+  expect(csv.toLowerCase()).not.toContain('channel')
+
+  const plain = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { guestName: 'Bez Ključa' }))
+  expect(plain.status).toBe(200)
+  const unkeyed = await plain.json() as { alreadyRecorded: boolean, transfer: { id: string } }
+  expect(unkeyed.alreadyRecorded).toBe(false)
+  expect(carriesExternalRef(unkeyed)).toBe(false)
+  const assigned = await externalRef(unkeyed.transfer.id)
+  expect(assigned?.channel).toBe('manual')
+  expect(assigned?.external_id).toMatch(/^[0-9a-f-]{36}$/i)
+  expect(assigned?.external_id).not.toBe(externalId)
+  expect(await tenantCounts(created.tenantId)).toMatchObject({ transfers: 2, rides: 2 })
+})
+
+it('a driver is refused before the external id is looked up', async () => {
+  const created = await tenant('htr-ext-driver', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-ext-driver-driver@example.test', 'Drago Driver', 'driver')
+  const dispatcher = await signIn('htr-ext-driver-admin@example.test')
+  const driver = await signIn('htr-ext-driver-driver@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Vozač', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Polazak Vozač', kind: 'address' })
+  const end = await createLocation(dispatcher, { name: 'Dolazak Vozač', kind: 'hotel' })
+  const externalId = 'b8b8b8b8-1818-4181-8181-181818181818'
+  const body = correctionBody(client.id, start.id, end.id, pickupInsideWindow(), { externalId, guestName: 'Ana Vozač' })
+  expect((await call('POST', '/api/transfers', dispatcher, body)).status).toBe(200)
+  const info = vi.spyOn(configureLogger('info'), 'info')
+  const refused = await call('POST', '/api/transfers', driver, { ...body, guestName: 'Drugi' })
+  expect(refused.status).toBe(403)
+  expect(await tenantCounts(created.tenantId)).toMatchObject({ transfers: 1, rides: 1 })
+  expect(info.mock.calls.some(callArgs => JSON.stringify(callArgs).includes('transfer.already_recorded'))).toBe(false)
+  info.mockRestore()
+})
+
+it('accepts the same external id in two Tenants, and Tenant A does not find Tenant B', async () => {
+  const left = await tenant('htr-ext-a', 'Hana Admin')
+  const right = await tenant('htr-ext-b', 'Borna Admin')
+  const officeA = await signIn('htr-ext-a-admin@example.test')
+  const officeB = await signIn('htr-ext-b-admin@example.test')
+  const clientA = await createClient(officeA, { name: 'Agencija A', kind: 'agency' })
+  const startA = await createLocation(officeA, { name: 'Polazak A', kind: 'address' })
+  const endA = await createLocation(officeA, { name: 'Dolazak A', kind: 'hotel' })
+  const clientB = await createClient(officeB, { name: 'Agencija B', kind: 'agency' })
+  const startB = await createLocation(officeB, { name: 'Polazak B', kind: 'address' })
+  const endB = await createLocation(officeB, { name: 'Dolazak B', kind: 'hotel' })
+  const externalId = 'c9c9c9c9-1919-4191-8191-191919191919'
+  const pickupAt = pickupInsideWindow()
+  const first = await call('POST', '/api/transfers', officeA, correctionBody(clientA.id, startA.id, endA.id, pickupAt, { externalId, guestName: 'Ana A' }))
+  const second = await call('POST', '/api/transfers', officeB, correctionBody(clientB.id, startB.id, endB.id, pickupAt, { externalId, guestName: 'Ana B' }))
+  expect(first.status).toBe(200)
+  expect(second.status).toBe(200)
+  const bodyA = await first.json() as { alreadyRecorded: boolean, transfer: { id: string, guestName: string } }
+  const bodyB = await second.json() as { alreadyRecorded: boolean, transfer: { id: string, guestName: string } }
+  expect(bodyA.alreadyRecorded).toBe(false)
+  expect(bodyB.alreadyRecorded).toBe(false)
+  expect(bodyA.transfer.id).not.toBe(bodyB.transfer.id)
+  const seenByA = await ownerPool.query<{ id: string }>(
+    `select id from app.transfers where tenant_id = $1 and external_id = $2`,
+    [left.tenantId, externalId],
+  )
+  expect(seenByA.rows.map(row => row.id)).toEqual([bodyA.transfer.id])
+  const repeatA = await call('POST', '/api/transfers', officeA, correctionBody(clientA.id, startA.id, endA.id, pickupAt, { externalId, guestName: 'Ana B' }))
+  expect(repeatA.status).toBe(200)
+  const again = await repeatA.json() as { alreadyRecorded: boolean, transfer: { id: string, guestName: string } }
+  expect(again).toMatchObject({ alreadyRecorded: true, transfer: { id: bodyA.transfer.id, guestName: 'Ana A' } })
+  expect(await tenantCounts(left.tenantId)).toMatchObject({ transfers: 1 })
+  expect(await tenantCounts(right.tenantId)).toMatchObject({ transfers: 1 })
+})
+
+it('a held insert settles the concurrent create onto that one Transfer', async () => {
+  const created = await tenant('htr-ext-race', 'Hana Admin')
+  const dispatcher = await signIn('htr-ext-race-admin@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Utrka', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Polazak Utrka', kind: 'address' })
+  const end = await createLocation(dispatcher, { name: 'Dolazak Utrka', kind: 'hotel' })
+  const externalId = 'd0d0d0d0-2020-4202-8202-202020202020'
+  const pickupAt = pickupInsideWindow()
+  const { order, response } = await whileTransferHeld(dispatcher, {
+    clientId: client.id,
+    startId: start.id,
+    endId: end.id,
+    pickupAt,
+    externalId,
+    guestName: 'Held Guest',
+  }, () => call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+    externalId,
+    guestName: 'Other Guest',
+  })))
+  expect(order).toBe('waited')
+  expect(response.status).toBe(200)
+  const recorded = await response.json() as { alreadyRecorded: boolean, transfer: { guestName: string } }
+  expect(recorded.alreadyRecorded).toBe(true)
+  expect(recorded.transfer.guestName).toBe('Held Guest')
+  expect(carriesExternalRef(recorded)).toBe(false)
+  expect(await tenantCounts(created.tenantId)).toMatchObject({ transfers: 1, rides: 1 })
+  expect(await createdAudits(created.tenantId)).toEqual([])
+  const stored = await ownerPool.query<{ guest_name: string }>(
+    `select guest_name from app.transfers where tenant_id = $1`,
+    [created.tenantId],
+  )
+  expect(stored.rows).toEqual([{ guest_name: 'Held Guest' }])
+})
+
+it('a correction leaves the external ref unchanged and refuses a body that sends the key', async () => {
+  const created = await tenant('htr-ext-fix', 'Hana Admin')
+  const dispatcher = await signIn('htr-ext-fix-admin@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Ispravak', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Polazak Ispravak', kind: 'address' })
+  const end = await createLocation(dispatcher, { name: 'Dolazak Ispravak', kind: 'hotel' })
+  const pickupAt = pickupInsideWindow()
+  const externalId = 'e1e1e1e1-2121-4212-8212-212121212121'
+  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+    externalId,
+    guestName: 'Ana Ispravak',
+  }))
+  const createdBody = await recorded.json() as { transfer: { id: string } }
+  const before = await externalRef(createdBody.transfer.id)
+  const refused = await call('PATCH', `/api/transfers/${createdBody.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+    externalId: 'f2f2f2f2-2222-4222-8222-222222222222',
+    guestName: 'Druga Ana',
+  }))
+  expect(refused.status).toBe(400)
+  expect(await externalRef(createdBody.transfer.id)).toEqual(before)
+  const saved = await call('PATCH', `/api/transfers/${createdBody.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+    guestName: 'Druga Ana',
+  }))
+  expect(saved.status).toBe(200)
+  const corrected = await saved.json()
+  expect(carriesExternalRef(corrected)).toBe(false)
+  expect(await externalRef(createdBody.transfer.id)).toEqual(before)
+  const counts = await tenantCounts(created.tenantId)
+  expect(counts.transfers).toBe(1)
+})
+
+it('external_id is not null, has no default, and an insert without it fails', async () => {
+  const columns = await ownerPool.query<{ is_nullable: string, column_default: string | null }>(
+    `select is_nullable, column_default
+     from information_schema.columns
+     where table_schema = 'app' and table_name = 'transfers' and column_name = 'external_id'`,
+  )
+  expect(columns.rows).toEqual([{ is_nullable: 'NO', column_default: null }])
+  const channel = await ownerPool.query<{ column_default: string | null }>(
+    `select column_default
+     from information_schema.columns
+     where table_schema = 'app' and table_name = 'transfers' and column_name = 'channel'`,
+  )
+  expect(channel.rows[0]?.column_default).toContain('manual')
+  const created = await tenant('htr-ext-null', 'Hana Admin')
+  const dispatcher = await signIn('htr-ext-null-admin@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Prazno', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Polazak Prazno', kind: 'address' })
+  const end = await createLocation(dispatcher, { name: 'Dolazak Prazno', kind: 'hotel' })
+  await expect(ownerPool.query(
+    `insert into app.transfers (
+       tenant_id, client_id, pickup_at, start_location_id, end_location_id,
+       passenger_count, guest_name, price, payment, airport_mark, luggage_count, child_seat_count
+     ) values ($1, $2, now(), $3, $4, 1, 'Bez Ključa', 10, 'cash', false, 0, 0)`,
+    [created.tenantId, client.id, start.id, end.id],
+  )).rejects.toMatchObject({ code: '23502' })
 })
