@@ -482,7 +482,8 @@ it('append_entry accepts a contact person add, correction, and removal with ids 
   await inSession(appPool, tenant, client => client.query(append, ['contact_person.added', actor, JSON.stringify(added)]))
   await inSession(appPool, tenant, client => client.query(append, ['contact_person.changed', actor, JSON.stringify(changed)]))
   await inSession(appPool, tenant, client => client.query(append, ['contact_person.removed', actor, JSON.stringify(removed)]))
-  const rows = await entriesOf(tenant)
+  // The three rows can share one timestamp, so the table read has no stable order.
+  const rows = (await entriesOf(tenant)).sort((left, right) => left.action.localeCompare(right.action))
   expect(rows).toEqual([
     { tenant_id: tenant, action: 'contact_person.added', actor_user_id: actor, subject_user_id: null, data: added },
     { tenant_id: tenant, action: 'contact_person.changed', actor_user_id: actor, subject_user_id: null, data: changed },
