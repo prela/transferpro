@@ -358,6 +358,13 @@
       "when": 1791400040000,
       "tag": "0050_client_contact_persons",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1791400041000,
+      "tag": "0051_contact_person_retention",
+      "breakpoints": true
     }
   ]
 }
