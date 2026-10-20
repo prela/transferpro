@@ -188,12 +188,28 @@ The platform owner. A user with a row in `platform.superadmin` and no Tenant mem
 _Avoid_: admin, owner
 
 **Partner**:
-A subcontractor company the office can hand a Ride to. It has no login. A company that both books Transfers and takes Rides handed to it is a Client and a Partner, two records with no link between them. In Croatian it is Podizvođač; the Croatian word partner is not used. In the English UI it is Subcontractor.
+A subcontractor company the office can hand a Ride to. It has a name, and may have one phone, one email, and a note. It has no login and gets no mail. It is archived, never deleted. A company that both books Transfers and takes Rides handed to it is a Client and a Partner, two records with no link between them. In Croatian it is Podizvođač; the Croatian word partner is not used. In the English UI it is Subcontractor.
 _Avoid_: agency, hotel, Client
 
 **Client**:
-An agency, hotel, or individual who books a Transfer. An invoice for a Transfer goes to its Client. In Croatian it is Naručitelj.
+An agency, hotel, or individual who books a Transfer. An invoice for a Transfer goes to its Client. It may have contact persons and a Client note. In Croatian it is Naručitelj.
 _Avoid_: partner, customer
+
+**Client card**:
+What the office keeps and sees about one Client: its name and kind, its contact persons, its Client note, and its Ride history. It has no pipeline, no offers, and no communication history.
+_Avoid_: CRM, profile
+
+**Contact person**:
+A person the office can reach at a Client. It has a name, may have a role in free text, and has a phone, an email, or both. A Client may have several, and none is the main one. A Client of any kind may have them. In Croatian it is Kontakt osoba.
+_Avoid_: contact, guest, Member
+
+**Client note**:
+The one standing text the office keeps about a Client, such as how the Client wants its guests met or when it pays. A correction replaces it. It is not a log of calls or messages.
+_Avoid_: comment, communication history
+
+**Ride history**:
+The Rides of one Client, or the Rides handed to one Partner, of every state, newest pickup first. A Client's Ride history also counts how many Rides there are in total, done, No-show, and cancelled.
+_Avoid_: activity, history (alone)
 
 **Guest**:
 The person who travels, named on the Transfer by one name, the lead of the group. The passenger count covers the rest. A guest is not a Client or a Partner and has no record, contact, or history. A guest who also booked as an individual Client is not linked to that Client. In Croatian it is Gost.
