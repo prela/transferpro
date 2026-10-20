@@ -269,3 +269,19 @@ export async function removeContactPerson(
   })
   return { id: contactPersonId }
 }
+
+const deletedRows = z.object({ rowCount: z.number().int().nonnegative() })
+
+/**
+ * Delete this Tenant's contact persons removed before `before` (ADR-0049).
+ * A live person has no removal instant, so the comparison leaves them.
+ * The restrictive policy refuses any newer removal even if asked. The
+ * caller's transaction already holds the tenant session. Answers the count only.
+ */
+export async function deleteContactPersonsRemovedBefore(transaction: TenantTransaction, before: Date): Promise<number> {
+  const cutoff = z.date().parse(before)
+  const deleted = deletedRows.parse(await hideDatabaseError(() => transaction.execute(sql`
+    delete from app.client_contact_persons where removed_at < ${cutoff}
+  `), 'Contact person retention delete failed'))
+  return deleted.rowCount
+}
