@@ -1,8 +1,8 @@
 # Client card and Partner record
 
-Status: proposed
+Status: accepted
 
-Damir decided this on 20 October 2026, in the step 18 grill of #206. It extends ADR-0018 and ADR-0036 and supersedes none of their sentences. ADR-0033 brought the Client card and the Partner record into v1; ADR-0048 and ADR-0034 decide the handoff and when a Partner is free.
+Damir accepted this on 20 October 2026, in the step 18 grill of #206. It extends ADR-0018 and ADR-0036 and supersedes none of their sentences. ADR-0033 brought the Client card and the Partner record into v1; ADR-0048 and ADR-0034 decide the handoff and when a Partner is free.
 
 ## Context
 
