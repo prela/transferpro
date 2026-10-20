@@ -18,6 +18,7 @@ shellEmulator: true
 
 # @sentry/browser-utils pulls web-vitals; 6.2.3 shipped the same day as the Sentry pin (#34).
 # launch-editor 2.14.1 (via nuxt > @nuxt/devtools) and vite 8.3.1 (via vitest) are GHSA-587h-7wmj-h5pm (#393).
+# Drop these two lines once nuxt and vitest depend on launch-editor >= 2.14.2 and vite >= 8.3.3.
 overrides:
   launch-editor: 2.14.2
   vite: ^8.3.3
