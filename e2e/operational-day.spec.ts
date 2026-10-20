@@ -1,12 +1,19 @@
 import { expect, test } from '@playwright/test'
 import { calendarDateInTimeZone, operationalDateInTimeZone } from '../shared/date'
+import { operationalNow, pinOperationalClock } from './fixtures/operational-clock'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // The board and this assertion share one instant, including at 04:55,
+  // 05:00, and 05:05, when the operational day and the calendar date split.
+  await pinOperationalClock(page)
+})
 
 test('the board opens on the operational day and the pickup form stays on the calendar date', async ({ page }) => {
   const tenant = await seedTenant('opday')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispečer')
-  const now = new Date()
+  const now = operationalNow(page)
   const operational = operationalDateInTimeZone('Europe/Zagreb', now)
   const calendar = calendarDateInTimeZone('Europe/Zagreb', now)
 

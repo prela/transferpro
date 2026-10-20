@@ -1,8 +1,14 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
+import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { seedTenant } from './fixtures/seed'
 import { chooseOption, openRideMenu, signIn, switchLocale } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // One instant for the seed and the board, including across 05:00.
+  await pinOperationalClock(page)
+})
 
 const phone = '+385911112255'
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
@@ -46,7 +52,7 @@ async function recordTodayRide(page: Page, guest: string): Promise<void> {
     data: { name: `Dolazak ${guest}`, kind: 'hotel' },
   })
   expect(client.ok() && start.ok() && end.ok()).toBeTruthy()
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   const pickupAt = instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString()
   const recorded = await page.request.post('/api/transfers', {
     data: {

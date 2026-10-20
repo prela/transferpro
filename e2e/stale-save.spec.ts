@@ -1,10 +1,16 @@
 import type { Browser, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { formatInstant } from '../shared/format-instant'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { operationalDay, operationalNow, pinOperationalClock } from './fixtures/operational-clock'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn, switchLocale, useTheme } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // One instant for the seed and the board, including across 05:00.
+  await pinOperationalClock(page)
+})
 
 /**
  * A refused office save names who changed the Transfer and when, then
@@ -89,6 +95,8 @@ async function secondPage(browser: Browser, page: Page, theme: 'light' | 'dark')
     colorScheme: theme,
   })
   const other = await context.newPage()
+  // The colleague's board must open on the same operational day as the seed.
+  await pinOperationalClock(other, operationalNow(page))
   await useTheme(other, theme)
   return { context, other }
 }
@@ -106,7 +114,7 @@ test.describe('@phone', () => {
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       const { context, other } = await secondPage(browser, page, theme)
       try {
-        const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+        const day = operationalDay(page)
         const clientId = await createdId(page, '/api/clients', { name: 'Klijent Zastarjelo', kind: 'agency' })
         const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Zastarjelo', kind: 'airport' })
         const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Zastarjelo', kind: 'hotel' })
@@ -171,7 +179,7 @@ test('a member who left is named as a former member', async ({ browser, page }) 
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   const { context, other } = await secondPage(browser, page, 'light')
   try {
-    const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+    const day = operationalDay(page)
     const clientId = await createdId(page, '/api/clients', { name: 'Klijent Bivsi', kind: 'agency' })
     const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Bivsi', kind: 'airport' })
     const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Bivsi', kind: 'hotel' })
@@ -242,7 +250,7 @@ test('the refusal is in English', async ({ browser, page }) => {
   await switchLocale(page, 'en')
   const { context, other } = await secondPage(browser, page, 'light')
   try {
-    const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+    const day = operationalDay(page)
     const clientId = await createdId(page, '/api/clients', { name: 'Client Stale', kind: 'agency' })
     const startLocationId = await createdId(page, '/api/locations', { name: 'Start Stale', kind: 'airport' })
     const endLocationId = await createdId(page, '/api/locations', { name: 'End Stale', kind: 'hotel' })
@@ -296,7 +304,7 @@ test('a refused clear names who removed the assignment, and Osvježi closes the 
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   const { context, other } = await secondPage(browser, page, 'light')
   try {
-    const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+    const day = operationalDay(page)
     const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
     const clientId = await createdId(page, '/api/clients', { name: 'Klijent Dodjela', kind: 'agency' })
     const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Dodjela', kind: 'airport' })

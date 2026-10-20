@@ -1,8 +1,14 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { instantFromWallClock } from '../shared/date'
+import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
+
+test.beforeEach(async ({ page }) => {
+  // One instant for the seed and the board, including across 05:00.
+  await pinOperationalClock(page)
+})
 
 function notice(page: Page, title: string, sentence: string) {
   return page.getByRole('status').filter({ hasText: title }).filter({ hasText: sentence })
@@ -45,7 +51,7 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   const clientId = await createdId(page, '/api/clients', { name: 'Klijent Ispravak', kind: 'agency' })
   const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Ispravak', kind: 'airport' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Ispravak', kind: 'hotel' })
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   const recorded = await page.request.post('/api/transfers', {
     data: {
       clientId,
@@ -189,7 +195,7 @@ test('a pickup correction that overlaps asks, and cancel leaves the slideover op
   const clientId = await createdId(page, '/api/clients', { name: 'Klijent Preklop', kind: 'agency' })
   const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Preklop', kind: 'airport' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Preklop', kind: 'hotel' })
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   const heldGuest = 'Iva Zauzeto'
   const movingGuest = 'Nika Kasnije'
   async function record(guestName: string, wall: string): Promise<string> {
@@ -276,7 +282,7 @@ test('the correction overlap question is in English in the dark theme', async ({
   const clientId = await createdId(page, '/api/clients', { name: 'Clash Client', kind: 'agency' })
   const startLocationId = await createdId(page, '/api/locations', { name: 'Clash Start', kind: 'airport' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Clash End', kind: 'hotel' })
-  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const day = operationalDay(page)
   async function record(guestName: string, wall: string): Promise<string> {
     const recorded = await page.request.post('/api/transfers', {
       data: {

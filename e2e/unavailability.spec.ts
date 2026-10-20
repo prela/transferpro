@@ -4,7 +4,7 @@ import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, mondayOf
 import { formatCalendarDate, formatInstant } from '../shared/format-instant'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { seedTenant } from './fixtures/seed'
-import { chooseOption, openAudit, signIn, switchLocale, useTheme } from './fixtures/ui'
+import { chooseOption, hydrated, openAudit, signIn, switchLocale, useTheme } from './fixtures/ui'
 
 /**
  * Unavailability windows (Nedostupnost, ADR-0034, issue #355) in the Driver
@@ -13,7 +13,22 @@ import { chooseOption, openAudit, signIn, switchLocale, useTheme } from './fixtu
  */
 const zone = 'Europe/Zagreb'
 const licence = addCalendarDays(calendarDateInTimeZone(zone, new Date()), 400)
-const rideDay = operationalDateInTimeZone(zone, new Date())
+
+// One instant for the Ride and the roster week. The board is then opened
+// on that operational day, so a wall clock crossing 05:00 does not hide the row.
+let specNow = new Date()
+
+function rideDay(): string {
+  return operationalDateInTimeZone(zone, specNow)
+}
+
+async function showRideDay(page: Page): Promise<void> {
+  await hydrated(page)
+  const day = page.locator('#transfer-day')
+  if (await day.inputValue() !== rideDay())
+    await day.fill(rideDay())
+  await expect(day).toHaveValue(rideDay())
+}
 
 async function createdId(response: APIResponse): Promise<string> {
   if (!response.ok())
@@ -41,7 +56,7 @@ async function recordRide(page: Page, guest: string, wall: string): Promise<stri
   const recorded = await page.request.post('/api/transfers', {
     data: {
       clientId,
-      pickupAt: instantFromWallClock(`${rideDay}T${wall}`, zone).toISOString(),
+      pickupAt: instantFromWallClock(`${rideDay()}T${wall}`, zone).toISOString(),
       startLocationId,
       endLocationId,
       passengerCount: 1,
@@ -60,18 +75,19 @@ async function recordRide(page: Page, guest: string, wall: string): Promise<stri
 }
 
 async function putRoster(page: Page, driverId: string, vehicleId: string): Promise<void> {
-  const response = await page.request.put('/api/roster', { data: { rosterDate: rideDay, driverId, vehicleId } })
+  const response = await page.request.put('/api/roster', { data: { rosterDate: rideDay(), driverId, vehicleId } })
   if (!response.ok())
     throw new Error(`${response.status()} ${await response.text()}`)
 }
 
 /** The roster shows the week of today. Step to the week of the operational day when they differ. */
 async function showRosterWeek(page: Page, previousWeek: string) {
-  if (mondayOfWeek(rideDay) !== mondayOfWeek(calendarDateInTimeZone(zone, new Date())))
+  if (mondayOfWeek(rideDay()) !== mondayOfWeek(calendarDateInTimeZone(zone, specNow)))
     await page.getByRole('button', { name: previousWeek }).click()
 }
 
 test('the office marks a Driver away for whole days, sees it on the board and the roster, confirms an assignment, and removes it', async ({ page }) => {
+  specNow = new Date()
   const tenant = await seedTenant('unavailability-hr')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   const awayId = await driver(page, 'Ana Odsutna', '+385911110355')
@@ -90,22 +106,23 @@ test('the office marks a Driver away for whole days, sees it on the board and th
   await expect(section.getByRole('checkbox', { name: 'Cijeli dani' })).toBeChecked()
 
   // The last day before the first is refused in the browser and nothing is sent.
-  await section.getByLabel('Prvi dan', { exact: true }).fill(rideDay)
-  await section.getByLabel('Zadnji dan', { exact: true }).fill(addCalendarDays(rideDay, -1))
+  await section.getByLabel('Prvi dan', { exact: true }).fill(rideDay())
+  await section.getByLabel('Zadnji dan', { exact: true }).fill(addCalendarDays(rideDay(), -1))
   await section.getByRole('button', { name: 'Dodaj nedostupnost', exact: true }).click()
   await expect(section.getByRole('alert')).toContainText('zadnji ne smije biti prije prvog')
 
-  await section.getByLabel('Zadnji dan', { exact: true }).fill(rideDay)
+  await section.getByLabel('Zadnji dan', { exact: true }).fill(rideDay())
   await section.getByRole('button', { name: 'Dodaj nedostupnost', exact: true }).click()
   const covered = section.getByRole('status').filter({ hasText: 'Ova nedostupnost pokriva vožnje' })
-  await expect(covered).toContainText(formatInstant(instantFromWallClock(`${rideDay}T12:00`, zone), zone, 'hr'))
-  const dayLabel = formatCalendarDate(rideDay, 'hr')
+  await expect(covered).toContainText(formatInstant(instantFromWallClock(`${rideDay()}T12:00`, zone), zone, 'hr'))
+  const dayLabel = formatCalendarDate(rideDay(), 'hr')
   await expect(section.getByRole('list', { name: 'Zabilježena nedostupnost' })).toContainText(dayLabel)
   await expectNoAxeViolations(page)
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
   await expect(dialog).toBeHidden()
 
   await page.getByRole('link', { name: 'Transferi' }).click()
+  await showRideDay(page)
   await expect(page.getByRole('row').filter({ hasText: 'Iva Pokrivena' })).toContainText('Nedostupan')
 
   await page.getByRole('row', { name: 'Nika Kasnija' }).getByRole('button', { name: 'Dodijeli: Nika Kasnija' }).click()
@@ -133,6 +150,7 @@ test('the office marks a Driver away for whole days, sees it on the board and th
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
 
   await page.getByRole('link', { name: 'Transferi' }).click()
+  await showRideDay(page)
   await expect(page).toHaveURL(/\/transfers/)
   await expect(page.getByRole('row').filter({ hasText: 'Iva Pokrivena' })).toBeVisible()
   await expect(page.getByRole('row').filter({ hasText: 'Iva Pokrivena' })).not.toContainText('Nedostupan')
@@ -143,6 +161,7 @@ test('the office marks a Driver away for whole days, sees it on the board and th
 })
 
 test('a Vehicle window from one time to another, in English and the dark theme', async ({ page }) => {
+  specNow = new Date()
   const tenant = await seedTenant('unavailability-en')
   await useTheme(page, 'dark')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
@@ -157,24 +176,24 @@ test('a Vehicle window from one time to another, in English and the dark theme',
   const section = dialog.getByRole('region', { name: 'Unavailability' })
   await expect(section).toContainText('No unavailability recorded.')
   await section.getByRole('checkbox', { name: 'Whole days' }).uncheck()
-  await section.getByLabel('From', { exact: true }).fill(`${rideDay}T09:00`)
-  await section.getByLabel('To', { exact: true }).fill(`${rideDay}T08:00`)
+  await section.getByLabel('From', { exact: true }).fill(`${rideDay()}T09:00`)
+  await section.getByLabel('To', { exact: true }).fill(`${rideDay()}T08:00`)
   await section.getByRole('button', { name: 'Add unavailability', exact: true }).click()
   await expect(section.getByRole('alert')).toContainText('The end must be after the start.')
 
-  await section.getByLabel('To', { exact: true }).fill(`${rideDay}T11:00`)
+  await section.getByLabel('To', { exact: true }).fill(`${rideDay()}T11:00`)
   await section.getByRole('button', { name: 'Add unavailability', exact: true }).click()
-  const from = formatInstant(instantFromWallClock(`${rideDay}T09:00`, zone), zone, 'en')
+  const from = formatInstant(instantFromWallClock(`${rideDay()}T09:00`, zone), zone, 'en')
   const list = section.getByRole('list', { name: 'Recorded unavailability' })
   await expect(list).toContainText(from)
 
   await section.getByRole('button', { name: /^Change unavailability / }).click()
   await expect(section.getByRole('checkbox', { name: 'Whole days' })).not.toBeChecked()
-  await expect(section.getByLabel('From', { exact: true })).toHaveValue(`${rideDay}T09:00`)
-  await expect(section.getByLabel('To', { exact: true })).toHaveValue(`${rideDay}T11:00`)
-  await section.getByLabel('To', { exact: true }).fill(`${rideDay}T13:00`)
+  await expect(section.getByLabel('From', { exact: true })).toHaveValue(`${rideDay()}T09:00`)
+  await expect(section.getByLabel('To', { exact: true })).toHaveValue(`${rideDay()}T11:00`)
+  await section.getByLabel('To', { exact: true }).fill(`${rideDay()}T13:00`)
   await section.getByRole('button', { name: 'Save unavailability', exact: true }).click()
-  await expect(list).toContainText(`${from} – ${formatInstant(instantFromWallClock(`${rideDay}T13:00`, zone), zone, 'en')}`)
+  await expect(list).toContainText(`${from} – ${formatInstant(instantFromWallClock(`${rideDay()}T13:00`, zone), zone, 'en')}`)
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expectNoAxeViolations(page)
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
@@ -182,5 +201,5 @@ test('a Vehicle window from one time to another, in English and the dark theme',
   await page.goto('/roster')
   await showRosterWeek(page, 'Previous week')
   await expect(page.getByRole('row').filter({ hasText: 'Ben Roster' })).toContainText('Vehicle unavailable')
-  await expect(page.locator(`#roster-vehicle-${driverId}-${rideDay}`)).toContainText('DU356AA (unavailable)')
+  await expect(page.locator(`#roster-vehicle-${driverId}-${rideDay()}`)).toContainText('DU356AA (unavailable)')
 })

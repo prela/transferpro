@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { instantFromWallClock, localDayBounds, mondayOfWeek, operationalDateInTimeZone, wallClockInTimeZone, weekDates } from './date'
+import { addCalendarDays, instantFromWallClock, localDayBounds, mondayOfWeek, operationalDateInTimeZone, wallClockInTimeZone, weekDates } from './date'
 
 it('writes a Zagreb wall clock from a stored instant, in winter time', () => {
   // 15 January 2026, 09:30Z is 10:30 in Zagreb.
@@ -98,6 +98,26 @@ it('names the operational day by the date of its 05:00 start, including before 0
   expect(operationalDateInTimeZone('Europe/Zagreb', instantFromWallClock('2026-10-08T00:30', 'Europe/Zagreb'))).toBe('2026-10-07')
   expect(operationalDateInTimeZone('Europe/Zagreb', instantFromWallClock('2026-10-08T05:00', 'Europe/Zagreb'))).toBe('2026-10-08')
   expect(operationalDateInTimeZone('Europe/Zagreb', instantFromWallClock('2026-10-08T12:00', 'Europe/Zagreb'))).toBe('2026-10-08')
+})
+
+it('keeps noon on the previous operational day in the past at 04:55, 05:00, and 05:05', () => {
+  // 20 October 2026 is still CEST, so local noon is 10:00Z.
+  // e2e specs that need a past pickup on one operational day use this noon.
+  const zone = 'Europe/Zagreb'
+  const cases = [
+    ['2026-10-20T04:55', '2026-10-18', '2026-10-18T10:00:00.000Z'],
+    ['2026-10-20T05:00', '2026-10-19', '2026-10-19T10:00:00.000Z'],
+    ['2026-10-20T05:05', '2026-10-19', '2026-10-19T10:00:00.000Z'],
+  ] as const
+  for (const [wall, day, iso] of cases) {
+    const now = instantFromWallClock(wall, zone)
+    const previous = addCalendarDays(operationalDateInTimeZone(zone, now), -1)
+    const noon = instantFromWallClock(`${previous}T12:00`, zone)
+    expect(previous).toBe(day)
+    expect(noon.toISOString()).toBe(iso)
+    expect(noon.getTime()).toBeLessThan(now.getTime())
+    expect(operationalDateInTimeZone(zone, noon)).toBe(day)
+  }
 })
 
 it('breaks the 23-hour Zagreb night at local 05:00 on 29 March 2026', () => {
