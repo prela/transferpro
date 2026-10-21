@@ -5,6 +5,7 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { fromDrizzle, PgBoss } from 'pg-boss'
 import { z } from 'zod'
+import { assertJobPayload } from './job-payloads'
 import { acceptRequestId, currentRequestId, runWithRequestId, runWithTenantId } from './logger'
 
 /**
@@ -99,6 +100,9 @@ export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
     options?: { readonly startAfter?: Date },
   ) {
     raiseIfBossFailed()
+    // ADR-0035. Before ensureQueue and send, so a refusal inserts nothing:
+    // no queue row, no job. Publish from a tick uses this same path.
+    assertJobPayload(name, data)
     const tenantId = z.uuid().parse(context.tenantId)
     await ensureQueue(name)
     const requestId = currentRequestId()
@@ -172,6 +176,8 @@ export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
 
     async schedule(name, cron, data) {
       raiseIfBossFailed()
+      // Same refusal as send, before the schedule row is written.
+      assertJobPayload(name, data)
       await ensureQueue(name)
       // `{ data }` only. A schedule is not a tenant and not a request.
       await boss.schedule(name, cron, { data })

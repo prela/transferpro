@@ -7,6 +7,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
 import { openTenantSession, parseAppEnv, runWithRequestId } from './index'
 import { createPgBossJobQueue } from './infrastructure'
+import { JobPayloadError } from './job-payloads'
 import { captureLogs } from './testing'
 
 loadEnvFile('.env')
@@ -150,7 +151,7 @@ it('restores the request id stamped at enqueue inside the tenant session', async
 
   await runWithRequestId(request, () =>
     tenantTransaction(tenantA, transaction =>
-      queue.enqueue({ tenantId: tenantA }, transaction, logQueue, { n: 1 }), true))
+      queue.enqueue({ tenantId: tenantA }, transaction, logQueue, {}), true))
 
   await queue.handleNext(logQueue, async () => {
     logs.logger.info({ event: 'job' })
@@ -179,11 +180,104 @@ it('a worker restores the request id before the tenant session', async () => {
 
   await runWithRequestId(request, () =>
     tenantTransaction(tenantA, transaction =>
-      queue.enqueue({ tenantId: tenantA }, transaction, workerQueue, { n: 1 }), true))
+      queue.enqueue({ tenantId: tenantA }, transaction, workerQueue, {}), true))
 
   await finished
   const lines = logs.lines()
   expect(lines[0]).toMatchObject({ event: 'worker', request_id: request, tenant_id: tenantA })
+})
+
+const refusedEmail = 'refused-386@example.com'
+const counted = z.object({ n: z.coerce.number() })
+
+async function scalarCount(sqlText: string, value: string): Promise<number> {
+  const result = await appPool.query(sqlText, [value])
+  return counted.parse(result.rows[0]).n
+}
+
+function jobsNamed(name: string): Promise<number> {
+  return scalarCount('select count(*)::int as n from pgboss.job where name = $1', name)
+}
+
+function schedulesNamed(name: string): Promise<number> {
+  return scalarCount('select count(*)::int as n from pgboss.schedule where name = $1', name)
+}
+
+function rowsMentioning(table: 'pgboss.job' | 'pgboss.schedule', needle: string): Promise<number> {
+  return scalarCount(`select count(*)::int as n from ${table} where data::text like '%' || $1 || '%'`, needle)
+}
+
+function queuesNamed(name: string): Promise<number> {
+  return scalarCount('select count(*)::int as n from pgboss.queue where name = $1', name)
+}
+
+it('enqueue refuses an unknown name and a payload with an extra key, and inserts neither', async () => {
+  const unknown = 'not-an-enqueued-job'
+  const entryId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+
+  await expect(tenantTransaction(tenantA, transaction =>
+    queue.enqueue({ tenantId: tenantA }, transaction, unknown, {}), true)).rejects.toThrow(JobPayloadError)
+
+  const extra = await tenantTransaction(tenantA, transaction =>
+    queue.enqueue({ tenantId: tenantA }, transaction, 'mail-outbox', { entryId, email: refusedEmail }), true).catch(error => error)
+
+  expect(extra).toBeInstanceOf(JobPayloadError)
+  expect(String(extra)).not.toContain(refusedEmail)
+  expect(await jobsNamed(unknown)).toBe(0)
+  expect(await queuesNamed(unknown)).toBe(0)
+  expect(await rowsMentioning('pgboss.job', refusedEmail)).toBe(0)
+})
+
+it('schedule refuses an unknown name and a payload with an extra key, and inserts neither', async () => {
+  const unknown = 'not-a-scheduled-job'
+
+  await expect(queue.schedule(unknown, '15 3 * * *', {})).rejects.toThrow(JobPayloadError)
+  await expect(queue.schedule('mail-outbox-retention', '15 3 * * *', { email: refusedEmail })).rejects.toThrow(JobPayloadError)
+
+  expect(await jobsNamed(unknown)).toBe(0)
+  expect(await queuesNamed(unknown)).toBe(0)
+  expect(await schedulesNamed(unknown)).toBe(0)
+  expect(await rowsMentioning('pgboss.job', refusedEmail)).toBe(0)
+  expect(await rowsMentioning('pgboss.schedule', refusedEmail)).toBe(0)
+})
+
+it('a tick publish refuses an unknown name and a payload with an extra key, and inserts neither', async () => {
+  const unknown = 'not-a-published-job'
+  const entryId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  let finish: () => void = () => {}
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  const refused: unknown[] = []
+
+  await queue.workScheduled('foundation_publish', async (_job, publish) => {
+    try {
+      await publish(tenantA, unknown, {})
+    }
+    catch (error) {
+      refused.push(error)
+    }
+    try {
+      await publish(tenantA, 'mail-outbox', { entryId, email: refusedEmail })
+    }
+    catch (error) {
+      refused.push(error)
+    }
+    finish()
+  })
+
+  await tenantTransaction(tenantA, transaction =>
+    queue.enqueue({ tenantId: tenantA }, transaction, 'foundation_publish', {}), true)
+
+  await finished
+
+  expect(refused).toHaveLength(2)
+  for (const error of refused)
+    expect(error).toBeInstanceOf(JobPayloadError)
+  expect(refused.map(String).join('\n')).not.toContain(refusedEmail)
+  expect(await jobsNamed(unknown)).toBe(0)
+  expect(await queuesNamed(unknown)).toBe(0)
+  expect(await rowsMentioning('pgboss.job', refusedEmail)).toBe(0)
 })
 
 it('the queue role cannot read tenant or auth tables, and the app role cannot create queue objects', async () => {
