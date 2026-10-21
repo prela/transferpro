@@ -10,6 +10,7 @@ import { configureLogger, logLevels } from './logger'
 import { guardReadiness } from './readiness'
 
 export { hideDatabaseError, postgresErrorCode } from './database-error'
+export { assertJobPayload, JobPayloadError, jobPayloads } from './job-payloads'
 export { configureLogger, createLogger, currentRequestId, currentTenantId, endRequestLog, getLogger, handleLoggedError, openRequestLog, resolveRequestId, runWithRequestId } from './logger'
 export type { Logger, LogLevel } from './logger'
 
