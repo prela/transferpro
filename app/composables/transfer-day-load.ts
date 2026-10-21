@@ -1,4 +1,4 @@
-import type { Client, ClientOfficeBrief, DeclineAlert, Driver, LiveRefreshOutcome, Location, Partner, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, ClientOfficeBrief, DeclineAlert, Driver, LiveRefreshOutcome, Location, Partner, PartnerOfficeContact, TransferDayRide, Vehicle } from '../../shared'
 import { claimDayLoad, claimFullLoad, clientListSchema, driverListSchema, isCalendarDate, locationListSchema, operationalDateInTimeZone, partnerListSchema, transferDaySchema, vehicleListSchema } from '../../shared'
 import { useOfficeHomeFeed } from './office-home-feed'
 
@@ -13,6 +13,9 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
   const declineAlerts = ref<DeclineAlert[]>([])
   // Every Client, so the form can show a note for one with no Ride today.
   const clientBriefs = ref<ClientOfficeBrief[]>([])
+  // Phone and email for Partners a Ride on this day is still handed to.
+  // The Driver's read does not carry this list (ADR-0049).
+  const partnerBriefs = ref<PartnerOfficeContact[]>([])
   const clients = ref<Client[]>([])
   const locations = ref<Location[]>([])
   const drivers = ref<Driver[]>([])
@@ -95,6 +98,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
       rides.value = listed.rides
       declineAlerts.value = listed.declineAlerts
       clientBriefs.value = listed.clientBriefs
+      partnerBriefs.value = listed.partnerBriefs
       loadError.value = false
       opened = true
       return 'ok'
@@ -136,6 +140,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
         rides.value = listed.rides
         declineAlerts.value = listed.declineAlerts
         clientBriefs.value = listed.clientBriefs
+        partnerBriefs.value = listed.partnerBriefs
       }
       loadError.value = false
       opened = true
@@ -159,6 +164,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
     rides,
     declineAlerts,
     clientBriefs,
+    partnerBriefs,
     clients,
     locations,
     drivers,

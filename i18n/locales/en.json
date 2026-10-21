@@ -790,7 +790,19 @@
     "signedOut": "You are signed out. Sign in and try again.",
     "saveFailed": "The subcontractor was not saved. Try again.",
     "tabs": {
-      "data": "Data"
+      "data": "Data",
+      "rides": "Rides"
+    },
+    "rides": {
+      "loading": "Loading rides",
+      "loadFailed": "Rides could not be loaded. Try again.",
+      "rejected": "The ride request was not accepted.",
+      "notFound": "That subcontractor is no longer on the list.",
+      "forbidden": "A driver cannot see a subcontractor's rides.",
+      "signedOut": "You are signed out. Sign in and try again.",
+      "empty": "No rides yet.",
+      "loadMore": "Load more",
+      "counts": "Total {total} · Done {done} · No-show {noShow} · Cancelled {cancelled}"
     },
     "fields": {
       "name": "Name",
