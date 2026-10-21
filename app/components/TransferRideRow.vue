@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
-import type { Client, DisplayLocale, Driver, Location, RideAttentionItem, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, DisplayLocale, Driver, Location, Partner, RideAttentionItem, TransferDayRide, Vehicle } from '../../shared'
 import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, clockLabel, formatInstant, locationLabel, pickupNeedsCalendarDate, rideStateMark } from '../../shared'
 import { driverDisplayName } from '../transfer-day-labels'
-import { canCallOff, canChangeAssignment, canNoShow } from '../transfer-ride-guards'
+import { canCallOff, canChangeAssignment, canChangePartner, canHandOff, canNoShow, canTakeBack } from '../transfer-ride-guards'
 
 const props = defineProps<{
   cell: 'phone' | 'time' | 'flight' | 'guest' | 'route' | 'client' | 'crew' | 'state' | 'price' | 'actions'
@@ -11,6 +11,7 @@ const props = defineProps<{
   locations?: Location[]
   drivers?: Driver[]
   vehicles?: Vehicle[]
+  partners?: Partner[]
   clients?: Client[]
   declines?: { driverName: string }[]
   timeZone: string
@@ -29,6 +30,9 @@ const emit = defineEmits<{
   changeVehicle: [ride: TransferDayRide]
   reassign: [ride: TransferDayRide]
   clear: [ride: TransferDayRide]
+  handOff: [ride: TransferDayRide]
+  changePartner: [ride: TransferDayRide]
+  takeBack: [ride: TransferDayRide]
   correct: [ride: TransferDayRide]
   duplicate: [ride: TransferDayRide]
   returnJourney: [ride: TransferDayRide]
@@ -108,8 +112,20 @@ function vehicleArchived(id: string | null): boolean {
   return vehicle !== undefined && vehicle.archivedAt !== null
 }
 
+function partnerLabel(id: string | null): string {
+  if (id === null)
+    return t('ride.unknownPartner')
+  const partner = props.partners?.find(item => item.id === id)
+  if (!partner)
+    return t('ride.unknownPartner')
+  return partner.archivedAt === null ? partner.name : `${partner.name} · ${t('partners.archived')}`
+}
+
 function crewText(): string {
   const ride = rideOf()
+  // A handed-off Ride has no Driver. The unassigned label would be the wrong state.
+  if (ride.state === 'handed_off')
+    return partnerLabel(ride.partnerId)
   if (ride.driverId === null)
     return t('transfers.unassignedCrew')
   const name = driverDisplayName(props.drivers ?? [], ride.driverId, t('ride.unknownDriver'))
@@ -142,6 +158,12 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     items.push({ label: t('ride.reassign'), icon: 'i-lucide-arrow-left-right', onSelect: () => emit('reassign', ride) })
     items.push({ label: t('ride.clear'), icon: 'i-lucide-user-minus', onSelect: () => emit('clear', ride) })
   }
+  if (canHandOff(ride))
+    items.push({ label: t('ride.handOff'), icon: 'i-lucide-handshake', onSelect: () => emit('handOff', ride) })
+  if (canChangePartner(ride))
+    items.push({ label: t('ride.changePartner'), icon: 'i-lucide-handshake', onSelect: () => emit('changePartner', ride) })
+  if (canTakeBack(ride))
+    items.push({ label: t('ride.takeBack'), icon: 'i-lucide-corner-up-left', onSelect: () => emit('takeBack', ride) })
   // Both only open a new form. They stay available after the Ride is closed.
   items.push({ label: t('transfers.duplicate'), icon: 'i-lucide-copy', onSelect: () => emit('duplicate', ride) })
   items.push({ label: t('transfers.returnJourney'), icon: 'i-lucide-undo-2', onSelect: () => emit('returnJourney', ride) })

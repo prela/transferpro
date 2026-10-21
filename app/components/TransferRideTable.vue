@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Client, DisplayLocale, Driver, Location, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, DisplayLocale, Driver, Location, Partner, TransferDayRide, Vehicle } from '../../shared'
 
 const props = defineProps<{
   rides: TransferDayRide[]
@@ -8,6 +8,7 @@ const props = defineProps<{
   locations: Location[]
   drivers: Driver[]
   vehicles: Vehicle[]
+  partners: Partner[]
   clients: Client[]
   declinesFor: (rideId: string) => { driverName: string }[]
   timeZone: string
@@ -28,6 +29,9 @@ const emit = defineEmits<{
   changeVehicle: [ride: TransferDayRide]
   reassign: [ride: TransferDayRide]
   clear: [ride: TransferDayRide]
+  handOff: [ride: TransferDayRide]
+  changePartner: [ride: TransferDayRide]
+  takeBack: [ride: TransferDayRide]
   correct: [ride: TransferDayRide]
   duplicate: [ride: TransferDayRide]
   returnJourney: [ride: TransferDayRide]
@@ -76,6 +80,7 @@ const shared = computed(() => ({
   locations: props.locations,
   drivers: props.drivers,
   vehicles: props.vehicles,
+  partners: props.partners,
   clients: props.clients,
   timeZone: props.timeZone,
   locale: props.locale,
@@ -218,6 +223,9 @@ const shared = computed(() => ({
           @change-vehicle="emit('changeVehicle', $event)"
           @reassign="emit('reassign', $event)"
           @clear="emit('clear', $event)"
+          @hand-off="emit('handOff', $event)"
+          @change-partner="emit('changePartner', $event)"
+          @take-back="emit('takeBack', $event)"
           @open="emit('open', $event)"
           @correct="emit('correct', $event)"
           @duplicate="emit('duplicate', $event)"
@@ -247,6 +255,9 @@ const shared = computed(() => ({
           @change-vehicle="emit('changeVehicle', $event)"
           @reassign="emit('reassign', $event)"
           @clear="emit('clear', $event)"
+          @hand-off="emit('handOff', $event)"
+          @change-partner="emit('changePartner', $event)"
+          @take-back="emit('takeBack', $event)"
           @open="emit('open', $event)"
           @correct="emit('correct', $event)"
           @duplicate="emit('duplicate', $event)"

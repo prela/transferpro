@@ -116,6 +116,7 @@ function fakeTransaction(options: {
             version: 0,
             changedAt: null,
             changedByName: null,
+            partnerId: null,
             ...(typeof row === 'object' && row !== null ? row : {}),
           })),
         }
@@ -381,6 +382,43 @@ it('loads the Zagreb operational day as a half-open range of local 05:00 and map
   expect(queries[2]?.params).toEqual(['2026-10-24T03:00:00.000Z', '2026-10-25T04:00:00.000Z'])
   expect(queries[1]?.sql.toLowerCase()).not.toContain('::date')
   expect(queries[2]?.sql.toLowerCase()).not.toContain('::date')
+})
+
+it('keeps the Partner id on a handed-off Ride in the day list', async () => {
+  // The office names the Partner from this id. The day read is the only
+  // list the Ride detail and the crew column share. Null on every other state.
+  const partnerId = 'c3c3c3c3-3333-4333-8333-333333333333'
+  const pickup = new Date('2026-10-07T10:30:00.000Z')
+  const { transaction, queries } = fakeTransaction({
+    dayRows: [{
+      rideId,
+      transferId,
+      state: 'handed_off',
+      driverId: null,
+      vehicleId: null,
+      mustAccept: null,
+      partnerId,
+      clientId,
+      pickupAt: pickup,
+      startLocationId,
+      endLocationId,
+      passengerCount: 2,
+      guestName: guest,
+      flightNumber: null,
+      price: '42.00',
+      payment: 'card',
+      airportMark: false,
+      luggageCount: 0,
+      childSeatCount: 0,
+      note: null,
+      tabla: '',
+      clientReference: null,
+    }],
+  })
+  await expect(loadRidesForDay(transaction, '2026-10-07', 'Europe/Zagreb')).resolves.toMatchObject([
+    { rideId, state: 'handed_off', partnerId, driverId: null, vehicleId: null },
+  ])
+  expect(queries[0]?.sql).toContain('partner_id')
 })
 
 it('marks a landing alarm on an in-progress Ride 60 minutes after landing plus the transfer duration', async () => {
