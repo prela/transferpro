@@ -3,7 +3,7 @@ import type { TenantTransaction } from '../../../core/index'
 import { Buffer } from 'node:buffer'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { locationLabel, operationalDateInTimeZone, parseRideHistoryQuery, paymentMethodSchema, RIDE_HISTORY_PAGE_SIZE, rideHistoryCountsSchema, rideHistorySchema, rideStateSchema, wallClockInTimeZone } from '../../../../shared'
+import { locationLabel, operationalDateInTimeZone, paymentMethodSchema, QueryParamError, RIDE_HISTORY_PAGE_SIZE, rideHistoryCountsSchema, rideHistorySchema, rideStateSchema, wallClockInTimeZone } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { ClientNotFoundError, loadClient } from '../../clients'
 import { loadDrivers } from '../../drivers'
@@ -36,6 +36,40 @@ const historyRowSchema = z.object({
  */
 function encodeCursor(pickupAt: string, rideId: string): string {
   return Buffer.from(JSON.stringify({ pickupAt, rideId }), 'utf8').toString('base64url')
+}
+
+const rideHistoryQuerySchema = z.strictObject({
+  cursor: z.string().min(1).max(512).optional(),
+})
+
+const rideHistoryCursorSchema = z.strictObject({
+  pickupAt: z.iso.datetime(),
+  rideId: z.uuid(),
+})
+
+/**
+ * `cursor` is absent on the first page. A present cursor is the opaque
+ * token from `nextCursor`. Anything else is 400, before a session opens.
+ * An unknown query key is refused. The codec stays here, beside
+ * {@link encodeCursor}, so `node:buffer` is not part of the screen bundle.
+ */
+function parseRideHistoryQuery(raw: unknown): RideHistoryCursor | null {
+  const query = rideHistoryQuerySchema.safeParse(raw)
+  if (!query.success)
+    throw new QueryParamError()
+  if (query.data.cursor === undefined)
+    return null
+  let decoded: unknown
+  try {
+    decoded = JSON.parse(Buffer.from(query.data.cursor, 'base64url').toString('utf8'))
+  }
+  catch {
+    throw new QueryParamError()
+  }
+  const cursor = rideHistoryCursorSchema.safeParse(decoded)
+  if (!cursor.success)
+    throw new QueryParamError()
+  return cursor.data
 }
 
 /**
