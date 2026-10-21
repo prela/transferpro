@@ -2,7 +2,7 @@ import type { ClientNote, ClientNoteSave } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { clientNoteSchema, StaleSaveError } from '../../../../shared'
+import { CLIENT_NOTE_FIELD, clientNoteSchema, StaleSaveError } from '../../../../shared'
 import { hideDatabaseError, postgresErrorCode } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError } from './clients'
@@ -95,11 +95,20 @@ async function lockClientNote(transaction: TenantTransaction, clientId: string) 
 }
 
 /**
- * The unique key already refused the second insert. Re-throw that stale
- * save. Any other failure is replaced, so a bound note never reaches a log.
+ * A second insert is already a stale save. Pass it through.
+ * Any other failure is replaced, so a bound note never reaches a log.
  */
-function lostFirstSave(error: unknown): boolean {
+function isStaleSave(error: unknown): boolean {
   return error instanceof StaleSaveError
+}
+
+function recordNoteSaved(transaction: TenantTransaction, actorUserId: string, clientId: string) {
+  return appendAuditEntry(transaction, {
+    action: 'client_note.saved',
+    actorUserId,
+    subjectUserId: null,
+    data: { clientId, fields: [CLIENT_NOTE_FIELD] },
+  })
 }
 
 /**
@@ -127,15 +136,10 @@ async function insertClientNote(
         throw new StaleSaveError()
       throw error
     }
-  }, 'Client note insert failed', { passthrough: lostFirstSave }))
+  }, 'Client note insert failed', { passthrough: isStaleSave }))
   if (!claimed.rows[0])
     throw new Error('Client note insert returned no row.')
-  await appendAuditEntry(transaction, {
-    action: 'client_note.saved',
-    actorUserId,
-    subjectUserId: null,
-    data: { clientId, fields: ['note'] },
-  })
+  await recordNoteSaved(transaction, actorUserId, clientId)
   return loadClientNote(transaction, clientId)
 }
 
@@ -144,8 +148,9 @@ async function insertClientNote(
  * first save, including one that loses the race, is 409 `stale_save`.
  * A later save sends the version. A mismatch is 409 `stale_save` even when
  * the text would not change, and writes nothing. A fresh save of the same
- * text does not update and does not append. An empty note clears the text
- * and keeps the row. A note save does not change the Client's version.
+ * text does not update and does not append. An empty first save is already
+ * that empty note, so it writes nothing. An empty later save clears the
+ * text and keeps the row. A note save does not change the Client's version.
  */
 export async function saveClientNote(
   transaction: TenantTransaction,
@@ -154,8 +159,16 @@ export async function saveClientNote(
   input: ClientNoteSave,
 ): Promise<ClientNote> {
   await requireClient(transaction, clientId)
-  if (input.version === undefined)
+  if (input.version === undefined) {
+    // No row already reads as an empty note. Inserting a null row would
+    // audit a change the card cannot see, and it would win the first-save race.
+    if (input.note === null) {
+      const current = await loadClientNote(transaction, clientId)
+      if (current.version === null)
+        return current
+    }
     return insertClientNote(transaction, actorUserId, clientId, input.note)
+  }
 
   const locked = await lockClientNote(transaction, clientId)
   // A version for a note that is not there is the same refusal as a mismatch.
@@ -177,11 +190,6 @@ export async function saveClientNote(
   `), 'Client note save failed'))
   if (!claimed.rows[0])
     throw new StaleSaveError()
-  await appendAuditEntry(transaction, {
-    action: 'client_note.saved',
-    actorUserId,
-    subjectUserId: null,
-    data: { clientId, fields: ['note'] },
-  })
+  await recordNoteSaved(transaction, actorUserId, clientId)
   return loadClientNote(transaction, clientId)
 }

@@ -45,7 +45,8 @@ const staleRow = computed(() => {
 })
 
 const schema = computed(() => z.object({
-  note: z.string().max(CLIENT_NOTE_MAX_LENGTH, t('clients.note.tooLong')),
+  // Trim first, the same order as the route. A space around a 2000-character note is still that note.
+  note: z.string().trim().max(CLIENT_NOTE_MAX_LENGTH, t('clients.note.tooLong')),
 }))
 
 const submitLabel = computed(() => saving.value ? t('clients.note.saving') : t('clients.note.save'))

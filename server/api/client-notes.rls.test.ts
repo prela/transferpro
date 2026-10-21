@@ -367,6 +367,25 @@ it('refuses a stale correction, writes nothing, and leaves who and when on the n
   expect(current.changedAt).toEqual(expect.any(String))
 })
 
+it('a first save of an empty note writes nothing and appends no audit entry', async () => {
+  const firm = await office('hcn-blank')
+  const path = `/api/clients/${firm.client.id}/note`
+  const before = await auditRows(firm.created.tenantId)
+
+  const blank = await call('PUT', path, firm.dispatcher, { note: '   ' })
+  expect(blank.status).toBe(200)
+  expect(await blank.json()).toEqual({
+    clientId: firm.client.id,
+    note: null,
+    version: null,
+    changedAt: null,
+    changedByName: null,
+  })
+  expect(await noteStamp(firm.client.id)).toBeNull()
+  expect(await auditRows(firm.created.tenantId)).toEqual(before)
+  expect(await clientVersion(firm.client.id)).toBe(0)
+})
+
 it('a save that changes nothing appends no audit entry', async () => {
   const firm = await office('hcn-noop')
   const path = `/api/clients/${firm.client.id}/note`

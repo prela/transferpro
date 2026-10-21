@@ -87,6 +87,23 @@ it('saves the first note at version 1 and records the field name, not the text',
   expect(queries.some(query => query.sql.includes('update app.clients'))).toBe(false)
 })
 
+it('a first save of an empty note writes nothing and appends nothing', async () => {
+  const { transaction, queries, read } = fakeTransaction()
+  await expect(saveClientNote(transaction, actorUserId, clientId, { note: null })).resolves.toEqual({
+    clientId,
+    note: null,
+    version: null,
+    changedAt: null,
+    changedByName: null,
+  })
+  expect(read()).toBeNull()
+  expect(queries.some(query => query.sql.includes('insert into app.client_notes'))).toBe(false)
+  expect(auditParams(queries, 'client_note.saved')).toBeUndefined()
+
+  const missing = fakeTransaction({ client: false })
+  await expect(saveClientNote(missing.transaction, actorUserId, clientId, { note: null })).rejects.toBeInstanceOf(ClientNotFoundError)
+})
+
 it('reads no row as an empty note, and a missing Client as not found', async () => {
   const empty = fakeTransaction()
   await expect(loadClientNote(empty.transaction, clientId)).resolves.toEqual({
