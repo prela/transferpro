@@ -8,6 +8,7 @@
  * `postgres://u:p@127.0.0.1/transferpro_e2e?host=prod.example` connects
  * to prod.example. `hostaddr` does the same. Only `sslmode` is allowed.
  */
+import { existsSync } from 'node:fs'
 import process, { loadEnvFile } from 'node:process'
 import { databaseIdentity } from './backup-target.mjs'
 
@@ -65,12 +66,24 @@ export function assertRlsDatabaseEnv(env) {
 }
 
 /**
+ * Load a suite env file when it is there. The fast CI job has neither file.
+ * A missing file is not a refusal: the variables may already be in the environment.
+ * `loadEnvFile` throws ENOENT, which would hide the database-name check.
+ *
+ * @param {string} path
+ */
+function loadSuiteEnvFile(path) {
+  if (existsSync(path))
+    loadEnvFile(path)
+}
+
+/**
  * Load the suite env files, then refuse a database other than `transferpro_e2e`.
  * An already-set variable wins, matching `loadEnvFile` inside the tests.
  * Does not open a connection.
  */
 export function assertLoadedRlsDatabaseEnv() {
-  loadEnvFile('.env')
-  loadEnvFile('.env.migrate')
+  loadSuiteEnvFile('.env')
+  loadSuiteEnvFile('.env.migrate')
   assertRlsDatabaseEnv(process.env)
 }

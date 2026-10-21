@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import process from 'node:process'
 import { it } from 'vitest'
 import { assertRlsDatabaseEnv } from './rls-database.mjs'
@@ -60,9 +63,13 @@ it('the preflight exits before vitest when DATABASE_URL names transferpro', () =
   const env = { ...process.env }
   for (const [name, value] of Object.entries(ready))
     env[name] = value.replace('/transferpro_e2e', '/transferpro')
-  const result = spawnSync(process.execPath, ['./scripts/assert-rls-database.mjs'], {
+  // The fast CI job checks out the repo and has no .env. The refusal has to
+  // come from the database name, which this env already sets.
+  const cwd = mkdtempSync(join(tmpdir(), 'rls-preflight-'))
+  const result = spawnSync(process.execPath, [join(process.cwd(), 'scripts/assert-rls-database.mjs')], {
     encoding: 'utf8',
     env,
+    cwd,
   })
   assert.equal(result.status, 1)
   assert.match(result.stderr, /RLS refused to start: DATABASE_URL /)
