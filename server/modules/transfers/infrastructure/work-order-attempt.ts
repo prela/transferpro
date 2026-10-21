@@ -55,6 +55,7 @@ const attemptRows = z.object({
  * Every other status names the Vehicle on the Ride now.
  * A missing row is null. A bad row is a fixed error, so a guest or a plate
  * cannot ride out on a database message.
+ * No role check: the worker has no actor. HTTP use is the worker-used loader list (#344).
  */
 export async function loadOutboxAttempt(
   transaction: TenantTransaction,
@@ -201,7 +202,7 @@ export interface WorkOrderAttemptStore extends OutboxAttemptStore {
   load: (entryId: string) => Promise<LoadedWorkOrderEntry | null>
 }
 
-/** Work order store bound to the job's tenant transaction. The save is the mail module's, for any kind. */
+/** Work order store bound to the job's tenant transaction. The save is the mail module's, for any kind. No role check (#344). */
 export function outboxAttemptStore(transaction: TenantTransaction): WorkOrderAttemptStore {
   return {
     load: entryId => loadOutboxAttempt(transaction, entryId),

@@ -26,6 +26,7 @@ export type InvitationReader = (tenantId: string, invitationId: string) => Promi
  * Tenant name, and the Tenant default locale, as `invitationEmail` does.
  * An invitation this Tenant does not have is null facts, so it is stale.
  * A reader failure is not a decision: it propagates and nothing is counted.
+ * No role check: the worker has no actor. HTTP use is the worker-used loader list (#344).
  */
 export async function loadInvitationAttempt(
   transaction: TenantTransaction,
@@ -74,7 +75,7 @@ export async function loadInvitationAttempt(
   }
 }
 
-/** Store for invitation entries, bound to one tenant transaction. */
+/** Store for invitation entries, bound to one tenant transaction. No role check (#344). */
 export function invitationAttemptStore(
   transaction: TenantTransaction,
   context: TenantContext,

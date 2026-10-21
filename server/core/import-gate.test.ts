@@ -345,3 +345,110 @@ it('blocks console outside the logger module', async () => {
   )
   expect(inside).toEqual([])
 })
+
+/**
+ * Lint seam (#344): the mail outbox worker has no actor, so its loaders
+ * check no role. An HTTP handler under server/api or server/routes may
+ * use one only when the function that uses it, or a function enclosing
+ * that use, calls officeOnly or requireRole. The names below are the spec.
+ * eslint/worker-used-loaders.mjs is the list the rule reads.
+ */
+const WORKER_USED_LOADERS = [
+  'loadInvitationAttempt',
+  'invitationAttemptStore',
+  'loadOutboxAttempt',
+  'outboxAttemptStore',
+  'mailOutboxStore',
+  'readInvitationForMail',
+] as const
+
+async function workerLoaderRole(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? []).filter(message =>
+    message.ruleId === 'transferpro/worker-loader-role',
+  )
+}
+
+it('rejects an HTTP handler that uses a worker-used loader without a role guard', async () => {
+  for (const name of WORKER_USED_LOADERS) {
+    const source = `import { ${name} } from '../modules/mail'\nexport default function handler() {\n  return ${name}()\n}\n`
+    const fromApi = await workerLoaderRole('server/api/leak.get.ts', source)
+    const fromRoutes = await workerLoaderRole('server/routes/leak.get.ts', source)
+    expect(fromApi, name).not.toEqual([])
+    expect(fromApi.some(message => message.message.includes(name)), name).toBe(true)
+    expect(fromRoutes, name).not.toEqual([])
+  }
+})
+
+it('allows the loader when the same handler calls officeOnly or requireRole', async () => {
+  for (const guard of ['officeOnly', 'requireRole']) {
+    const source = `import { loadInvitationAttempt } from '../modules/mail'\nexport default function handler(role: string) {\n  ${guard}(role)\n  return loadInvitationAttempt()\n}\n`
+    expect(await workerLoaderRole('server/api/guarded.get.ts', source), guard).toEqual([])
+  }
+  const nuxt = `import { loadInvitationAttempt } from '../modules/mail'\nexport default defineEventHandler(async () => {\n  officeOnly('admin')\n  return loadInvitationAttempt()\n})\n`
+  expect(await workerLoaderRole('server/api/guarded.get.ts', nuxt)).toEqual([])
+  const later = `import { mailOutboxStore } from '../modules/transfers'\nexport default function handler(role: string) {\n  function inner() {\n    return mailOutboxStore()\n  }\n  requireRole(role)\n  return inner()\n}\n`
+  expect(await workerLoaderRole('server/api/guarded.get.ts', later)).toEqual([])
+})
+
+it('does not treat a role guard in another function as the handler check', async () => {
+  const source = `import { loadOutboxAttempt } from '../modules/transfers'\nfunction unused(role: string) {\n  officeOnly(role)\n}\nfunction requireRole() {}\nexport default function handler() {\n  return loadOutboxAttempt()\n}\n`
+  expect(await workerLoaderRole('server/api/leak.get.ts', source)).not.toEqual([])
+})
+
+it('allows a nested call when the enclosing handler checked the role', async () => {
+  const source = `import { readInvitationForMail } from '../modules/tenancy'\nexport default function handler(role: string) {\n  requireRole(role)\n  return inner()\n  function inner() {\n    return readInvitationForMail()\n  }\n}\n`
+  expect(await workerLoaderRole('server/api/guarded.get.ts', source)).toEqual([])
+})
+
+it('rejects an alias, a member call, a re-export, and an import of a loader module', async () => {
+  const cases = [
+    `import { loadInvitationAttempt as loadEntry } from '../modules/mail'\nexport default function handler() {\n  return loadEntry()\n}\n`,
+    `import * as mail from '../modules/mail'\nexport default function handler() {\n  return mail.loadInvitationAttempt()\n}\n`,
+    `export { outboxAttemptStore } from '../modules/transfers'\n`,
+    `await import('../modules/mail/infrastructure/invitation-attempt')\n`,
+    `import { readWorkOrderCurrentFacts } from '../modules/transfers/infrastructure/work-order-attempt'\nexport default function handler() {\n  return readWorkOrderCurrentFacts()\n}\n`,
+    `export * from '../modules/transfers/infrastructure/work-order-attempt'\n`,
+    `import * as mail from '../modules/mail'\nexport default function handler() {\n  const { loadInvitationAttempt } = mail\n  return 1\n}\n`,
+    `export * from '../modules/mail'\n`,
+  ]
+  for (const source of cases)
+    expect(await workerLoaderRole('server/api/leak.get.ts', source), source).not.toEqual([])
+})
+
+it('ignores module code, HTTP tests, and a handler that does not use a worker loader', async () => {
+  const source = `import { loadInvitationAttempt } from '../modules/mail'\nexport function run() {\n  return loadInvitationAttempt()\n}\n`
+  expect(await workerLoaderRole('server/modules/transfers/infrastructure/failed-mail.ts', source)).toEqual([])
+  expect(await workerLoaderRole('server/api/invitation-outbox.rls.test.ts', source)).toEqual([])
+  expect(await workerLoaderRole('server/routes/outbox.rls.test.ts', source)).toEqual([])
+  const ordinary = `import { listUpcomingRides } from '../../modules/transfers'\nexport default function handler() {\n  return listUpcomingRides()\n}\n`
+  expect(await workerLoaderRole('server/api/rides/upcoming.get.ts', ordinary)).toEqual([])
+})
+
+it('keeps the worker-used loader names in one list', async () => {
+  const listed = await import('../../eslint/worker-used-loaders.mjs')
+  expect([...listed.workerUsedLoaders].sort()).toEqual([...WORKER_USED_LOADERS].sort())
+  expect([...listed.workerLoaderModules].sort()).toEqual(['invitation-attempt', 'work-order-attempt'])
+  expect([...listed.workerLoaderBarrels].sort()).toEqual(['mail', 'tenancy', 'transfers'])
+})
+
+it('leaves the current HTTP tree alone', async () => {
+  const results = await eslint.lintFiles(['server/api/**/*.ts'])
+  const hits = results.flatMap(result =>
+    (result.messages ?? [])
+      .filter(message => message.ruleId === 'transferpro/worker-loader-role')
+      .map(message => `${result.filePath}:${message.line} ${message.message}`),
+  )
+  expect(hits).toEqual([])
+}, 60_000)
+
+it('rejects an unused import of a worker loader and allows a type-only import', async () => {
+  expect(await workerLoaderRole(
+    'server/api/leak.get.ts',
+    `import { mailOutboxStore } from '../modules/transfers'\nexport default function handler() {\n  return 1\n}\n`,
+  )).not.toEqual([])
+  expect(await workerLoaderRole(
+    'server/api/leak.get.ts',
+    `import type { InvitationReader } from '../modules/mail'\nexport default function handler() {\n  return 1\n}\n`,
+  )).toEqual([])
+})

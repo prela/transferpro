@@ -16,7 +16,7 @@ export async function closeMailOutboxQueue(): Promise<void> {
   await closeQueue()
 }
 
-/** A work order reads the Ride. An invitation reads Better Auth's row for this Tenant. */
+/** A work order reads the Ride. An invitation reads Better Auth's row for this Tenant. No role check (#344). */
 export function mailOutboxStore(transaction: TenantTransaction, context: TenantContext): OutboxAttemptStore {
   return outboxStoreByKind(transaction, {
     work_order: outboxAttemptStore(transaction),

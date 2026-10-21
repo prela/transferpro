@@ -1,5 +1,6 @@
 import path from 'node:path'
 import antfu from '@antfu/eslint-config'
+import { workerLoaderBarrels, workerLoaderModules, workerUsedLoaders } from './eslint/worker-used-loaders.mjs'
 
 /**
  * ADR-0011: the kernel adapter and the Postgres drivers stay behind
@@ -656,6 +657,336 @@ const capacityCoreImports = {
   ],
 }
 
+/**
+ * #344: the mail outbox worker has no actor, so the loaders it calls check
+ * no role. A non-test file under server/api or server/routes may use one
+ * only from a function that calls officeOnly or requireRole, or from a
+ * function enclosed by that call. A guard in a sibling function does not
+ * cover the handler. The names live in worker-used-loaders.mjs.
+ * A renamed destructure is judged at the pattern. The path check sees
+ * string-literal sources.
+ */
+const WORKER_LOADER_GUARDS = new Set(['officeOnly', 'requireRole'])
+const WORKER_LOADER_NAMES = new Set(workerUsedLoaders)
+
+const workerLoaderRole = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      unguarded: 'A worker-used mail loader ({{name}}) needs officeOnly or requireRole in the handler that uses it (#344).',
+    },
+  },
+  create(context) {
+    const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
+    if (!isWorkerLoaderHttpFile(filename))
+      return {}
+
+    /** @type {{ parent: number | null, role: boolean, hits: { node: import('estree').Node, label: string }[] }[]} */
+    const scopes = [{ parent: null, role: false, hits: [] }]
+    /** @type {number[]} */
+    const stack = [0]
+    /** Local binding imported from a worker loader, mapped to the name the message should cite. */
+    const loaderLocals = new Map()
+    /** Import specifier for that binding, so an unused import still fails. */
+    const importedNodes = new Map()
+    const usedLocals = new Set()
+
+    /**
+     * The function being visited, or the program when the node is at the top.
+     * @returns {{ parent: number | null, role: boolean, hits: { node: import('estree').Node, label: string }[] }} the scope of the current node
+     */
+    function current() {
+      return scopes[stack[stack.length - 1] ?? 0]
+    }
+
+    /**
+     * @param {string} local
+     * @param {string} label
+     * @param {import('estree').Node} node
+     */
+    function remember(local, label, node) {
+      loaderLocals.set(local, label)
+      importedNodes.set(local, node)
+    }
+
+    /**
+     * @param {import('estree').Node} node
+     * @param {string} label
+     */
+    function hit(node, label) {
+      current().hits.push({ node, label })
+    }
+
+    /**
+     * @param {number} id
+     */
+    function guarded(id) {
+      let cursor = id
+      while (cursor !== null) {
+        const scope = scopes[cursor]
+        if (!scope)
+          return false
+        if (scope.role)
+          return true
+        cursor = scope.parent
+      }
+      return false
+    }
+
+    /**
+     * Enter and leave are separate keys. A comma-separated `:exit` selector
+     * is handed to esquery whole, and ESLint 10 rejects the class name.
+     */
+    function enterFunction() {
+      const id = scopes.length
+      scopes.push({ parent: stack[stack.length - 1] ?? 0, role: false, hits: [] })
+      stack.push(id)
+    }
+    function leaveFunction() {
+      stack.pop()
+    }
+
+    return {
+      'FunctionDeclaration': enterFunction,
+      'FunctionDeclaration:exit': leaveFunction,
+      'FunctionExpression': enterFunction,
+      'FunctionExpression:exit': leaveFunction,
+      'ArrowFunctionExpression': enterFunction,
+      'ArrowFunctionExpression:exit': leaveFunction,
+      CallExpression(node) {
+        const name = calledName(node.callee)
+        if (name && WORKER_LOADER_GUARDS.has(name))
+          current().role = true
+      },
+      ImportDeclaration(node) {
+        if (node.importKind === 'type')
+          return
+        const source = literalSource(node.source)
+        const moduleName = source ? workerLoaderModuleName(source) : null
+        if (moduleName && node.specifiers.length === 0)
+          hit(node, moduleName)
+        for (const spec of node.specifiers) {
+          if (spec.type === 'ImportSpecifier' && spec.importKind === 'type')
+            continue
+          const local = spec.local?.name
+          if (!local)
+            continue
+          if (spec.type === 'ImportSpecifier') {
+            const imported = importedBindingName(spec)
+            if (imported && WORKER_LOADER_NAMES.has(imported)) {
+              remember(local, imported, spec)
+              continue
+            }
+          }
+          if (moduleName)
+            remember(local, moduleName, spec)
+        }
+      },
+      ImportExpression(node) {
+        const source = literalSource(node.source)
+        const moduleName = source ? workerLoaderModuleName(source) : null
+        if (moduleName)
+          hit(node, moduleName)
+      },
+      ExportNamedDeclaration(node) {
+        if (node.exportKind === 'type' || !node.source)
+          return
+        const source = literalSource(node.source)
+        const moduleName = source ? workerLoaderModuleName(source) : null
+        for (const spec of node.specifiers) {
+          if (spec.type !== 'ExportSpecifier' || spec.exportKind === 'type')
+            continue
+          const local = spec.local.type === 'Identifier' ? spec.local.name : String(spec.local.value)
+          if (WORKER_LOADER_NAMES.has(local))
+            hit(spec, local)
+          else if (moduleName)
+            hit(spec, moduleName)
+        }
+      },
+      ExportAllDeclaration(node) {
+        const source = literalSource(node.source)
+        if (!source)
+          return
+        const moduleName = workerLoaderModuleName(source)
+        if (moduleName)
+          hit(node, moduleName)
+        else if (isWorkerLoaderBarrel(source))
+          hit(node, 'workerUsedLoaders')
+      },
+      Identifier(node) {
+        const fromLocal = loaderLocals.get(node.name)
+        const label = fromLocal ?? (WORKER_LOADER_NAMES.has(node.name) ? node.name : null)
+        if (!label || isImportBinding(node) || isDeclaredName(node) || isMemberProperty(node) || isNonShorthandKey(node))
+          return
+        if (fromLocal)
+          usedLocals.add(node.name)
+        hit(node, label)
+      },
+      MemberExpression(node) {
+        const name = memberPropertyName(node)
+        if (name && WORKER_LOADER_NAMES.has(name))
+          hit(node, name)
+      },
+      Property(node) {
+        if (node.parent?.type !== 'ObjectPattern' || node.computed)
+          return
+        const name = node.key.type === 'Identifier' ? node.key.name : null
+        if (name && WORKER_LOADER_NAMES.has(name))
+          hit(node, name)
+      },
+      'Program:exit': function () {
+        scopes.forEach((scope, id) => {
+          if (guarded(id))
+            return
+          for (const item of scope.hits)
+            context.report({ node: item.node, messageId: 'unguarded', data: { name: item.label } })
+        })
+        for (const [local, spec] of importedNodes) {
+          if (!usedLocals.has(local)) {
+            context.report({
+              node: spec,
+              messageId: 'unguarded',
+              data: { name: loaderLocals.get(local) ?? local },
+            })
+          }
+        }
+      },
+    }
+  },
+}
+
+/**
+ * @param {string} filename
+ */
+function isWorkerLoaderHttpFile(filename) {
+  const http = filename.includes('/server/api/') || filename.includes('/server/routes/')
+  if (!http)
+    return false
+  const base = filename.split('/').pop() ?? ''
+  return !/\.(?:test|spec)\.[cm]?[jt]s$/.test(base)
+}
+
+/**
+ * @param {import('estree').Node | null | undefined} node
+ */
+function literalSource(node) {
+  if (!node || node.type !== 'Literal' || typeof node.value !== 'string')
+    return null
+  return node.value
+}
+
+/**
+ * @param {string} source
+ */
+function bareModulePath(source) {
+  return source.replaceAll('\\', '/').replace(/\.[cm]?[jt]s$/, '').replace(/\/index$/, '')
+}
+
+/**
+ * @param {string} source
+ */
+function workerLoaderModuleName(source) {
+  const bare = bareModulePath(source)
+  for (const name of workerLoaderModules) {
+    if (bare === name || bare.endsWith(`/${name}`))
+      return name
+  }
+  return null
+}
+
+/**
+ * @param {string} source
+ */
+function isWorkerLoaderBarrel(source) {
+  const bare = bareModulePath(source)
+  return workerLoaderBarrels.some(name => bare === name || bare.endsWith(`/${name}`))
+}
+
+/**
+ * @param {import('estree').Node} callee
+ */
+function calledName(callee) {
+  if (callee.type === 'Identifier')
+    return callee.name
+  if (callee.type === 'MemberExpression' && !callee.computed && callee.property.type === 'Identifier')
+    return callee.property.name
+  return null
+}
+
+/**
+ * @param {import('estree').ImportSpecifier} spec
+ */
+function importedBindingName(spec) {
+  const imported = spec.imported
+  if (imported.type === 'Identifier')
+    return imported.name
+  if (imported.type === 'Literal' && typeof imported.value === 'string')
+    return imported.value
+  return null
+}
+
+/**
+ * @param {import('estree').Identifier} node
+ */
+function isImportBinding(node) {
+  const parent = node.parent
+  return parent?.type === 'ImportSpecifier'
+    || parent?.type === 'ImportDefaultSpecifier'
+    || parent?.type === 'ImportNamespaceSpecifier'
+}
+
+/**
+ * The binding name, not a use. Object patterns are reported by the Property visitor.
+ * @param {import('estree').Identifier} node
+ */
+function isDeclaredName(node) {
+  const parent = node.parent
+  if (!parent)
+    return false
+  if ((parent.type === 'FunctionDeclaration' || parent.type === 'FunctionExpression' || parent.type === 'ClassDeclaration' || parent.type === 'ClassExpression') && parent.id === node)
+    return true
+  if (parent.type === 'VariableDeclarator' && parent.id === node)
+    return true
+  if ((parent.type === 'FunctionDeclaration' || parent.type === 'FunctionExpression' || parent.type === 'ArrowFunctionExpression') && parent.params.includes(node))
+    return true
+  if (parent.type === 'Property' && parent.parent?.type === 'ObjectPattern')
+    return true
+  if (parent.type === 'ArrayPattern' || parent.type === 'RestElement')
+    return true
+  if (parent.type === 'AssignmentPattern' && parent.left === node)
+    return true
+  return false
+}
+
+/**
+ * @param {import('estree').Identifier} node
+ */
+function isMemberProperty(node) {
+  const parent = node.parent
+  return parent?.type === 'MemberExpression' && parent.property === node && !parent.computed
+}
+
+/**
+ * A shorthand `{ loadInvitationAttempt }` is a use. A key with its own value is not.
+ * @param {import('estree').Identifier} node
+ */
+function isNonShorthandKey(node) {
+  const parent = node.parent
+  return parent?.type === 'Property' && parent.key === node && !parent.shorthand && !parent.computed
+}
+
+/**
+ * @param {import('estree').MemberExpression} node
+ */
+function memberPropertyName(node) {
+  if (!node.computed && node.property.type === 'Identifier')
+    return node.property.name
+  if (node.computed && node.property.type === 'Literal' && typeof node.property.value === 'string')
+    return node.property.value
+  return null
+}
+
 export default antfu(
   {
     type: 'app',
@@ -678,6 +1009,7 @@ export default antfu(
           'no-expiring-documents-transfers-import': expiringDocumentsTransfersImport,
           'no-platform-boundary-import': platformBoundaryImport,
           'capacity-boundary-import': capacityBoundaryImport,
+          'worker-loader-role': workerLoaderRole,
         },
       },
     },
@@ -695,6 +1027,7 @@ export default antfu(
       'transferpro/no-expiring-documents-transfers-import': 'error',
       'transferpro/no-platform-boundary-import': 'error',
       'transferpro/capacity-boundary-import': 'error',
+      'transferpro/worker-loader-role': 'error',
     },
   },
   {
