@@ -181,3 +181,26 @@ it('refuses an unreachable contact, a bad name, a bad email, and a version witho
   ))
   expect(kept.rows).toEqual([{ version: 0, data_changed_at: null, data_changed_by: null }])
 })
+
+// `data_changed_by <> ''` is unknown when the member is null, and a CHECK
+// accepts unknown. A version that names a time and no member must still fail.
+it('refuses a contact person version that records a time and a null member', async () => {
+  const clientA = await insertClient(tenantA, 'Hotel Bez Autora')
+  await expect(withTenant(tenantA, client => client.query(
+    `insert into app.client_contact_persons (client_id, name, phone, version, data_changed_at, data_changed_by)
+     values ($1, 'Ana Booking', '+385911110364', 1, now(), null)`,
+    [clientA],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'client_contact_persons_data_change' })
+
+  await withTenant(tenantA, client => client.query(
+    `insert into app.client_contact_persons (client_id, name, phone)
+     values ($1, 'Ana Booking', '+385911110364')`,
+    [clientA],
+  ))
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.client_contact_persons
+     set version = 1, data_changed_at = now(), data_changed_by = null
+     where client_id = $1`,
+    [clientA],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'client_contact_persons_data_change' })
+})
