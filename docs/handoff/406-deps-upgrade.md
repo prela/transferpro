@@ -6,6 +6,7 @@
 - `routeRules` reviewed. The only keys are `/manifest.webmanifest` (`content-type: application/manifest+json`) and `/sw.js` (`cache-control: no-cache`). They set headers. They do not grant or refuse a screen. From Nuxt 4.6.2 those keys also match a different letter case. Neither key is a page.
 - Route middleware. The page router already served `/Transfers` and `/Admin/tenants` as the lowercase pages. Company-settings redirects compared the path with case, so `/Settings` was not treated as company settings. The platform middleware returned before the session check unless the path started with the lowercase `/admin/tenants`. Both comparisons now use `foldedPath`. Office, member, and authenticated middleware do not branch on the path spelling.
 - undici: **8.12.3** only. No 6.x and no 7.x. `unifont` (through `@nuxt/fonts`) had resolved 8.11.2, under the 8.12.2 floor, so `pnpm-workspace.yaml` overrides `undici` to `^8.12.2`. Drop that line once unifont depends on undici >= 8.12.2.
+- Vue: **3.5.44** only. `@better-auth/telemetry` and `vue-router` had resolved 3.5.43 beside the app's 3.5.44. The CI artifact materializes symlinks, the server then loaded two Vue copies, and `GET /` returned 500 (`Cannot read properties of null (reading 'ce')` in `renderSlot`). `pnpm-workspace.yaml` overrides `vue` and the packages that ship with that version (`@vue/compiler-core`, `compiler-dom`, `compiler-sfc`, `compiler-ssr`, `reactivity`, `runtime-core`, `runtime-dom`, `server-renderer`, `shared`) to 3.5.44. The lockfile has one snapshot, `vue@3.5.44(typescript@6.0.3)`. `@vue/devtools-*` and `@vue/language-core` stay on their own lines; they are not Vue 3.5. Drop the Vue overrides once those dependencies ask for 3.5.44 themselves.
 
 ## Versions
 
@@ -29,5 +30,6 @@ No route rule sets `cors`, and no handler calls h3's CORS helpers. Nitro's `cors
 - `shared/company-settings.test.ts`: `/Settings` and `/SETTINGS/tenant` stay the protected settings route. `/Forgot-password` stays off that route.
 - `shared/platform-account.test.ts`: `/Admin/tenants` is still the firm-list path. `/Forgot-password` is not.
 - `e2e/signed-out-pages.spec.ts`: `/Transfers`, `/Settings`, and `/Admin/tenants` still show the sign-in form. `/Forgot-password` stays the public reset request. Worker and manifest headers, and a foreign origin, stay as they were.
+- Built server copied with `cp -RL .output`: no symlinks remain, the traced `vue` package is 3.5.44, and `GET /` returns 200 (the sign-in page). Node 24.21.0.
 
-`pnpm test:rls` did not run here. The local `DATABASE_URL` does not name `transferpro_e2e`, and the script exits before vitest. This slice adds no migration and no tenant table.
+`pnpm lint`, `pnpm typecheck`, and `pnpm test` (868) passed. `pnpm test:e2e` passed (310). `pnpm audit --audit-level=high` exited 0. `pnpm test:rls` did not run here. The local `DATABASE_URL` does not name `transferpro_e2e`, and the script exits before vitest. This slice adds no migration and no tenant table.
