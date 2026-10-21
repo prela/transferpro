@@ -213,6 +213,12 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     items.push({ label: t('ride.reassign'), icon: 'i-lucide-arrow-left-right', onSelect: () => emit('command', 'reassign') })
     items.push({ label: t('ride.clear'), icon: 'i-lucide-user-minus', onSelect: () => emit('clear') })
   }
+  // ADR-0038: the detail bar is one primary action and Više. These commands
+  // live in that menu, beside take-back.
+  if (canHandOff(ride))
+    items.push({ label: t('ride.handOff'), icon: 'i-lucide-handshake', onSelect: () => emit('command', 'handOff') })
+  if (canChangePartner(ride))
+    items.push({ label: t('ride.changePartner'), icon: 'i-lucide-handshake', onSelect: () => emit('command', 'changePartner') })
   if (canTakeBack(ride))
     items.push({ label: t('ride.takeBack'), icon: 'i-lucide-corner-up-left', onSelect: () => emit('takeBack') })
   if (primary.value === null && canFinish(ride))
@@ -433,12 +439,16 @@ const primaryLabel = computed(() => {
       <dd>{{ place(ride.endLocationId) }}</dd>
       <dt>{{ t('transfers.columns.client') }}</dt>
       <dd>{{ clients.find(client => client.id === ride.clientId)?.name ?? '' }}</dd>
-      <dt>{{ t('ride.driver') }}</dt>
-      <dd>{{ driverDisplayName(drivers, ride.driverId, t('ride.unknownDriver')) || t('transfers.unassignedCrew') }}</dd>
-      <dt>{{ t('ride.vehicle') }}</dt>
-      <dd class="font-mono">
-        {{ plate(ride.vehicleId) || t('transfers.unassignedCrew') }}
-      </dd>
+      <!-- A handed-off Ride has no Driver and no Vehicle. "Nedodijeljeno" is
+           the unassigned state, and ADR-0048 says this Ride is not that. -->
+      <template v-if="ride.state !== 'handed_off'">
+        <dt>{{ t('ride.driver') }}</dt>
+        <dd>{{ driverDisplayName(drivers, ride.driverId, t('ride.unknownDriver')) || t('transfers.unassignedCrew') }}</dd>
+        <dt>{{ t('ride.vehicle') }}</dt>
+        <dd class="font-mono">
+          {{ plate(ride.vehicleId) || t('transfers.unassignedCrew') }}
+        </dd>
+      </template>
       <template v-if="ride.state === 'handed_off'">
         <dt>{{ t('ride.partner') }}</dt>
         <dd>{{ partnerLabel(ride.partnerId) }}</dd>
@@ -583,28 +593,6 @@ const primaryLabel = computed(() => {
         @click="runPrimary"
       >
         {{ primaryLabel }}
-      </UButton>
-      <UButton
-        v-if="canHandOff(ride)"
-        type="button"
-        color="neutral"
-        variant="outline"
-        :size="pinActions ? 'xl' : 'sm'"
-        :class="pinActions ? 'min-h-12 flex-1 justify-center' : 'h-7 min-h-7 flex-1 justify-center'"
-        @click="emit('command', 'handOff')"
-      >
-        {{ t('ride.handOff') }}
-      </UButton>
-      <UButton
-        v-else-if="canChangePartner(ride)"
-        type="button"
-        color="neutral"
-        variant="outline"
-        :size="pinActions ? 'xl' : 'sm'"
-        :class="pinActions ? 'min-h-12 flex-1 justify-center' : 'h-7 min-h-7 flex-1 justify-center'"
-        @click="emit('command', 'changePartner')"
-      >
-        {{ t('ride.changePartner') }}
       </UButton>
       <UDropdownMenu
         v-if="menuItems.length > 0"

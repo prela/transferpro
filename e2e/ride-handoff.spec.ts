@@ -78,7 +78,8 @@ async function pickPartner(page: Page, name: string) {
 
 async function handOff(page: Page, partner: string) {
   const detail = page.locator('#ride-detail')
-  await detail.getByRole('button', { name: 'Predaj podizvođaču', exact: true }).click()
+  await detail.getByRole('button', { name: 'Više', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Predaj podizvođaču', exact: true }).click()
   await expect(detail.getByRole('heading', { name: 'Predaj podizvođaču' })).toBeVisible()
   await pickPartner(page, partner)
   await detail.getByRole('button', { name: 'Predaj vožnju', exact: true }).click()
@@ -137,7 +138,8 @@ test.describe('@phone', () => {
 
       await openRide(page, day, rideId, guest)
       const detail = page.locator('#ride-detail')
-      await detail.getByRole('button', { name: 'Predaj podizvođaču', exact: true }).click()
+      await detail.getByRole('button', { name: 'Više', exact: true }).click()
+      await page.getByRole('menuitem', { name: 'Predaj podizvođaču', exact: true }).click()
       await expect(detail.getByRole('heading', { name: 'Predaj podizvođaču' })).toBeVisible()
       await expectNoAxeViolations(page)
       await pickPartner(page, first)
@@ -150,7 +152,9 @@ test.describe('@phone', () => {
 
       await openRide(page, day, rideId, guest)
       await expect(detail.getByText(first)).toBeVisible()
-      await detail.getByRole('button', { name: 'Promijeni podizvođača', exact: true }).click()
+      await expect(detail.getByText('Nedodijeljeno')).toHaveCount(0)
+      await detail.getByRole('button', { name: 'Više', exact: true }).click()
+      await page.getByRole('menuitem', { name: 'Promijeni podizvođača', exact: true }).click()
       await expect(detail.getByRole('heading', { name: 'Promjena podizvođača' })).toBeVisible()
       await pickPartner(page, second)
       await detail.getByRole('button', { name: 'Promijeni podizvođača', exact: true }).click()
@@ -162,9 +166,13 @@ test.describe('@phone', () => {
         await openRide(page, day, rideId, guest)
         await switchLocale(page, 'en')
         await expect(detail.getByText('Handed off').first()).toBeVisible()
-        await expect(detail.getByRole('button', { name: 'Change subcontractor', exact: true })).toBeVisible()
+        await detail.getByRole('button', { name: 'More', exact: true }).click()
+        await expect(page.getByRole('menuitem', { name: 'Change subcontractor', exact: true })).toBeVisible()
+        await page.keyboard.press('Escape')
         await switchLocale(page, 'hr')
-        await expect(detail.getByRole('button', { name: 'Promijeni podizvođača', exact: true })).toBeVisible()
+        await detail.getByRole('button', { name: 'Više', exact: true }).click()
+        await expect(page.getByRole('menuitem', { name: 'Promijeni podizvođača', exact: true })).toBeVisible()
+        await page.keyboard.press('Escape')
       }
 
       await openRide(page, day, rideId, guest)
@@ -189,8 +197,9 @@ test.describe('@phone', () => {
       await expect(rideRow(page, guest)).toContainText('Obavljeno')
       await openRide(page, day, rideId, guest)
       await expect(detail.getByText('Obavljeno').first()).toBeVisible()
-      await expect(detail.getByRole('button', { name: 'Predaj podizvođaču', exact: true })).toHaveCount(0)
-      await expect(detail.getByRole('button', { name: 'Promijeni podizvođača', exact: true })).toHaveCount(0)
+      await detail.getByRole('button', { name: 'Više', exact: true }).click()
+      await expect(page.getByRole('menuitem', { name: 'Predaj podizvođaču', exact: true })).toHaveCount(0)
+      await expect(page.getByRole('menuitem', { name: 'Promijeni podizvođača', exact: true })).toHaveCount(0)
     })
   }
 })
