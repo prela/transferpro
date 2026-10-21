@@ -1,5 +1,5 @@
-import type { Client, ClientOfficeBrief, DeclineAlert, Driver, LiveRefreshOutcome, Location, TransferDayRide, Vehicle } from '../../shared'
-import { claimDayLoad, claimFullLoad, clientListSchema, driverListSchema, isCalendarDate, locationListSchema, operationalDateInTimeZone, transferDaySchema, vehicleListSchema } from '../../shared'
+import type { Client, ClientOfficeBrief, DeclineAlert, Driver, LiveRefreshOutcome, Location, Partner, TransferDayRide, Vehicle } from '../../shared'
+import { claimDayLoad, claimFullLoad, clientListSchema, driverListSchema, isCalendarDate, locationListSchema, operationalDateInTimeZone, partnerListSchema, transferDaySchema, vehicleListSchema } from '../../shared'
 import { useOfficeHomeFeed } from './office-home-feed'
 
 /**
@@ -17,6 +17,9 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
   const locations = ref<Location[]>([])
   const drivers = ref<Driver[]>([])
   const vehicles = ref<Vehicle[]>([])
+  // Archived Partners stay so a Ride already handed to one keeps the name.
+  // The picker still offers only Partners that are not archived.
+  const partners = ref<Partner[]>([])
   // Pickup instants of unfinished unassigned Rides, any day. The seven-day
   // note reads the frame's office home snapshot, so Transfers does not
   // send a second office-home request (ADR-0038).
@@ -34,7 +37,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
 
   async function fetchCatalogs() {
     // Each $fetch is a Promise.all item. Awaiting inside the array would run them one after another.
-    const [clientList, locationList, driverList, vehicleList] = await Promise.all([
+    const [clientList, locationList, driverList, vehicleList, partnerList] = await Promise.all([
       $fetch('/api/clients').then(data => clientListSchema.parse(data)),
       // Archived rows stay in the catalog so a Ride keeps its place name.
       // The record form still offers only places that are not archived.
@@ -45,12 +48,16 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
       // Archived Vehicles stay in the catalog so an assigned Ride keeps its plate.
       // The assign picker still offers only Vehicles that are not archived.
       $fetch('/api/vehicles', { query: { includeArchived: 'true' } }).then(data => vehicleListSchema.parse(data)),
+      // Archived Partners stay so a handed-off Ride keeps the name (ADR-0049).
+      // The handoff picker still offers only Partners that are not archived.
+      $fetch('/api/partners', { query: { includeArchived: 'true' } }).then(data => partnerListSchema.parse(data)),
     ])
     return {
       clients: clientList.clients,
       locations: locationList.locations,
       drivers: driverList.drivers,
       vehicles: vehicleList.vehicles,
+      partners: partnerList.partners,
     }
   }
 
@@ -59,6 +66,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
     locations.value = catalogs.locations
     drivers.value = catalogs.drivers
     vehicles.value = catalogs.vehicles
+    partners.value = catalogs.partners
   }
 
   async function fetchTransferDay(date: string) {
@@ -155,6 +163,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
     locations,
     drivers,
     vehicles,
+    partners,
     unassignedPickups,
     loading,
     loadError,

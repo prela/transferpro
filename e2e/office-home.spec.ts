@@ -411,6 +411,7 @@ test.describe('@phone', () => {
       ['Čeka prihvat', 'waiting'],
       ['Dodijeljeno, nije krenulo', 'assignedNotStarted'],
       ['U tijeku', 'inProgress'],
+      ['Predano podizvođaču', 'handedOff'],
       ['Obavljeno', 'done'],
       ['Nedolazak', 'noShow'],
       ['Otkazano', 'cancelled'],

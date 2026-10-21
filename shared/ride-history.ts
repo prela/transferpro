@@ -12,8 +12,10 @@ export const RIDE_HISTORY_PAGE_SIZE = 50
 const pickupWallSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
 
 /**
- * One Ride on the Client card, or later on the Partner record.
- * `partnerName` is set while the Ride is handed off. A closed Ride no longer stores the Partner (#415).
+ * One Ride on the Client card, or on the Partner record.
+ * `partnerName` is set while the Ride is handed off. A closed Ride no
+ * longer stores the Partner on the row, so a Client's history leaves the
+ * name empty. The Partner's own history still names that Partner.
  * `pickupAt` is the stored instant. `pickupWall` is that instant in the
  * Tenant time zone, which is what the row shows.
  */

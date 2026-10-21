@@ -24,12 +24,14 @@ async function reloadAfterSave() {
 }
 
 const clearDialog = ref<{ open: (ride: TransferDayRide) => void } | null>(null)
+const takeBackDialog = ref<{ open: (ride: TransferDayRide) => void } | null>(null)
 const markDoneDialog = ref<{ open: (ride: TransferDayRide) => void } | null>(null)
 const markNoShowDialog = ref<{ open: (ride: TransferDayRide) => void } | null>(null)
 const cancelDialog = ref<{ open: (ride: TransferDayRide) => void } | null>(null)
 
 defineExpose({
   openClear: (ride: TransferDayRide) => clearDialog.value?.open(ride),
+  openTakeBack: (ride: TransferDayRide) => takeBackDialog.value?.open(ride),
   openMarkDone: (ride: TransferDayRide) => markDoneDialog.value?.open(ride),
   openMarkNoShow: (ride: TransferDayRide) => markNoShowDialog.value?.open(ride),
   openCancelRide: (ride: TransferDayRide) => cancelDialog.value?.open(ride),
@@ -44,6 +46,14 @@ defineExpose({
   <RideClearDialog
     ref="clearDialog"
     :drivers="drivers"
+    :rides="rides"
+    :time-zone="timeZone"
+    :locale="locale"
+    :load-day="reloadAfterSave"
+    :reload-day="() => props.loadDay()"
+  />
+  <RideTakeBackDialog
+    ref="takeBackDialog"
     :rides="rides"
     :time-zone="timeZone"
     :locale="locale"

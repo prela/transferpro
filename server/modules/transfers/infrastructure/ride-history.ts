@@ -1,3 +1,4 @@
+import type { SQL } from 'drizzle-orm'
 import type { RideHistory, RideHistoryCursor } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { Buffer } from 'node:buffer'
@@ -8,15 +9,44 @@ import { hideDatabaseError } from '../../../core/index'
 import { ClientNotFoundError, loadClient } from '../../clients'
 import { loadDrivers } from '../../drivers'
 import { loadLocations } from '../../locations'
-import { loadPartners } from '../../partners'
+import { loadPartner, loadPartners, PartnerNotFoundError } from '../../partners'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { toInstant, toPrice } from './transfers'
 
 function officeOnly(role: string): void {
-  // A Client's Rides are office work. A driver is refused before a Ride is read.
+  // A Client's Rides, and a Partner's, are office work. A driver is refused
+  // before a Ride is read.
   if (role === 'admin' || role === 'dispatcher')
     return
   throw new TenantAccessError(403)
+}
+
+type HistoryScope
+  = { readonly kind: 'client', readonly clientId: string }
+    | { readonly kind: 'partner', readonly partnerId: string }
+
+/**
+ * A Client's history is every Ride of that Client. A Partner's history is
+ * every Ride that Partner still holds, or closed while it held the Ride.
+ * Closing clears `partner_id` (the handed-off check), and the close entry
+ * stores that Partner id in the driver slot (ADR-0048). A take-back and a
+ * move to another Partner end this Partner's history. v1 adds no index.
+ */
+function historyWhere(scope: HistoryScope): SQL {
+  if (scope.kind === 'client')
+    return sql`t.client_id = ${scope.clientId}`
+  const partnerId = scope.partnerId
+  return sql`(
+    r.partner_id = ${partnerId}
+    or exists (
+      select 1
+      from app.audit_entry as e
+      where e.tenant_id = r.tenant_id
+        and e.action::text in ('ride.done', 'ride.no_show', 'ride.no_show_early', 'ride.cancelled')
+        and (e.data->>'rideId')::uuid = r.id
+        and (e.data->>'driverId')::uuid = ${partnerId}::uuid
+    )
+  )`
 }
 
 const historyRowSchema = z.object({
@@ -75,24 +105,30 @@ function parseRideHistoryQuery(raw: unknown): RideHistoryCursor | null {
 }
 
 /**
- * One Client's Rides, every state, newest pickup first. The page is
- * {@link RIDE_HISTORY_PAGE_SIZE} rows. Counts cover every Ride of this
- * Client, including rows the page does not return. v1 has no index on
- * `client_id` (ADR-0049). Names come from the catalog modules. The Partner
- * name is loaded through the Partners index, including an archived Partner,
+ * One Client's or one Partner's Rides, newest pickup first. The page is
+ * {@link RIDE_HISTORY_PAGE_SIZE} rows. Counts cover the whole history,
+ * including rows the page does not return. v1 has no index on `client_id`
+ * (ADR-0049). Names come from the catalog modules. The Partner name is
+ * loaded through the Partners index, including an archived Partner,
  * because a handed-off Ride still shows that name (ADR-0048, ADR-0049).
- * A closed Ride no longer stores the Partner (#415), so that name is null.
- * A missing Client is the caller's 404. A database failure is logged as a SQLSTATE only.
+ * A closed Ride no longer stores the Partner. A Client's history leaves
+ * that name empty. A Partner's history still names the Partner the read
+ * is for. A missing Client or Partner is the caller's 404. A database
+ * failure is logged as a SQLSTATE only.
  */
-async function loadClientRideHistory(
+async function loadRideHistory(
   transaction: TenantTransaction,
   role: string,
-  clientId: string,
+  scope: HistoryScope,
   cursor: RideHistoryCursor | null,
 ): Promise<RideHistory> {
   officeOnly(role)
-  await loadClient(transaction, clientId)
+  if (scope.kind === 'client')
+    await loadClient(transaction, scope.clientId)
+  else
+    await loadPartner(transaction, role, scope.partnerId)
   const settings = await loadTenantSettings(transaction)
+  const belongs = historyWhere(scope)
   const olderThan = cursor === null
     ? sql`true`
     : sql`(t.pickup_at < ${cursor.pickupAt} or (t.pickup_at = ${cursor.pickupAt} and r.id < ${cursor.rideId}))`
@@ -105,7 +141,7 @@ async function loadClientRideHistory(
         count(*) filter (where r.state = 'cancelled')::int as cancelled
       from app.rides as r
       join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
-      where t.client_id = ${clientId}
+      where ${belongs}
     `),
     'Ride history failed',
   ))
@@ -127,7 +163,7 @@ async function loadClientRideHistory(
         t.payment
       from app.rides as r
       join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
-      where t.client_id = ${clientId}
+      where ${belongs}
         and ${olderThan}
       order by t.pickup_at desc, r.id desc
       limit ${RIDE_HISTORY_PAGE_SIZE + 1}
@@ -143,7 +179,9 @@ async function loadClientRideHistory(
     const start = places.get(row.startLocationId)
     const end = places.get(row.endLocationId)
     const driverName = row.driverId === null ? null : drivers.get(row.driverId)
-    const partnerName = row.partnerId === null ? null : partners.get(row.partnerId)
+    // A closed Ride's partner_id is null. The Partner read still names its Partner.
+    const namedPartnerId = row.partnerId ?? (scope.kind === 'partner' ? scope.partnerId : null)
+    const partnerName = namedPartnerId === null ? null : partners.get(namedPartnerId)
     if (start === undefined || end === undefined || driverName === undefined || partnerName === undefined)
       throw new Error('Ride history failed')
     const pickupAt = toInstant(row.pickupAt)
@@ -184,10 +222,37 @@ export async function listClientRideHistory(
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
     try {
-      return await loadClientRideHistory(transaction, actor.role, clientId, cursor)
+      return await loadRideHistory(transaction, actor.role, { kind: 'client', clientId }, cursor)
     }
     catch (error) {
       if (error instanceof TenantAccessError || error instanceof ClientNotFoundError)
+        throw error
+      if (error instanceof Error && error.message === 'Ride history failed')
+        throw error
+      throw new Error('Ride history failed')
+    }
+  })
+}
+
+/**
+ * This Partner's Ride history. The query is parsed first, so a bad cursor
+ * never opens a session. A driver is 403. No session is 401. An unknown
+ * Partner, and another Tenant's Partner, are 404. An archived Partner
+ * still answers. The read writes no audit.
+ */
+export async function listPartnerRideHistory(
+  headers: Headers,
+  partnerId: string,
+  rawQuery: unknown,
+): Promise<RideHistory> {
+  const cursor = parseRideHistoryQuery(rawQuery)
+  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+    officeOnly(actor.role)
+    try {
+      return await loadRideHistory(transaction, actor.role, { kind: 'partner', partnerId }, cursor)
+    }
+    catch (error) {
+      if (error instanceof TenantAccessError || error instanceof PartnerNotFoundError)
         throw error
       if (error instanceof Error && error.message === 'Ride history failed')
         throw error

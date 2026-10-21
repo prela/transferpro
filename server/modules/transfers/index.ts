@@ -30,8 +30,9 @@
  * or `accepted`. That clears a Driver and mails them no longer yours.
  * A Partner is not mailed. The office can change that Partner, take the
  * Ride back to `unassigned`, or close it as done, No-show, or cancelled.
- * Handoff and a Partner change take the Tenant capacity lock. They are
- * not judged yet. Take-back and closing take no lock (ADR-0048).
+ * Handoff and a Partner change take the Tenant capacity lock and refuse
+ * an unavailable Partner unless the office confirms. Take-back and closing
+ * take no lock and are not judged (ADR-0048, ADR-0034).
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
  * their index files, by id. Those modules do not import this one (ADR-0018).
  * Whether a Driver or a Vehicle is taken is the capacity module's decision
@@ -51,10 +52,13 @@
  * The day read also returns each Client's live contact persons and Client
  * note, for the Ride detail and the Transfer form. The Driver's read does
  * not. Transfers loads them through the Clients index (ADR-0049).
- * Ride history lists one Client's Rides, every state, newest pickup first,
- * 50 per page, with counts over the whole history. It is office-only.
- * The pickup wall is the Tenant time zone. A Partner history will reuse
- * this shape (#415). `clients` does not import this module (ADR-0036).
+ * Ride history lists one Client's Rides, or the Rides handed to one
+ * Partner, newest pickup first, 50 per page, with counts over the whole
+ * history. It is office-only. The pickup wall is the Tenant time zone.
+ * A closed Ride keeps the Partner only on the close audit, in the driver
+ * slot. `clients` and `partners` do not import this module (ADR-0036, ADR-0049).
+ * The day read also returns the Partner's phone and email for a handed-off
+ * Ride, through the Partners index. The Driver's read does not.
  */
 export { RideOverlapError, RideUnavailableError, startUnavailabilityRetention, UnavailabilityArchivedError, UnavailabilityNotFoundError } from '../capacity'
 export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableError } from './infrastructure/accept'
@@ -75,7 +79,7 @@ export { markNoShow, MarkNoShowInputError, NoShowTooEarlyError, RideNotNoShowErr
 export { readOfficeHome } from './infrastructure/office-home-access'
 export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './infrastructure/ride-change'
 export { exportRides } from './infrastructure/ride-export'
-export { listClientRideHistory } from './infrastructure/ride-history'
+export { listClientRideHistory, listPartnerRideHistory } from './infrastructure/ride-history'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'
 export { searchTransfers } from './infrastructure/transfer-search'
 export { StaleSaveError } from './infrastructure/transfer-version'

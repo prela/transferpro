@@ -22,6 +22,7 @@ export function rideFormStamp(ride: TransferDayRide): string {
     ride.state,
     ride.driverId ?? '',
     ride.vehicleId ?? '',
+    ride.partnerId ?? '',
     ride.mustAccept === null ? '' : String(ride.mustAccept),
     ride.pickupAt,
     ride.landingAt ?? '',
@@ -43,7 +44,7 @@ export function rideFormStamp(ride: TransferDayRide): string {
   ].join('\u001F')
 }
 
-export type RideDetailCommand = 'assign' | 'vehicle' | 'reassign' | 'landing' | 'accept' | 'correct'
+export type RideDetailCommand = 'assign' | 'vehicle' | 'reassign' | 'landing' | 'accept' | 'correct' | 'handOff' | 'changePartner'
 
 /** Office controls are 28 px. The phone uses 44–48 px. ADR-0038. */
 export function commandControlSize(phone: boolean): 'sm' | 'xl' {

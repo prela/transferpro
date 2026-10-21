@@ -69,6 +69,19 @@ export const partnerSchema = z.object({
 
 export type Partner = z.infer<typeof partnerSchema>
 
+/**
+ * Phone and email for a handed-off Ride's detail. The note stays on the
+ * Partner record. An archived Partner still has this contact while a Ride
+ * names it. ADR-0049.
+ */
+export const partnerOfficeContactSchema = z.object({
+  partnerId: z.uuid(),
+  phone: driverPhoneSchema.nullable(),
+  email: driverEmailSchema.nullable(),
+})
+
+export type PartnerOfficeContact = z.infer<typeof partnerOfficeContactSchema>
+
 export const partnerListSchema = z.object({
   partners: z.array(partnerSchema),
 })
