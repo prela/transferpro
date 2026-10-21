@@ -1,7 +1,6 @@
 import type { SQL } from 'drizzle-orm'
 import type { CreateTransfer, DeclineAlert, RecordedCreate, Ride, Transfer, TransferDayRide, TransferField } from '../../../../shared'
 import type { Logger, TenantTransaction } from '../../../core/index'
-import { randomUUID } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { emptyBoardWarnings, landingAlarmOn, localDayBounds, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, transferPriceSchema } from '../../../../shared'
@@ -77,26 +76,23 @@ const transferColumns = sql`
  * names. It does not store the guest name, the flight, the note, the tabla,
  * the Client reference, the price, the channel, or the external id.
  * The caller has already required a dispatcher or an admin, and has already
- * checked that role before this lookup. A repeat of the same manual
- * external id returns the stored Transfer and writes nothing.
- * `externalId` null means the server assigns a random one.
+ * checked that role before this lookup. `externalId` is required: this
+ * function does not assign one. A repeat of the same manual external id
+ * returns the stored Transfer and writes nothing.
  */
 export async function recordTransfer(
   transaction: TenantTransaction,
   actorUserId: string,
   input: CreateTransfer,
-  externalId: string | null = null,
+  externalId: string,
   log?: Logger,
 ): Promise<RecordedCreate> {
-  const storedExternalId = externalId ?? randomUUID()
-  // A known key is resolved before any catalog read, so a different payload
+  // The key is resolved before any catalog read, so a different payload
   // is not applied and a missing Client does not turn a repeat into an error.
-  if (externalId !== null) {
-    const existing = await loadManualTransfer(transaction, externalId)
-    if (existing) {
-      logAlreadyRecorded(log, existing.transfer.id)
-      return { ...existing, alreadyRecorded: true }
-    }
+  const existing = await loadManualTransfer(transaction, externalId)
+  if (existing) {
+    logAlreadyRecorded(log, existing.transfer.id)
+    return { ...existing, alreadyRecorded: true }
   }
 
   const client = (await loadClients(transaction)).find(row => row.id === input.clientId)
@@ -121,7 +117,7 @@ export async function recordTransfer(
       ${input.clientId}, ${input.pickupAt}, ${input.startLocationId}, ${input.endLocationId},
       ${input.passengerCount}, ${input.guestName}, ${input.flightNumber}, ${input.price}, ${input.payment},
       ${input.airportMark}, ${input.luggageCount}, ${input.childSeatCount}, ${input.note}, ${input.tabla},
-      ${input.clientReference}, 'manual', ${storedExternalId}
+      ${input.clientReference}, 'manual', ${externalId}
     )
     on conflict (tenant_id, channel, external_id) do nothing
     returning ${transferColumns}
@@ -130,7 +126,7 @@ export async function recordTransfer(
   // The other request committed this key while we were inserting. Read it.
   // The conflict writes no row, so the audit entry below does not run.
   if (!transferRow) {
-    const existing = await loadManualTransfer(transaction, storedExternalId)
+    const existing = await loadManualTransfer(transaction, externalId)
     if (!existing)
       throw new Error('Transfer write failed')
     logAlreadyRecorded(log, existing.transfer.id)

@@ -14,7 +14,8 @@ function officeOnly(role: string): void {
 
 /**
  * Record a Transfer and its one unassigned Ride.
- * The body is parsed first, so an invalid guest name never opens a session.
+ * The body is parsed first, so a missing entry key or an invalid guest name
+ * never opens a session. The server does not assign the key.
  * A driver is 403 before the external-id lookup. A repeat returns the stored
  * Transfer with `alreadyRecorded` and writes nothing. A new one returns
  * `alreadyRecorded: false`. Both are the caller's HTTP 200.

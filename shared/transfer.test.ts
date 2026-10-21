@@ -10,6 +10,7 @@ const flight = 'OU 384'
 const note = 'Čeka na terminalu'
 
 const now = new Date('2026-10-06T12:00:00.000Z')
+const externalId = 'c3c3c3c3-3333-4333-8333-333333333333'
 
 const body = {
   clientId,
@@ -25,8 +26,13 @@ const body = {
   childSeatCount: 0,
 }
 
+/** A create body. Corrections stay on `body`, which has no entry key. */
+function withEntryKey(value: Record<string, unknown>) {
+  return { externalId, ...value }
+}
+
 it('accepts a Transfer, trims the guest name, and stores a blank flight and note as null', () => {
-  expect(parseCreateTransfer(body, now)).toEqual({
+  expect(parseCreateTransfer(withEntryKey(body), now)).toEqual({
     clientId,
     pickupAt: '2026-10-06T22:30:00.000Z',
     startLocationId,
@@ -46,14 +52,14 @@ it('accepts a Transfer, trims the guest name, and stores a blank flight and note
 })
 
 it('stores a Client reference trimmed, and a blank one as null', () => {
-  expect(parseCreateTransfer({ ...body, clientReference: '  V-19  ' }, now).clientReference).toBe('V-19')
-  expect(parseCreateTransfer({ ...body, clientReference: '   ' }, now).clientReference).toBeNull()
-  expect(parseCreateTransfer({ ...body, clientReference: null }, now).clientReference).toBeNull()
+  expect(parseCreateTransfer(withEntryKey({ ...body, clientReference: '  V-19  ' }), now).clientReference).toBe('V-19')
+  expect(parseCreateTransfer(withEntryKey({ ...body, clientReference: '   ' }), now).clientReference).toBeNull()
+  expect(parseCreateTransfer(withEntryKey({ ...body, clientReference: null }), now).clientReference).toBeNull()
   expect(parseCorrectTransfer({ ...body, clientReference: '  V-20  ', confirm: true, version: 0 }, now).input.clientReference).toBe('V-20')
-  expect(() => parseCreateTransfer({
+  expect(() => parseCreateTransfer(withEntryKey({
     ...body,
     clientReference: 'A'.repeat(CLIENT_REFERENCE_MAX_LENGTH + 1),
-  }, now)).toThrow(TransferInputError)
+  }), now)).toThrow(TransferInputError)
 })
 
 it('accepts confirm on a correction and refuses it on a new Transfer', () => {
@@ -67,47 +73,46 @@ it('accepts confirm on a correction and refuses it on a new Transfer', () => {
   expect(() => parseCorrectTransfer({ ...body, confirm: true, version: 0, plate: 'ZG1' }, now)).toThrow(TransferInputError)
   expect(() => parseCorrectTransfer(body, now)).toThrow(TransferInputError)
   expect(() => parseCorrectTransfer({ ...body, version: -1 }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, confirm: true }, now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, confirm: true }), now)).toThrow(TransferInputError)
 })
 
-it('accepts an optional external id on a new Transfer and refuses it on a correction', () => {
-  const externalId = 'c3c3c3c3-3333-4333-8333-333333333333'
-  expect(parseRecordTransfer(body, now).externalId).toBeNull()
-  expect(parseRecordTransfer({ ...body, externalId }, now)).toMatchObject({
+it('requires an external id on a new Transfer and refuses it on a correction', () => {
+  expect(() => parseRecordTransfer(body, now)).toThrow(TransferInputError)
+  expect(parseRecordTransfer(withEntryKey(body), now)).toMatchObject({
     externalId,
     input: { guestName: guest },
   })
-  expect(parseCreateTransfer({ ...body, externalId }, now).guestName).toBe(guest)
-  expect(() => parseRecordTransfer({ ...body, externalId: 'not-a-uuid' }, now)).toThrow(TransferInputError)
+  expect(parseCreateTransfer(withEntryKey(body), now).guestName).toBe(guest)
+  expect(() => parseRecordTransfer(withEntryKey({ ...body, externalId: 'not-a-uuid' }), now)).toThrow(TransferInputError)
   expect(() => parseCorrectTransfer({ ...body, version: 0, externalId }, now)).toThrow(TransferInputError)
   expect(() => parseCorrectTransfer({ ...body, version: 0, channel: 'manual' }, now)).toThrow(TransferInputError)
 })
 
 it('stores a blank tabla as empty text and trims a meet sign of at most 200 characters', () => {
-  expect(parseCreateTransfer(body, now).tabla).toBe('')
-  expect(parseCreateTransfer({ ...body, tabla: '   ' }, now).tabla).toBe('')
-  expect(parseCreateTransfer({ ...body, tabla: null }, now).tabla).toBe('')
-  const parsed = parseCreateTransfer({
+  expect(parseCreateTransfer(withEntryKey(body), now).tabla).toBe('')
+  expect(parseCreateTransfer(withEntryKey({ ...body, tabla: '   ' }), now).tabla).toBe('')
+  expect(parseCreateTransfer(withEntryKey({ ...body, tabla: null }), now).tabla).toBe('')
+  const parsed = parseCreateTransfer(withEntryKey({
     ...body,
     guestName: `  ${guest}  `,
     note,
     tabla: '  GOSPOĐA HORVAT  ',
-  }, now)
+  }), now)
   expect(parsed.tabla).toBe('GOSPOĐA HORVAT')
   expect(parsed.guestName).toBe(guest)
   expect(parsed.note).toBe(note)
-  expect(() => parseCreateTransfer({ ...body, tabla: 'A'.repeat(201) }, now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, tabla: 'A'.repeat(201) }), now)).toThrow(TransferInputError)
 })
 
 it('keeps a flight number without turning it into an airport pickup', () => {
-  const parsed = parseCreateTransfer({
+  const parsed = parseCreateTransfer(withEntryKey({
     ...body,
     flightNumber: `  ${flight}  `,
     airportMark: false,
     payment: 'invoice_to_agency',
     price: 0,
     note: `  ${note}  `,
-  }, now)
+  }), now)
   expect(parsed.flightNumber).toBe(flight)
   expect(parsed.airportMark).toBe(false)
   expect(parsed.payment).toBe('invoice_to_agency')
@@ -116,22 +121,22 @@ it('keeps a flight number without turning it into an airport pickup', () => {
 })
 
 it('refuses a bad fare, a long guest name, an extra key, and a missing airport mark', () => {
-  expect(() => parseCreateTransfer({ ...body, price: -1 }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, price: 100_000_000 }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, price: 1.001 }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, guestName: '   ' }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, guestName: 'A'.repeat(GUEST_NAME_MAX_LENGTH + 1) }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, flightNumber: 'A'.repeat(FLIGHT_NUMBER_MAX_LENGTH + 1) }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, note: 'A'.repeat(NOTE_MAX_LENGTH + 1) }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, passengerCount: 0 }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, passengerCount: PASSENGER_COUNT_MAX + 1 }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, luggageCount: LUGGAGE_COUNT_MAX + 1 }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, childSeatCount: CHILD_SEAT_COUNT_MAX + 1 }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, payment: 'invoice' }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, airportMark: 'true' }, now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, price: -1 }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, price: 100_000_000 }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, price: 1.001 }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, guestName: '   ' }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, guestName: 'A'.repeat(GUEST_NAME_MAX_LENGTH + 1) }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, flightNumber: 'A'.repeat(FLIGHT_NUMBER_MAX_LENGTH + 1) }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, note: 'A'.repeat(NOTE_MAX_LENGTH + 1) }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, passengerCount: 0 }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, passengerCount: PASSENGER_COUNT_MAX + 1 }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, luggageCount: LUGGAGE_COUNT_MAX + 1 }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, childSeatCount: CHILD_SEAT_COUNT_MAX + 1 }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, payment: 'invoice' }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, airportMark: 'true' }), now)).toThrow(TransferInputError)
   const { airportMark: _mark, ...withoutMark } = body
-  expect(() => parseCreateTransfer(withoutMark, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, address: 'Dobrota' }, now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey(withoutMark), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, address: 'Dobrota' }), now)).toThrow(TransferInputError)
 })
 
 it('accepts a pickup on the 30-day and 18-month edges and refuses one millisecond outside', () => {
@@ -141,10 +146,10 @@ it('accepts a pickup on the 30-day and 18-month edges and refuses one millisecon
   expect(pickupAtError(new Date(earliest.getTime() - 1).toISOString(), now)).toBe('too-early')
   expect(pickupAtError(latest.toISOString(), now)).toBeNull()
   expect(pickupAtError(new Date(latest.getTime() + 1).toISOString(), now)).toBe('too-late')
-  expect(parseCreateTransfer({ ...body, pickupAt: earliest.toISOString() }, now).pickupAt).toBe(earliest.toISOString())
-  expect(parseCreateTransfer({ ...body, pickupAt: latest.toISOString() }, now).pickupAt).toBe(latest.toISOString())
-  expect(() => parseCreateTransfer({ ...body, pickupAt: new Date(earliest.getTime() - 1).toISOString() }, now)).toThrow(TransferInputError)
-  expect(() => parseCreateTransfer({ ...body, pickupAt: new Date(latest.getTime() + 1).toISOString() }, now)).toThrow(TransferInputError)
+  expect(parseCreateTransfer(withEntryKey({ ...body, pickupAt: earliest.toISOString() }), now).pickupAt).toBe(earliest.toISOString())
+  expect(parseCreateTransfer(withEntryKey({ ...body, pickupAt: latest.toISOString() }), now).pickupAt).toBe(latest.toISOString())
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, pickupAt: new Date(earliest.getTime() - 1).toISOString() }), now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, pickupAt: new Date(latest.getTime() + 1).toISOString() }), now)).toThrow(TransferInputError)
 })
 
 it('treats an unparseable pickup as invalid, not too-early', () => {
@@ -156,7 +161,7 @@ it('treats an unparseable pickup as invalid, not too-early', () => {
 it('refuses a Transfer whose start and end are the same place', () => {
   expect(sameLocationError(startLocationId, endLocationId)).toBeNull()
   expect(sameLocationError(startLocationId, startLocationId)).toBe('same')
-  expect(() => parseCreateTransfer({ ...body, endLocationId: startLocationId }, now)).toThrow(TransferInputError)
+  expect(() => parseCreateTransfer(withEntryKey({ ...body, endLocationId: startLocationId }), now)).toThrow(TransferInputError)
 })
 
 it('leaves a missing day for the operational-day default and refuses a day that is not a calendar date', () => {
@@ -217,7 +222,7 @@ it('allows a decline only from assigned, with the copied flag on or off', () => 
 const otherEnd = 'c1b2c3d4-7777-4777-8777-777777777777'
 
 it('returns an accepted Ride only when the pickup, a place, or the flight number changes', () => {
-  const stored = parseCreateTransfer({ ...body, flightNumber: flight, note }, now)
+  const stored = parseCreateTransfer(withEntryKey({ ...body, flightNumber: flight, note }), now)
   expect(canCorrectTransfer('unassigned')).toBe(true)
   expect(canCorrectTransfer('assigned')).toBe(true)
   expect(canCorrectTransfer('accepted')).toBe(true)
