@@ -250,13 +250,18 @@ function rosterDateText(data: AnyPgColumn) {
 }
 
 /**
- * An unavailability window names the window and exactly one of its Driver
- * and its Vehicle; the other key is JSON null. No instant is a key.
+ * An unavailability window names the window and exactly one of its Driver,
+ * its Vehicle, and its Partner. Rows written before the Partner id existed
+ * have no `partnerId` key and exactly one of the other two. No instant is a key.
  */
 function unavailabilityIds(data: AnyPgColumn) {
   const driver = sql.raw(`'driverId'`)
   const vehicle = sql.raw(`'vehicleId'`)
-  return sql`${keysOnly(data, 'windowId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(data, 'windowId')} and ${nullableUuidText(data, 'driverId')} and ${nullableUuidText(data, 'vehicleId')} and (jsonb_typeof(${data} -> ${driver}) = 'null') <> (jsonb_typeof(${data} -> ${vehicle}) = 'null')`
+  const partner = sql.raw(`'partnerId'`)
+  const legacy = sql`${keysOnly(data, 'windowId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(data, 'windowId')} and ${nullableUuidText(data, 'driverId')} and ${nullableUuidText(data, 'vehicleId')} and (jsonb_typeof(${data} -> ${driver}) = 'null') <> (jsonb_typeof(${data} -> ${vehicle}) = 'null')`
+  const oneOfThree = sql`((jsonb_typeof(${data} -> ${driver}) = 'null')::int + (jsonb_typeof(${data} -> ${vehicle}) = 'null')::int + (jsonb_typeof(${data} -> ${partner}) = 'null')::int) = 2`
+  const current = sql`${keysOnly(data, 'windowId', 'driverId', 'vehicleId', 'partnerId', 'fields')} and ${uuidText(data, 'windowId')} and ${nullableUuidText(data, 'driverId')} and ${nullableUuidText(data, 'vehicleId')} and ${nullableUuidText(data, 'partnerId')} and ${oneOfThree}`
+  return sql`((${legacy}) or (${current}))`
 }
 
 const windowTimeFieldsJson = sql.raw(`'["startsAt","endsAt"]'::jsonb`)

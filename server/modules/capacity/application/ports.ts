@@ -16,7 +16,7 @@ export interface RideOccupationQuery {
   readonly vehicleId: string
 }
 
-/** Whose Rides a range question asks about. No Ride has a Partner yet, so `partnerIds` match nothing. */
+/** Whose Rides a range question asks about. A Partner id matches handed-off Rides only. */
 export interface OccupationResources {
   readonly driverIds: readonly string[]
   readonly vehicleIds: readonly string[]
@@ -39,7 +39,7 @@ export interface RangeOccupationQuery {
 /**
  * Who is taken (ADR-0034, ADR-0036). Capacity defines it; the transfers
  * infrastructure implements it, so capacity never reads a Ride table.
- * Both answers hold assigned and accepted Rides only.
+ * Both answers hold assigned, accepted, and handed-off Rides.
  */
 export interface OccupationPort {
   ridesOf: (query: RideOccupationQuery) => Promise<readonly OccupyingRide[]>
@@ -50,12 +50,14 @@ export interface OccupationPort {
 export type CapacityMinutesReader = () => Promise<CapacityMinutes>
 
 /**
- * The live windows of these Drivers and Vehicles that share an instant with
- * the half-open range `[from, to)`. A removed window is never in the answer.
+ * The live windows of these Drivers, Vehicles, and Partners that share an
+ * instant with the half-open range `[from, to)`. A removed window is never
+ * in the answer.
  */
 export interface UnavailabilityQuery {
   readonly driverIds: readonly string[]
   readonly vehicleIds: readonly string[]
+  readonly partnerIds: readonly string[]
   readonly from: Date
   readonly to: Date
 }
@@ -70,10 +72,11 @@ export interface CapacityPorts {
   readonly windows: UnavailabilityReader
 }
 
-/** A new window: exactly one of the two ids is set. */
+/** A new window: exactly one of the three ids is set. */
 export interface UnavailabilityRecord extends WindowTimes {
   readonly driverId: string | null
   readonly vehicleId: string | null
+  readonly partnerId: string | null
 }
 
 /**
@@ -104,8 +107,12 @@ export interface UnavailabilityAuditFact {
   readonly windowId: string
   readonly driverId: string | null
   readonly vehicleId: string | null
+  readonly partnerId: string | null
   readonly fields: readonly UnavailabilityField[]
 }
+
+/** Active Partner ids of this Tenant, in the partners module's order. */
+export type ActivePartnerReader = () => Promise<readonly string[]>
 
 /**
  * The window commands read and write through these. `lock` is the Tenant

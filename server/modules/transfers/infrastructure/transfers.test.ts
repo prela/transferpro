@@ -116,6 +116,7 @@ function fakeTransaction(options: {
             version: 0,
             changedAt: null,
             changedByName: null,
+            partnerId: null,
             ...(typeof row === 'object' && row !== null ? row : {}),
           })),
         }

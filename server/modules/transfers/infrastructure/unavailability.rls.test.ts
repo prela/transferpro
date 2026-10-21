@@ -315,7 +315,7 @@ it('records, lists, moves, and removes a window, returns the Rides it covers, an
   const endsAt = at('2026-11-11T00:00')
   const saved = await json(await call('POST', '/api/unavailability', world.dispatcher, windowBody({ driverId: driver.id }, startsAt, endsAt)))
   expect(saved).toEqual({
-    window: { id: expect.any(String), driverId: driver.id, vehicleId: null, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString() },
+    window: { id: expect.any(String), driverId: driver.id, vehicleId: null, partnerId: null, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString() },
     coveredRides: [{ rideId: covered.ride.id, pickupAt: at('2026-11-10T12:00').toISOString() }],
   })
   const windowId = saved.window.id as string
@@ -341,9 +341,9 @@ it('records, lists, moves, and removes a window, returns the Rides it covers, an
 
   const audit = await auditOf(world.tenantId, 'unavailability.')
   expect(audit).toEqual([
-    { action: 'unavailability.added', data: { windowId, driverId: driver.id, vehicleId: null, fields: ['startsAt', 'endsAt'] } },
-    { action: 'unavailability.changed', data: { windowId, driverId: driver.id, vehicleId: null, fields: ['endsAt'] } },
-    { action: 'unavailability.removed', data: { windowId, driverId: driver.id, vehicleId: null, fields: ['removed'] } },
+    { action: 'unavailability.added', data: { windowId, driverId: driver.id, vehicleId: null, partnerId: null, fields: ['startsAt', 'endsAt'] } },
+    { action: 'unavailability.changed', data: { windowId, driverId: driver.id, vehicleId: null, partnerId: null, fields: ['endsAt'] } },
+    { action: 'unavailability.removed', data: { windowId, driverId: driver.id, vehicleId: null, partnerId: null, fields: ['removed'] } },
   ])
   const text = JSON.stringify(audit)
   for (const instant of [startsAt, endsAt, movedEnd])

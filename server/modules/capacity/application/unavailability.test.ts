@@ -23,7 +23,8 @@ function iso(hours: number, minutes = 0): string {
   return at(hours, minutes).toISOString()
 }
 
-const driverWindow = { id: windowId, driverId, vehicleId: null, startsAt: at(10), endsAt: at(12) }
+const partnerId = 'a1a1a1a1-1111-4111-8111-111111111111'
+const driverWindow = { id: windowId, driverId, vehicleId: null, partnerId: null, startsAt: at(10), endsAt: at(12) }
 
 function ride(id: string, pickupAt: Date) {
   return { rideId: id, driverId, vehicleId: otherVehicleId, partnerId: null, pickupAt, landingAt: null }
@@ -42,12 +43,13 @@ describe('recordUnavailability', () => {
     const fake = fakeUnavailabilityPorts()
     const saved = await recordUnavailability(fake.ports, 'dispatcher', record)
     expect(fake.calls).toEqual(['lock', 'presence:driver', 'insert', 'audit', 'minutes', 'ridesDuring'])
-    expect(saved.window).toEqual({ id: NEW_WINDOW_ID, driverId, vehicleId: null, startsAt: iso(10), endsAt: iso(12) })
+    expect(saved.window).toEqual({ id: NEW_WINDOW_ID, driverId, vehicleId: null, partnerId: null, startsAt: iso(10), endsAt: iso(12) })
     expect(fake.audits).toEqual([{
       action: 'unavailability.added',
       windowId: NEW_WINDOW_ID,
       driverId,
       vehicleId: null,
+      partnerId: null,
       fields: ['startsAt', 'endsAt'],
     }])
   })
@@ -57,7 +59,7 @@ describe('recordUnavailability', () => {
     const saved = await recordUnavailability(fake.ports, 'admin', { ...record, resource: { kind: 'vehicle', id: vehicleId } })
     expect(fake.calls[1]).toBe('presence:vehicle')
     expect(saved.window).toMatchObject({ driverId: null, vehicleId })
-    expect(fake.audits[0]).toMatchObject({ driverId: null, vehicleId })
+    expect(fake.audits[0]).toMatchObject({ driverId: null, vehicleId, partnerId: null })
   })
 
   it.each([
@@ -83,6 +85,24 @@ describe('recordUnavailability', () => {
       to: at(12),
     }])
   })
+
+  it('returns the handed-off Rides a Partner window covers, and a handed-off Ride does not occupy the Partner by itself', async () => {
+    const handedId = 'e4e4e4e4-5555-4555-8555-555555555555'
+    const fake = fakeUnavailabilityPorts({
+      rides: [
+        { rideId: handedId, driverId: null, vehicleId: null, partnerId, pickupAt: at(10, 30), landingAt: null },
+        { rideId, driverId: null, vehicleId: null, partnerId, pickupAt: at(12), landingAt: null },
+      ],
+    })
+    const saved = await recordUnavailability(fake.ports, 'dispatcher', {
+      resource: { kind: 'partner', id: partnerId },
+      startsAt: iso(10),
+      endsAt: iso(12),
+    })
+    expect(saved.coveredRides).toEqual([{ rideId: handedId, pickupAt: at(10, 30).toISOString() }])
+    expect(fake.asked.ridesDuring[0]?.of).toEqual({ driverIds: [], vehicleIds: [], partnerIds: [partnerId] })
+    expect(fake.audits[0]).toMatchObject({ driverId: null, vehicleId: null, partnerId })
+  })
 })
 
 describe('changeUnavailability', () => {
@@ -98,8 +118,8 @@ describe('changeUnavailability', () => {
     const fake = fakeUnavailabilityPorts({ windows: [driverWindow] })
     const saved = await changeUnavailability(fake.ports, 'dispatcher', change)
     expect(fake.calls).toEqual(['lockLive', 'lock', 'presence:driver', 'update', 'audit', 'minutes', 'ridesDuring'])
-    expect(saved.window).toEqual({ id: windowId, driverId, vehicleId: null, startsAt: iso(11), endsAt: iso(12) })
-    expect(fake.audits).toEqual([{ action: 'unavailability.changed', windowId, driverId, vehicleId: null, fields: ['startsAt'] }])
+    expect(saved.window).toEqual({ id: windowId, driverId, vehicleId: null, partnerId: null, startsAt: iso(11), endsAt: iso(12) })
+    expect(fake.audits).toEqual([{ action: 'unavailability.changed', windowId, driverId, vehicleId: null, partnerId: null, fields: ['startsAt'] }])
   })
 
   it('writes and audits nothing when the instants did not move', async () => {
@@ -129,7 +149,7 @@ describe('removeUnavailability', () => {
     const fake = fakeUnavailabilityPorts({ windows: [driverWindow] })
     await removeUnavailability(fake.ports, 'admin', windowId)
     expect(fake.calls).toEqual(['lockLive', 'lock', 'markRemoved', 'audit'])
-    expect(fake.audits).toEqual([{ action: 'unavailability.removed', windowId, driverId, vehicleId: null, fields: ['removed'] }])
+    expect(fake.audits).toEqual([{ action: 'unavailability.removed', windowId, driverId, vehicleId: null, partnerId: null, fields: ['removed'] }])
   })
 
   it('removes a window of an archived Driver, so a mistake can still be undone', async () => {
@@ -151,7 +171,7 @@ describe('reads', () => {
   it('lists the live windows of one Driver as views', async () => {
     const fake = fakeUnavailabilityPorts({ windows: [driverWindow] })
     await expect(listUnavailabilityOf(fake.ports, 'dispatcher', { kind: 'driver', id: driverId })).resolves.toEqual([
-      { id: windowId, driverId, vehicleId: null, startsAt: iso(10), endsAt: iso(12) },
+      { id: windowId, driverId, vehicleId: null, partnerId: null, startsAt: iso(10), endsAt: iso(12) },
     ])
     expect(fake.calls).not.toContain('lock')
   })

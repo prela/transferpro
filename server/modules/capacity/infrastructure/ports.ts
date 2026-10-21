@@ -1,6 +1,7 @@
 import type { TenantTransaction } from '../../../core/index'
-import type { CapacityMinutesReader, CapacityPorts, OccupationPort, UnavailabilityAuditFact, UnavailabilityPorts } from '../application/ports'
+import type { ActivePartnerReader, CapacityMinutesReader, CapacityPorts, OccupationPort, UnavailabilityAuditFact, UnavailabilityPorts } from '../application/ports'
 import { driverPresence } from '../../drivers'
+import { loadActivePartnerIds, partnerPresence } from '../../partners'
 import { loadTenantSettings } from '../../tenancy'
 import { vehiclePresence } from '../../vehicles'
 import { lockTenantCapacity } from './lock'
@@ -26,6 +27,11 @@ export function tenantCapacityMinutes(transaction: TenantTransaction): CapacityM
  * `occupation` is the caller's adapter; transfers implements it. The
  * windows are capacity's own table.
  */
+/** Active Partner ids, through the partners module's public entry (ADR-0034). */
+export function tenantActivePartnerIds(transaction: TenantTransaction): ActivePartnerReader {
+  return () => loadActivePartnerIds(transaction)
+}
+
 export function capacityPorts(transaction: TenantTransaction, occupation: OccupationPort): CapacityPorts {
   return { occupation, minutes: tenantCapacityMinutes(transaction), windows: unavailabilityReader(transaction) }
 }
@@ -43,9 +49,13 @@ export function unavailabilityPorts(
   return {
     ...capacityPorts(transaction, occupation),
     store: unavailabilityStore(transaction),
-    presence: resource => resource.kind === 'driver'
-      ? driverPresence(transaction, resource.id)
-      : vehiclePresence(transaction, resource.id),
+    presence: (resource) => {
+      if (resource.kind === 'driver')
+        return driverPresence(transaction, resource.id)
+      if (resource.kind === 'vehicle')
+        return vehiclePresence(transaction, resource.id)
+      return partnerPresence(transaction, resource.id)
+    },
     lock: () => lockTenantCapacity(transaction),
     audit,
   }

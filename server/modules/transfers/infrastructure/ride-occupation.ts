@@ -13,8 +13,9 @@ import { hideDatabaseError } from '../../../core/index'
 const occupyingRows = z.object({
   rows: z.array(z.object({
     id: z.uuid(),
-    driverId: z.uuid(),
-    vehicleId: z.uuid(),
+    driverId: z.uuid().nullable(),
+    vehicleId: z.uuid().nullable(),
+    partnerId: z.uuid().nullable(),
     pickupAt: z.unknown(),
     landingAt: z.unknown().nullable(),
   })),
@@ -22,8 +23,9 @@ const occupyingRows = z.object({
 
 /**
  * The other Rides that occupy this Driver or this Vehicle: assigned and
- * accepted, including one already in progress. Done, no-show, cancelled,
- * and unassigned do not. The Ride being changed is left out.
+ * accepted, including one already in progress. A handed-off Ride has neither,
+ * so it is not in this answer. Done, no-show, cancelled, and unassigned do
+ * not. The Ride being changed is left out.
  * No row is locked. The caller holds the Tenant capacity lock (ADR-0034),
  * so every other capacity write of this Tenant has either committed, and
  * is seen here, or has not started. A row lock here could also wait on a
@@ -37,6 +39,7 @@ export async function readOccupyingRides(
     select r.id,
            r.driver_id as "driverId",
            r.vehicle_id as "vehicleId",
+           r.partner_id as "partnerId",
            t.pickup_at as "pickupAt",
            t.landing_at as "landingAt"
     from app.rides as r
@@ -49,11 +52,11 @@ export async function readOccupyingRides(
 }
 
 /**
- * Assigned and accepted Rides of these Drivers or Vehicles, or of the whole
- * Tenant, whose pickup or landing falls in `[from, to)`, or whose pickup is
- * before it and landing at or after its end. Display reads use this, so no
- * row is locked. No Ride has a Partner yet (ADR-0048), so Partner ids
- * match nothing.
+ * Assigned, accepted, and handed-off Rides of these Drivers, Vehicles, or
+ * Partners, or of the whole Tenant, whose pickup or landing falls in
+ * `[from, to)`, or whose pickup is before it and landing at or after its
+ * end. A handed-off Ride is matched by its Partner id. Display reads use
+ * this, so no row is locked.
  */
 export async function readOccupationDuring(
   transaction: TenantTransaction,
@@ -66,13 +69,15 @@ export async function readOccupationDuring(
     select r.id,
            r.driver_id as "driverId",
            r.vehicle_id as "vehicleId",
+           r.partner_id as "partnerId",
            t.pickup_at as "pickupAt",
            t.landing_at as "landingAt"
     from app.rides as r
     join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
-    where r.state in ('assigned', 'accepted')
-      and r.driver_id is not null
-      and r.vehicle_id is not null
+    where (
+        (r.state in ('assigned', 'accepted') and r.driver_id is not null and r.vehicle_id is not null)
+        or (r.state = 'handed_off' and r.partner_id is not null)
+      )
       and ${resourceMatch(query.of)}
       ${leaveOut}
       and (
@@ -102,7 +107,10 @@ function resourceMatch(of: RangeOccupationQuery['of']) {
   const vehicleMatch = of.vehicleIds.length === 0
     ? sql`false`
     : sql`r.vehicle_id in (${sql.join(of.vehicleIds.map(id => sql`${id}`), sql`, `)})`
-  return sql`(${driverMatch} or ${vehicleMatch})`
+  const partnerMatch = of.partnerIds.length === 0
+    ? sql`false`
+    : sql`r.partner_id in (${sql.join(of.partnerIds.map(id => sql`${id}`), sql`, `)})`
+  return sql`(${driverMatch} or ${vehicleMatch} or ${partnerMatch})`
 }
 
 function toOccupyingRide(row: z.infer<typeof occupyingRows>['rows'][number]): OccupyingRide {
@@ -110,7 +118,7 @@ function toOccupyingRide(row: z.infer<typeof occupyingRows>['rows'][number]): Oc
     rideId: row.id,
     driverId: row.driverId,
     vehicleId: row.vehicleId,
-    partnerId: null,
+    partnerId: row.partnerId,
     pickupAt: toInstantDate(row.pickupAt),
     landingAt: row.landingAt == null ? null : toInstantDate(row.landingAt),
   }

@@ -13,12 +13,21 @@ function at(hours: number, minutes = 0): Date {
 }
 
 const rides = [
-  { rideId, driverId, vehicleId, pickupAt: at(8), landingAt: null },
-  { rideId: laterRideId, driverId, vehicleId: otherVehicleId, pickupAt: at(14), landingAt: at(15) },
+  { rideId, driverId, vehicleId, partnerId: null, pickupAt: at(8), landingAt: null },
+  { rideId: laterRideId, driverId, vehicleId: otherVehicleId, partnerId: null, pickupAt: at(14), landingAt: at(15) },
 ]
 
-function away(startsAt: Date, endsAt: Date, owner: { driverId?: string, vehicleId?: string }) {
-  return { id: 'a1a1a1a1-1111-4111-8111-111111111111', driverId: owner.driverId ?? null, vehicleId: owner.vehicleId ?? null, startsAt, endsAt }
+const partnerId = 'a1a1a1a1-1111-4111-8111-111111111111'
+
+function away(startsAt: Date, endsAt: Date, owner: { driverId?: string, vehicleId?: string, partnerId?: string }) {
+  return {
+    id: 'a1a1a1a1-1111-4111-8111-111111111111',
+    driverId: owner.driverId ?? null,
+    vehicleId: owner.vehicleId ?? null,
+    partnerId: owner.partnerId ?? null,
+    startsAt,
+    endsAt,
+  }
 }
 
 it('asks once for the windows of the listed resources across the Rides\' occupied windows', async () => {
@@ -27,6 +36,7 @@ it('asks once for the windows of the listed resources across the Rides\' occupie
   expect(asked.windows).toEqual([{
     driverIds: [driverId],
     vehicleIds: [vehicleId, otherVehicleId],
+    partnerIds: [],
     from: at(8),
     to: at(16),
   }])
@@ -41,11 +51,25 @@ it('names the covered resources per Ride and leaves an uncovered Ride out', asyn
 it('reads nothing when no Ride holds a Driver and a Vehicle', async () => {
   const { ports, asked } = fakeCapacityPorts()
   const unavailable = await readBoardUnavailability(ports.windows, 'admin', {
-    rides: [{ rideId, driverId: null, vehicleId: null, pickupAt: at(8), landingAt: null }],
+    rides: [{ rideId, driverId: null, vehicleId: null, partnerId: null, pickupAt: at(8), landingAt: null }],
     durationMinutes: 60,
   })
   expect(unavailable.size).toBe(0)
   expect(asked.windows).toEqual([])
+})
+
+it('names the Partner on a handed-off Ride the window covers, and drops the warning when it does not', async () => {
+  const handed = { rideId, driverId: null, vehicleId: null, partnerId, pickupAt: at(8), landingAt: null }
+  const covered = await readBoardUnavailability(fakeCapacityPorts([], undefined, [away(at(8), at(9), { partnerId })]).ports.windows, 'admin', {
+    rides: [handed],
+    durationMinutes: 60,
+  })
+  expect([...covered]).toEqual([[rideId, ['partner']]])
+  const clear = await readBoardUnavailability(fakeCapacityPorts().ports.windows, 'dispatcher', {
+    rides: [handed],
+    durationMinutes: 60,
+  })
+  expect(clear.size).toBe(0)
 })
 
 it('refuses a Driver role', async () => {

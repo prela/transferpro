@@ -1,21 +1,24 @@
 import { expect, it } from 'vitest'
-import { changedWindowFields, coversSpan, ridesCoveredBy, unavailableResources } from './unavailability'
+import { changedWindowFields, coversSpan, freePartnerIds, partnerUnavailable, ridesCoveredBy, unavailableResources } from './unavailability'
 
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
 const otherDriverId = 'b2b2b2b2-2222-4222-8222-222222222222'
 const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
 const otherVehicleId = 'c2c2c2c2-2222-4222-8222-222222222222'
+const partnerId = 'a1a1a1a1-1111-4111-8111-111111111111'
+const otherPartnerId = 'a2a2a2a2-2222-4222-8222-222222222222'
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
 
 function at(hours: number, minutes = 0): Date {
   return new Date(Date.UTC(2026, 9, 20, hours, minutes))
 }
 
-function window(startsAt: Date, endsAt: Date, owner: { driverId?: string, vehicleId?: string } = { driverId }) {
+function window(startsAt: Date, endsAt: Date, owner: { driverId?: string, vehicleId?: string, partnerId?: string } = { driverId }) {
   return {
     id: 'd1d1d1d1-1111-4111-8111-111111111111',
     driverId: owner.driverId ?? null,
     vehicleId: owner.vehicleId ?? null,
+    partnerId: owner.partnerId ?? null,
     startsAt,
     endsAt,
   }
@@ -86,6 +89,40 @@ it('lists the occupying Rides of the window\'s Driver or Vehicle that it covers,
   // The same window on the Vehicle reaches every Ride of that Vehicle.
   const vehicleAway = window(at(9, 30), at(12), { vehicleId })
   expect(ridesCoveredBy(vehicleAway, [early, edge, inside, otherDriver], 60)).toEqual([early, inside, otherDriver])
+})
+
+it('names the Partner when a Partner window covers any part of the occupied window', () => {
+  const handed = { partnerId, pickupAt: at(10), landingAt: null }
+  expect(partnerUnavailable(handed, [window(at(10, 59), at(12), { partnerId })], 60)).toEqual(['partner'])
+  expect(partnerUnavailable(handed, [window(at(11), at(12), { partnerId })], 60)).toEqual([])
+  expect(partnerUnavailable(handed, [window(at(9), at(12), { partnerId: otherPartnerId })], 60)).toEqual([])
+})
+
+it('lists a handed-off Ride the Partner window covers, and a Driver window does not', () => {
+  const handed = {
+    rideId,
+    driverId: null,
+    vehicleId: null,
+    partnerId,
+    pickupAt: at(10),
+    landingAt: null,
+  }
+  const other = { ...handed, rideId: 'e2e2e2e2-3333-4333-8333-333333333333', partnerId: otherPartnerId }
+  const away = window(at(9, 30), at(12), { partnerId })
+  expect(ridesCoveredBy(away, [handed, other], 60)).toEqual([handed])
+  expect(ridesCoveredBy(window(at(9, 30), at(12)), [handed], 60)).toEqual([])
+})
+
+it('counts a Partner free only when it is active and no window covers the span', () => {
+  const covered = window(at(10), at(12), { partnerId })
+  const otherAway = window(at(10), at(12), { partnerId: otherPartnerId })
+  // A Ride handed to a Partner is not an argument: it does not occupy the Partner.
+  expect(freePartnerIds([partnerId, otherPartnerId], [covered], at(11), at(11, 30))).toEqual([otherPartnerId])
+  expect(freePartnerIds([partnerId], [otherAway], at(11), at(12))).toEqual([partnerId])
+  // Half-open: a window that ends where the span starts leaves the Partner free.
+  expect(freePartnerIds([partnerId], [window(at(8), at(10), { partnerId })], at(10), at(11))).toEqual([partnerId])
+  expect(freePartnerIds([partnerId], [], at(10), at(10))).toEqual([partnerId])
+  expect(freePartnerIds([], [covered], at(10), at(12))).toEqual([])
 })
 
 it('names only the instants that changed', () => {

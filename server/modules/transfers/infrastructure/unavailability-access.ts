@@ -67,6 +67,13 @@ export async function listDriverUnavailability(headers: Headers, rawDriverId: un
     listUnavailabilityOf(ports(transaction, actor.userId), actor.role, { kind: 'driver', id }))
 }
 
+/** The live windows of one Partner. */
+export async function listPartnerUnavailability(headers: Headers, rawPartnerId: unknown): Promise<UnavailabilityWindowView[]> {
+  const id = parseUnavailabilityResourceId(rawPartnerId)
+  return withTenantFromSession(headers, ({ actor, transaction }) =>
+    listUnavailabilityOf(ports(transaction, actor.userId), actor.role, { kind: 'partner', id }))
+}
+
 /** The live windows of one Vehicle. */
 export async function listVehicleUnavailability(headers: Headers, rawVehicleId: unknown): Promise<UnavailabilityWindowView[]> {
   const id = parseUnavailabilityResourceId(rawVehicleId)

@@ -92,6 +92,28 @@ export async function partnerPresenceForHandoff(
 }
 
 /**
+ * Active, archived, or missing, without a row lock. A missing id and
+ * another Tenant's id are the same answer. Capacity uses this for a window.
+ * A handoff uses {@link partnerPresenceForHandoff}, which waits on an archive.
+ */
+export async function partnerPresence(
+  transaction: TenantTransaction,
+  partnerId: string,
+): Promise<'active' | 'archived' | 'missing'> {
+  const selected = z.object({
+    rows: z.array(z.object({ archivedAt: z.unknown().nullable() })),
+  }).parse(await readPartner(transaction, sql`
+    select archived_at as "archivedAt"
+    from app.partners
+    where id = ${partnerId}
+  `))
+  const row = selected.rows[0]
+  if (!row)
+    return 'missing'
+  return toArchivedAt(row.archivedAt) === null ? 'active' : 'archived'
+}
+
+/**
  * Whether this id is an active Partner of the Tenant.
  * A missing id, an archived Partner, and another Tenant's id are false.
  * The select runs under the session's row security.

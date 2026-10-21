@@ -14,8 +14,9 @@ import { rideOccupation } from './occupation-port'
  * The overlap warning comes from capacity (ADR-0034): capacity reads the
  * neighbours through the occupation port, and the shared contract judges.
  * The unavailability warning is capacity's too: it reads the live windows
- * of the listed Drivers and Vehicles once, so removing or moving a window
- * changes the warning on the next read.
+ * of the listed Drivers, Vehicles, and Partners once, so removing or moving
+ * a window changes the warning on the next read. A handed-off Ride warns
+ * when its Partner is covered.
  */
 export async function applyBoardWarnings(
   transaction: TenantTransaction,
@@ -28,7 +29,8 @@ export async function applyBoardWarnings(
   relocationGapMinutes: number,
 ): Promise<TransferDayRide[]> {
   const occupying = rides.filter(ride => ride.state === 'assigned' || ride.state === 'accepted')
-  if (occupying.length === 0)
+  const handedOff = rides.filter(ride => ride.state === 'handed_off' && ride.partnerId !== null)
+  if (occupying.length === 0 && handedOff.length === 0)
     return rides.map(ride => ({ ...ride, warnings: emptyBoardWarnings() }))
 
   const driverIds = idsOf(occupying.map(ride => ride.driverId))
@@ -50,10 +52,11 @@ export async function applyBoardWarnings(
     })),
   })
   const unavailable = await readBoardUnavailability(capacityPorts(transaction, rideOccupation(transaction)).windows, role, {
-    rides: occupying.map(ride => ({
+    rides: [...occupying, ...handedOff].map(ride => ({
       rideId: ride.rideId,
       driverId: ride.driverId,
       vehicleId: ride.vehicleId,
+      partnerId: ride.partnerId,
       pickupAt: new Date(ride.pickupAt),
       landingAt: ride.landingAt == null ? null : new Date(ride.landingAt),
     })),

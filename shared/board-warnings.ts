@@ -1,4 +1,4 @@
-import type { ScheduleResource, ScheduleRide } from './capacity'
+import type { ScheduleRide, UnavailableResource } from './capacity'
 import type { ExpiringDocumentKind } from './expiring-documents'
 import type { RideState } from './transfer'
 import { z } from 'zod'
@@ -14,8 +14,8 @@ export const boardWarningsSchema = z.object({
   expiredDocuments: z.array(expiringDocumentKindSchema),
   rosterMismatch: z.boolean(),
   overlappingRideIds: z.array(z.uuid()),
-  // The Driver or Vehicle an unavailability window covers (ADR-0034). Absent when none is.
-  unavailable: z.array(z.enum(['driver', 'vehicle'])).min(1).optional(),
+  // The Driver, Vehicle, or Partner an unavailability window covers (ADR-0034). Absent when none is.
+  unavailable: z.array(z.enum(['driver', 'vehicle', 'partner'])).min(1).optional(),
 })
 
 export type BoardWarnings = z.infer<typeof boardWarningsSchema>
@@ -77,10 +77,17 @@ export function deriveBoardWarnings(input: {
   readonly others: readonly ScheduleRide[]
   readonly durationMinutes: number
   readonly gapMinutes: number
-  readonly unavailable?: readonly ScheduleResource[]
+  readonly unavailable?: readonly UnavailableResource[]
 }): BoardWarnings {
   if (!isCalendarDate(input.pickupDate))
     throw new RangeError('Pickup date is not a calendar date.')
+  // A handed-off Ride has no Driver, so only the Partner window can warn.
+  if (input.ride.state === 'handed_off') {
+    return {
+      ...emptyBoardWarnings(),
+      ...(input.unavailable && input.unavailable.length > 0 ? { unavailable: [...input.unavailable] } : {}),
+    }
+  }
   if (input.ride.state !== 'assigned' && input.ride.state !== 'accepted')
     return emptyBoardWarnings()
 

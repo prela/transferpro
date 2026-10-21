@@ -3,7 +3,7 @@ import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { hideDatabaseError } from '../../../core/index'
-import { capacityPorts, judgeRideCapacity, RideOverlapError, RideUnavailableError } from '../../capacity'
+import { capacityPorts, judgePartnerCapacity, judgeRideCapacity, RideOverlapError, RideUnavailableError } from '../../capacity'
 import { RideNotFoundError } from './assign'
 import { rideOccupation } from './occupation-port'
 import { toInstantDate } from './ride-occupation'
@@ -35,25 +35,33 @@ export interface ScheduleCheck {
  * locks and refusals, so the occupation capacity reads through the port
  * is every committed capacity write of this Tenant.
  */
-export async function checkRideCapacity(
-  transaction: TenantTransaction,
-  input: ScheduleCheck,
-): Promise<ScheduleClash[]> {
+async function loadSubject(transaction: TenantTransaction, rideId: string) {
   const subject = subjectRows.parse(await hideDatabaseError(() => transaction.execute(sql`
     select t.pickup_at as "pickupAt", t.landing_at as "landingAt"
     from app.rides as r
     join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
-    where r.id = ${input.rideId}
+    where r.id = ${rideId}
   `), 'Ride schedule check failed')).rows[0]
   if (!subject)
     throw new RideNotFoundError()
+  return {
+    pickupAt: toInstantDate(subject.pickupAt),
+    landingAt: subject.landingAt == null ? null : toInstantDate(subject.landingAt),
+  }
+}
+
+export async function checkRideCapacity(
+  transaction: TenantTransaction,
+  input: ScheduleCheck,
+): Promise<ScheduleClash[]> {
+  const subject = await loadSubject(transaction, input.rideId)
 
   const verdict = await judgeRideCapacity(capacityPorts(transaction, rideOccupation(transaction)), {
     rideId: input.rideId,
     driverId: input.driverId,
     vehicleId: input.vehicleId,
-    pickupAt: toInstantDate(subject.pickupAt),
-    landingAt: subject.landingAt == null ? null : toInstantDate(subject.landingAt),
+    pickupAt: subject.pickupAt,
+    landingAt: subject.landingAt,
   })
   if (input.confirm)
     return [...verdict.tightGaps]
@@ -62,4 +70,27 @@ export async function checkRideCapacity(
   if (verdict.overlaps.length > 0)
     throw new RideOverlapError()
   return [...verdict.tightGaps]
+}
+
+/**
+ * A handoff or a change of Partner (ADR-0034). An unavailability window over
+ * the Partner is 409 `ride_unavailable` and writes nothing. `confirm: true`
+ * passes it. A Ride handed to the Partner does not occupy them, so there is
+ * no overlap to confirm. The caller already took the Tenant capacity lock
+ * and refused an archived Partner.
+ */
+export async function checkPartnerCapacity(
+  transaction: TenantTransaction,
+  input: { readonly rideId: string, readonly partnerId: string, readonly confirm: boolean },
+): Promise<void> {
+  const subject = await loadSubject(transaction, input.rideId)
+  const verdict = await judgePartnerCapacity(capacityPorts(transaction, rideOccupation(transaction)), {
+    partnerId: input.partnerId,
+    pickupAt: subject.pickupAt,
+    landingAt: subject.landingAt,
+  })
+  if (input.confirm)
+    return
+  if ((verdict.unavailable?.length ?? 0) > 0)
+    throw new RideUnavailableError()
 }

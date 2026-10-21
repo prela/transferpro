@@ -1,17 +1,18 @@
-import type { ScheduleResource } from '../../../../shared'
+import type { ScheduleResource, UnavailableResource } from '../../../../shared'
 import type { OccupyingRide } from './occupation'
 import { occupiedEnd } from '../../../../shared'
 
 /**
- * One unavailability window (Nedostupnost, ADR-0034): a Driver or a Vehicle
- * is away for `[startsAt, endsAt)`. Exactly one of the two ids is set. A
- * window carries no reason and no kind. A removed window is never handed
- * to the domain: it no longer counts.
+ * One unavailability window (Nedostupnost, ADR-0034): a Driver, a Vehicle,
+ * or a Partner is away for `[startsAt, endsAt)`. Exactly one of the three
+ * ids is set. A window carries no reason and no kind. A removed window is
+ * never handed to the domain: it no longer counts.
  */
 export interface UnavailabilityWindow {
   readonly id: string
   readonly driverId: string | null
   readonly vehicleId: string | null
+  readonly partnerId: string | null
   readonly startsAt: Date
   readonly endsAt: Date
 }
@@ -53,11 +54,51 @@ export function unavailableResources(
   const end = occupiedEnd(subject.pickupAt, subject.landingAt, durationMinutes)
   const covering = windows.filter(window => coversSpan(window, subject.pickupAt, end))
   const resources: ScheduleResource[] = []
-  if (covering.some(window => window.driverId === subject.driverId))
+  if (covering.some(window => window.driverId !== null && window.driverId === subject.driverId))
     resources.push('driver')
-  if (covering.some(window => window.vehicleId === subject.vehicleId))
+  if (covering.some(window => window.vehicleId !== null && window.vehicleId === subject.vehicleId))
     resources.push('vehicle')
   return resources
+}
+
+/** The Partner and the instants of a Ride handed to them. */
+export interface PartnerSpan {
+  readonly partnerId: string
+  readonly pickupAt: Date
+  readonly landingAt: Date | null
+}
+
+/**
+ * `partner` when a window covers this Partner during the occupied window.
+ * A Ride handed to a Partner does not occupy them; only the window does.
+ */
+export function partnerUnavailable(
+  subject: PartnerSpan,
+  windows: readonly UnavailabilityWindow[],
+  durationMinutes: number,
+): UnavailableResource[] {
+  const end = occupiedEnd(subject.pickupAt, subject.landingAt, durationMinutes)
+  const covered = windows.some(window =>
+    window.partnerId === subject.partnerId && coversSpan(window, subject.pickupAt, end),
+  )
+  return covered ? ['partner'] : []
+}
+
+/**
+ * Active Partners that no window covers during the half-open span. An id
+ * that is not in `activePartnerIds` is archived or missing, so it is not
+ * free. A handed-off Ride is not an argument: it does not take the Partner
+ * (ADR-0034). The order is the order of `activePartnerIds`.
+ */
+export function freePartnerIds(
+  activePartnerIds: readonly string[],
+  windows: readonly UnavailabilityWindow[],
+  from: Date,
+  to: Date,
+): string[] {
+  return activePartnerIds.filter(partnerId =>
+    !windows.some(window => window.partnerId === partnerId && coversSpan(window, from, to)),
+  )
 }
 
 /**
@@ -70,8 +111,25 @@ export function ridesCoveredBy(
   rides: readonly OccupyingRide[],
   durationMinutes: number,
 ): OccupyingRide[] {
+  const partnerId = window.partnerId
+  if (partnerId !== null) {
+    return rides.filter(ride =>
+      ride.partnerId === partnerId
+      && partnerUnavailable(
+        { partnerId, pickupAt: ride.pickupAt, landingAt: ride.landingAt },
+        [window],
+        durationMinutes,
+      ).length > 0,
+    )
+  }
   return rides.filter(ride =>
-    unavailableResources(ride, [window], durationMinutes).length > 0,
+    ride.driverId !== null
+    && ride.vehicleId !== null
+    && unavailableResources(
+      { driverId: ride.driverId, vehicleId: ride.vehicleId, pickupAt: ride.pickupAt, landingAt: ride.landingAt },
+      [window],
+      durationMinutes,
+    ).length > 0,
   )
 }
 

@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { fakeCapacityPorts } from '../testing'
-import { judgeRideCapacity } from './judge-ride'
+import { judgePartnerCapacity, judgeRideCapacity } from './judge-ride'
 
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
 const otherDriverId = 'b2b2b2b2-2222-4222-8222-222222222222'
@@ -8,6 +8,7 @@ const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
 const otherVehicleId = 'c2c2c2c2-2222-4222-8222-222222222222'
 const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
 const otherId = 'e2e2e2e2-3333-4333-8333-333333333333'
+const partnerId = 'a1a1a1a1-1111-4111-8111-111111111111'
 
 function at(hours: number, minutes: number): Date {
   return new Date(Date.UTC(2026, 9, 19, hours, minutes))
@@ -63,11 +64,12 @@ it('returns an empty verdict when nothing else occupies the Driver or the Vehicl
   await expect(judgeRideCapacity(ports, subject)).resolves.toEqual({ overlaps: [], tightGaps: [] })
 })
 
-function away(startsAt: Date, endsAt: Date, owner: { driverId?: string, vehicleId?: string }) {
+function away(startsAt: Date, endsAt: Date, owner: { driverId?: string, vehicleId?: string, partnerId?: string }) {
   return {
     id: 'a1a1a1a1-1111-4111-8111-111111111111',
     driverId: owner.driverId ?? null,
     vehicleId: owner.vehicleId ?? null,
+    partnerId: owner.partnerId ?? null,
     startsAt,
     endsAt,
   }
@@ -76,7 +78,13 @@ function away(startsAt: Date, endsAt: Date, owner: { driverId?: string, vehicleI
 it('asks for the windows of this Driver and this Vehicle during the occupied window', async () => {
   const { ports, asked } = fakeCapacityPorts()
   await judgeRideCapacity(ports, subject)
-  expect(asked.windows).toEqual([{ driverIds: [driverId], vehicleIds: [vehicleId], from: at(10, 0), to: at(11, 0) }])
+  expect(asked.windows).toEqual([{
+    driverIds: [driverId],
+    vehicleIds: [vehicleId],
+    partnerIds: [],
+    from: at(10, 0),
+    to: at(11, 0),
+  }])
 })
 
 it('lists the unavailable Driver and Vehicle in the verdict, Driver first', async () => {
@@ -94,6 +102,39 @@ it('lists the unavailable Driver and Vehicle in the verdict, Driver first', asyn
 it('names nothing unavailable when the window ends where the Ride starts', async () => {
   const { ports } = fakeCapacityPorts([], undefined, [away(at(8, 0), at(10, 0), { driverId })])
   await expect(judgeRideCapacity(ports, subject)).resolves.toEqual({ overlaps: [], tightGaps: [] })
+})
+
+it('lists an unavailable Partner and does not ask who else is taken', async () => {
+  const { ports, asked } = fakeCapacityPorts([], undefined, [away(at(10, 0), at(11, 0), { partnerId })])
+  await expect(judgePartnerCapacity(ports, { partnerId, pickupAt: at(10, 0), landingAt: null })).resolves.toEqual({
+    overlaps: [],
+    tightGaps: [],
+    unavailable: ['partner'],
+  })
+  expect(asked.ridesOf).toEqual([])
+  expect(asked.ridesDuring).toEqual([])
+  expect(asked.windows).toEqual([{
+    driverIds: [],
+    vehicleIds: [],
+    partnerIds: [partnerId],
+    from: at(10, 0),
+    to: at(11, 0),
+  }])
+})
+
+it('a handed-off Ride does not make its Partner unavailable', async () => {
+  const { ports } = fakeCapacityPorts([{
+    rideId: otherId,
+    driverId: null,
+    vehicleId: null,
+    partnerId,
+    pickupAt: at(10, 0),
+    landingAt: null,
+  }])
+  await expect(judgePartnerCapacity(ports, { partnerId, pickupAt: at(10, 0), landingAt: null })).resolves.toEqual({
+    overlaps: [],
+    tightGaps: [],
+  })
 })
 
 it('ignores a window of another Driver that the port answered with', async () => {
