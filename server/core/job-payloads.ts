@@ -45,9 +45,11 @@ export class JobPayloadError extends Error {
  * redacted, and the name or the payload may be a phone or an address.
  */
 export function assertJobPayload(name: string, data: unknown): void {
-  const schema = jobPayloads[name]
-  if (!schema)
+  // Own keys only. `toString` and `constructor` live on Object.prototype,
+  // so a plain lookup would treat that function as a schema.
+  if (!Object.hasOwn(jobPayloads, name))
     throw new JobPayloadError('unknown job')
-  if (!schema.safeParse(data).success)
+  const schema = jobPayloads[name]
+  if (!schema?.safeParse(data).success)
     throw new JobPayloadError('invalid job payload')
 }

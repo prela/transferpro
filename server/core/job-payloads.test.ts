@@ -80,6 +80,7 @@ it('accepts a registered payload of ids, an instant, or an enum, and refuses any
     expect(() => assertJobPayload(name, sample(name))).not.toThrow()
 
   expect(() => assertJobPayload('not-a-registered-job', {})).toThrow(JobPayloadError)
+  expect(() => assertJobPayload('toString', {})).toThrow(new JobPayloadError('unknown job'))
   expect(() => assertJobPayload(refusedEmail, {})).toThrow(JobPayloadError)
 
   let leaked: unknown
