@@ -144,3 +144,21 @@ it('starts a Client at version 0 with no author, and refuses a version without a
     `update app.clients set version = -1 where name = 'Hotel Verzija'`,
   ))).rejects.toMatchObject({ code: '23514' })
 })
+
+// `data_changed_by <> ''` is unknown when the member is null, and a CHECK
+// accepts unknown. A version that names a time and no member must still fail.
+it('refuses a Client version that records a time and a null member', async () => {
+  await expect(withTenant(tenantA, client => client.query(
+    `insert into app.clients (name, kind, version, data_changed_at, data_changed_by)
+     values ('Hotel Bez Autora', 'hotel', 1, now(), null)`,
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'clients_data_change' })
+
+  await withTenant(tenantA, client => client.query(
+    `insert into app.clients (name, kind) values ('Hotel Verzija Nula', 'hotel')`,
+  ))
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.clients
+     set version = 1, data_changed_at = now(), data_changed_by = null
+     where name = 'Hotel Verzija Nula'`,
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'clients_data_change' })
+})
