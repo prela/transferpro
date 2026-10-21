@@ -183,6 +183,9 @@ function detailText(entry: AuditEntry): string {
       return entry.data.fields.map(field => t(`clients.contacts.fields.${field}`)).join(', ')
     case 'contact_person.removed':
       return t('clients.contacts.fields.removed')
+    case 'client_note.saved':
+      // Field name only. The text stays on the note row (ADR-0049).
+      return entry.data.fields.map(field => t(`clients.note.fields.${field}`)).join(', ')
     case 'partner.created':
     case 'partner.changed':
       // Field names only. The name, the phone, the email, and the note stay on the Partner row.

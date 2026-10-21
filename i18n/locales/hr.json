@@ -249,6 +249,9 @@
         "changed": "Kontakt osoba ispravljena",
         "removed": "Kontakt osoba uklonjena"
       },
+      "client_note": {
+        "saved": "Napomena naručitelja spremljena"
+      },
       "partner": {
         "created": "Podizvođač dodan",
         "changed": "Podizvođač ispravljen",
@@ -314,7 +317,8 @@
     },
     "tabs": {
       "data": "Podaci",
-      "contacts": "Kontakti"
+      "contacts": "Kontakti",
+      "note": "Napomena"
     },
     "contacts": {
       "add": "Dodaj kontakt osobu",
@@ -351,6 +355,22 @@
         "phone": "Telefon",
         "email": "E-pošta",
         "removed": "Uklonjeno"
+      }
+    },
+    "note": {
+      "label": "Napomena",
+      "tooLong": "Napomena može imati najviše 2000 znakova.",
+      "save": "Spremi",
+      "saving": "Spremanje",
+      "loading": "Učitavanje napomene",
+      "loadFailed": "Napomenu nije bilo moguće učitati. Pokušajte ponovno.",
+      "rejected": "Napomena nije prihvaćena.",
+      "notFound": "Taj naručitelj više nije na popisu.",
+      "forbidden": "Vozač ne može mijenjati napomenu.",
+      "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
+      "saveFailed": "Napomena nije spremljena. Pokušajte ponovno.",
+      "fields": {
+        "note": "Napomena"
       }
     }
   },

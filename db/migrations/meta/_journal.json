@@ -379,6 +379,13 @@
       "when": 1791400043000,
       "tag": "0053_contact_person_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1791400044000,
+      "tag": "0054_client_notes",
+      "breakpoints": true
     }
   ]
 }

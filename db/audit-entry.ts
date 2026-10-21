@@ -271,6 +271,14 @@ function contactPersonFields(data: AnyPgColumn, lists: readonly (readonly string
 }
 
 /**
+ * A Client note records the Client id and the field name `note`.
+ * Equality refuses the text, another field, or a different order.
+ */
+function clientNoteSaved(data: AnyPgColumn) {
+  return sql`${keysOnly(data, 'clientId', 'fields')} and ${uuidText(data, 'clientId')} and ${data} -> 'fields' = '["note"]'::jsonb`
+}
+
+/**
  * `fields` is one of the canonical Partner arrays. Equality refuses a name,
  * a phone, an email, a note, or a different order.
  */
@@ -359,6 +367,7 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'contact_person.added' then ${table.subjectUserId} is null and ${contactPersonFields(table.data, CONTACT_PERSON_ADDED_FIELD_LISTS)}
     when 'contact_person.changed' then ${table.subjectUserId} is null and ${contactPersonFields(table.data, CONTACT_PERSON_CHANGED_FIELD_LISTS)}
     when 'contact_person.removed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'contactPersonId', 'fields')} and ${uuidText(table.data, 'clientId')} and ${uuidText(table.data, 'contactPersonId')} and ${table.data} -> 'fields' = '["removed"]'::jsonb
+    when 'client_note.saved' then ${table.subjectUserId} is null and ${clientNoteSaved(table.data)}
     when 'partner.created' then ${table.subjectUserId} is null and ${partnerFields(table.data, PARTNER_CREATED_FIELD_LISTS)}
     when 'partner.changed' then ${table.subjectUserId} is null and ${partnerFields(table.data, PARTNER_CHANGED_FIELD_LISTS)}
     when 'partner.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'partnerId')} and ${uuidText(table.data, 'partnerId')}

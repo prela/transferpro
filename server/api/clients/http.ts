@@ -1,6 +1,6 @@
 import { createError } from 'h3'
 import { z } from 'zod'
-import { ClientInputError, ContactPersonInputError, StaleSaveError } from '../../../shared'
+import { ClientInputError, ClientNoteInputError, ContactPersonInputError, StaleSaveError } from '../../../shared'
 import { ClientNotFoundError, ContactPersonNotFoundError } from '../../modules/clients'
 import { TenantAccessError } from '../../modules/tenancy'
 
@@ -11,7 +11,7 @@ import { TenantAccessError } from '../../modules/tenancy'
  * and the body names no one (ADR-0046, ADR-0012).
  */
 export function clientHttpError(error: unknown): never {
-  if (error instanceof ClientInputError || error instanceof ContactPersonInputError || error instanceof ClientNotFoundError || error instanceof ContactPersonNotFoundError || error instanceof TenantAccessError)
+  if (error instanceof ClientInputError || error instanceof ClientNoteInputError || error instanceof ContactPersonInputError || error instanceof ClientNotFoundError || error instanceof ContactPersonNotFoundError || error instanceof TenantAccessError)
     throw createError({ statusCode: error.statusCode })
   if (error instanceof StaleSaveError)
     throw createError({ statusCode: error.statusCode, data: { code: error.code } })

@@ -176,6 +176,12 @@ it('the table refuses data that does not match its action, for every writer', as
     ['contact_person.removed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["name"]}'],
     ['contact_person.removed', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["removed"],"email":"booking@example.test"}'],
     ['contact_person.removed', subject, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","contactPersonId":"8e4b3f6d-5555-4555-8555-555555555555","fields":["removed"]}'],
+    // A Client note records the Client id and the field name. Never the text.
+    ['client_note.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["note"],"note":"Gosti se čekaju na izlazu."}'],
+    ['client_note.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["note"],"text":"Gosti se čekaju na izlazu."}'],
+    ['client_note.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["text"]}'],
+    ['client_note.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":[]}'],
+    ['client_note.saved', subject, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["note"]}'],
     // A Partner records the id and field names. Never the name, the phone, the email, or the note.
     ['partner.created', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["name"],"name":"Mora Transfer"}'],
     ['partner.created', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["name","phone"],"phone":"+385911110379"}'],
@@ -502,6 +508,19 @@ it('append_entry accepts a contact person add, correction, and removal with ids 
   expect(text).not.toContain('Ana Booking')
   expect(text).not.toContain('+385911110364')
   expect(text).not.toContain('booking@example.test')
+})
+
+it('append_entry accepts a Client note save with the Client id and the field name only', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const append = `select audit.append_entry($1, $2, null, $3::jsonb)`
+  const saved = { clientId, fields: ['note'] }
+  await inSession(appPool, tenant, client => client.query(append, ['client_note.saved', actor, JSON.stringify(saved)]))
+  expect(await entriesOf(tenant)).toEqual([
+    { tenant_id: tenant, action: 'client_note.saved', actor_user_id: actor, subject_user_id: null, data: saved },
+  ])
+  expect(JSON.stringify(await entriesOf(tenant))).not.toContain('Gosti se čekaju na izlazu.')
 })
 
 it('append_entry accepts a Partner create, change, archive, and restore with the id and field names only', async () => {
