@@ -222,6 +222,15 @@ function queryMatches(routeQuery: Record<string, string | string[]>): boolean {
 let syncing = false
 let syncAgain = false
 
+/**
+ * Ride on the router.push that is still waiting on the office middleware.
+ * Null is a waiting push with no Ride. Undefined means nothing is waiting.
+ * The middleware awaits GET /api/session before the push changes the address.
+ * Closing the Ride in that gap has to drop the push, or it writes `?ride=`
+ * after the panel is gone (issue #348).
+ */
+let inFlightRide: string | null | undefined
+
 async function syncQuery() {
   if (syncing) {
     syncAgain = true
@@ -231,15 +240,18 @@ async function syncQuery() {
   try {
     do {
       syncAgain = false
+      inFlightRide = undefined
       const query = buildQuery()
       if (queryMatches(routeQueryRecord()))
         continue
+      inFlightRide = queryText(query.ride) || null
       // Push, so Back returns the previous filters. Replace would drop them.
       await router.push({ query })
     } while (syncAgain)
   }
   finally {
     syncing = false
+    inFlightRide = undefined
   }
 }
 
@@ -308,10 +320,34 @@ watch(rides, () => {
  */
 let rideOwnedLocally = false
 
+/**
+ * Back and forward apply the address they land on. A push this screen started
+ * does not, once the open Ride has moved on.
+ */
+let routeFromHistory = false
+
 function onHistoryBack() {
+  routeFromHistory = true
   rideOwnedLocally = false
   applyRouteQuery()
 }
+
+onBeforeRouteUpdate((to) => {
+  if (routeFromHistory) {
+    routeFromHistory = false
+    return
+  }
+  if (inFlightRide === undefined)
+    return
+  const pushedRide = inFlightRide
+  // Another navigation, not the push that is still waiting.
+  if ((queryText(to.query.ride) || null) !== pushedRide)
+    return
+  // The last intent wins. A close, or a different Ride, drops this push
+  // before it can write the address.
+  if (pushedRide !== openRideId.value)
+    return false
+})
 
 watch(() => route.query, () => {
   // A push we just sent is not Back. Applying it would put a stale search
