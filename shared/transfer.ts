@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { boardWarningsSchema } from './board-warnings'
+import { clientOfficeBriefSchema } from './client-office-brief'
 import { isCalendarDate } from './date'
 import { sameFlightDesignator } from './flight-landing'
 import { QueryParamError } from './query'
@@ -349,6 +350,13 @@ export const transferDaySchema = z.object({
   date: z.string().refine(isCalendarDate),
   rides: z.array(transferDayRideSchema),
   declineAlerts: z.array(declineAlertSchema),
+  /**
+   * Every Client of this Tenant, not only those with a Ride today. The
+   * Transfer form shows the note as soon as a Client is chosen, including
+   * one that has no Ride on this day. A removed contact person is absent.
+   * The Driver's read does not carry this list. ADR-0049.
+   */
+  clientBriefs: z.array(clientOfficeBriefSchema),
 })
 
 export type TransferDay = z.infer<typeof transferDaySchema>

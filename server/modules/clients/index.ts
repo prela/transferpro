@@ -7,6 +7,12 @@ export { ClientNotFoundError, createClient, listClients, updateClient } from './
 /** The one standing note on the Client card (ADR-0049). */
 export { readClientNote, writeClientNote } from './infrastructure/client-note-access'
 /**
+ * Live contact persons and the Client note, inside the caller's tenant
+ * transaction. The helper refuses any role other than dispatcher or admin.
+ * The Driver's read does not use this (ADR-0049).
+ */
+export { loadClientOfficeBriefs } from './infrastructure/client-office-briefs'
+/**
  * The list a Transfer offers, inside the caller's tenant transaction.
  * This module does not import transfers (ADR-0018).
  */

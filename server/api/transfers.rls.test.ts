@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../../shared'
 import { configureLogger } from '../core/index'
 import { captureLogs } from '../core/testing'
-import { createClient, updateClient } from '../modules/clients'
+import { createClient, createContactPerson, removeClientContactPerson, updateClient, writeClientNote } from '../modules/clients'
 import { createDriver, updateDriver } from '../modules/drivers'
 import { archiveLocation, createLocation } from '../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale, withTenantFromSession } from '../modules/tenancy'
@@ -96,6 +96,12 @@ beforeAll(async () => {
       select id from auth.organization where slug like 'htr-%'
     )`)
     await owner.query(`delete from app.locations where tenant_id::text in (
+      select id from auth.organization where slug like 'htr-%'
+    )`)
+    await owner.query(`delete from app.client_notes where tenant_id::text in (
+      select id from auth.organization where slug like 'htr-%'
+    )`)
+    await owner.query(`delete from app.client_contact_persons where tenant_id::text in (
       select id from auth.organization where slug like 'htr-%'
     )`)
     await owner.query(`delete from app.clients where tenant_id::text in (
@@ -462,7 +468,12 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
 
   const calendarDay = await call('GET', `/api/transfers?date=${sample.calendar}`, admin)
   expect(calendarDay.status).toBe(200)
-  expect(await calendarDay.json()).toEqual({ date: sample.calendar, rides: [], declineAlerts: [] })
+  expect(await calendarDay.json()).toEqual({
+    date: sample.calendar,
+    rides: [],
+    declineAlerts: [],
+    clientBriefs: [{ clientId: client.id, contactPersons: [], note: null }],
+  })
 
   const operationalDay = await call('GET', `/api/transfers?date=${sample.operational}`, dispatcher)
   expect(operationalDay.status).toBe(200)
@@ -2750,4 +2761,96 @@ it('external_id is not null, has no default, and an insert without it fails', as
      ) values ($1, $2, now(), $3, $4, 1, 'Bez Ključa', 10, 'cash', false, 0, 0)`,
     [created.tenantId, client.id, start.id, end.id],
   )).rejects.toMatchObject({ code: '23502' })
+})
+
+it('returns this Tenant\'s live contact persons and Client note, and leaves a removed contact out', async () => {
+  const created = await tenant('htr-client-office', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-client-office-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  await addMember(created.tenantId, 'htr-client-office-driver@example.test', 'Marko Vozač', 'driver')
+  const dispatcher = await signIn('htr-client-office-dispatcher@example.test')
+  const driver = await signIn('htr-client-office-driver@example.test')
+  await tenant('htr-client-office-b', 'Borna Stranac')
+  const otherAdmin = await signIn('htr-client-office-b-admin@example.test')
+
+  const client = await createClient(dispatcher, { name: 'Agencija Kontakti', kind: 'agency' })
+  const otherClient = await createClient(otherAdmin, { name: 'Tuđa Agencija', kind: 'hotel' })
+  const standing = 'Čekaj goste na izlazu 368.'
+  const foreignNote = 'Tuđa napomena 368.'
+  const livePhone = '+385913680001'
+  const removedPhone = '+385913680002'
+  const foreignPhone = '+385913680099'
+  const live = await createContactPerson(dispatcher, client.id, {
+    name: 'Ana Booking',
+    role: 'Rezervacije',
+    phone: livePhone,
+    email: 'ana.booking@example.test',
+  })
+  const removed = await createContactPerson(dispatcher, client.id, {
+    name: 'Otišla Osoba',
+    phone: removedPhone,
+  })
+  await removeClientContactPerson(dispatcher, client.id, removed.id, { version: removed.version })
+  await writeClientNote(dispatcher, client.id, { note: standing })
+  await createContactPerson(otherAdmin, otherClient.id, {
+    name: 'Tuđi Kontakt',
+    phone: foreignPhone,
+    email: 'tudi@example.test',
+  })
+  await writeClientNote(otherAdmin, otherClient.id, { note: foreignNote })
+
+  const start = await createLocation(dispatcher, { name: 'Polazak Kontakti', kind: 'address' })
+  const end = await createLocation(dispatcher, { name: 'Dolazak Kontakti', kind: 'hotel' })
+  const pickupAt = pickupOnOpenBoard()
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date(pickupAt))
+  const added = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    guestName: 'Iva Kontakti',
+    note: null,
+  }))
+  expect(added.status).toBe(200)
+  const recorded = await added.json() as { transfer: { note: string | null }, ride: { id: string } }
+  // The Client note is not a Transfer field. Recording stores neither it nor a contact.
+  expect(recorded.transfer.note).toBeNull()
+  expect(JSON.stringify(recorded)).not.toContain(standing)
+  expect(JSON.stringify(recorded)).not.toContain(livePhone)
+
+  const response = await call('GET', `/api/transfers?date=${day}`, dispatcher)
+  expect(response.status).toBe(200)
+  const listed = await response.json() as {
+    rides: { rideId: string, note: string | null, clientId: string }[]
+    clientBriefs: {
+      clientId: string
+      note: string | null
+      contactPersons: { id: string, name: string, role: string | null, phone: string | null, email: string | null }[]
+    }[]
+  }
+  const ride = listed.rides.find(row => row.rideId === recorded.ride.id)
+  expect(ride).toMatchObject({ note: null, clientId: client.id })
+  expect(listed.clientBriefs).toEqual([
+    {
+      clientId: client.id,
+      note: standing,
+      contactPersons: [
+        {
+          id: live.id,
+          name: 'Ana Booking',
+          role: 'Rezervacije',
+          phone: livePhone,
+          email: 'ana.booking@example.test',
+        },
+      ],
+    },
+  ])
+  const body = JSON.stringify(listed)
+  expect(body).not.toContain(removedPhone)
+  expect(body).not.toContain('Otišla Osoba')
+  expect(body).not.toContain(foreignPhone)
+  expect(body).not.toContain(foreignNote)
+  expect(body).not.toContain('Tuđi Kontakt')
+  expect(body).not.toContain('Tuđa Agencija')
+
+  const refused = await call('GET', `/api/transfers?date=${day}`, driver)
+  expect(refused.status).toBe(403)
+  const refusedText = await refused.text()
+  expect(refusedText).not.toContain(standing)
+  expect(refusedText).not.toContain(livePhone)
 })

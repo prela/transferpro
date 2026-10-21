@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Client, DisplayLocale, Driver, Location, TransferDayRide } from '../../shared'
+import type { Client, ClientOfficeBrief, DisplayLocale, Driver, Location, TransferDayRide } from '../../shared'
 import { transferFormKey } from '../composables/transfer-form'
 
 const props = defineProps<{
@@ -9,6 +9,8 @@ const props = defineProps<{
   tenantId: string
   userId: string
   clients: Client[]
+  /** Live contact persons and the Client note. The form shows the note only. */
+  clientBriefs: ClientOfficeBrief[]
   drivers: Driver[]
   loadDay: () => Promise<void>
   /** The new-Transfer panel stores a browser draft. A correction does not. */
@@ -99,7 +101,10 @@ watch(() => props.correctRide?.rideId, (rideId) => {
     <h2 class="mb-4 text-lg font-semibold">
       {{ formTitle }}
     </h2>
-    <TransferFormFields :control-size="phone ? 'xl' : 'sm'" />
+    <TransferFormFields
+      :control-size="phone ? 'xl' : 'sm'"
+      :client-briefs="clientBriefs"
+    />
   </div>
   <RideOverlapDialog
     v-model:open="overlapOpen"

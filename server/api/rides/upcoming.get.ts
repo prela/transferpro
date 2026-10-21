@@ -18,6 +18,7 @@ import { rideHttpError } from './http'
  * archived mark and no catalog id.
  * Each Ride includes `state` (`assigned` or `accepted`) and `mustAccept`.
  * This route does not accept a Ride.
+ * Contact persons and the Client note are not on this read (ADR-0049).
  */
 export default defineEventHandler(async (event) => {
   try {

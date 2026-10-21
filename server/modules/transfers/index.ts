@@ -42,6 +42,9 @@
  * CSV export reads every Ride whose pickup falls on the chosen calendar
  * days. It is office-only. The log names the member, the range, and the
  * row count. It does not name a person or a place, and it writes no audit.
+ * The day read also returns each Client's live contact persons and Client
+ * note, for the Ride detail and the Transfer form. The Driver's read does
+ * not. Transfers loads them through the Clients index (ADR-0049).
  */
 export { RideOverlapError, RideUnavailableError, startUnavailabilityRetention, UnavailabilityArchivedError, UnavailabilityNotFoundError } from '../capacity'
 export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableError } from './infrastructure/accept'
