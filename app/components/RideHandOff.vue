@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Driver, Partner } from '../../shared'
-import { handedOffRideResultSchema } from '../../shared'
+import type { CapacityConfirmReason, Driver, Partner } from '../../shared'
+import { capacityConfirmReason, handedOffRideResultSchema } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 import { errorCode, httpStatus } from '../transfer-day-http'
@@ -47,6 +47,8 @@ const titleId = useId()
 const partnerId = ref<string | undefined>()
 const pending = ref(false)
 const formErrorKey = ref<HandOffFailure | null>(null)
+const confirmOpen = ref(false)
+const confirmReason = ref<CapacityConfirmReason>('unavailable')
 
 type HandOffFailure
   = 'ride.partnerArchived'
@@ -101,11 +103,12 @@ function failureKey(error: unknown): HandOffFailure {
 
 /**
  * POST /api/rides/:id/hand-off or /partner. The body is the Partner and the
- * version. `confirm` is not sent: an extra key is 400, and capacity does
- * not judge this write yet. A Partner is not mailed. From assigned or
- * accepted the Driver gets no longer yours.
+ * version. An unavailable Partner is 409 `ride_unavailable` and writes
+ * nothing; the same body with `confirm: true` passes the window (ADR-0034).
+ * A Partner is not mailed. From assigned or accepted the Driver gets no
+ * longer yours.
  */
-async function save() {
+async function save(confirm = false) {
   const chosen = partnerId.value
   if (!chosen || pending.value)
     return
@@ -115,8 +118,13 @@ async function save() {
     const path = props.mode === 'handOff' ? 'hand-off' : 'partner'
     const saved = handedOffRideResultSchema.parse(await $fetch(`/api/rides/${props.rideId}/${path}`, {
       method: 'POST',
-      body: { partnerId: chosen, version: props.version },
+      body: {
+        partnerId: chosen,
+        version: props.version,
+        ...(confirm ? { confirm: true } : {}),
+      },
     }))
+    confirmOpen.value = false
     notifyAuditChanged()
     const title = t(props.mode === 'handOff' ? 'ride.handedOff' : 'ride.partnerChanged')
     const notice = saved.workOrders[0]
@@ -131,6 +139,13 @@ async function save() {
     emit('saved')
   }
   catch (error) {
+    const reason = capacityConfirmReason(errorCode(error))
+    if (reason) {
+      confirmReason.value = reason
+      confirmOpen.value = true
+      return
+    }
+    confirmOpen.value = false
     if (errorCode(error) === 'stale_save') {
       await props.onStale()
       return
@@ -243,4 +258,10 @@ async function save() {
       </UButton>
     </div>
   </form>
+  <RideOverlapDialog
+    v-model:open="confirmOpen"
+    :pending="pending"
+    :reason="confirmReason"
+    @confirm="save(true)"
+  />
 </template>

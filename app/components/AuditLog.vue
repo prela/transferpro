@@ -177,9 +177,13 @@ function detailText(entry: AuditEntry): string {
     case 'unavailability.added':
     case 'unavailability.changed':
     case 'unavailability.removed':
-      // Whose window and the field names. The instants are never on the row (ADR-0034).
+      // Whose window and the field names. Exactly one id is set. The instants are never on the row (ADR-0034).
       return [
-        t(entry.data.driverId === null ? 'unavailability.ofVehicle' : 'unavailability.ofDriver'),
+        t(entry.data.driverId !== null
+          ? 'unavailability.ofDriver'
+          : entry.data.vehicleId !== null
+            ? 'unavailability.ofVehicle'
+            : 'unavailability.ofPartner'),
         entry.data.fields.map(field => t(`unavailability.fields.${field}`)).join(', '),
       ].join(' · ')
     case 'contact_person.added':

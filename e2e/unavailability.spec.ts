@@ -130,7 +130,7 @@ test('the office marks a Driver away for whole days, sees it on the board and th
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozač' }), 'Ana Odsutna')
   await chooseOption(page, page.getByRole('combobox', { name: 'Vozilo' }), 'DU355BB')
   await page.getByRole('button', { name: 'Dodijeli vožnju', exact: true }).click()
-  const confirm = page.getByRole('dialog', { name: 'Ovaj vozač ili vozilo je tada nedostupan' })
+  const confirm = page.getByRole('dialog', { name: 'Ovaj vozač, vozilo ili podizvođač je tada nedostupan' })
   await expect(confirm).toContainText('ova potvrda vrijedi za oboje')
   await expectNoAxeViolations(page)
   await confirm.getByRole('button', { name: 'Nastavi svejedno', exact: true }).click()

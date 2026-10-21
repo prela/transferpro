@@ -505,7 +505,7 @@
       "overlap": "Vrijeme se preklapa s drugom vožnjom ili je razmak do nje preuzak.",
       "rosterMismatch": "Vozilo nije ono koje raspored daje vozaču za taj dan.",
       "expiredDocument": "Vozaču ili vozilu je istekao dokument.",
-      "unavailable": "Vozač ili vozilo ima zabilježenu nedostupnost u vrijeme ove vožnje."
+      "unavailable": "Vozač, vozilo ili podizvođač ima zabilježenu nedostupnost u vrijeme ove vožnje."
     },
     "rowAccept": "Potvrdi telefonom",
     "rowAcceptFor": "Potvrdi telefonom: {guest}",
@@ -790,7 +790,8 @@
     "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
     "saveFailed": "Podizvođač nije spremljen. Pokušajte ponovno.",
     "tabs": {
-      "data": "Podaci"
+      "data": "Podaci",
+      "unavailability": "Nedostupnost"
     },
     "fields": {
       "name": "Naziv",
@@ -1044,7 +1045,7 @@
     "clientOffice": "Kontakti i napomena",
     "clientOfficeNoNote": "Nema napomene.",
     "unknownVehicle": "Nepoznato vozilo",
-    "unavailableTitle": "Ovaj vozač ili vozilo je tada nedostupan",
+    "unavailableTitle": "Ovaj vozač, vozilo ili podizvođač je tada nedostupan",
     "unavailableBody": "U vrijeme ove vožnje zabilježena je nedostupnost. Ako se vožnja i preklapa s drugom, ova potvrda vrijedi za oboje. Potvrdite da svejedno nastavite."
   },
   "liveRefresh": {
@@ -1138,13 +1139,14 @@
   "unavailability": {
     "ofDriver": "Vozač",
     "ofVehicle": "Vozilo",
+    "ofPartner": "Podizvođač",
     "fields": {
       "startsAt": "Od",
       "endsAt": "Do",
       "removed": "Uklonjeno"
     },
     "title": "Nedostupnost",
-    "intro": "Razdoblja u kojima ne vozi. Razlog se ne bilježi. Vremena su u vremenskoj zoni tvrtke.",
+    "intro": "Razdoblja u kojima nije dostupan. Razlog se ne bilježi. Vremena su u vremenskoj zoni tvrtke.",
     "loading": "Učitavanje nedostupnosti",
     "loadFailed": "Nedostupnost se nije mogla učitati. Pokušajte ponovno.",
     "empty": "Nema zabilježene nedostupnosti.",
@@ -1167,7 +1169,7 @@
     "added": "Nedostupnost je dodana.",
     "changed": "Nedostupnost je promijenjena.",
     "removedNotice": "Nedostupnost je uklonjena.",
-    "covered": "Ova nedostupnost pokriva vožnje koje su već dodijeljene. Ostaju dodijeljene, a na ploči imaju upozorenje Nedostupan:",
+    "covered": "Ova nedostupnost pokriva vožnje koje su već dodijeljene ili predane. Ostaju kakve jesu, a na ploči imaju upozorenje Nedostupan:",
     "dateInvalid": "Unesite prvi i zadnji dan; zadnji ne smije biti prije prvog.",
     "timeInvalid": "Unesite početak i kraj.",
     "orderInvalid": "Kraj mora biti nakon početka.",
@@ -1175,7 +1177,7 @@
     "notFound": "Ta nedostupnost ili taj zapis više ne postoji.",
     "forbidden": "Samo ured može bilježiti nedostupnost.",
     "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
-    "archived": "Arhiviranom vozaču ili vozilu ne može se dodati ni pomaknuti nedostupnost.",
+    "archived": "Arhiviranom vozaču, vozilu ili podizvođaču ne može se dodati ni pomaknuti nedostupnost.",
     "saveFailed": "Nedostupnost nije spremljena. Pokušajte ponovno.",
     "removeFailed": "Nedostupnost nije uklonjena. Pokušajte ponovno."
   }

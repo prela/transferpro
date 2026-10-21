@@ -15,14 +15,14 @@ import {
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
 /**
- * Unavailability windows (Nedostupnost, ADR-0034) as a section of the Driver
- * or Vehicle edit panel. The office lists, adds, moves, and removes windows
- * for the one resource that panel opened. Times are entered and shown in the
- * Tenant time zone; the server stores instants. An archived resource is read
- * only here, as the rest of its panel is.
+ * Unavailability windows (Nedostupnost, ADR-0034) on the Driver, Vehicle, or
+ * Partner detail. The office lists, adds, moves, and removes windows for the
+ * one resource that panel opened. Times are entered and shown in the Tenant
+ * time zone; the server stores instants. An archived resource is read only
+ * here, as the rest of its panel is. Partners are not on the roster.
  */
 const props = defineProps<{
-  owner: 'driver' | 'vehicle'
+  owner: 'driver' | 'vehicle' | 'partner'
   resourceId: string
   timeZone: string
   archived: boolean
@@ -73,7 +73,22 @@ const form = reactive({
 const displayLocale = computed<DisplayLocale>(() => locale.value === 'en' ? 'en' : 'hr')
 const controlSize = computed(() => commandControlSize(props.phone))
 const controlClass = computed(() => commandControlClass(props.phone))
-const basePath = computed(() => `/api/${props.owner === 'driver' ? 'drivers' : 'vehicles'}/${props.resourceId}/unavailability`)
+const collection = computed(() => {
+  if (props.owner === 'driver')
+    return 'drivers'
+  if (props.owner === 'vehicle')
+    return 'vehicles'
+  return 'partners'
+})
+const basePath = computed(() => `/api/${collection.value}/${props.resourceId}/unavailability`)
+/** POST names exactly one owner. The other two ids stay off the body. */
+const ownerBody = computed(() => {
+  if (props.owner === 'driver')
+    return { driverId: props.resourceId }
+  if (props.owner === 'vehicle')
+    return { vehicleId: props.resourceId }
+  return { partnerId: props.resourceId }
+})
 const submitLabel = computed(() => {
   if (editingWindowId.value)
     return pending.value ? t('unavailability.saving') : t('unavailability.save')
@@ -183,7 +198,7 @@ async function save() {
       ? await $fetch(`/api/unavailability/${changing}`, { method: 'PATCH', body: times })
       : await $fetch('/api/unavailability', {
           method: 'POST',
-          body: { ...(props.owner === 'driver' ? { driverId: props.resourceId } : { vehicleId: props.resourceId }), ...times },
+          body: { ...ownerBody.value, ...times },
         }))
     notifyAuditChanged()
     toast.add({ title: changing ? t('unavailability.changed') : t('unavailability.added'), color: 'success' })
