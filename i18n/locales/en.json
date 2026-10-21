@@ -318,7 +318,8 @@
     "tabs": {
       "data": "Details",
       "contacts": "Contacts",
-      "note": "Note"
+      "note": "Note",
+      "rides": "Rides"
     },
     "contacts": {
       "add": "Add a contact person",
@@ -372,6 +373,17 @@
       "fields": {
         "note": "Note"
       }
+    },
+    "rides": {
+      "loading": "Loading rides",
+      "loadFailed": "Rides could not be loaded. Try again.",
+      "rejected": "The ride request was not accepted.",
+      "notFound": "That client is no longer on the list.",
+      "forbidden": "A driver cannot see a client's rides.",
+      "signedOut": "You are signed out. Sign in and try again.",
+      "empty": "No rides yet.",
+      "loadMore": "Load more",
+      "counts": "Total {total} · Done {done} · No-show {noShow} · Cancelled {cancelled}"
     }
   },
   "locations": {

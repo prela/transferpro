@@ -1,7 +1,5 @@
-import { Buffer } from 'node:buffer'
 import { z } from 'zod'
 import { isCalendarDate } from './date'
-import { QueryParamError } from './query'
 import { paymentMethodSchema, rideStateSchema, transferPriceSchema } from './transfer'
 
 /**
@@ -60,37 +58,4 @@ export type RideHistory = z.infer<typeof rideHistorySchema>
 export interface RideHistoryCursor {
   readonly pickupAt: string
   readonly rideId: string
-}
-
-const rideHistoryQuerySchema = z.strictObject({
-  cursor: z.string().min(1).max(512).optional(),
-})
-
-const rideHistoryCursorSchema = z.strictObject({
-  pickupAt: z.iso.datetime(),
-  rideId: z.uuid(),
-})
-
-/**
- * `cursor` is absent on the first page. A present cursor is the opaque
- * token from `nextCursor`. Anything else is 400, before a session opens.
- * An unknown query key is refused.
- */
-export function parseRideHistoryQuery(raw: unknown): RideHistoryCursor | null {
-  const query = rideHistoryQuerySchema.safeParse(raw)
-  if (!query.success)
-    throw new QueryParamError()
-  if (query.data.cursor === undefined)
-    return null
-  let decoded: unknown
-  try {
-    decoded = JSON.parse(Buffer.from(query.data.cursor, 'base64url').toString('utf8'))
-  }
-  catch {
-    throw new QueryParamError()
-  }
-  const cursor = rideHistoryCursorSchema.safeParse(decoded)
-  if (!cursor.success)
-    throw new QueryParamError()
-  return cursor.data
 }

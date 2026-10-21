@@ -318,7 +318,8 @@
     "tabs": {
       "data": "Podaci",
       "contacts": "Kontakti",
-      "note": "Napomena"
+      "note": "Napomena",
+      "rides": "Vožnje"
     },
     "contacts": {
       "add": "Dodaj kontakt osobu",
@@ -372,6 +373,17 @@
       "fields": {
         "note": "Napomena"
       }
+    },
+    "rides": {
+      "loading": "Učitavanje vožnji",
+      "loadFailed": "Vožnje nije bilo moguće učitati. Pokušajte ponovno.",
+      "rejected": "Zahtjev za vožnje nije prihvaćen.",
+      "notFound": "Taj naručitelj više nije na popisu.",
+      "forbidden": "Vozač ne može vidjeti vožnje naručitelja.",
+      "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
+      "empty": "Još nema vožnji.",
+      "loadMore": "Učitaj još",
+      "counts": "Ukupno {total} · Obavljeno {done} · Nedolazak {noShow} · Otkazano {cancelled}"
     }
   },
   "locations": {

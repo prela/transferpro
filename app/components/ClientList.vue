@@ -30,8 +30,8 @@ const saving = ref(false)
  */
 const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
-/** Podaci is the name and the kind. Kontakti and Napomena are the card's other tabs. */
-const cardTab = ref<'data' | 'contacts' | 'note'>('data')
+/** Podaci is the name and the kind. Kontakti, Napomena, and Vožnje are the card's other tabs. */
+const cardTab = ref<'data' | 'contacts' | 'note' | 'rides'>('data')
 /** The panel title stays the name that was opened, not the half-typed correction. */
 const openedName = ref('')
 /** The version the edit form opened with. Only Osvježi replaces it (ADR-0046). */
@@ -62,6 +62,7 @@ const cardTabs = computed(() => [
   { label: t('clients.tabs.data'), value: 'data' as const },
   { label: t('clients.tabs.contacts'), value: 'contacts' as const },
   { label: t('clients.tabs.note'), value: 'note' as const },
+  { label: t('clients.tabs.rides'), value: 'rides' as const },
 ])
 
 const kindItems = computed(() => [
@@ -410,6 +411,14 @@ onMounted(loadClients)
       />
       <ClientNote
         v-if="formMode === 'edit' && editingId && cardTab === 'note'"
+        :client-id="editingId"
+        :phone="phone"
+        :time-zone="timeZone"
+        :locale="locale"
+      />
+      <!-- The history read lives in transfers. This screen calls it. clients does not import that module (ADR-0036). -->
+      <ClientRideHistory
+        v-if="formMode === 'edit' && editingId && cardTab === 'rides'"
         :client-id="editingId"
         :phone="phone"
         :time-zone="timeZone"
