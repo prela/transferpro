@@ -296,7 +296,7 @@ async function mailCount(tenantId: string) {
 async function handoffAudits(tenantId: string) {
   const result = await ownerPool.query<{ action: string, actor_user_id: string, data: unknown }>(
     `select action, actor_user_id, data from app.audit_entry
-     where tenant_id = $1 and action::text in ('ride.handed_off', 'ride.partner_changed', 'ride.taken_back', 'ride.done', 'ride.no_show_early', 'ride.cancelled')
+     where tenant_id = $1 and action::text in ('ride.handed_off', 'ride.partner_changed', 'ride.taken_back', 'ride.done', 'ride.no_show', 'ride.no_show_early', 'ride.cancelled')
      order by occurred_at, id`,
     [tenantId],
   )
@@ -516,6 +516,24 @@ it('a stale version, a finished Ride, and the same or an archived Partner write 
   expect(handed.status).toBe(200)
   const current = await versionOf(recorded.ride.id)
 
+  const staleChange = await unchanged(world.tenantId, recorded.ride.id, () => call(
+    'POST',
+    `/api/rides/${recorded.ride.id}/partner`,
+    world.dispatcher,
+    { partnerId: other.id, version: current.version + 9 },
+  ))
+  expect(staleChange.status).toBe(409)
+  expect(await staleChange.json()).toMatchObject({ data: { code: 'stale_save' } })
+
+  const staleBack = await unchanged(world.tenantId, recorded.ride.id, () => call(
+    'POST',
+    `/api/rides/${recorded.ride.id}/take-back`,
+    world.dispatcher,
+    { version: current.version + 9 },
+  ))
+  expect(staleBack.status).toBe(409)
+  expect(await staleBack.json()).toMatchObject({ data: { code: 'stale_save' } })
+
   const again = await unchanged(world.tenantId, recorded.ride.id, () => call(
     'POST',
     `/api/rides/${recorded.ride.id}/hand-off`,
@@ -705,6 +723,20 @@ it('cancels a handed-off Ride without mail or a version bump, and a driver canno
   expect(driverNoShow.status).toBe(403)
   const driverCancel = await unchanged(world.tenantId, recorded.ride.id, () => call('POST', `/api/rides/${recorded.ride.id}/cancel`, driverSession, {}))
   expect(driverCancel.status).toBe(403)
+  const driverChange = await unchanged(world.tenantId, recorded.ride.id, () => call(
+    'POST',
+    `/api/rides/${recorded.ride.id}/partner`,
+    driverSession,
+    { partnerId: partner.id, version: opened.version },
+  ))
+  expect(driverChange.status).toBe(403)
+  const driverBack = await unchanged(world.tenantId, recorded.ride.id, () => call(
+    'POST',
+    `/api/rides/${recorded.ride.id}/take-back`,
+    driverSession,
+    { version: opened.version },
+  ))
+  expect(driverBack.status).toBe(403)
 
   const cancelVersion = await versionOf(recorded.ride.id)
   const cancelled = await call('POST', `/api/rides/${recorded.ride.id}/cancel`, world.dispatcher, {})
@@ -718,6 +750,26 @@ it('cancels a handed-off Ride without mail or a version bump, and a driver canno
   expect(await workOrders(recorded.ride.id)).toEqual([])
   expect((await handoffAudits(world.tenantId)).find(row => row.action === 'ride.cancelled')?.data).toEqual({
     rideId: recorded.ride.id,
+    driverId: partner.id,
+    fields: ['state'],
+  })
+
+  const latePickup = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+  const late = await createTransfer(world.dispatcher, transferBody(world, latePickup))
+  expect((await call('POST', `/api/rides/${late.ride.id}/hand-off`, world.dispatcher, {
+    partnerId: partner.id,
+    version: (await versionOf(late.ride.id)).version,
+  })).status).toBe(200)
+  const lateNoShow = await call('POST', `/api/rides/${late.ride.id}/no-show`, world.dispatcher, {})
+  expect(lateNoShow.status).toBe(200)
+  expect(await rideRow(late.ride.id)).toMatchObject({ state: 'no-show', partner_id: null })
+  const lateRows = (await handoffAudits(world.tenantId)).filter((row) => {
+    const data = row.data as { rideId?: string }
+    return data.rideId === late.ride.id
+  })
+  expect(lateRows.map(row => row.action)).toEqual(['ride.handed_off', 'ride.no_show'])
+  expect(lateRows[1]?.data).toEqual({
+    rideId: late.ride.id,
     driverId: partner.id,
     fields: ['state'],
   })
@@ -745,6 +797,28 @@ it('another Tenant\'s Partner or Ride is 404, and the foreign key refuses the ot
   expect(foreignRide.status).toBe(404)
   expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'unassigned', partner_id: null })
 
+  const ours = await createPartner(world.dispatcher, { name: 'Naša Mora' })
+  const handed = await call('POST', `/api/rides/${recorded.ride.id}/hand-off`, world.dispatcher, {
+    partnerId: ours.id,
+    version: opened.version,
+  })
+  expect(handed.status).toBe(200)
+  const held = await versionOf(recorded.ride.id)
+
+  const foreignChange = await unchanged(world.tenantId, recorded.ride.id, () => call(
+    'POST',
+    `/api/rides/${recorded.ride.id}/partner`,
+    world.dispatcher,
+    { partnerId: partner.id, version: held.version },
+  ))
+  expect(foreignChange.status).toBe(404)
+
+  const foreignBack = await call('POST', `/api/rides/${recorded.ride.id}/take-back`, other.dispatcher, {
+    version: held.version,
+  })
+  expect(foreignBack.status).toBe(404)
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'handed_off', partner_id: ours.id })
+
   // An unassigned row with a Partner fails the iff check first. A handed-off
   // write names the other Tenant's Partner, so the composite foreign key is what refuses.
   const error = await withAppTenant(world.tenantId, client => client.query(
@@ -754,7 +828,7 @@ it('another Tenant\'s Partner or Ride is 404, and the foreign key refuses the ot
     [recorded.ride.id, partner.id],
   )).then(() => undefined, (caught: unknown) => caught)
   expect(error).toMatchObject({ code: '23503' })
-  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'unassigned', partner_id: null })
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'handed_off', partner_id: ours.id })
 })
 
 it('drops a handed-off Ride from the Driver list and lets a correction through without a work order', async () => {

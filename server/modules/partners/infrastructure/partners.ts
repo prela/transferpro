@@ -67,11 +67,6 @@ export async function loadActivePartnerIds(transaction: TenantTransaction): Prom
 }
 
 /**
- * Whether this id is an active Partner of the Tenant.
- * A missing id, an archived Partner, and another Tenant's id are false.
- * The select runs under the session's row security.
- */
-/**
  * Active, archived, or missing. A missing id and another Tenant's id are
  * the same answer, because the select runs under the session's row security.
  * `for share` waits out an archive that is still committing, so a handoff
@@ -96,6 +91,11 @@ export async function partnerPresenceForHandoff(
   return toArchivedAt(row.archivedAt) === null ? 'active' : 'archived'
 }
 
+/**
+ * Whether this id is an active Partner of the Tenant.
+ * A missing id, an archived Partner, and another Tenant's id are false.
+ * The select runs under the session's row security.
+ */
 export async function partnerIsActive(transaction: TenantTransaction, partnerId: string): Promise<boolean> {
   const selected = z.object({
     rows: z.array(z.object({ archivedAt: z.unknown().nullable() })),

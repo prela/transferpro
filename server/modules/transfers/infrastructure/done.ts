@@ -3,7 +3,7 @@ import type { Ride } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { canMarkRideDone, RIDE_ACCEPTED_FIELDS, rideStateSchema } from '../../../../shared'
+import { canCloseHandedOffRide, canMarkRideDone, RIDE_ACCEPTED_FIELDS, rideStateSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { loadDriverLinkedToMember } from '../../drivers'
@@ -114,7 +114,7 @@ export async function markOwnRideDone(
   if (!current)
     throw new RideNotFoundError()
   // A handed-off Ride is office work. 403, not the 404 used when the Driver does not hold it.
-  if (current.state === 'handed_off')
+  if (canCloseHandedOffRide(current.state))
     throw new TenantAccessError(403)
   // A clear leaves no Driver. A reassignment leaves another Driver.
   // Both are hidden the same way a missing Ride is.
@@ -147,7 +147,7 @@ export async function markRideDoneForOffice(
   const current = await lockRideForDone(transaction, rideId)
   if (!current)
     throw new RideNotFoundError()
-  if (current.state === 'handed_off')
+  if (canCloseHandedOffRide(current.state))
     return closeHandedOffDone(transaction, actorUserId, rideId, current.partnerId)
   // Unassigned has no Driver. Any other pair the flag rule refuses stays as it was.
   if (current.driverId === null || !canMarkRideDone(current.state, current.mustAccept))
