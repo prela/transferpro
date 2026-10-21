@@ -9,7 +9,7 @@ export function barePath(path: string): string {
 }
 
 /** Same address the page router matches, including a different letter case. */
-function routePath(path: string): string {
+export function foldedPath(path: string): string {
   return barePath(path).toLowerCase()
 }
 
@@ -20,7 +20,7 @@ function routePath(path: string): string {
  * Nuxt 4.6.2 the server route rules do too, so `/Settings` is this route.
  */
 export function isCompanySettingsPath(path: string): boolean {
-  const bare = routePath(path)
+  const bare = foldedPath(path)
   return bare === '/settings' || bare === '/settings/tenant' || bare === '/settings/members'
 }
 
@@ -31,7 +31,7 @@ export function isCompanySettingsPath(path: string): boolean {
  * An admin bookmark to `/settings/tenant` or `/settings/members` lands on the tab.
  */
 export function companySettingsRedirect(path: string, role: TenantRole): string | null {
-  const bare = routePath(path)
+  const bare = foldedPath(path)
   if (bare === '/settings/profile')
     return '/profile'
   if (!isCompanySettingsPath(bare))

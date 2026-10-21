@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { barePath } from './company-settings'
+import { foldedPath } from './company-settings'
 import { TENANT_NAME_MAX_LENGTH, tenantNameSchema } from './tenant-name'
 
 /**
@@ -44,7 +44,7 @@ export const PLATFORM_TENANT_PAGE_SIZE = 20
  * Anything else is left to the middleware that owns that page.
  */
 export function isPlatformTenantsPath(path: string): boolean {
-  return barePath(path).toLowerCase().startsWith('/admin/tenants')
+  return foldedPath(path).startsWith('/admin/tenants')
 }
 
 export const companyAccountListSchema = z.strictObject({

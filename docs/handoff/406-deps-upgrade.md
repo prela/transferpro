@@ -4,7 +4,7 @@
 
 - ID-token sign-in: **no**. `createAuth` has no `socialProviders` and nothing calls social or ID-token sign-in. `auth.account.id_token` is the Better Auth account column, not that sign-in path. No provider `clientId` was added.
 - `routeRules` reviewed. The only keys are `/manifest.webmanifest` (`content-type: application/manifest+json`) and `/sw.js` (`cache-control: no-cache`). They set headers. They do not grant or refuse a screen. From Nuxt 4.6.2 those keys also match a different letter case. Neither key is a page.
-- Route middleware. The page router already served `/Transfers` and `/Admin/tenants` as the lowercase pages. Company-settings redirects compared the path with case, so `/Settings` was not treated as company settings. The platform middleware returned before the session check unless the path started with the lowercase `/admin/tenants`. Both comparisons now fold case. Office, member, and authenticated middleware do not branch on the path spelling.
+- Route middleware. The page router already served `/Transfers` and `/Admin/tenants` as the lowercase pages. Company-settings redirects compared the path with case, so `/Settings` was not treated as company settings. The platform middleware returned before the session check unless the path started with the lowercase `/admin/tenants`. Both comparisons now use `foldedPath`. Office, member, and authenticated middleware do not branch on the path spelling.
 - undici: **8.12.3** only. No 6.x and no 7.x. `unifont` (through `@nuxt/fonts`) had resolved 8.11.2, under the 8.12.2 floor, so `pnpm-workspace.yaml` overrides `undici` to `^8.12.2`. Drop that line once unifont depends on undici >= 8.12.2.
 
 ## Versions
