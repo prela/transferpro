@@ -90,7 +90,7 @@ async function loadMore() {
  * Pickup wall time in the Tenant zone. `pickupAt` stays the stored instant;
  * `formatInstant` is the one display path, so this row matches the Ride detail.
  */
-function when(ride: RideHistoryRow): string {
+function clock(ride: RideHistoryRow): string {
   return formatInstant(new Date(ride.pickupAt), props.timeZone, props.locale)
 }
 
@@ -152,7 +152,7 @@ onMounted(loadFirst)
           >
             <span class="font-medium">{{ ride.guestName }}</span>
             <span class="mt-0.5 block tabular-nums text-muted">
-              <time :datetime="ride.pickupAt">{{ when(ride) }}</time>
+              <time :datetime="ride.pickupAt">{{ clock(ride) }}</time>
             </span>
             <span class="mt-0.5 block">{{ ride.start }} → {{ ride.end }}</span>
             <span class="mt-0.5 block">{{ t(`transfers.states.${ride.state}`) }} · {{ crew(ride) }}</span>
