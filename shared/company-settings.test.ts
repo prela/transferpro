@@ -23,6 +23,19 @@ it('leaves a path that is not company settings alone', () => {
   expect(companySettingsRedirect('/profile', 'dispatcher')).toBeNull()
 })
 
+it('treats a differently cased settings address as the same protected route', () => {
+  expect(companySettingsRedirect('/Settings', 'dispatcher')).toBe('/profile')
+  expect(companySettingsRedirect('/SETTINGS/tenant', 'driver')).toBe('/profile')
+  expect(companySettingsRedirect('/Settings/members/', 'admin')).toBe('/settings?tab=members')
+  expect(companySettingsRedirect('/Settings/Profile', 'admin')).toBe('/profile')
+})
+
+it('leaves the public password route alone in either case', () => {
+  expect(companySettingsRedirect('/forgot-password', 'admin')).toBeNull()
+  expect(companySettingsRedirect('/Forgot-password', 'dispatcher')).toBeNull()
+  expect(companySettingsRedirect('/reset-password', 'driver')).toBeNull()
+})
+
 it('reads the members tab only from the members query', () => {
   expect(companySettingsTab(undefined)).toBe('operations')
   expect(companySettingsTab('operations')).toBe('operations')

@@ -58,7 +58,8 @@ onBeforeRouteUpdate((to) => {
 })
 
 const onSettings = computed(() =>
-  barePath(route.path) === '/settings' && session.value?.role === 'admin',
+  // `/Settings` is this page. The router does not care about letter case.
+  barePath(route.path).toLowerCase() === '/settings' && session.value?.role === 'admin',
 )
 const tab = computed(() => companySettingsTab(route.query.tab))
 const pendingGeneration = ref(0)

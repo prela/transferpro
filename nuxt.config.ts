@@ -39,6 +39,8 @@ export default defineNuxtConfig({
   },
   // The manifest must be served as a manifest. The worker is not cached, so
   // a later change is picked up. Ride responses are not part of this.
+  // These are header rules, not access checks. From Nuxt 4.6.2 a case
+  // variant of the key gets the same headers. Neither key is a screen.
   routeRules: {
     '/manifest.webmanifest': {
       headers: { 'content-type': 'application/manifest+json; charset=utf-8' },
