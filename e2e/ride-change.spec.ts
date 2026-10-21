@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { chooseOption, openAudit, openRideMenu, signIn, switchLocale, useTheme } from './fixtures/ui'
 
@@ -47,7 +48,7 @@ async function recordTodayRide(page: Page, guest: string): Promise<void> {
   const endLocationId = await createdId(page, '/api/locations', { name: `Dolazak ${guest}`, kind: 'hotel' })
   const day = operationalDay(page)
   const pickupAt = instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString()
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt,

@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { chooseOption, hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
 
@@ -118,7 +119,7 @@ test.describe('@phone', () => {
         childSeatCount: 0,
       }
       async function record(guestName: string, wall: string) {
-        const recorded = await page.request.post('/api/transfers', {
+        const recorded = await recordTransfer(page.request, {
           data: {
             ...booking,
             guestName,

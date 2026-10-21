@@ -4,6 +4,7 @@ import { inflateSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
 import { instantFromWallClock } from '../shared/date'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, useTheme } from './fixtures/ui'
 
@@ -147,7 +148,7 @@ async function openRidePanel(page: Page, width: number, height: number) {
   const clientId = await createdId(page, '/api/clients', { name: 'Klijent Panel', kind: 'agency' })
   const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Panel', kind: 'airport' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Panel', kind: 'hotel' })
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),

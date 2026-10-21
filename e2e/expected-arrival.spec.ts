@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import pg from 'pg'
 import { instantFromWallClock } from '../shared/date'
 import { operationalDay, pinOperationalClock, previousOperationalNoon } from './fixtures/operational-clock'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { openUserMenu, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
@@ -83,7 +84,7 @@ test('the office Ride and the Driver Ride show an expected arrival in both langu
     data: { name: 'Hotel Dolazak', kind: 'hotel' },
   }))
   const day = operationalDay(page)
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),

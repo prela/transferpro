@@ -4,6 +4,7 @@ import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '.
 import { formatInstant } from '../shared/format-instant'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { operationalDay, operationalNow, pinOperationalClock } from './fixtures/operational-clock'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn, switchLocale, useTheme } from './fixtures/ui'
 
@@ -122,7 +123,7 @@ test.describe('@phone', () => {
         const clientId = await createdId(page, '/api/clients', { name: 'Klijent Zastarjelo', kind: 'agency' })
         const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Zastarjelo', kind: 'airport' })
         const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Zastarjelo', kind: 'hotel' })
-        const recorded = await page.request.post('/api/transfers', {
+        const recorded = await recordTransfer(page.request, {
           data: {
             clientId,
             pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
@@ -187,7 +188,7 @@ test('a member who left is named as a former member', async ({ browser, page }) 
     const clientId = await createdId(page, '/api/clients', { name: 'Klijent Bivsi', kind: 'agency' })
     const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Bivsi', kind: 'airport' })
     const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Bivsi', kind: 'hotel' })
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
@@ -258,7 +259,7 @@ test('the refusal is in English', async ({ browser, page }) => {
     const clientId = await createdId(page, '/api/clients', { name: 'Client Stale', kind: 'agency' })
     const startLocationId = await createdId(page, '/api/locations', { name: 'Start Stale', kind: 'airport' })
     const endLocationId = await createdId(page, '/api/locations', { name: 'End Stale', kind: 'hotel' })
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
@@ -327,7 +328,7 @@ test('a refused clear names who removed the assignment, and Osvježi closes the 
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
     })
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),

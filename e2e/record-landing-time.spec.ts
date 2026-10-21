@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { instantFromWallClock } from '../shared/date'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { openAudit, openRideMenu, openUserMenu, signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'
 
@@ -50,7 +51,7 @@ test('the office and the Driver record a landing time in both languages and both
   const startLocationId = await createdId(page, '/api/locations', { name: 'Zracna Slijetanje', kind: 'airport' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Hotel Slijetanje', kind: 'hotel' })
   const day = operationalDay(page)
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
@@ -138,7 +139,7 @@ test('@phone a driver records a landing time from the next ride', async ({ page 
   const startLocationId = await createdId(page, '/api/locations', { name: 'Zracna Slijetanje', kind: 'airport' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Hotel Slijetanje', kind: 'hotel' })
   const day = operationalDay(page)
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),

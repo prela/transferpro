@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, mondayOfWeek, operationalDateInTimeZone } from '../shared/date'
 import { formatCalendarDate, formatInstant } from '../shared/format-instant'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { chooseOption, hydrated, openAudit, signIn, switchLocale, useTheme } from './fixtures/ui'
 
@@ -53,7 +54,7 @@ async function recordRide(page: Page, guest: string, wall: string): Promise<stri
   const clientId = await createdId(await page.request.post('/api/clients', { data: { name: `Klijent ${guest}`, kind: 'agency' } }))
   const startLocationId = await createdId(await page.request.post('/api/locations', { data: { name: `Polazak ${guest}`, kind: 'airport' } }))
   const endLocationId = await createdId(await page.request.post('/api/locations', { data: { name: `Dolazak ${guest}`, kind: 'hotel' } }))
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt: instantFromWallClock(`${rideDay()}T${wall}`, zone).toISOString(),

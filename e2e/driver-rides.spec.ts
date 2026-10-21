@@ -5,6 +5,7 @@ import { calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { formatInstant } from '../shared/format-instant'
 import { noShowWaitBounds, noShowWindowLabels } from '../shared/no-show'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
@@ -186,7 +187,7 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   }))
 
   async function record(guest: string, pickupAt: Date, payment: 'cash' | 'card' | 'invoice_to_agency', price: number, extra?: { flightNumber?: string, airportMark?: boolean, passengerCount?: number, luggageCount?: number, childSeatCount?: number, note?: string, tabla?: string, startLocationId?: string }) {
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: pickupAt.toISOString(),
@@ -430,7 +431,7 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
   }))
 
   async function record(guest: string, pickupAt: Date, payment: 'cash' | 'card', price: number) {
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: pickupAt.toISOString(),
@@ -599,7 +600,7 @@ test('@phone a driver accepts a waiting ride, and a conflict reloads the list', 
   }))
 
   async function record(guest: string, pickupAt: Date) {
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: pickupAt.toISOString(),
@@ -803,7 +804,7 @@ test('@phone a driver marks a ride done and it leaves the upcoming list', async 
   const endLocationId = await createdId(await page.request.post('/api/locations', {
     data: { name: 'Hotel Kraj', kind: 'hotel' },
   }))
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt: pickupAt.toISOString(),
@@ -898,7 +899,7 @@ test('@phone a driver declines an assigned ride and the board names them', async
   const endLocationId = await createdId(await page.request.post('/api/locations', {
     data: { name: 'Hotel Odbij', kind: 'hotel' },
   }))
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt: pickupAt.toISOString(),
@@ -1028,7 +1029,7 @@ test('@phone a driver marks a no-show after the wait and it leaves the upcoming 
     data: { name: 'Hotel Nedo', kind: 'hotel' },
   }))
   async function record(guest: string, pickupAt: string) {
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt,
@@ -1176,7 +1177,7 @@ test.describe('@phone', () => {
         data: { name: 'Hotel Tema', kind: 'hotel' },
       }))
       const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
-      const recorded = await page.request.post('/api/transfers', {
+      const recorded = await recordTransfer(page.request, {
         data: {
           clientId,
           pickupAt: instantFromWallClock(`${day}T11:00`, 'Europe/Zagreb').toISOString(),
@@ -1376,7 +1377,7 @@ async function seedMeetSign(page: Page, slug: string, phone: string, plate: stri
   }))
   const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
   async function record(guest: string, hour: string, tabla: string) {
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: instantFromWallClock(`${day}T${hour}`, 'Europe/Zagreb').toISOString(),
