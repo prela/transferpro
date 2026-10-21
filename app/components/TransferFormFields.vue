@@ -66,6 +66,8 @@ const {
   validationNonce,
   moreOpenNonce,
   restored,
+  alreadySaved,
+  confirmAlreadySaved,
   clientItems,
   locationItems,
   paymentItems,
@@ -86,6 +88,7 @@ const clientSearch = ref('')
 const startSearch = ref('')
 const endSearch = ref('')
 const summaryEl = ref<HTMLElement | null>(null)
+const alreadySavedEl = ref<HTMLElement | null>(null)
 const moreOpen = ref(false)
 
 const summaryLines = computed(() => {
@@ -123,6 +126,14 @@ function syncMore() {
 watch(validationNonce, async () => {
   await nextTick()
   summaryEl.value?.focus()
+})
+
+// The notice is the new thing on the form. Focus lands on it, not on a disabled field.
+watch(alreadySaved, async (showing) => {
+  if (!showing)
+    return
+  await nextTick()
+  alreadySavedEl.value?.focus()
 })
 
 watch(formMode, () => {
@@ -257,7 +268,39 @@ onUnmounted(() => {
   </p>
 
   <div
-    v-if="restored"
+    v-if="alreadySaved"
+    ref="alreadySavedEl"
+    tabindex="-1"
+    role="status"
+    class="mb-4"
+  >
+    <UAlert
+      color="neutral"
+      variant="subtle"
+      icon="i-lucide-info"
+      :title="t('transfers.alreadySavedTitle')"
+      :description="t('transfers.alreadySavedBody')"
+      :ui="{ title: '!text-default', description: '!text-default !opacity-100' }"
+    >
+      <template #actions>
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          :size="controlSize"
+          :class="controlClass"
+          :disabled="pending"
+          :loading="pending"
+          @click="confirmAlreadySaved"
+        >
+          {{ t('transfers.alreadySavedConfirm') }}
+        </UButton>
+      </template>
+    </UAlert>
+  </div>
+
+  <div
+    v-if="restored && !alreadySaved"
     class="mb-4 flex flex-wrap items-center justify-between gap-2"
   >
     <p>{{ t('transfers.draftRestored') }}</p>
@@ -274,7 +317,7 @@ onUnmounted(() => {
   </div>
 
   <form
-    v-if="clientTarget"
+    v-if="clientTarget && !alreadySaved"
     class="mb-6"
     :class="commandInputClass"
     @submit.prevent="addClient"
@@ -331,7 +374,7 @@ onUnmounted(() => {
   </form>
 
   <form
-    v-if="placeTarget"
+    v-if="placeTarget && !alreadySaved"
     class="mb-6"
     :class="commandInputClass"
     @submit.prevent="addPlace"
@@ -427,345 +470,351 @@ onUnmounted(() => {
     :class="commandInputClass"
     @submit.prevent="formMode === 'edit' ? saveCorrection() : record()"
   >
-    <div
-      v-if="summaryLines.length > 0"
-      id="transfer-form-summary"
-      ref="summaryEl"
-      tabindex="-1"
-      role="alert"
-      class="mb-4 rounded-md bg-error/10 p-3 text-default"
+    <!-- Disabled, not hidden: the Dispatcher still reads the values they typed. -->
+    <fieldset
+      :disabled="alreadySaved"
+      class="m-0 min-w-0 border-0 p-0"
     >
-      <p class="font-medium">
-        {{ t('transfers.summary') }}
-      </p>
-      <ul class="mt-2 list-disc ps-5">
-        <li
-          v-for="line in summaryLines"
-          :key="line"
-        >
-          {{ line }}
-        </li>
-      </ul>
-    </div>
+      <div
+        v-if="summaryLines.length > 0"
+        id="transfer-form-summary"
+        ref="summaryEl"
+        tabindex="-1"
+        role="alert"
+        class="mb-4 rounded-md bg-error/10 p-3 text-default"
+      >
+        <p class="font-medium">
+          {{ t('transfers.summary') }}
+        </p>
+        <ul class="mt-2 list-disc ps-5">
+          <li
+            v-for="line in summaryLines"
+            :key="line"
+          >
+            {{ line }}
+          </li>
+        </ul>
+      </div>
 
-    <UFormField
-      :label="t('transfers.client')"
-      name="client"
-      class="mb-4"
-      :size="controlSize"
-      :error="clientErrorKey ? t(clientErrorKey) : false"
-    >
-      <USelectMenu
-        id="transfer-client"
-        v-model="clientId"
-        v-model:search-term="clientSearch"
+      <UFormField
+        :label="t('transfers.client')"
         name="client"
-        value-key="value"
-        :items="clientItems"
-        :placeholder="t('transfers.chooseClient')"
-        :create-item="{ when: 'always', position: 'bottom' }"
-        class="w-full"
-        @create="onCreateClient"
+        class="mb-4"
+        :size="controlSize"
+        :error="clientErrorKey ? t(clientErrorKey) : false"
       >
-        <template #create-item-label>
-          {{ namedAdd(clientSearch, t('transfers.addClient')) }}
+        <USelectMenu
+          id="transfer-client"
+          v-model="clientId"
+          v-model:search-term="clientSearch"
+          name="client"
+          value-key="value"
+          :items="clientItems"
+          :placeholder="t('transfers.chooseClient')"
+          :create-item="{ when: 'always', position: 'bottom' }"
+          class="w-full"
+          @create="onCreateClient"
+        >
+          <template #create-item-label>
+            {{ namedAdd(clientSearch, t('transfers.addClient')) }}
+          </template>
+        </USelectMenu>
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
         </template>
-      </USelectMenu>
-      <template #error="{ error }">
-        <span role="alert">{{ error }}</span>
-      </template>
-    </UFormField>
-    <UFormField
-      :label="t('transfers.pickupAt')"
-      name="pickup"
-      class="mb-4"
-      :size="controlSize"
-      :error="pickupErrorKey ? t(pickupErrorKey) : false"
-    >
-      <UInput
-        id="transfer-pickup"
-        v-model="pickupWall"
+      </UFormField>
+      <UFormField
+        :label="t('transfers.pickupAt')"
         name="pickup"
-        type="datetime-local"
-        class="w-full"
-      />
-      <template #error="{ error }">
-        <span role="alert">{{ error }}</span>
-      </template>
-    </UFormField>
-    <UFormField
-      :label="t('transfers.start')"
-      name="start"
-      class="mb-4"
-      :size="controlSize"
-      :error="startErrorKey ? t(startErrorKey) : false"
-    >
-      <USelectMenu
-        id="transfer-start"
-        v-model="startLocationId"
-        v-model:search-term="startSearch"
+        class="mb-4"
+        :size="controlSize"
+        :error="pickupErrorKey ? t(pickupErrorKey) : false"
+      >
+        <UInput
+          id="transfer-pickup"
+          v-model="pickupWall"
+          name="pickup"
+          type="datetime-local"
+          class="w-full"
+        />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
+      </UFormField>
+      <UFormField
+        :label="t('transfers.start')"
         name="start"
-        value-key="value"
-        :items="locationItems"
-        :placeholder="t('transfers.chooseLocation')"
-        :create-item="{ when: 'always', position: 'bottom' }"
-        class="w-full"
-        @create="onCreateStart"
+        class="mb-4"
+        :size="controlSize"
+        :error="startErrorKey ? t(startErrorKey) : false"
       >
-        <template #create-item-label>
-          {{ namedAdd(startSearch, t('transfers.addLocation')) }}
+        <USelectMenu
+          id="transfer-start"
+          v-model="startLocationId"
+          v-model:search-term="startSearch"
+          name="start"
+          value-key="value"
+          :items="locationItems"
+          :placeholder="t('transfers.chooseLocation')"
+          :create-item="{ when: 'always', position: 'bottom' }"
+          class="w-full"
+          @create="onCreateStart"
+        >
+          <template #create-item-label>
+            {{ namedAdd(startSearch, t('transfers.addLocation')) }}
+          </template>
+        </USelectMenu>
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
         </template>
-      </USelectMenu>
-      <template #error="{ error }">
-        <span role="alert">{{ error }}</span>
-      </template>
-    </UFormField>
-    <UFormField
-      :label="t('transfers.end')"
-      name="end"
-      class="mb-4"
-      :size="controlSize"
-      :error="endErrorKey ? t(endErrorKey) : false"
-    >
-      <USelectMenu
-        id="transfer-end"
-        v-model="endLocationId"
-        v-model:search-term="endSearch"
+      </UFormField>
+      <UFormField
+        :label="t('transfers.end')"
         name="end"
-        value-key="value"
-        :items="locationItems"
-        :placeholder="t('transfers.chooseLocation')"
-        :create-item="{ when: 'always', position: 'bottom' }"
-        class="w-full"
-        @create="onCreateEnd"
+        class="mb-4"
+        :size="controlSize"
+        :error="endErrorKey ? t(endErrorKey) : false"
       >
-        <template #create-item-label>
-          {{ namedAdd(endSearch, t('transfers.addLocation')) }}
+        <USelectMenu
+          id="transfer-end"
+          v-model="endLocationId"
+          v-model:search-term="endSearch"
+          name="end"
+          value-key="value"
+          :items="locationItems"
+          :placeholder="t('transfers.chooseLocation')"
+          :create-item="{ when: 'always', position: 'bottom' }"
+          class="w-full"
+          @create="onCreateEnd"
+        >
+          <template #create-item-label>
+            {{ namedAdd(endSearch, t('transfers.addLocation')) }}
+          </template>
+        </USelectMenu>
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
         </template>
-      </USelectMenu>
-      <template #error="{ error }">
-        <span role="alert">{{ error }}</span>
-      </template>
-    </UFormField>
-    <UFormField
-      :label="t('transfers.guest')"
-      name="guest"
-      class="mb-4"
-      :size="controlSize"
-      :error="guestErrorKey ? t(guestErrorKey) : false"
-    >
-      <UInput
-        id="transfer-guest"
-        v-model="guest"
+      </UFormField>
+      <UFormField
+        :label="t('transfers.guest')"
         name="guest"
-        type="text"
-        autocomplete="off"
-        class="w-full"
-      />
-      <template #error="{ error }">
-        <span role="alert">{{ error }}</span>
-      </template>
-    </UFormField>
-    <UFormField
-      :label="t('transfers.passengers')"
-      name="passengers"
-      class="mb-4"
-      :size="controlSize"
-      :error="passengerErrorKey ? t(passengerErrorKey) : false"
-    >
-      <UInput
-        id="transfer-passengers"
-        v-model="passengers"
+        class="mb-4"
+        :size="controlSize"
+        :error="guestErrorKey ? t(guestErrorKey) : false"
+      >
+        <UInput
+          id="transfer-guest"
+          v-model="guest"
+          name="guest"
+          type="text"
+          autocomplete="off"
+          class="w-full"
+        />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
+      </UFormField>
+      <UFormField
+        :label="t('transfers.passengers')"
         name="passengers"
-        type="text"
-        inputmode="numeric"
-        autocomplete="off"
-        class="w-full"
-      />
-      <template #error="{ error }">
-        <span role="alert">{{ error }}</span>
-      </template>
-    </UFormField>
-    <UFormField
-      :label="t('transfers.clientReference')"
-      name="clientReference"
-      class="mb-4"
-      :size="controlSize"
-      :error="clientReferenceErrorKey ? t(clientReferenceErrorKey) : false"
-    >
-      <UInput
-        id="transfer-client-reference"
-        v-model="clientReference"
+        class="mb-4"
+        :size="controlSize"
+        :error="passengerErrorKey ? t(passengerErrorKey) : false"
+      >
+        <UInput
+          id="transfer-passengers"
+          v-model="passengers"
+          name="passengers"
+          type="text"
+          inputmode="numeric"
+          autocomplete="off"
+          class="w-full"
+        />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
+      </UFormField>
+      <UFormField
+        :label="t('transfers.clientReference')"
         name="clientReference"
-        type="text"
-        autocomplete="off"
-        class="w-full"
-      />
-      <template #error="{ error }">
-        <span role="alert">{{ error }}</span>
-      </template>
-    </UFormField>
-    <UFormField
-      :label="t('transfers.payment')"
-      name="payment"
-      class="mb-4"
-      :size="controlSize"
-      :error="paymentErrorKey ? t(paymentErrorKey) : false"
-    >
-      <USelect
-        id="transfer-payment"
-        v-model="payment"
+        class="mb-4"
+        :size="controlSize"
+        :error="clientReferenceErrorKey ? t(clientReferenceErrorKey) : false"
+      >
+        <UInput
+          id="transfer-client-reference"
+          v-model="clientReference"
+          name="clientReference"
+          type="text"
+          autocomplete="off"
+          class="w-full"
+        />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
+      </UFormField>
+      <UFormField
+        :label="t('transfers.payment')"
         name="payment"
-        :items="paymentItems"
-        :placeholder="t('transfers.choosePayment')"
-        class="w-full"
-      />
-      <template #error="{ error }">
-        <span role="alert">{{ error }}</span>
-      </template>
-    </UFormField>
-    <UFormField
-      :label="t('transfers.price')"
-      name="price"
-      class="mb-4"
-      :size="controlSize"
-      :error="priceErrorKey ? t(priceErrorKey) : false"
-    >
-      <UInput
-        id="transfer-price"
-        v-model="price"
+        class="mb-4"
+        :size="controlSize"
+        :error="paymentErrorKey ? t(paymentErrorKey) : false"
+      >
+        <USelect
+          id="transfer-payment"
+          v-model="payment"
+          name="payment"
+          :items="paymentItems"
+          :placeholder="t('transfers.choosePayment')"
+          class="w-full"
+        />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
+      </UFormField>
+      <UFormField
+        :label="t('transfers.price')"
         name="price"
-        type="text"
-        inputmode="decimal"
-        autocomplete="off"
-        class="w-full tabular-nums"
-      />
-      <template #error="{ error }">
-        <span role="alert">{{ error }}</span>
-      </template>
-    </UFormField>
+        class="mb-4"
+        :size="controlSize"
+        :error="priceErrorKey ? t(priceErrorKey) : false"
+      >
+        <UInput
+          id="transfer-price"
+          v-model="price"
+          name="price"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          class="w-full tabular-nums"
+        />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
+      </UFormField>
 
-    <UButton
-      type="button"
-      color="neutral"
-      variant="ghost"
-      :size="controlSize"
-      class="mb-4"
-      :aria-expanded="moreOpen"
-      aria-controls="transfer-more"
-      @click="moreOpen = !moreOpen"
-    >
-      {{ t('transfers.more') }}
-    </UButton>
-    <div
-      v-show="moreOpen"
-      id="transfer-more"
-    >
-      <UFormField
-        :label="t('transfers.flight')"
-        name="flight"
-        class="mb-4"
+      <UButton
+        type="button"
+        color="neutral"
+        variant="ghost"
         :size="controlSize"
-        :error="flightErrorKey ? t(flightErrorKey) : false"
+        class="mb-4"
+        :aria-expanded="moreOpen"
+        aria-controls="transfer-more"
+        @click="moreOpen = !moreOpen"
       >
-        <UInput
-          id="transfer-flight"
-          v-model="flight"
+        {{ t('transfers.more') }}
+      </UButton>
+      <div
+        v-show="moreOpen"
+        id="transfer-more"
+      >
+        <UFormField
+          :label="t('transfers.flight')"
           name="flight"
-          type="text"
-          autocomplete="off"
-          class="w-full font-mono"
+          class="mb-4"
+          :size="controlSize"
+          :error="flightErrorKey ? t(flightErrorKey) : false"
+        >
+          <UInput
+            id="transfer-flight"
+            v-model="flight"
+            name="flight"
+            type="text"
+            autocomplete="off"
+            class="w-full font-mono"
+          />
+          <template #error="{ error }">
+            <span role="alert">{{ error }}</span>
+          </template>
+        </UFormField>
+        <UCheckbox
+          id="transfer-airport"
+          v-model="airportMark"
+          name="airport"
+          :size="controlSize"
+          class="mb-4"
+          :label="t('transfers.airport')"
         />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UCheckbox
-        id="transfer-airport"
-        v-model="airportMark"
-        name="airport"
-        :size="controlSize"
-        class="mb-4"
-        :label="t('transfers.airport')"
-      />
-      <UFormField
-        :label="t('transfers.tabla')"
-        name="tabla"
-        class="mb-4"
-        :size="controlSize"
-        :error="tablaErrorKey ? t(tablaErrorKey) : false"
-      >
-        <UInput
-          id="transfer-tabla"
-          v-model="tabla"
+        <UFormField
+          :label="t('transfers.tabla')"
           name="tabla"
-          type="text"
-          autocomplete="off"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('transfers.luggage')"
-        name="luggage"
-        class="mb-4"
-        :size="controlSize"
-        :error="luggageErrorKey ? t(luggageErrorKey) : false"
-      >
-        <UInput
-          id="transfer-luggage"
-          v-model="luggage"
+          class="mb-4"
+          :size="controlSize"
+          :error="tablaErrorKey ? t(tablaErrorKey) : false"
+        >
+          <UInput
+            id="transfer-tabla"
+            v-model="tabla"
+            name="tabla"
+            type="text"
+            autocomplete="off"
+            class="w-full"
+          />
+          <template #error="{ error }">
+            <span role="alert">{{ error }}</span>
+          </template>
+        </UFormField>
+        <UFormField
+          :label="t('transfers.luggage')"
           name="luggage"
-          type="text"
-          inputmode="numeric"
-          autocomplete="off"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('transfers.childSeats')"
-        name="child-seats"
-        class="mb-4"
-        :size="controlSize"
-        :error="seatErrorKey ? t(seatErrorKey) : false"
-      >
-        <UInput
-          id="transfer-seats"
-          v-model="childSeats"
+          class="mb-4"
+          :size="controlSize"
+          :error="luggageErrorKey ? t(luggageErrorKey) : false"
+        >
+          <UInput
+            id="transfer-luggage"
+            v-model="luggage"
+            name="luggage"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            class="w-full"
+          />
+          <template #error="{ error }">
+            <span role="alert">{{ error }}</span>
+          </template>
+        </UFormField>
+        <UFormField
+          :label="t('transfers.childSeats')"
           name="child-seats"
-          type="text"
-          inputmode="numeric"
-          autocomplete="off"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-      <UFormField
-        :label="t('transfers.note')"
-        name="note"
-        class="mb-4"
-        :size="controlSize"
-        :error="noteErrorKey ? t(noteErrorKey) : false"
-      >
-        <UTextarea
-          id="transfer-note"
-          v-model="note"
+          class="mb-4"
+          :size="controlSize"
+          :error="seatErrorKey ? t(seatErrorKey) : false"
+        >
+          <UInput
+            id="transfer-seats"
+            v-model="childSeats"
+            name="child-seats"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            class="w-full"
+          />
+          <template #error="{ error }">
+            <span role="alert">{{ error }}</span>
+          </template>
+        </UFormField>
+        <UFormField
+          :label="t('transfers.note')"
           name="note"
-          :rows="3"
-          class="w-full"
-        />
-        <template #error="{ error }">
-          <span role="alert">{{ error }}</span>
-        </template>
-      </UFormField>
-    </div>
+          class="mb-4"
+          :size="controlSize"
+          :error="noteErrorKey ? t(noteErrorKey) : false"
+        >
+          <UTextarea
+            id="transfer-note"
+            v-model="note"
+            name="note"
+            :rows="3"
+            class="w-full"
+          />
+          <template #error="{ error }">
+            <span role="alert">{{ error }}</span>
+          </template>
+        </UFormField>
+      </div>
+    </fieldset>
   </form>
   <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
     <UButton
@@ -781,6 +830,7 @@ onUnmounted(() => {
       {{ t('transfers.cancelCorrect') }}
     </UButton>
     <UButton
+      v-if="!alreadySaved"
       type="submit"
       form="transfer-form"
       :size="controlSize"

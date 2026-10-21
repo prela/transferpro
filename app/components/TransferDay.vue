@@ -71,7 +71,7 @@ const commands = ref<{
 const form = ref<{
   openAdd: () => void
   openCorrect: (ride: TransferDayRide) => void
-  openPrefill: (fields: TransferPrefill) => void
+  openPrefill: (fields: TransferPrefill, opening: 'duplicate' | 'return') => void
   formMode: 'add' | 'edit' | null
   formOpen: boolean
   formTitle: string
@@ -364,7 +364,7 @@ function startPrefill(ride: TransferDayRide, kind: 'duplicate' | 'return') {
   command.value = null
   adding.value = true
   void nextTick(() => {
-    form.value?.openPrefill(fields)
+    form.value?.openPrefill(fields, kind)
   })
 }
 

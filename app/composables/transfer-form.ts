@@ -1,7 +1,7 @@
 import type { InjectionKey } from 'vue'
-import type { CapacityConfirmReason, Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, TransferDayRide, TransferPrefill } from '../../shared'
+import type { CapacityConfirmReason, Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
 import { z } from 'zod'
-import { applyTransferDraftEvent, calendarDateInTimeZone, capacityConfirmReason, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedTransferSchema, rememberTransferDraft, sameLocationError, tablaError, wallClockInTimeZone } from '../../shared'
+import { applyTransferDraftEvent, calendarDateInTimeZone, capacityConfirmReason, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -20,8 +20,9 @@ type TransferFailure
 /**
  * An unfinished new Transfer stays in localStorage, keyed by user and Tenant
  * (ADR-0038). A locale switch leaves this page and comes back; the draft is
- * how the typed booking returns. It is never sent to the server. A correction
- * is not a draft. The previous sessionStorage key is retired on restore.
+ * how the typed booking returns. The entry key travels with that draft and
+ * is the only part sent on create (ADR-0035). A correction is not a draft
+ * and has no key. The previous sessionStorage key is retired on restore.
  * Values stay strings until the record or correct route parses them.
  */
 const LEGACY_DRAFT_KEY = 'transferpro-transfer-form'
@@ -77,6 +78,13 @@ export function useTransferForm(options: {
   const luggage = ref('0')
   const childSeats = ref('0')
   const note = ref('')
+  // The manual entry key. Null on a correction. A new form keeps one id for
+  // the whole entry, including a reload and a retry after a lost answer.
+  const entryKey = ref<string | null>(null)
+  // Set when the server says this key is already stored. The draft stays
+  // until the Dispatcher confirms the notice.
+  const alreadySaved = ref(false)
+  let heldCreate: RecordedCreate | null = null
 
   const placeTarget = ref<'start' | 'end' | null>(null)
   const placeName = ref('')
@@ -335,7 +343,7 @@ export function useTransferForm(options: {
     return value !== undefined && z.uuid().safeParse(value).success ? value : null
   }
 
-  function currentDraft() {
+  function currentDraft(): TransferDraftFields {
     return {
       clientId: idOrNull(clientId.value),
       pickupWall: pickupWall.value,
@@ -352,10 +360,12 @@ export function useTransferForm(options: {
       luggage: luggage.value,
       childSeats: childSeats.value,
       note: note.value,
+      // Omit a missing key. An explicit undefined fails the draft schema's optional uuid.
+      ...(entryKey.value ? { externalId: entryKey.value } : {}),
     }
   }
 
-  function applyDraft(draft: ReturnType<typeof currentDraft> & { pickupWall: string }) {
+  function applyDraft(draft: TransferDraftFields) {
     clientId.value = draft.clientId ?? undefined
     pickupWall.value = draft.pickupWall
     startLocationId.value = draft.startLocationId ?? undefined
@@ -371,6 +381,8 @@ export function useTransferForm(options: {
     luggage.value = draft.luggage
     childSeats.value = draft.childSeats
     note.value = draft.note
+    if (draft.externalId)
+      entryKey.value = draft.externalId
     formMode.value = 'add'
   }
 
@@ -383,6 +395,9 @@ export function useTransferForm(options: {
       return
     ignoreDraft = true
     applyDraft(draft)
+    // A draft from before the form kept a key still has to send one.
+    if (!entryKey.value)
+      entryKey.value = transferEntryKey('blank')
     restored.value = true
     ignoreDraft = false
   }
@@ -435,6 +450,8 @@ export function useTransferForm(options: {
     formErrorKey.value = null
     overlapOpen.value = false
     restored.value = false
+    alreadySaved.value = false
+    heldCreate = null
     clearFieldErrors()
     ignoreDraft = false
     options.onClose?.()
@@ -447,17 +464,22 @@ export function useTransferForm(options: {
   function openAdd() {
     clearFieldErrors()
     formErrorKey.value = null
+    alreadySaved.value = false
+    heldCreate = null
     // Recall before the fields are cleared. A blank write would drop the draft.
     if (options.persistDraft && import.meta.client) {
       const draft = recallTransferDraft(localStorage, options.userId(), options.tenantId(), new Date())
       if (draft) {
         ignoreDraft = true
         applyDraft(draft)
+        if (!entryKey.value)
+          entryKey.value = transferEntryKey('blank')
         restored.value = true
         ignoreDraft = false
         return
       }
     }
+    entryKey.value = transferEntryKey('blank')
     ignoreDraft = true
     editingTransferId.value = null
     editingVersion.value = null
@@ -494,10 +516,12 @@ export function useTransferForm(options: {
    * only shows them. No Transfer is written. A draft of the new form is
    * the same browser draft as any other unfinished entry.
    */
-  function openPrefill(fields: TransferPrefill) {
+  function openPrefill(fields: TransferPrefill, opening: 'duplicate' | 'return') {
     clearFieldErrors()
     formErrorKey.value = null
     overlapOpen.value = false
+    alreadySaved.value = false
+    heldCreate = null
     ignoreDraft = true
     editingTransferId.value = null
     editingRideId.value = null
@@ -519,6 +543,8 @@ export function useTransferForm(options: {
       childSeats: fields.childSeats,
       note: fields.note,
     })
+    // A copy is a new entry. It does not reuse the source Transfer's id.
+    entryKey.value = transferEntryKey(opening)
     placeTarget.value = null
     clientTarget.value = false
     restored.value = false
@@ -564,6 +590,9 @@ export function useTransferForm(options: {
     luggage.value = String(ride.luggageCount)
     childSeats.value = String(ride.childSeatCount)
     note.value = ride.note ?? ''
+    entryKey.value = transferEntryKey('correction')
+    alreadySaved.value = false
+    heldCreate = null
     placeTarget.value = null
     clientTarget.value = false
     restored.value = false
@@ -652,16 +681,30 @@ export function useTransferForm(options: {
     options.saved.value = false
     options.corrected.value = false
     formErrorKey.value = null
+    if (alreadySaved.value)
+      return
     if (!formReady() || !clientId.value || !startLocationId.value || !endLocationId.value || !payment.value) {
       markInvalid()
       return
     }
     pending.value = true
     try {
-      const recorded = recordedTransferSchema.parse(await $fetch('/api/transfers', {
+      const recorded = recordedCreateSchema.parse(await $fetch('/api/transfers', {
         method: 'POST',
-        body: bookingBody(),
+        body: {
+          ...bookingBody(),
+          // Absent on a correction. A new entry always has one by the time it is sent.
+          ...(entryKey.value ? { externalId: entryKey.value } : {}),
+        },
       }))
+      // The values on screen were not written. Keep them, and the key, until confirmed.
+      if (recorded.alreadyRecorded) {
+        heldCreate = recorded
+        alreadySaved.value = true
+        if (options.persistDraft && import.meta.client)
+          applyTransferDraftEvent(localStorage, options.userId(), options.tenantId(), 'already-recorded')
+        return
+      }
       options.saved.value = true
       toast.add({ title: t('transfers.recorded') })
       const rideId = recorded.ride.id
@@ -679,6 +722,31 @@ export function useTransferForm(options: {
     catch (error) {
       formErrorKey.value = failureKey(error)
       markInvalid()
+    }
+    finally {
+      pending.value = false
+    }
+  }
+
+  /** Confirming the already-saved notice drops the draft and opens that Ride. */
+  async function confirmAlreadySaved() {
+    const recorded = heldCreate
+    if (!recorded)
+      return
+    pending.value = true
+    try {
+      ignoreDraft = true
+      if (options.persistDraft && import.meta.client)
+        applyTransferDraftEvent(localStorage, options.userId(), options.tenantId(), 'save')
+      heldCreate = null
+      alreadySaved.value = false
+      formMode.value = null
+      restored.value = false
+      ignoreDraft = false
+      options.day.value = operationalDateInTimeZone(options.timeZone(), new Date(recorded.transfer.pickupAt), options.operationalDayStartHour())
+      await options.loadDay()
+      options.onRecorded?.(recorded.ride.id)
+      options.onClose?.()
     }
     finally {
       pending.value = false
@@ -739,6 +807,7 @@ export function useTransferForm(options: {
     clientKind,
     pending,
     placePending,
+    alreadySaved,
     overlapOpen,
     confirmReason,
     formMode,
@@ -781,5 +850,6 @@ export function useTransferForm(options: {
     openCorrect,
     saveCorrection,
     record,
+    confirmAlreadySaved,
   }
 }

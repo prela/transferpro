@@ -2,12 +2,31 @@ import { z } from 'zod'
 import { paymentMethodSchema } from './transfer'
 
 /**
- * An unfinished new Transfer stays in the browser (ADR-0038). The key is
- * the user and the Tenant, so the next person on a shared computer does not
- * read it. It expires 24 hours after it was written. Save, discard, and
- * sign-out remove it. Nothing here is a request: the server never sees it.
+ * An unfinished new Transfer stays in the browser (ADR-0038). The storage
+ * key is the user and the Tenant, so the next person on a shared computer
+ * does not read it. It expires 24 hours after it was written. Save, discard,
+ * and sign-out remove it. The booking fields stay in the browser. The entry
+ * key is the exception: the form sends that one id on create (ADR-0035).
  */
 export const TRANSFER_DRAFT_TTL_MS = 24 * 60 * 60 * 1000
+
+/** How a Transfer form was opened. A correction has no entry key. */
+export type TransferEntryOpening = 'blank' | 'duplicate' | 'return' | 'correction'
+
+/**
+ * A blank form, a duplicate, and a return journey each start a new entry,
+ * so each gets a new id. A correction changes a Transfer that already has
+ * one, and its body refuses a key. `random` is `crypto.randomUUID` in the
+ * browser. Tests pass a fixed sequence.
+ */
+export function transferEntryKey(
+  opening: TransferEntryOpening,
+  random: () => string = () => crypto.randomUUID(),
+): string | null {
+  if (opening === 'correction')
+    return null
+  return random()
+}
 
 /** One entry per user and Tenant. A different pair is a different key. */
 export function transferDraftKey(userId: string, tenantId: string): string {
@@ -31,6 +50,10 @@ const transferDraftFieldsSchema = z.object({
   luggage: z.string(),
   childSeats: z.string(),
   note: z.string(),
+  // The manual channel's external id (ADR-0035). Absent on a draft written
+  // before the form started keeping one. A blank form is still blank: the
+  // id alone is not unfinished work, so a reload of an empty form mints another.
+  externalId: z.uuid().optional(),
 }).strict()
 
 const transferDraftSchema = transferDraftFieldsSchema.extend({
@@ -49,7 +72,7 @@ export interface TransferDraftStore {
   removeItem: (key: string) => void
 }
 
-export type TransferDraftEvent = 'save' | 'discard' | 'sign-out' | 'edit'
+export type TransferDraftEvent = 'save' | 'discard' | 'sign-out' | 'edit' | 'already-recorded'
 
 /**
  * A new Transfer with only the blank defaults is not unfinished work.
@@ -144,10 +167,12 @@ export function recallTransferDraft(store: TransferDraftStore, userId: string, t
 
 /**
  * Save, discard, and sign-out remove the draft. Editing keeps it, so a
- * reload can bring the same unfinished Transfer back.
+ * reload can bring the same unfinished Transfer back. An already-recorded
+ * answer keeps it too: the Dispatcher still has values to copy into a
+ * correction, and the entry key has to survive until they confirm.
  */
 export function applyTransferDraftEvent(store: TransferDraftStore, userId: string, tenantId: string, event: TransferDraftEvent): void {
-  if (event === 'edit')
+  if (event === 'edit' || event === 'already-recorded')
     return
   store.removeItem(transferDraftKey(userId, tenantId))
 }
