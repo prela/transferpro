@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
-import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, Location, Partner, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, Location, Partner, PartnerOfficeContact, TransferDayRide, Vehicle } from '../../shared'
 import type { RideDetailCommand } from '../ride-detail'
 import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel } from '../../shared'
 import { useKeptWorkOrders } from '../composables/kept-work-orders'
@@ -27,6 +27,11 @@ const props = defineProps<{
   loadDay: () => Promise<LiveRefreshOutcome>
   /** This Tenant's live contact persons and Client notes. The block uses the Ride's Client. */
   clientBriefs: ClientOfficeBrief[]
+  /**
+   * Phone and email of each Partner a Ride on this day is still handed to.
+   * The Driver's read does not carry this list, so those links stay off the Driver's phone (ADR-0049).
+   */
+  partnerBriefs: PartnerOfficeContact[]
   operationalDayStartHour: number
   tenantId: string
   userId: string
@@ -157,6 +162,17 @@ const attention = computed(() => classifyRideAttention(props.ride, props.decline
 const officeBrief = computed(() =>
   props.clientBriefs.find(brief => brief.clientId === props.ride.clientId) ?? null,
 )
+
+/**
+ * Phone and email while this Ride is still handed off. A closed Ride no
+ * longer names the Partner, so the links leave with that state. A missing
+ * brief, or a blank phone or email, simply has no link.
+ */
+const partnerContact = computed(() => {
+  if (props.ride.state !== 'handed_off' || props.ride.partnerId === null)
+    return null
+  return props.partnerBriefs.find(brief => brief.partnerId === props.ride.partnerId) ?? null
+})
 
 function place(id: string): string {
   const found = locations.value.find(location => location.id === id)
@@ -451,7 +467,22 @@ const primaryLabel = computed(() => {
       </template>
       <template v-if="ride.state === 'handed_off'">
         <dt>{{ t('ride.partner') }}</dt>
-        <dd>{{ partnerLabel(ride.partnerId) }}</dd>
+        <dd id="ride-partner-contact">
+          <span class="block">{{ partnerLabel(ride.partnerId) }}</span>
+          <!-- 28 px in the office, 48 px on the phone. A smaller link fails the 24 px target-size check. -->
+          <a
+            v-if="partnerContact?.phone"
+            class="mt-1 flex items-center text-primary underline"
+            :class="commandControlClass(pinActions)"
+            :href="`tel:${partnerContact.phone}`"
+          >{{ partnerContact.phone }}</a>
+          <a
+            v-if="partnerContact?.email"
+            class="mt-1 flex items-center text-primary underline"
+            :class="commandControlClass(pinActions)"
+            :href="`mailto:${partnerContact.email}`"
+          >{{ partnerContact.email }}</a>
+        </dd>
       </template>
       <dt>{{ t('transfers.status') }}</dt>
       <dd>{{ t(`transfers.states.${ride.state}`) }}</dd>

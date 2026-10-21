@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
-import type { Partner } from '../../shared'
+import type { DisplayLocale, Partner } from '../../shared'
 import { z } from 'zod'
 import { catalogSearchMatches, driverEmailError, driverPhoneError, PARTNER_NOTE_MAX_LENGTH, partnerListSchema, partnerNameSchema, partnerSchema } from '../../shared'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 import { httpStatus } from '../transfer-day-http'
+
+defineProps<{
+  /** Pickup times on Vožnje use the Tenant zone. */
+  timeZone: string
+  locale: DisplayLocale
+}>()
 
 const { t } = useI18n()
 const { notifyAuditChanged } = useAuditRefresh()
@@ -25,11 +31,11 @@ const restoring = ref(false)
 /**
  * Add and correct share one panel. Archive stays a separate confirm.
  * An archived row opens read-only and can be restored from that panel.
- * Podaci is the only tab. Nedostupnost and Vožnje arrive on later tickets.
+ * Podaci is the record. Vožnje is the Ride history. Nedostupnost arrives later.
  */
 const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
-const cardTab = ref<'data'>('data')
+const cardTab = ref<'data' | 'rides'>('data')
 /** The panel title stays the name that was opened, not the half-typed correction. */
 const openedName = ref('')
 const archiveTarget = ref<Partner | null>(null)
@@ -50,6 +56,7 @@ interface PartnerForm {
 
 const cardTabs = computed(() => [
   { label: t('partners.tabs.data'), value: 'data' as const },
+  { label: t('partners.tabs.rides'), value: 'rides' as const },
 ])
 
 const phoneColumn = { class: { td: 'max-lg:hidden', th: 'max-lg:hidden' } }
@@ -420,142 +427,154 @@ onMounted(() => {
         :size="phone ? 'xl' : 'sm'"
         class="mb-4"
       />
-      <UAlert
-        v-if="formErrorKey"
-        color="error"
-        variant="subtle"
-        role="alert"
-        class="mb-4"
-        :description="t(formErrorKey)"
-      />
-      <UForm
-        id="partner-form"
-        novalidate
-        :schema="schema"
-        :state="state"
-        :validate-on="[]"
-        class="space-y-4"
-        :class="commandInputClass"
-        @submit="onSubmit"
-        @error="formErrorKey = null"
-      >
-        <UFormField
-          :label="t('partners.name')"
-          name="name"
-          :size="phone ? 'xl' : 'sm'"
+      <div v-show="formMode !== 'edit' || cardTab === 'data'">
+        <UAlert
+          v-if="formErrorKey"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mb-4"
+          :description="t(formErrorKey)"
+        />
+        <UForm
+          id="partner-form"
+          novalidate
+          :schema="schema"
+          :state="state"
+          :validate-on="[]"
+          class="space-y-4"
+          :class="commandInputClass"
+          @submit="onSubmit"
+          @error="formErrorKey = null"
         >
-          <UInput
-            v-model="state.name"
+          <UFormField
+            :label="t('partners.name')"
             name="name"
-            type="text"
-            autocomplete="off"
-            class="w-full"
-            :disabled="archivedView"
-          />
-          <template #error="{ error }">
-            <span
-              v-if="error"
-              role="alert"
-            >{{ error }}</span>
-          </template>
-        </UFormField>
-        <UFormField
-          :label="t('partners.phone')"
-          name="phone"
-          :size="phone ? 'xl' : 'sm'"
-        >
-          <UInput
-            v-model="state.phone"
+            :size="phone ? 'xl' : 'sm'"
+          >
+            <UInput
+              v-model="state.name"
+              name="name"
+              type="text"
+              autocomplete="off"
+              class="w-full"
+              :disabled="archivedView"
+            />
+            <template #error="{ error }">
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('partners.phone')"
             name="phone"
-            type="tel"
-            autocomplete="off"
-            class="w-full"
-            :disabled="archivedView"
-          />
-          <template #error="{ error }">
-            <span
-              v-if="error"
-              role="alert"
-            >{{ error }}</span>
-          </template>
-        </UFormField>
-        <UFormField
-          :label="t('partners.email')"
-          name="email"
-          :size="phone ? 'xl' : 'sm'"
-        >
-          <UInput
-            v-model="state.email"
+            :size="phone ? 'xl' : 'sm'"
+          >
+            <UInput
+              v-model="state.phone"
+              name="phone"
+              type="tel"
+              autocomplete="off"
+              class="w-full"
+              :disabled="archivedView"
+            />
+            <template #error="{ error }">
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('partners.email')"
             name="email"
-            type="email"
-            autocomplete="off"
-            class="w-full"
-            :disabled="archivedView"
-          />
-          <template #error="{ error }">
-            <span
-              v-if="error"
-              role="alert"
-            >{{ error }}</span>
-          </template>
-        </UFormField>
-        <UFormField
-          :label="t('partners.note')"
-          name="note"
-          :size="phone ? 'xl' : 'sm'"
-        >
-          <UTextarea
-            v-model="state.note"
+            :size="phone ? 'xl' : 'sm'"
+          >
+            <UInput
+              v-model="state.email"
+              name="email"
+              type="email"
+              autocomplete="off"
+              class="w-full"
+              :disabled="archivedView"
+            />
+            <template #error="{ error }">
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('partners.note')"
             name="note"
-            :rows="4"
-            class="w-full"
-            :disabled="archivedView"
-          />
-          <template #error="{ error }">
-            <span
-              v-if="error"
-              role="alert"
-            >{{ error }}</span>
-          </template>
-        </UFormField>
-      </UForm>
+            :size="phone ? 'xl' : 'sm'"
+          >
+            <UTextarea
+              v-model="state.note"
+              name="note"
+              :rows="4"
+              class="w-full"
+              :disabled="archivedView"
+            />
+            <template #error="{ error }">
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
+            </template>
+          </UFormField>
+        </UForm>
+      </div>
+      <!-- The history read lives in transfers. This screen calls it. partners does not import that module (ADR-0049). -->
+      <PartnerRideHistory
+        v-if="formMode === 'edit' && editingId && cardTab === 'rides'"
+        :partner-id="editingId"
+        :phone="phone"
+        :time-zone="timeZone"
+        :locale="locale"
+      />
     </template>
 
     <template #footer="{ phone }">
-      <UButton
-        type="button"
-        color="neutral"
-        variant="outline"
-        :size="commandControlSize(phone)"
-        class="w-full justify-center sm:w-auto"
-        :class="commandControlClass(phone)"
-        :disabled="saving || restoring"
-        @click="formOpen = false"
-      >
-        {{ t('partners.cancel') }}
-      </UButton>
-      <UButton
-        v-if="archivedView"
-        type="button"
-        :size="commandControlSize(phone)"
-        class="w-full justify-center sm:w-auto"
-        :class="commandControlClass(phone)"
-        :loading="restoring"
-        @click="confirmRestore"
-      >
-        {{ t('partners.unarchive') }}
-      </UButton>
-      <UButton
-        v-else
-        type="submit"
-        form="partner-form"
-        :size="commandControlSize(phone)"
-        class="w-full justify-center sm:w-auto"
-        :class="commandControlClass(phone)"
-        :loading="saving"
-      >
-        {{ submitLabel }}
-      </UButton>
+      <template v-if="formMode !== 'edit' || cardTab === 'data'">
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          :size="commandControlSize(phone)"
+          class="w-full justify-center sm:w-auto"
+          :class="commandControlClass(phone)"
+          :disabled="saving || restoring"
+          @click="formOpen = false"
+        >
+          {{ t('partners.cancel') }}
+        </UButton>
+        <UButton
+          v-if="archivedView"
+          type="button"
+          :size="commandControlSize(phone)"
+          class="w-full justify-center sm:w-auto"
+          :class="commandControlClass(phone)"
+          :loading="restoring"
+          @click="confirmRestore"
+        >
+          {{ t('partners.unarchive') }}
+        </UButton>
+        <UButton
+          v-else
+          type="submit"
+          form="partner-form"
+          :size="commandControlSize(phone)"
+          class="w-full justify-center sm:w-auto"
+          :class="commandControlClass(phone)"
+          :loading="saving"
+        >
+          {{ submitLabel }}
+        </UButton>
+      </template>
     </template>
   </CatalogPanel>
 
