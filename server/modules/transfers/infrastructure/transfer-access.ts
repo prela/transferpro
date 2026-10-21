@@ -1,6 +1,7 @@
 import type { RecordedCreate, TransferDay } from '../../../../shared'
 import { operationalDateInTimeZone, parseRecordTransfer, parseTransferDay } from '../../../../shared'
 import { loadClientOfficeBriefs } from '../../clients'
+import { loadPartnerOfficeContacts } from '../../partners'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { applyBoardWarnings } from './board-warnings'
 import { loadDeclineAlertsForDay, loadRidesForDay, recordTransfer } from './transfers'
@@ -52,6 +53,7 @@ export async function listTransferDay(headers: Headers, rawDate: unknown, now: D
       now,
       settings.transferDurationMinutes,
     )
+    const handedTo = new Set(rides.flatMap(ride => ride.partnerId === null ? [] : [ride.partnerId]))
     return {
       date,
       rides: await applyBoardWarnings(
@@ -74,6 +76,13 @@ export async function listTransferDay(headers: Headers, rawDate: unknown, now: D
       // with no Ride on this day. The helper refuses a driver again.
       // ADR-0049.
       clientBriefs: await loadClientOfficeBriefs(transaction, actor.role),
+      // Phone and email only for a Partner a Ride on this day is handed to.
+      // A day with none skips the contact read. The note stays off this read.
+      // An archived Partner is still included. The helper refuses a driver again.
+      partnerBriefs: handedTo.size === 0
+        ? []
+        : (await loadPartnerOfficeContacts(transaction, actor.role))
+            .filter(contact => handedTo.has(contact.partnerId)),
     }
   })
 }

@@ -1,11 +1,12 @@
 import type { SQL } from 'drizzle-orm'
-import type { CreatePartner, Partner, PartnerPatch } from '../../../../shared'
+import type { CreatePartner, Partner, PartnerOfficeContact, PartnerPatch } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { driverEmailSchema, driverPhoneSchema, partnerChangedFields, partnerCreatedFields, partnerNameSchema, partnerNoteSchema, partnerSchema } from '../../../../shared'
+import { driverEmailSchema, driverPhoneSchema, partnerChangedFields, partnerCreatedFields, partnerNameSchema, partnerNoteSchema, partnerOfficeContactSchema, partnerSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
+import { TenantAccessError } from '../../tenancy'
 
 const partnerRowSchema = z.object({
   id: z.uuid(),
@@ -108,6 +109,52 @@ export async function partnerIsActive(transaction: TenantTransaction, partnerId:
   if (!row)
     return false
   return toArchivedAt(row.archivedAt) === null
+}
+
+/**
+ * One Partner in this Tenant, by id, including an archived Partner.
+ * The row carries the phone, the email, and the note, so a driver is
+ * refused here, before any row is read (ADR-0049). The caller is not
+ * the allow-list. A missing id and another Tenant's id are the same
+ * result. This read does not lock. A handoff uses
+ * {@link partnerPresenceForHandoff}.
+ */
+export async function loadPartner(
+  transaction: TenantTransaction,
+  role: string,
+  partnerId: string,
+): Promise<Partner> {
+  if (role !== 'admin' && role !== 'dispatcher')
+    throw new TenantAccessError(403)
+  const selected = partnerRows.parse(await readPartner(transaction, sql`
+    select ${partnerColumns}
+    from app.partners
+    where id = ${partnerId}
+  `))
+  const row = selected.rows[0]
+  if (!row)
+    throw new PartnerNotFoundError()
+  return toPartner(row)
+}
+
+/**
+ * Phone and email for every Partner in this Tenant, including archived ones.
+ * The note is not selected. A driver is refused before any row is read.
+ * The Driver's read must not call this (ADR-0049). Transfers reaches it
+ * through the Partners index.
+ */
+export async function loadPartnerOfficeContacts(
+  transaction: TenantTransaction,
+  role: string,
+): Promise<PartnerOfficeContact[]> {
+  if (role !== 'admin' && role !== 'dispatcher')
+    throw new TenantAccessError(403)
+  const selected = z.object({ rows: z.array(partnerOfficeContactSchema) }).parse(await readPartner(transaction, sql`
+    select id as "partnerId", phone, email
+    from app.partners
+    order by name, id
+  `))
+  return selected.rows
 }
 
 /**
