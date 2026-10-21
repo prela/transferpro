@@ -264,3 +264,120 @@ test.describe('@phone', () => {
     })
   }
 })
+
+/**
+ * Issue #348. Opening a Ride pushes `?ride=` only after the office middleware
+ * finishes GET /api/session. Closing while that push is still waiting must
+ * win: the address never gains `?ride=` again, and a reload stays on the list.
+ */
+test('a close wins over a ride push still waiting on the session', async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const tenant = await seedTenant('ride-close-stale')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+
+  const clientId = await createdId(page, '/api/clients', { name: 'Klijent Ostaje', kind: 'agency' })
+  const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Ostaje', kind: 'address' })
+  const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Ostaje', kind: 'hotel' })
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+  const recorded = await recordTransfer(page.request, {
+    data: {
+      clientId,
+      startLocationId,
+      endLocationId,
+      passengerCount: 1,
+      price: 18,
+      payment: 'cash',
+      airportMark: false,
+      luggageCount: 0,
+      childSeatCount: 0,
+      guestName: 'Iva Ostaje',
+      pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
+    },
+  })
+  expect(recorded.ok()).toBeTruthy()
+
+  await page.goto(`/transfers?day=${day}`)
+  await hydrated(page)
+
+  // Hold GET /api/session in the page. The office middleware awaits that
+  // fetch before the router push writes ?ride=, and Chromium's memory cache
+  // hides the repeat from a network route.
+  await page.evaluate(() => {
+    const original = window.fetch.bind(window)
+    const pending: Array<() => void> = []
+    window.fetch = (input, init) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url
+      if (!url.includes('/api/session'))
+        return original(input, init)
+      return new Promise((resolve, reject) => {
+        pending.push(() => {
+          original(input, init).then(resolve, reject)
+        })
+      })
+    }
+    Reflect.set(window, '__sessionPending', pending)
+  })
+
+  await page.getByRole('row', { name: 'Iva Ostaje' }).click()
+  await expect(page.getByRole('article').getByRole('heading', { name: 'Iva Ostaje' })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const pending = Reflect.get(window, '__sessionPending')
+    return Array.isArray(pending) ? pending.length : 0
+  })).toBeGreaterThan(0)
+  // The detail is open from local state. The push has not written ?ride= yet.
+  await expect(page).not.toHaveURL(/[?&]ride=/)
+
+  await page.evaluate(() => {
+    const writes: string[] = []
+    const originalPush = history.pushState.bind(history)
+    const originalReplace = history.replaceState.bind(history)
+    history.pushState = (data, unused, url) => {
+      writes.push(String(url ?? ''))
+      originalPush(data, unused, url)
+    }
+    history.replaceState = (data, unused, url) => {
+      writes.push(String(url ?? ''))
+      originalReplace(data, unused, url)
+    }
+    Reflect.set(window, '__historyWrites', writes)
+  })
+
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
+  await expect(page.getByRole('article').getByRole('heading', { name: 'Iva Ostaje' })).toBeHidden()
+
+  // Let the open Ride's push finish. A later session fetch, the one that
+  // would take ?ride= back off, stays held.
+  await page.evaluate(() => {
+    const pending = Reflect.get(window, '__sessionPending')
+    if (Array.isArray(pending)) {
+      const release = pending.shift()
+      if (typeof release === 'function')
+        release()
+    }
+  })
+  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300)))
+
+  const writes = await page.evaluate(() => Reflect.get(window, '__historyWrites') as string[])
+  expect(writes.filter(url => url.includes('ride='))).toEqual([])
+  await expect(page).not.toHaveURL(/[?&]ride=/)
+
+  await page.evaluate(() => {
+    const pending = Reflect.get(window, '__sessionPending')
+    if (!Array.isArray(pending))
+      return
+    while (pending.length > 0) {
+      const release = pending.shift()
+      if (typeof release === 'function')
+        release()
+    }
+  })
+  await page.reload()
+  await hydrated(page)
+  await expect(page).not.toHaveURL(/[?&]ride=/)
+  await expect(page.getByRole('article').getByRole('heading', { name: 'Iva Ostaje' })).toHaveCount(0)
+})

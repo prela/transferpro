@@ -222,6 +222,14 @@ function queryMatches(routeQuery: Record<string, string | string[]>): boolean {
 let syncing = false
 let syncAgain = false
 
+/**
+ * The query of the router.push that is still waiting on the office middleware.
+ * That middleware awaits GET /api/session before the push changes the address.
+ * Closing the Ride in that gap has to drop the push, or it writes `?ride=`
+ * after the panel is gone (issue #348).
+ */
+let inFlightQuery: Record<string, string | string[]> | null = null
+
 async function syncQuery() {
   if (syncing) {
     syncAgain = true
@@ -231,15 +239,18 @@ async function syncQuery() {
   try {
     do {
       syncAgain = false
+      inFlightQuery = null
       const query = buildQuery()
       if (queryMatches(routeQueryRecord()))
         continue
+      inFlightQuery = query
       // Push, so Back returns the previous filters. Replace would drop them.
       await router.push({ query })
     } while (syncAgain)
   }
   finally {
     syncing = false
+    inFlightQuery = null
   }
 }
 
@@ -308,10 +319,34 @@ watch(rides, () => {
  */
 let rideOwnedLocally = false
 
+/**
+ * Back and forward apply the address they land on. A push this screen started
+ * does not, once the open Ride has moved on.
+ */
+let routeFromHistory = false
+
 function onHistoryBack() {
+  routeFromHistory = true
   rideOwnedLocally = false
   applyRouteQuery()
 }
+
+onBeforeRouteUpdate((to) => {
+  if (routeFromHistory) {
+    routeFromHistory = false
+    return
+  }
+  if (!inFlightQuery)
+    return
+  const pushedRide = queryText(inFlightQuery.ride) || null
+  // Another navigation, not the push that is still waiting.
+  if ((queryText(to.query.ride) || null) !== pushedRide)
+    return
+  // The last intent wins. A close, or a different Ride, drops this push
+  // before it can write the address.
+  if (pushedRide !== openRideId.value)
+    return false
+})
 
 watch(() => route.query, () => {
   // A push we just sent is not Back. Applying it would put a stale search

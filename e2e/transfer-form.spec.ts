@@ -133,10 +133,7 @@ test('a typed Client reference survives save, correction, and reload', async ({ 
   await dialog.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Notifications (F8)' }).getByText('Zabilježeno.')).toBeVisible()
 
-  // The open Ride lives in the URL (ADR-0038), synced by an async router push.
-  // A reload can catch a pending ?ride= and reopen the panel over the row
-  // menu, so load the list address instead.
-  await page.goto('/transfers')
+  await page.reload()
   await hydrated(page)
   await page.getByRole('button', { name: 'Radnje: Ana Referenca' }).click()
   await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()
@@ -146,7 +143,7 @@ test('a typed Client reference survives save, correction, and reload', async ({ 
   await correcting.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
   await expect(correcting).toBeHidden()
 
-  await page.goto('/transfers')
+  await page.reload()
   await hydrated(page)
   await page.getByRole('button', { name: 'Radnje: Ana Referenca' }).click()
   await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()
