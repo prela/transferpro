@@ -1,9 +1,20 @@
 import type { SQL } from 'drizzle-orm'
 import type { TenantTransaction } from '../../../core/index'
 import { PgDialect } from 'drizzle-orm/pg-core'
-import { expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
+import { RideUnavailableError } from '../../capacity'
 import { RideNotFoundError } from './assign'
+import { checkPartnerCapacity } from './capacity-check'
 import { changeRidePartnerForOffice, handOffRideForOffice, RidePartnerArchivedError, RidePartnerUnchangedError, takeBackRideForOffice } from './handoff'
+
+vi.mock('./capacity-check', () => ({
+  checkPartnerCapacity: vi.fn(async () => {}),
+}))
+
+beforeEach(() => {
+  vi.mocked(checkPartnerCapacity).mockReset()
+  vi.mocked(checkPartnerCapacity).mockResolvedValue(undefined)
+})
 
 /**
  * Lock order for a handoff (ADR-0034). The Transfer and Ride are locked,
@@ -98,6 +109,7 @@ it('takes the capacity lock after the row lock and before the Partner, and write
   const world = fakeTransaction({})
   await handOffRideForOffice(world.transaction, actorUserId, { rideId, partnerId, version: 4 })
   expect(world.steps()).toEqual(['lock', 'capacity', 'partner', 'version', 'update', 'audit'])
+  expect(checkPartnerCapacity).toHaveBeenCalledWith(world.transaction, { rideId, partnerId, confirm: false })
 })
 
 it('an archived Partner writes nothing after the lock', async () => {
@@ -106,6 +118,21 @@ it('an archived Partner writes nothing after the lock', async () => {
     .rejects
     .toBeInstanceOf(RidePartnerArchivedError)
   expect(world.steps()).toEqual(['lock', 'capacity', 'partner'])
+  expect(checkPartnerCapacity).not.toHaveBeenCalled()
+})
+
+it('an unavailable Partner writes nothing, and confirm passes it', async () => {
+  vi.mocked(checkPartnerCapacity).mockRejectedValueOnce(new RideUnavailableError())
+  const refused = fakeTransaction({})
+  await expect(handOffRideForOffice(refused.transaction, actorUserId, { rideId, partnerId, version: 4 }))
+    .rejects
+    .toBeInstanceOf(RideUnavailableError)
+  expect(refused.steps()).toEqual(['lock', 'capacity', 'partner'])
+
+  const confirmed = fakeTransaction({})
+  await handOffRideForOffice(confirmed.transaction, actorUserId, { rideId, partnerId, version: 4, confirm: true })
+  expect(checkPartnerCapacity).toHaveBeenCalledWith(confirmed.transaction, { rideId, partnerId, confirm: true })
+  expect(confirmed.steps()).toEqual(['lock', 'capacity', 'partner', 'version', 'update', 'audit'])
 })
 
 it('a missing Partner is not found and writes nothing', async () => {
@@ -114,6 +141,7 @@ it('a missing Partner is not found and writes nothing', async () => {
     .rejects
     .toBeInstanceOf(RideNotFoundError)
   expect(world.steps()).toEqual(['lock', 'capacity', 'partner'])
+  expect(checkPartnerCapacity).not.toHaveBeenCalled()
 })
 
 it('a Partner change locks before the read, and the same active Partner writes nothing', async () => {
@@ -122,6 +150,7 @@ it('a Partner change locks before the read, and the same active Partner writes n
     .rejects
     .toBeInstanceOf(RidePartnerUnchangedError)
   expect(same.steps()).toEqual(['lock', 'capacity', 'partner'])
+  expect(checkPartnerCapacity).not.toHaveBeenCalled()
 
   const moved = fakeTransaction({ state: 'handed_off', partnerId })
   await changeRidePartnerForOffice(moved.transaction, actorUserId, { rideId, partnerId: nextPartnerId, version: 4 })

@@ -58,7 +58,7 @@ export const NEW_WINDOW_ID = 'f0f0f0f0-0000-4000-8000-000000000000'
 /**
  * In-memory window ports. `calls` is the order in which the service used
  * them, so a test can pin the lock order; `audits` is every fact appended.
- * Every Driver and Vehicle has the one `presence` given.
+ * Every Driver, Vehicle, and Partner has the one `presence` given.
  */
 export function fakeUnavailabilityPorts(options: {
   readonly windows?: readonly UnavailabilityWindow[]
@@ -112,8 +112,14 @@ export function fakeUnavailabilityPorts(options: {
         if (row)
           row.removed = true
       }),
-      liveOf: logged('liveOf', async resource => live().filter(window =>
-        (resource.kind === 'driver' ? window.driverId : window.vehicleId) === resource.id)),
+      liveOf: logged('liveOf', async resource => live().filter((window) => {
+        const id = resource.kind === 'driver'
+          ? window.driverId
+          : resource.kind === 'vehicle'
+            ? window.vehicleId
+            : window.partnerId
+        return id === resource.id
+      })),
       liveDuring: logged('liveDuring', async (from: Date, to: Date) => live().filter(window => coversSpan(window, from, to))),
     },
   }

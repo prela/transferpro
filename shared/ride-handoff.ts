@@ -50,6 +50,11 @@ const partnerVersionBody = z.strictObject({
   partnerId: z.uuid(),
   /** The Transfer version the form was opened with. One version covers the Ride. */
   version: z.number().int().nonnegative(),
+  /**
+   * Set after 409 `ride_unavailable`. One confirmation passes a window over
+   * the Partner (ADR-0034). It does not pass a fully booked window.
+   */
+  confirm: z.boolean().optional(),
 })
 
 const versionBody = z.strictObject({
@@ -60,12 +65,13 @@ export interface HandOffRideInput {
   readonly rideId: string
   readonly partnerId: string
   readonly version: number
+  readonly confirm?: boolean
 }
 
 /**
  * POST /api/rides/:id/hand-off. The path is the Ride. The body is the
- * Partner and the version. Any other key, or a missing version, throws
- * first, so the caller does not open a session.
+ * Partner and the version. `confirm` is optional. Any other key, or a
+ * missing version, throws first, so the caller does not open a session.
  */
 export function parseHandOffRide(rideId: unknown, body: unknown): HandOffRideInput {
   return parsePartnerCommand(rideId, body)
@@ -90,7 +96,12 @@ function parsePartnerCommand(rideId: unknown, body: unknown): HandOffRideInput {
   const payload = partnerVersionBody.safeParse(body)
   if (!id.success || !payload.success)
     throw new RideCommandInputError()
-  return { rideId: id.data, partnerId: payload.data.partnerId, version: payload.data.version }
+  return {
+    rideId: id.data,
+    partnerId: payload.data.partnerId,
+    version: payload.data.version,
+    ...(payload.data.confirm === undefined ? {} : { confirm: payload.data.confirm }),
+  }
 }
 
 /**

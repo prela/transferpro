@@ -321,6 +321,7 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   mustAccept: z.boolean().nullable(),
   // Set while the Ride is handed off. Null on every other state, and after
   // a take-back or a close. The screen names the Partner from the catalog.
+  // The board warning is derived from this id (ADR-0048).
   partnerId: z.uuid().nullable(),
   // Empty until the aircraft has landed. Shown in the Tenant time zone.
   landingAt: z.iso.datetime().nullable(),

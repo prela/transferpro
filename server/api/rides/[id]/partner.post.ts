@@ -11,7 +11,9 @@ import { rideHttpError } from '../http'
  * is 409 `stale_save`. A driver is 403. No session is 401.
  * A Ride that is not `handed_off` is 409 `ride_not_handed_off`. The same
  * active Partner is 409 `ride_partner_unchanged`. An archived Partner is
- * 409 `ride_partner_archived`. Another Tenant's Partner or Ride is 404.
+ * 409 `ride_partner_archived`. An unavailable Partner is 409
+ * `ride_unavailable` and writes nothing; `confirm: true` passes it.
+ * Another Tenant's Partner or Ride is 404.
  * Nothing is written on a refusal. No mail is sent. The body is the Ride,
  * including `partnerId`, and an empty work-order list.
  */

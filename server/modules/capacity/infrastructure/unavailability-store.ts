@@ -17,6 +17,7 @@ const windowRows = z.object({
     id: z.uuid(),
     driverId: z.uuid().nullable(),
     vehicleId: z.uuid().nullable(),
+    partnerId: z.uuid().nullable(),
     startsAt: z.unknown(),
     endsAt: z.unknown(),
   })),
@@ -24,7 +25,7 @@ const windowRows = z.object({
 
 const deletedRows = z.object({ rowCount: z.number().int().nonnegative() })
 
-const columns = sql`id, driver_id as "driverId", vehicle_id as "vehicleId", starts_at as "startsAt", ends_at as "endsAt"`
+const columns = sql`id, driver_id as "driverId", vehicle_id as "vehicleId", partner_id as "partnerId", starts_at as "startsAt", ends_at as "endsAt"`
 
 function toInstant(value: unknown): Date {
   const instant = value instanceof Date ? value : new Date(z.string().parse(value))
@@ -43,6 +44,7 @@ async function select(transaction: TenantTransaction, query: SQL, failure: strin
     id: row.id,
     driverId: row.driverId,
     vehicleId: row.vehicleId,
+    partnerId: row.partnerId,
     startsAt: toInstant(row.startsAt),
     endsAt: toInstant(row.endsAt),
   }))
@@ -61,7 +63,11 @@ function during(from: Date, to: Date): SQL {
 }
 
 function ownedBy(resource: UnavailabilityResource): SQL {
-  return resource.kind === 'driver' ? sql`driver_id = ${resource.id}` : sql`vehicle_id = ${resource.id}`
+  if (resource.kind === 'driver')
+    return sql`driver_id = ${resource.id}`
+  if (resource.kind === 'vehicle')
+    return sql`vehicle_id = ${resource.id}`
+  return sql`partner_id = ${resource.id}`
 }
 
 function idList(ids: readonly string[]): SQL {
@@ -69,8 +75,8 @@ function idList(ids: readonly string[]): SQL {
 }
 
 /**
- * The live windows of these Drivers and Vehicles over `[from, to)`. A read
- * without row locks: a capacity write holds the Tenant lock, so every
+ * The live windows of these Drivers, Vehicles, and Partners over `[from, to)`.
+ * A read without row locks: a capacity write holds the Tenant lock, so every
  * other window write has committed or not started.
  */
 export function unavailabilityReader(transaction: TenantTransaction): UnavailabilityReader {
@@ -78,6 +84,7 @@ export function unavailabilityReader(transaction: TenantTransaction): Unavailabi
     const owners = [
       ...(query.driverIds.length > 0 ? [sql`driver_id in (${idList(query.driverIds)})`] : []),
       ...(query.vehicleIds.length > 0 ? [sql`vehicle_id in (${idList(query.vehicleIds)})`] : []),
+      ...(query.partnerIds.length > 0 ? [sql`partner_id in (${idList(query.partnerIds)})`] : []),
     ]
     if (owners.length === 0 || query.to.getTime() <= query.from.getTime())
       return []
@@ -95,8 +102,8 @@ export function unavailabilityReader(transaction: TenantTransaction): Unavailabi
 export function unavailabilityStore(transaction: TenantTransaction): UnavailabilityStore {
   return {
     insert: async (record: UnavailabilityRecord) => single(await select(transaction, sql`
-      insert into app.unavailability_windows (driver_id, vehicle_id, starts_at, ends_at)
-      values (${record.driverId}, ${record.vehicleId}, ${instant(record.startsAt)}, ${instant(record.endsAt)})
+      insert into app.unavailability_windows (driver_id, vehicle_id, partner_id, starts_at, ends_at)
+      values (${record.driverId}, ${record.vehicleId}, ${record.partnerId}, ${instant(record.startsAt)}, ${instant(record.endsAt)})
       returning ${columns}
     `, 'Unavailability write failed')),
 

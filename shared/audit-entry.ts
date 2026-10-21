@@ -616,19 +616,21 @@ const tenantSuspended = tenantPlatformAction('tenant.suspended')
 const tenantReactivated = tenantPlatformAction('tenant.reactivated')
 
 /*
- * An unavailability window (ADR-0034) names the window and its Driver or
- * its Vehicle; exactly one id is set and the other is null. `fields` names
- * what was written. The instants are never a key, so the log shows that a
- * window changed, not when someone was away. A window has no reason to log.
+ * An unavailability window (ADR-0034) names the window and its Driver, its
+ * Vehicle, or its Partner; exactly one id is set and the other two are null.
+ * `fields` names what was written. The instants are never a key, so the log
+ * shows that a window changed, not when someone was away. A window has no
+ * reason to log.
  */
 function unavailabilityData<F extends z.ZodType>(fields: F) {
   return z.strictObject({
     windowId: z.uuid(),
     driverId: driverId.nullable(),
     vehicleId: vehicleId.nullable(),
+    partnerId: z.uuid().nullable(),
     fields,
-  }).refine(data => (data.driverId === null) !== (data.vehicleId === null), {
-    message: 'Exactly one of driverId and vehicleId is set.',
+  }).refine(data => [data.driverId, data.vehicleId, data.partnerId].filter(id => id !== null).length === 1, {
+    message: 'Exactly one of driverId, vehicleId, and partnerId is set.',
   })
 }
 

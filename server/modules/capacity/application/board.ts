@@ -42,7 +42,10 @@ export async function readBoardOccupation(
     from: range.from,
     to: range.to,
   })
-  return occupying.map(toScheduleRide)
+  return occupying.flatMap((ride) => {
+    const schedule = toScheduleRide(ride)
+    return schedule === null ? [] : [schedule]
+  })
 }
 
 function idsOf(values: readonly (string | null)[]): string[] {

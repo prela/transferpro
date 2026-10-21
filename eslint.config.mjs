@@ -553,7 +553,7 @@ const platformBoundaryImport = {
  * test reaches capacity internals only from inside capacity.
  * `shared/capacity.ts` is the contract, not the module, and stays open.
  */
-const capacityModuleImports = new Set(['tenancy', 'drivers', 'vehicles'])
+const capacityModuleImports = new Set(['tenancy', 'drivers', 'vehicles', 'partners'])
 
 const capacityBoundaryImport = {
   meta: {
@@ -562,7 +562,7 @@ const capacityBoundaryImport = {
     messages: {
       outsider: 'Only the transfers module imports capacity (ADR-0034).',
       internals: 'Import the capacity module through its index.ts only (ADR-0034).',
-      dependency: 'Capacity imports only tenancy, drivers, and vehicles, through their index.ts, and never transfers (ADR-0034).',
+      dependency: 'Capacity imports only tenancy, drivers, vehicles, and partners, through their index.ts, and never transfers (ADR-0034).',
     },
   },
   create(context) {

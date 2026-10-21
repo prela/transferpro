@@ -11,6 +11,7 @@ import { lockTenantCapacity } from '../../capacity'
 import { partnerPresenceForHandoff } from '../../partners'
 import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { RideNotFoundError } from './assign'
+import { checkPartnerCapacity } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
 import { claimTransferVersion, refuseStaleVersion } from './transfer-version'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
@@ -131,8 +132,8 @@ export async function handOffRide(
 
 /**
  * Give a handed-off Ride to another active Partner. The body is parsed
- * first. A driver is 403. The version bumps. No mail is sent. Capacity
- * does not judge the change yet; the Tenant lock is still taken (ADR-0034).
+ * first. A driver is 403. The version bumps. No mail is sent. An unavailable
+ * Partner is 409 `ride_unavailable` unless `confirm` is set (ADR-0034).
  */
 export async function changeRidePartner(
   headers: Headers,
@@ -168,9 +169,10 @@ export async function takeBackRide(
 /**
  * The office handoff. Lock order is the ADR-0034 order: the Transfer and
  * Ride, then the refusals that need no other row, then the Tenant capacity
- * lock, then the Partner. Capacity does not judge this write yet. An
- * archived Partner writes nothing. The version is claimed only after that,
- * so a refusal does not bump it.
+ * lock, then the Partner. An archived Partner is refused before the window
+ * is read. An unavailable Partner is 409 `ride_unavailable` and writes
+ * nothing; `confirm: true` passes it. The version is claimed only after
+ * that, so a refusal does not bump it.
  */
 export async function handOffRideForOffice(
   transaction: TenantTransaction,
@@ -193,6 +195,11 @@ export async function handOffRideForOffice(
     throw new RideNotFoundError()
   if (presence === 'archived')
     throw new RidePartnerArchivedError()
+  await checkPartnerCapacity(transaction, {
+    rideId: input.rideId,
+    partnerId: input.partnerId,
+    confirm: input.confirm === true,
+  })
 
   const released = current.driverId !== null && current.vehicleId !== null
     ? { driverId: current.driverId, vehicleId: current.vehicleId }
@@ -270,6 +277,11 @@ export async function changeRidePartnerForOffice(
     throw new RidePartnerArchivedError()
   if (input.partnerId === partnerId)
     throw new RidePartnerUnchangedError()
+  await checkPartnerCapacity(transaction, {
+    rideId: input.rideId,
+    partnerId: input.partnerId,
+    confirm: input.confirm === true,
+  })
 
   await claimTransferVersion(transaction, current.transferId, input.version, actorUserId, 'Ride partner change failed')
   const updated = storedRows.parse(await runStep(transaction, sql`

@@ -95,8 +95,10 @@ function fakeTransaction(script: Script) {
           }],
         }
       }
-      if (isOccupationRead(text))
-        return { rows: script.occupying ?? [] }
+      if (isOccupationRead(text)) {
+        // The occupation read always returns partner_id. A crew Ride has it null.
+        return { rows: (script.occupying ?? []).map(row => ({ partnerId: null, ...row })) }
+      }
       if (text.includes('landing_at') && text.includes('app.rides')) {
         return {
           rows: [{

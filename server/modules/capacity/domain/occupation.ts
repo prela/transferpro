@@ -1,15 +1,15 @@
-import type { ScheduleClash, ScheduleResource, ScheduleRide } from '../../../../shared'
+import type { ScheduleClash, ScheduleRide, UnavailableResource } from '../../../../shared'
 import { judgeSchedule } from '../../../../shared'
 
 /**
  * One Ride that occupies time, as the occupation port answers (ADR-0034).
- * Today that is an assigned or accepted Ride. Handed-off Rides join with
- * the Partner windows ticket (ADR-0048), so `partnerId` is always null.
+ * Assigned and accepted Rides name a Driver and a Vehicle. A handed-off
+ * Ride names a Partner and neither of those: it does not occupy the Partner.
  */
 export interface OccupyingRide {
   readonly rideId: string
-  readonly driverId: string
-  readonly vehicleId: string
+  readonly driverId: string | null
+  readonly vehicleId: string | null
   readonly partnerId: string | null
   readonly pickupAt: Date
   readonly landingAt: Date | null
@@ -29,12 +29,17 @@ export interface CapacityMinutes {
 export interface CapacityVerdict {
   readonly overlaps: readonly ScheduleClash[]
   readonly tightGaps: readonly ScheduleClash[]
-  /** The Driver, the Vehicle, or both, that an unavailability window covers (ADR-0034). Absent when none is. */
-  readonly unavailable?: readonly ScheduleResource[]
+  /** The Driver, the Vehicle, the Partner, or a pair, that a window covers (ADR-0034). Absent when none is. */
+  readonly unavailable?: readonly UnavailableResource[]
 }
 
-/** The occupied window the shared judge reads. The Partner plays no part in a Driver or Vehicle clash. */
-export function toScheduleRide(ride: OccupyingRide): ScheduleRide {
+/**
+ * The occupied window the shared judge reads. A handed-off Ride has no
+ * Driver or Vehicle, so it is not a schedule Ride. Null means leave it out.
+ */
+export function toScheduleRide(ride: OccupyingRide): ScheduleRide | null {
+  if (ride.driverId === null || ride.vehicleId === null)
+    return null
   return {
     rideId: ride.rideId,
     driverId: ride.driverId,
@@ -55,7 +60,10 @@ export function judgeOccupation(
 ): CapacityVerdict {
   return judgeSchedule(
     subject,
-    occupying.map(toScheduleRide),
+    occupying.flatMap((ride) => {
+      const schedule = toScheduleRide(ride)
+      return schedule === null ? [] : [schedule]
+    }),
     minutes.transferDurationMinutes,
     minutes.relocationGapMinutes,
   )

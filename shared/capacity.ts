@@ -9,6 +9,9 @@
 
 export type ScheduleResource = 'driver' | 'vehicle'
 
+/** A window can cover a Driver, a Vehicle, or a Partner. An overlap cannot name a Partner. */
+export type UnavailableResource = ScheduleResource | 'partner'
+
 /** One occupying Ride. The caller has already dropped done, no-show, cancelled, and unassigned. */
 export interface ScheduleRide {
   readonly rideId: string

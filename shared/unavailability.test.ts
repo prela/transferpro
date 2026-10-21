@@ -29,6 +29,15 @@ it('reads a Driver window as UTC instants', () => {
   })
 })
 
+it('reads a Partner window', () => {
+  const partnerId = 'a1a1a1a1-1111-4111-8111-111111111111'
+  expect(parseRecordUnavailability({
+    partnerId,
+    startsAt: '2026-10-20T06:00:00.000Z',
+    endsAt: '2026-10-21T06:00:00.000Z',
+  }).resource).toEqual({ kind: 'partner', id: partnerId })
+})
+
 it('reads a Vehicle window', () => {
   expect(parseRecordUnavailability({
     vehicleId,
@@ -41,6 +50,7 @@ it('refuses a window for both, for neither, a reason, or a bad id', () => {
   const times = { startsAt: '2026-10-20T06:00:00.000Z', endsAt: '2026-10-20T07:00:00.000Z' }
   for (const raw of [
     { driverId, vehicleId, ...times },
+    { driverId, partnerId: 'a1a1a1a1-1111-4111-8111-111111111111', ...times },
     { ...times },
     { driverId, ...times, reason: 'sick' },
     { driverId: 'not-a-uuid', ...times },

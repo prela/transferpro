@@ -27,9 +27,11 @@ function officeOnly(role: string): void {
 }
 
 function ownerOf(window: UnavailabilityWindow): UnavailabilityResource {
-  return window.driverId !== null
-    ? { kind: 'driver', id: window.driverId }
-    : { kind: 'vehicle', id: window.vehicleId ?? '' }
+  if (window.driverId !== null)
+    return { kind: 'driver', id: window.driverId }
+  if (window.vehicleId !== null)
+    return { kind: 'vehicle', id: window.vehicleId }
+  return { kind: 'partner', id: window.partnerId ?? '' }
 }
 
 /** A window may be added or moved only on an active Driver or Vehicle of this Tenant. */
@@ -46,17 +48,20 @@ export function toWindowView(window: UnavailabilityWindow): UnavailabilityWindow
     id: window.id,
     driverId: window.driverId,
     vehicleId: window.vehicleId,
+    partnerId: window.partnerId,
     startsAt: window.startsAt.toISOString(),
     endsAt: window.endsAt.toISOString(),
   }
 }
 
 /**
- * The assigned or accepted Rides of the window's Driver or Vehicle whose
- * occupied window it now covers. The save does not refuse them; the office
- * is told which Rides to move. The range starts one transfer duration
- * early, so a Ride whose pickup is before the window and whose occupied
- * window reaches into it is found; the domain then judges each exactly.
+ * The assigned, accepted, or handed-off Rides of the window's Driver,
+ * Vehicle, or Partner whose occupied window it now covers. The save does
+ * not refuse them; the office is told which Rides to move. The range starts
+ * one transfer duration early, so a Ride whose pickup is before the window
+ * and whose occupied window reaches into it is found; the domain then
+ * judges each exactly. A handed-off Ride does not occupy its Partner, but
+ * it is still listed when the window covers it.
  */
 async function coveredRides(ports: UnavailabilityPorts, window: UnavailabilityWindow): Promise<CoveredRide[]> {
   const { transferDurationMinutes } = await ports.minutes()
@@ -64,7 +69,7 @@ async function coveredRides(ports: UnavailabilityPorts, window: UnavailabilityWi
     of: {
       driverIds: window.driverId === null ? [] : [window.driverId],
       vehicleIds: window.vehicleId === null ? [] : [window.vehicleId],
-      partnerIds: [],
+      partnerIds: window.partnerId === null ? [] : [window.partnerId],
     },
     from: new Date(window.startsAt.getTime() - transferDurationMinutes * 60_000),
     to: window.endsAt,
@@ -89,6 +94,7 @@ export async function recordUnavailability(
   const window = await ports.store.insert({
     driverId: input.resource.kind === 'driver' ? input.resource.id : null,
     vehicleId: input.resource.kind === 'vehicle' ? input.resource.id : null,
+    partnerId: input.resource.kind === 'partner' ? input.resource.id : null,
     startsAt: new Date(input.startsAt),
     endsAt: new Date(input.endsAt),
   })
@@ -97,6 +103,7 @@ export async function recordUnavailability(
     windowId: window.id,
     driverId: window.driverId,
     vehicleId: window.vehicleId,
+    partnerId: window.partnerId,
     fields: ['startsAt', 'endsAt'],
   })
   return saved(ports, window)
@@ -127,6 +134,7 @@ export async function changeUnavailability(
     windowId: after.id,
     driverId: after.driverId,
     vehicleId: after.vehicleId,
+    partnerId: after.partnerId,
     fields,
   })
   return saved(ports, after)
@@ -149,6 +157,7 @@ export async function removeUnavailability(ports: UnavailabilityPorts, role: str
     windowId: window.id,
     driverId: window.driverId,
     vehicleId: window.vehicleId,
+    partnerId: window.partnerId,
     fields: ['removed'],
   })
 }

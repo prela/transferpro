@@ -30,8 +30,9 @@
  * or `accepted`. That clears a Driver and mails them no longer yours.
  * A Partner is not mailed. The office can change that Partner, take the
  * Ride back to `unassigned`, or close it as done, No-show, or cancelled.
- * Handoff and a Partner change take the Tenant capacity lock. They are
- * not judged yet. Take-back and closing take no lock (ADR-0048).
+ * Handoff and a Partner change take the Tenant capacity lock and refuse
+ * an unavailable Partner unless the office confirms. Take-back and closing
+ * take no lock and are not judged (ADR-0048, ADR-0034).
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
  * their index files, by id. Those modules do not import this one (ADR-0018).
  * Whether a Driver or a Vehicle is taken is the capacity module's decision
@@ -82,5 +83,5 @@ export { listClientRideHistory, listPartnerRideHistory } from './infrastructure/
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'
 export { searchTransfers } from './infrastructure/transfer-search'
 export { StaleSaveError } from './infrastructure/transfer-version'
-export { addUnavailability, changeUnavailability, listDriverUnavailability, listUnavailabilityWeek, listVehicleUnavailability, removeUnavailability } from './infrastructure/unavailability-access'
+export { addUnavailability, changeUnavailability, listDriverUnavailability, listPartnerUnavailability, listUnavailabilityWeek, listVehicleUnavailability, removeUnavailability } from './infrastructure/unavailability-access'
 export { outboxAttemptStore } from './infrastructure/work-order-attempt'

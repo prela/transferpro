@@ -3,11 +3,11 @@ import { addCalendarDays, instantFromWallClock, isCalendarDate, mondayOfWeek, wa
 
 /**
  * Unavailability windows (Nedostupnost, ADR-0034). The office marks a
- * Driver or a Vehicle away from one instant to a later one. A window is
- * half-open, `[startsAt, endsAt)`, like the occupied window. It has no
- * reason and no kind, so no health or private detail is ever stored.
- * Instants travel as UTC ISO text. The Tenant time zone is display only,
- * and the whole-day shortcut turns calendar days into instants in it.
+ * Driver, a Vehicle, or a Partner away from one instant to a later one.
+ * A window is half-open, `[startsAt, endsAt)`, like the occupied window.
+ * It has no reason and no kind, so no health or private detail is ever
+ * stored. Instants travel as UTC ISO text. The Tenant time zone is display
+ * only, and the whole-day shortcut turns calendar days into instants in it.
  */
 
 /**
@@ -21,25 +21,26 @@ export const unavailabilityFieldSchema = z.enum(UNAVAILABILITY_FIELDS)
 
 export type UnavailabilityField = z.infer<typeof unavailabilityFieldSchema>
 
-/** One window as the office reads it. Exactly one of the two ids is set. */
+/** One window as the office reads it. Exactly one of the three ids is set. */
 export const unavailabilityWindowSchema = z.object({
   id: z.uuid(),
   driverId: z.uuid().nullable(),
   vehicleId: z.uuid().nullable(),
+  partnerId: z.uuid().nullable(),
   startsAt: z.iso.datetime(),
   endsAt: z.iso.datetime(),
-})
+}).refine(window => [window.driverId, window.vehicleId, window.partnerId].filter(id => id !== null).length === 1)
 
 export type UnavailabilityWindowView = z.infer<typeof unavailabilityWindowSchema>
 
-/** GET per Driver, per Vehicle, or per roster week. A removed window is not listed. */
+/** GET per Driver, per Vehicle, per Partner, or per roster week. A removed window is not listed. */
 export const unavailabilityListSchema = z.object({
   windows: z.array(unavailabilityWindowSchema),
 })
 
 export type UnavailabilityList = z.infer<typeof unavailabilityListSchema>
 
-/** An assigned or accepted Ride the saved window now covers. The guest and the place stay off. */
+/** An assigned, accepted, or handed-off Ride the saved window now covers. The guest and the place stay off. */
 export const coveredRideSchema = z.object({
   rideId: z.uuid(),
   pickupAt: z.iso.datetime(),
@@ -76,10 +77,11 @@ function startsBeforeEnd(times: { readonly startsAt: string, readonly endsAt: st
 const recordUnavailabilitySchema = z.strictObject({
   driverId: z.uuid().optional(),
   vehicleId: z.uuid().optional(),
+  partnerId: z.uuid().optional(),
   startsAt: instantText,
   endsAt: instantText,
 })
-  .refine(body => (body.driverId === undefined) !== (body.vehicleId === undefined))
+  .refine(body => [body.driverId, body.vehicleId, body.partnerId].filter(id => id !== undefined).length === 1)
   .refine(startsBeforeEnd)
 
 const changeUnavailabilitySchema = z.strictObject({
@@ -90,6 +92,7 @@ const changeUnavailabilitySchema = z.strictObject({
 export type UnavailabilityResource
   = { readonly kind: 'driver', readonly id: string }
     | { readonly kind: 'vehicle', readonly id: string }
+    | { readonly kind: 'partner', readonly id: string }
 
 export interface RecordUnavailability {
   readonly resource: UnavailabilityResource
@@ -103,15 +106,17 @@ export interface ChangeUnavailability {
   readonly endsAt: string
 }
 
-/** A new window for one Driver or one Vehicle. A bad body throws first, so no session opens. */
+/** A new window for one Driver, one Vehicle, or one Partner. A bad body throws first, so no session opens. */
 export function parseRecordUnavailability(raw: unknown): RecordUnavailability {
   const parsed = recordUnavailabilitySchema.safeParse(raw)
   if (!parsed.success)
     throw new UnavailabilityInputError()
-  const { driverId, vehicleId, startsAt, endsAt } = parsed.data
-  const resource: UnavailabilityResource = driverId === undefined
-    ? { kind: 'vehicle', id: vehicleId as string }
-    : { kind: 'driver', id: driverId }
+  const { driverId, vehicleId, partnerId, startsAt, endsAt } = parsed.data
+  const resource: UnavailabilityResource = driverId !== undefined
+    ? { kind: 'driver', id: driverId }
+    : vehicleId !== undefined
+      ? { kind: 'vehicle', id: vehicleId }
+      : { kind: 'partner', id: partnerId as string }
   return { resource, startsAt, endsAt }
 }
 

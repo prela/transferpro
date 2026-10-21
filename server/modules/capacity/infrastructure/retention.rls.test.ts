@@ -35,22 +35,22 @@ const now = new Date()
 const day = 24 * 60 * 60 * 1000
 
 afterAll(async () => {
-  for (const table of ['unavailability_windows', 'drivers', 'vehicles'])
+  for (const table of ['unavailability_windows', 'partners', 'drivers', 'vehicles'])
     await ownerPool.query(`delete from app.${table} where tenant_id = any($1::uuid[])`, [[tenantA, tenantB]])
   await ownerPool.end()
   await appPool.end()
 })
 
-const written = new Map<string, Promise<{ driverId: string, vehicleId: string }>>()
+const written = new Map<string, Promise<{ driverId: string, vehicleId: string, partnerId: string }>>()
 
 /** One Driver and one Vehicle per Tenant, written once. */
-function resources(tenantId: string): Promise<{ driverId: string, vehicleId: string }> {
+function resources(tenantId: string): Promise<{ driverId: string, vehicleId: string, partnerId: string }> {
   const known = written.get(tenantId) ?? writeResources(tenantId)
   written.set(tenantId, known)
   return known
 }
 
-async function writeResources(tenantId: string): Promise<{ driverId: string, vehicleId: string }> {
+async function writeResources(tenantId: string): Promise<{ driverId: string, vehicleId: string, partnerId: string }> {
   const driver = await ownerPool.query<{ id: string }>(
     `insert into app.drivers (tenant_id, name, kind, phone, driving_licence_expires_on, transport_licence_expires_on)
      values ($1, 'Marko Vozač', 'own', '+385910000000', '2030-01-01', '2030-01-01') returning id`,
@@ -61,20 +61,25 @@ async function writeResources(tenantId: string): Promise<{ driverId: string, veh
      values ($1, 'DU0001RT', 'fixed', '2030-01-01', '2030-01-01', '2030-01-01') returning id`,
     [tenantId],
   )
+  const partner = await ownerPool.query<{ id: string }>(
+    `insert into app.partners (tenant_id, name) values ($1, 'Mora Transfer') returning id`,
+    [tenantId],
+  )
   const driverId = driver.rows[0]?.id
   const vehicleId = vehicle.rows[0]?.id
-  if (driverId === undefined || vehicleId === undefined)
+  const partnerId = partner.rows[0]?.id
+  if (driverId === undefined || vehicleId === undefined || partnerId === undefined)
     throw new Error('fixture resources were not written')
-  return { driverId, vehicleId }
+  return { driverId, vehicleId, partnerId }
 }
 
 /** A two-hour window that ended `ageDays` before now. */
-async function seed(tenantId: string, owner: { driverId?: string, vehicleId?: string }, ageDays: number, removed = false): Promise<string> {
+async function seed(tenantId: string, owner: { driverId?: string, vehicleId?: string, partnerId?: string }, ageDays: number, removed = false): Promise<string> {
   const endsAt = new Date(now.getTime() - ageDays * day)
   const inserted = await ownerPool.query<{ id: string }>(
-    `insert into app.unavailability_windows (tenant_id, driver_id, vehicle_id, starts_at, ends_at, removed)
-     values ($1, $2, $3, $4, $5, $6) returning id`,
-    [tenantId, owner.driverId ?? null, owner.vehicleId ?? null, new Date(endsAt.getTime() - 2 * 60 * 60 * 1000), endsAt, removed],
+    `insert into app.unavailability_windows (tenant_id, driver_id, vehicle_id, partner_id, starts_at, ends_at, removed)
+     values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+    [tenantId, owner.driverId ?? null, owner.vehicleId ?? null, owner.partnerId ?? null, new Date(endsAt.getTime() - 2 * 60 * 60 * 1000), endsAt, removed],
   )
   const id = inserted.rows[0]?.id
   if (id === undefined)
@@ -147,11 +152,13 @@ it('deletes Tenant A windows that ended 91 days ago, removed or not, keeps 89 da
   const keptA = [
     await seed(tenantA, { driverId: a.driverId }, 89),
     await seed(tenantA, { vehicleId: a.vehicleId }, 89, true),
+    await seed(tenantA, { partnerId: a.partnerId }, 89),
     await seed(tenantA, { driverId: a.driverId }, -3),
   ]
   await seed(tenantA, { driverId: a.driverId }, 91)
   await seed(tenantA, { driverId: a.driverId }, 91, true)
   await seed(tenantA, { vehicleId: a.vehicleId }, 120)
+  await seed(tenantA, { partnerId: a.partnerId }, 91)
   const keptB = [
     await seed(tenantB, { driverId: b.driverId }, 89),
     await seed(tenantB, { vehicleId: b.vehicleId }, 91),
@@ -192,7 +199,7 @@ it('deletes Tenant A windows that ended 91 days ago, removed or not, keeps 89 da
   expect(await idsOf(tenantB)).toEqual([...keptB].sort())
   const lines = logs.lines()
   expect(lines).toHaveLength(1)
-  expect(lines[0]).toMatchObject({ event: 'unavailability.retention_deleted', deleted: 3, tenant_id: tenantA })
+  expect(lines[0]).toMatchObject({ event: 'unavailability.retention_deleted', deleted: 4, tenant_id: tenantA })
   expect(JSON.stringify(lines)).not.toContain(a.driverId)
 })
 

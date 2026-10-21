@@ -296,7 +296,7 @@ it('rejects a deep import of capacity internals, from transfers and its tests to
   }
 })
 
-it('lets capacity import only tenancy, drivers, and vehicles through their index, and never transfers', async () => {
+it('lets capacity import only tenancy, drivers, vehicles, and partners through their index, and never transfers', async () => {
   const domainFile = 'server/modules/capacity/domain/leak.ts'
   for (const source of [
     `import { RideNotFoundError } from '../../transfers'\n`,
@@ -311,6 +311,7 @@ it('lets capacity import only tenancy, drivers, and vehicles through their index
     `import { loadTenantSettings } from '../../tenancy'\n`,
     `import { driverAssignState } from '../../drivers/index'\n`,
     `import { vehiclePresence } from '../../vehicles'\n`,
+    `import { loadActivePartnerIds } from '../../partners'\n`,
     `import { judgeOccupation } from '../domain/occupation'\n`,
     `import { judgeSchedule } from '../../../../shared'\n`,
   ])

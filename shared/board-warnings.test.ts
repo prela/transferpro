@@ -241,12 +241,17 @@ it('shows the unavailable Driver or Vehicle on an assigned or accepted Ride only
   const ride = { rideId, pickupAt: at(10, 0), landingAt: null, driverId, vehicleId }
   expect(derive({ ride: { ...ride, state: 'accepted' }, unavailable: ['vehicle'] })).toEqual({ ...none, unavailable: ['vehicle'] })
   expect(derive({ ride: { ...ride, state: 'done' }, unavailable: ['driver'] })).toEqual(none)
+  expect(derive({
+    ride: { rideId, state: 'handed_off', pickupAt: at(10, 0), landingAt: null, driverId: null, vehicleId: null },
+    unavailable: ['partner'],
+  })).toEqual({ ...none, unavailable: ['partner'] })
   // No window covers the Ride: the warning is not there at all.
   expect(derive({ unavailable: [] })).toEqual(none)
 })
 
 it('accepts the unavailability warning in the day list contract', () => {
   expect(boardWarningsSchema.parse({ ...none, unavailable: ['driver'] })).toEqual({ ...none, unavailable: ['driver'] })
-  expect(boardWarningsSchema.safeParse({ ...none, unavailable: ['partner'] }).success).toBe(false)
+  expect(boardWarningsSchema.parse({ ...none, unavailable: ['partner'] })).toEqual({ ...none, unavailable: ['partner'] })
+  expect(boardWarningsSchema.safeParse({ ...none, unavailable: ['crew'] }).success).toBe(false)
   expect(boardWarningsSchema.parse(none)).toEqual(none)
 })
