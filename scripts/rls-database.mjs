@@ -8,6 +8,7 @@
  * `postgres://u:p@127.0.0.1/transferpro_e2e?host=prod.example` connects
  * to prod.example. `hostaddr` does the same. Only `sslmode` is allowed.
  */
+import process, { loadEnvFile } from 'node:process'
 import { databaseIdentity } from './backup-target.mjs'
 
 export const RLS_DATABASE_NAME = 'transferpro_e2e'
@@ -61,4 +62,15 @@ export function assertRlsDatabaseEnv(env) {
     if (identity.database !== RLS_DATABASE_NAME)
       throw new Error(`RLS refused to start: ${name} must name the database ${RLS_DATABASE_NAME}.`)
   }
+}
+
+/**
+ * Load the suite env files, then refuse a database other than `transferpro_e2e`.
+ * An already-set variable wins, matching `loadEnvFile` inside the tests.
+ * Does not open a connection.
+ */
+export function assertLoadedRlsDatabaseEnv() {
+  loadEnvFile('.env')
+  loadEnvFile('.env.migrate')
+  assertRlsDatabaseEnv(process.env)
 }

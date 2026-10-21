@@ -389,10 +389,12 @@ function inspectStatement(statement, env, depth, deps, shell) {
 
   // Both local and cloud. The suite scripts refuse too; this stops the
   // command before a shell whose DATABASE_URL already names another database.
+  // The shown command drops the URL. deny() reprints the statement, and a
+  // prefix assignment would otherwise print the password.
   if (suiteScript(argv) && suiteDatabaseRefused(effective.databaseUrl ?? '')) {
     return deny(
       'pnpm test:rls and pnpm test:e2e run only against the database transferpro_e2e.',
-      statement,
+      redactDatabaseUrl(statement),
     )
   }
 
@@ -1169,7 +1171,31 @@ function suiteScript(argv) {
 function suiteDatabaseRefused(raw) {
   if (raw === '')
     return false
+  let url
+  try {
+    url = new URL(raw)
+  }
+  catch {
+    return true
+  }
+  // node-pg prefers query keys over the host in the URL. A right database
+  // name with `host` or `hostaddr` still connects elsewhere.
+  for (const key of url.searchParams.keys()) {
+    if (key !== 'sslmode')
+      return true
+  }
   return postgresDatabaseName(raw) !== 'transferpro_e2e'
+}
+
+/**
+ * Drop DATABASE_URL values before the guard reprints the command.
+ * @param {string} statement
+ */
+function redactDatabaseUrl(statement) {
+  return statement.replace(
+    /(^|[\s;])DATABASE_URL=(?:"[^"]*"|'[^']*'|\S+)/g,
+    '$1DATABASE_URL=…',
+  )
 }
 
 /**
