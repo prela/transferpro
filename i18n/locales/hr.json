@@ -522,6 +522,7 @@
     "printHeading": "Dan {day}",
     "printUnassigned": "Nedodijeljeno",
     "client": "Naručitelj",
+    "clientNote": "Napomena naručitelja",
     "chooseClient": "Odaberite naručitelja",
     "more": "Više",
     "clientReference": "Referenca naručitelja",
@@ -951,6 +952,8 @@
     "detailClose": "Zatvori",
     "detailMore": "Više",
     "detailFacts": "Podaci o vožnji",
+    "clientOffice": "Kontakti i napomena",
+    "clientOfficeNoNote": "Nema napomene.",
     "unknownVehicle": "Nepoznato vozilo",
     "unavailableTitle": "Ovaj vozač ili vozilo je tada nedostupan",
     "unavailableBody": "U vrijeme ove vožnje zabilježena je nedostupnost. Ako se vožnja i preklapa s drugom, ova potvrda vrijedi za oboje. Potvrdite da svejedno nastavite."

@@ -41,6 +41,7 @@ const {
   day,
   rides,
   declineAlerts,
+  clientBriefs,
   clients,
   locations,
   drivers,
@@ -753,6 +754,7 @@ onUnmounted(() => {
               v-model:corrected="corrected"
               v-model:locations="locations"
               v-model:clients="clients"
+              :client-briefs="clientBriefs"
               persist-draft
               in-panel
               :phone="false"
@@ -773,6 +775,7 @@ onUnmounted(() => {
               v-model:corrected="corrected"
               v-model:locations="locations"
               v-model:clients="clients"
+              :client-briefs="clientBriefs"
               :ride="openRide"
               :command="command"
               :drivers="drivers"
@@ -825,6 +828,7 @@ onUnmounted(() => {
           v-model:corrected="corrected"
           v-model:locations="locations"
           v-model:clients="clients"
+          :client-briefs="clientBriefs"
           persist-draft
           in-panel
           :phone="layout === 'phone'"
@@ -845,6 +849,7 @@ onUnmounted(() => {
           v-model:corrected="corrected"
           v-model:locations="locations"
           v-model:clients="clients"
+          :client-briefs="clientBriefs"
           :ride="openRide"
           :command="command"
           :drivers="drivers"

@@ -5,7 +5,7 @@ import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { addCalendarDays, calendarDateInTimeZone, driverUpcomingListSchema, instantFromWallClock } from '../../../shared'
-import { createClient } from '../../modules/clients'
+import { createClient, createContactPerson, removeClientContactPerson, writeClientNote } from '../../modules/clients'
 import { createDriver, updateDriver } from '../../modules/drivers'
 import { archiveLocation, createLocation } from '../../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../../modules/tenancy'
@@ -70,6 +70,12 @@ beforeAll(async () => {
       select id from auth.organization where slug like 'hdrv-%'
     )`)
     await owner.query(`delete from app.locations where tenant_id::text in (
+      select id from auth.organization where slug like 'hdrv-%'
+    )`)
+    await owner.query(`delete from app.client_notes where tenant_id::text in (
+      select id from auth.organization where slug like 'hdrv-%'
+    )`)
+    await owner.query(`delete from app.client_contact_persons where tenant_id::text in (
       select id from auth.organization where slug like 'hdrv-%'
     )`)
     await owner.query(`delete from app.clients where tenant_id::text in (
@@ -454,4 +460,79 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
   expect(ownIds).not.toContain(foreignRide.ride.id)
   expect(foreignIds).toContain(foreignRide.ride.id)
   expect(foreignIds).not.toContain(cashRide.ride.id)
+})
+
+it('does not carry a contact person or the Client note', async () => {
+  const created = await tenant('hdrv-client-office')
+  const driverUserId = await addMember(created.tenantId, 'hdrv-client-office-driver@example.test', 'Marko Vozač', 'driver')
+  const admin = await signIn('hdrv-client-office-admin@example.test')
+  const driver = await signIn('hdrv-client-office-driver@example.test')
+  const client = await createClient(admin, { name: 'Agencija Kontakti', kind: 'agency' })
+  const standing = 'Čekaj goste na izlazu 368.'
+  const livePhone = '+385913680011'
+  const removedPhone = '+385913680012'
+  const live = await createContactPerson(admin, client.id, {
+    name: 'Ana Booking',
+    role: 'Rezervacije',
+    phone: livePhone,
+    email: 'ana.booking@example.test',
+  })
+  const removed = await createContactPerson(admin, client.id, {
+    name: 'Otišla Osoba',
+    phone: removedPhone,
+  })
+  await removeClientContactPerson(admin, client.id, removed.id, { version: removed.version })
+  await writeClientNote(admin, client.id, { note: standing })
+  const start = await createLocation(admin, { name: 'Polazak Kontakti', kind: 'address' })
+  const end = await createLocation(admin, { name: 'Dolazak Kontakti', kind: 'hotel' })
+  const linked = await createDriver(admin, {
+    ...driverFields,
+    name: 'Marko Vozač',
+    phone: '+385913680013',
+    memberUserId: driverUserId,
+  })
+  const vehicle = await createVehicle(admin, {
+    registrationPlate: 'DU368AA',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const day = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 1)
+  const recorded = await createTransfer(admin, {
+    externalId: crypto.randomUUID(),
+    clientId: client.id,
+    pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
+    startLocationId: start.id,
+    endLocationId: end.id,
+    passengerCount: 1,
+    guestName: 'Iva Kontakti',
+    price: 40,
+    payment: 'cash',
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 0,
+    note: null,
+  })
+  await assignRide(admin, { rideId: recorded.ride.id, driverId: linked.id, vehicleId: vehicle.id, version: 0 })
+
+  const response = await call(driver)
+  expect(response.status).toBe(200)
+  const listed = driverUpcomingListSchema.parse(await response.json())
+  expect(listed.rides.map(row => row.guestName)).toEqual(['Iva Kontakti'])
+  const text = JSON.stringify(listed)
+  expect(text).not.toContain(standing)
+  expect(text).not.toContain(livePhone)
+  expect(text).not.toContain(removedPhone)
+  expect(text).not.toContain('Ana Booking')
+  expect(text).not.toContain('Otišla Osoba')
+  expect(text).not.toContain('ana.booking@example.test')
+  expect(text).not.toContain(live.id)
+  expect(text).not.toContain('contactPersons')
+  expect(text).not.toContain('clientNote')
+  expect(listed.rides[0]).not.toHaveProperty('contactPersons')
+  expect(listed.rides[0]).not.toHaveProperty('clientNote')
+  // The phone still names the Client. The office contact stays off it.
+  expect(listed.rides[0]?.clientName).toBe('Agencija Kontakti')
+  expect(listed.rides[0]?.note).toBeNull()
 })

@@ -1,5 +1,6 @@
 import type { RecordedCreate, TransferDay } from '../../../../shared'
 import { operationalDateInTimeZone, parseRecordTransfer, parseTransferDay } from '../../../../shared'
+import { loadClientOfficeBriefs } from '../../clients'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { applyBoardWarnings } from './board-warnings'
 import { loadDeclineAlertsForDay, loadRidesForDay, recordTransfer } from './transfers'
@@ -69,6 +70,10 @@ export async function listTransferDay(headers: Headers, rawDate: unknown, now: D
         settings.timeZone,
         startHour,
       ),
+      // Every Client, so the Transfer form can show a note for a Client
+      // with no Ride on this day. The helper refuses a driver again.
+      // ADR-0049.
+      clientBriefs: await loadClientOfficeBriefs(transaction, actor.role),
     }
   })
 }

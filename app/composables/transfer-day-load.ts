@@ -1,4 +1,4 @@
-import type { Client, DeclineAlert, Driver, LiveRefreshOutcome, Location, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, ClientOfficeBrief, DeclineAlert, Driver, LiveRefreshOutcome, Location, TransferDayRide, Vehicle } from '../../shared'
 import { claimDayLoad, claimFullLoad, clientListSchema, driverListSchema, isCalendarDate, locationListSchema, operationalDateInTimeZone, transferDaySchema, vehicleListSchema } from '../../shared'
 import { useOfficeHomeFeed } from './office-home-feed'
 
@@ -11,6 +11,8 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
   const day = ref(operationalDateInTimeZone(timeZone(), new Date(), operationalDayStartHour()))
   const rides = ref<TransferDayRide[]>([])
   const declineAlerts = ref<DeclineAlert[]>([])
+  // Every Client, so the form can show a note for one with no Ride today.
+  const clientBriefs = ref<ClientOfficeBrief[]>([])
   const clients = ref<Client[]>([])
   const locations = ref<Location[]>([])
   const drivers = ref<Driver[]>([])
@@ -84,6 +86,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
         return 'stale'
       rides.value = listed.rides
       declineAlerts.value = listed.declineAlerts
+      clientBriefs.value = listed.clientBriefs
       loadError.value = false
       opened = true
       return 'ok'
@@ -124,6 +127,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
       if (listed) {
         rides.value = listed.rides
         declineAlerts.value = listed.declineAlerts
+        clientBriefs.value = listed.clientBriefs
       }
       loadError.value = false
       opened = true
@@ -146,6 +150,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
     day,
     rides,
     declineAlerts,
+    clientBriefs,
     clients,
     locations,
     drivers,

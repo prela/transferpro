@@ -522,6 +522,7 @@
     "printHeading": "Day {day}",
     "printUnassigned": "Unassigned",
     "client": "Client",
+    "clientNote": "Client note",
     "chooseClient": "Choose a client",
     "more": "More",
     "clientReference": "Client reference",
@@ -951,6 +952,8 @@
     "detailClose": "Close",
     "detailMore": "More",
     "detailFacts": "Ride facts",
+    "clientOffice": "Contacts and note",
+    "clientOfficeNoNote": "No note.",
     "unknownVehicle": "Unknown vehicle",
     "unavailableTitle": "This driver or vehicle is unavailable then",
     "unavailableBody": "Unavailability is recorded during this ride. If the ride also overlaps another, this confirmation covers both. Confirm to continue anyway."

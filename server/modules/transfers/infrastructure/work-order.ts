@@ -117,7 +117,8 @@ export async function readAssignedWorkOrder(
     return row
   }, 'Work order read failed')
   // One client, one statement at a time. Parallel reads on this
-  // transaction trip the driver.
+  // transaction trip the driver. The name is the only Client fact on the
+  // work order. Contact persons and the Client note stay off it (ADR-0049).
   const client = await loadClient(transaction, selected.clientId)
   const pickup = await loadLocation(transaction, selected.startLocationId)
   const dropOff = await loadLocation(transaction, selected.endLocationId)

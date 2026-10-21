@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
-import type { Client, DisplayLocale, Driver, LiveRefreshOutcome, Location, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, Location, TransferDayRide, Vehicle } from '../../shared'
 import type { RideDetailCommand } from '../ride-detail'
 import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel } from '../../shared'
 import { useKeptWorkOrders } from '../composables/kept-work-orders'
-import { rideFormStamp } from '../ride-detail'
+import { commandControlClass, commandControlSize, rideFormStamp } from '../ride-detail'
 import { driverDisplayName } from '../transfer-day-labels'
 import { canCallOff, canChangeAssignment, canFinish, canNoShow, canRecordAcceptanceByPhone } from '../transfer-ride-guards'
 import { workOrderNotice } from '../work-order-notice'
@@ -24,6 +24,8 @@ const props = defineProps<{
   /** Phone keeps the action bar on screen while the body scrolls. */
   pinActions: boolean
   loadDay: () => Promise<LiveRefreshOutcome>
+  /** This Tenant's live contact persons and Client notes. The block uses the Ride's Client. */
+  clientBriefs: ClientOfficeBrief[]
   operationalDayStartHour: number
   tenantId: string
   userId: string
@@ -144,6 +146,11 @@ const notices = computed(() => kept.value.filter(entry =>
 ))
 
 const attention = computed(() => classifyRideAttention(props.ride, props.declines, props.nowMs))
+
+/** The Ride's Client. A missing brief is a Client the day read did not return. */
+const officeBrief = computed(() =>
+  props.clientBriefs.find(brief => brief.clientId === props.ride.clientId) ?? null,
+)
 
 function place(id: string): string {
   const found = locations.value.find(location => location.id === id)
@@ -300,6 +307,69 @@ const primaryLabel = computed(() => {
       full
     />
 
+    <UCollapsible
+      v-if="officeBrief"
+      id="ride-client-office"
+      class="mb-4"
+    >
+      <template #default="{ open }">
+        <UButton
+          type="button"
+          color="neutral"
+          variant="outline"
+          :size="commandControlSize(pinActions)"
+          class="w-full justify-between"
+          :class="commandControlClass(pinActions)"
+          :label="t('ride.clientOffice')"
+          :trailing-icon="open ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+        />
+      </template>
+      <template #content>
+        <ul
+          v-if="officeBrief.contactPersons.length > 0"
+          class="mt-3 space-y-3"
+        >
+          <li
+            v-for="person in officeBrief.contactPersons"
+            :key="person.id"
+          >
+            <p class="font-medium text-default">
+              {{ person.name }}
+            </p>
+            <p
+              v-if="person.role"
+              class="text-muted"
+            >
+              {{ person.role }}
+            </p>
+            <p v-if="person.phone">
+              <a
+                class="text-primary underline"
+                :href="`tel:${person.phone}`"
+              >{{ person.phone }}</a>
+            </p>
+            <p v-if="person.email">
+              <a
+                class="text-primary underline"
+                :href="`mailto:${person.email}`"
+              >{{ person.email }}</a>
+            </p>
+          </li>
+        </ul>
+        <p
+          v-else
+          class="mt-3 text-muted"
+        >
+          {{ t('clients.contacts.empty') }}
+        </p>
+        <p class="mt-3 whitespace-pre-wrap text-default">
+          <span class="font-medium">{{ t('transfers.clientNote') }}</span>
+          {{ ' ' }}
+          {{ officeBrief.note ?? t('ride.clientOfficeNoNote') }}
+        </p>
+      </template>
+    </UCollapsible>
+
     <dl
       v-if="!command"
       class="mb-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm"
@@ -451,6 +521,7 @@ const primaryLabel = computed(() => {
       v-model:corrected="corrected"
       v-model:locations="locations"
       v-model:clients="clients"
+      :client-briefs="clientBriefs"
       in-panel
       :phone="pinActions"
       :correct-ride="formRide"

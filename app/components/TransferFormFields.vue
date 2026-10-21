@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AddressSuggestion } from '../../shared'
+import type { AddressSuggestion, ClientOfficeBrief } from '../../shared'
 import { z } from 'zod'
 import { LOCATION_SUGGEST_MIN_LENGTH, suggestAddressesResponseSchema, transferMoreHasValue } from '../../shared'
 import { transferFormKey } from '../composables/transfer-form'
@@ -8,6 +8,8 @@ import { commandInputClass } from '../ride-detail'
 const props = withDefaults(defineProps<{
   /** Office controls are small. The phone stays large. */
   controlSize?: 'sm' | 'xl'
+  /** The day read. The note under the Client select comes from here, and is not saved. */
+  clientBriefs: ClientOfficeBrief[]
 }>(), {
   controlSize: 'xl',
 })
@@ -83,6 +85,18 @@ const {
   record,
 } = api
 const { t } = useI18n()
+
+/**
+ * The standing note of the Client chosen in this form. It is display only:
+ * the save body is the Transfer, and this text is not one of its fields.
+ * Changing the Client changes the note. No note, and no chosen Client, show nothing.
+ */
+const clientOfficeNote = computed(() => {
+  const id = clientId.value
+  if (!id)
+    return null
+  return props.clientBriefs.find(brief => brief.clientId === id)?.note ?? null
+})
 
 const clientSearch = ref('')
 const startSearch = ref('')
@@ -523,6 +537,18 @@ onUnmounted(() => {
           <span role="alert">{{ error }}</span>
         </template>
       </UFormField>
+      <div
+        v-if="clientOfficeNote"
+        id="transfer-client-note"
+        class="mb-4 text-sm"
+      >
+        <p class="font-medium text-default">
+          {{ t('transfers.clientNote') }}
+        </p>
+        <p class="mt-1 whitespace-pre-wrap text-default">
+          {{ clientOfficeNote }}
+        </p>
+      </div>
       <UFormField
         :label="t('transfers.pickupAt')"
         name="pickup"
