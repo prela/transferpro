@@ -132,6 +132,11 @@ test('a typed Client reference survives save, correction, and reload', async ({ 
   await dialog.getByLabel('Referenca naručitelja').fill('V-19')
   await dialog.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Notifications (F8)' }).getByText('Zabilježeno.')).toBeVisible()
+  // Recording opens this Ride, so the address settles on ?ride= before we leave it.
+  await expect(page).toHaveURL(/[?&]ride=/)
+  await expect(page.getByRole('article').getByRole('heading', { name: 'Ana Referenca' })).toBeVisible()
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
+  await expect(page).not.toHaveURL(/[?&]ride=/)
 
   await page.reload()
   await hydrated(page)
@@ -142,6 +147,8 @@ test('a typed Client reference survives save, correction, and reload', async ({ 
   await correcting.getByLabel('Referenca naručitelja').fill('V-20')
   await correcting.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
   await expect(correcting).toBeHidden()
+  // The correction closes the panel. Reload only once that address has settled.
+  await expect(page).not.toHaveURL(/[?&]ride=/)
 
   await page.reload()
   await hydrated(page)

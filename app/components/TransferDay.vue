@@ -223,12 +223,13 @@ let syncing = false
 let syncAgain = false
 
 /**
- * The query of the router.push that is still waiting on the office middleware.
- * That middleware awaits GET /api/session before the push changes the address.
+ * Ride on the router.push that is still waiting on the office middleware.
+ * Null is a waiting push with no Ride. Undefined means nothing is waiting.
+ * The middleware awaits GET /api/session before the push changes the address.
  * Closing the Ride in that gap has to drop the push, or it writes `?ride=`
  * after the panel is gone (issue #348).
  */
-let inFlightQuery: Record<string, string | string[]> | null = null
+let inFlightRide: string | null | undefined
 
 async function syncQuery() {
   if (syncing) {
@@ -239,18 +240,18 @@ async function syncQuery() {
   try {
     do {
       syncAgain = false
-      inFlightQuery = null
+      inFlightRide = undefined
       const query = buildQuery()
       if (queryMatches(routeQueryRecord()))
         continue
-      inFlightQuery = query
+      inFlightRide = queryText(query.ride) || null
       // Push, so Back returns the previous filters. Replace would drop them.
       await router.push({ query })
     } while (syncAgain)
   }
   finally {
     syncing = false
-    inFlightQuery = null
+    inFlightRide = undefined
   }
 }
 
@@ -336,9 +337,9 @@ onBeforeRouteUpdate((to) => {
     routeFromHistory = false
     return
   }
-  if (!inFlightQuery)
+  if (inFlightRide === undefined)
     return
-  const pushedRide = queryText(inFlightQuery.ride) || null
+  const pushedRide = inFlightRide
   // Another navigation, not the push that is still waiting.
   if ((queryText(to.query.ride) || null) !== pushedRide)
     return
