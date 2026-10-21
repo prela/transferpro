@@ -2,6 +2,7 @@ import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { recordTransfer } from './fixtures/record-transfer'
 import { plantFailedWorkOrder, seedMember, seedTenant } from './fixtures/seed'
 import { signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
@@ -626,7 +627,7 @@ async function record(
   places: { clientId: string, startLocationId: string, endLocationId: string },
   fare: { price: number, payment: 'cash' | 'card' | 'invoice_to_agency', flightNumber?: string, tabla?: string },
 ): Promise<string> {
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId: places.clientId,
       pickupAt: pickupAt.toISOString(),

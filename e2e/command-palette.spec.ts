@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { hydrated, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
 
@@ -39,7 +40,7 @@ test.describe('@phone', () => {
     const clientId = await createdId(page, '/api/clients', { name: 'Agencija Paleta', kind: 'agency' })
     const day = addCalendarDays(operationalDateInTimeZone('Europe/Zagreb', new Date()), 4)
     const guest = 'Mara Paleta'
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),

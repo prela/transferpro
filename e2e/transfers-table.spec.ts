@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 import { addCalendarDays, instantFromWallClock } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
 
@@ -36,7 +37,7 @@ async function record(page: Page, guest: string, day: string, wall: string, spot
   startLocationId: string
   endLocationId: string
 }) {
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId: spot.clientId,
       pickupAt: instantFromWallClock(`${day}T${wall}`, 'Europe/Zagreb').toISOString(),

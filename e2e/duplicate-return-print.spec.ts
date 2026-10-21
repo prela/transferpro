@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
 
@@ -27,7 +28,7 @@ test('a return journey saved from the detail is a separate Transfer', async ({ p
   const endLocationId = await createdId(page, '/api/locations', { name: 'Hotel Povratak', kind: 'hotel' })
   const clientId = await createdId(page, '/api/clients', { name: 'Agencija Povratak', kind: 'agency' })
   const day = addCalendarDays(operationalDateInTimeZone('Europe/Zagreb', new Date()), 1)
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
@@ -148,7 +149,7 @@ test('printing in the dark theme stays light and groups unassigned Rides last', 
   const spot = { clientId, startLocationId, endLocationId }
 
   async function record(guest: string, wall: string, tabla: string, note: string): Promise<string> {
-    const response = await page.request.post('/api/transfers', {
+    const response = await recordTransfer(page.request, {
       data: {
         ...spot,
         pickupAt: instantFromWallClock(`${day}T${wall}`, 'Europe/Zagreb').toISOString(),

@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 import pg from 'pg'
 import { operationalDateInTimeZone } from '../shared/date'
 import { operationalDay, operationalNow, pinOperationalClock } from './fixtures/operational-clock'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
@@ -81,7 +82,7 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
   const pickup = new Date(now.getTime() - 90 * 60 * 1000)
   const landing = new Date(now.getTime() - 150 * 60 * 1000)
   async function record(guestName: string): Promise<string> {
-    const response = await page.request.post('/api/transfers', {
+    const response = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: pickup.toISOString(),

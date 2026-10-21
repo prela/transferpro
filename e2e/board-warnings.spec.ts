@@ -1,6 +1,7 @@
 import type { APIResponse } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { instantFromWallClock } from '../shared/date'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
@@ -81,7 +82,7 @@ test('the day board shows an expired document, a roster mismatch, and an overlap
     throw new Error(`${roster.status()} ${await roster.text()}`)
 
   async function record(guestName: string, wall: string, driverId: string, vehicleId: string, confirm = false): Promise<void> {
-    const response = await page.request.post('/api/transfers', {
+    const response = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: instantFromWallClock(`${day}T${wall}`, timeZone).toISOString(),

@@ -1,6 +1,7 @@
 import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { signIn, switchLocale, useTheme } from './fixtures/ui'
 
@@ -51,7 +52,7 @@ async function acceptByPhone(page: Page): Promise<void> {
     data: { name: 'Dolazak Iva', kind: 'hotel' },
   }))
   const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),

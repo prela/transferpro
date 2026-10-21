@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { instantFromWallClock } from '../shared/date'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
@@ -52,7 +53,7 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Ispravak', kind: 'airport' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Ispravak', kind: 'hotel' })
   const day = operationalDay(page)
-  const recorded = await page.request.post('/api/transfers', {
+  const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
@@ -74,7 +75,7 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   expect((await page.request.post(`/api/rides/${rideId}/accept-by-phone`, { data: {} })).ok()).toBeTruthy()
 
   const finishedGuest = 'Leo Kraj'
-  const finished = await page.request.post('/api/transfers', {
+  const finished = await recordTransfer(page.request, {
     data: {
       clientId,
       pickupAt: instantFromWallClock(`${day}T13:00`, 'Europe/Zagreb').toISOString(),
@@ -199,7 +200,7 @@ test('a pickup correction that overlaps asks, and cancel leaves the slideover op
   const heldGuest = 'Iva Zauzeto'
   const movingGuest = 'Nika Kasnije'
   async function record(guestName: string, wall: string): Promise<string> {
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: instantFromWallClock(`${day}T${wall}`, 'Europe/Zagreb').toISOString(),
@@ -284,7 +285,7 @@ test('the correction overlap question is in English in the dark theme', async ({
   const endLocationId = await createdId(page, '/api/locations', { name: 'Clash End', kind: 'hotel' })
   const day = operationalDay(page)
   async function record(guestName: string, wall: string): Promise<string> {
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: instantFromWallClock(`${day}T${wall}`, 'Europe/Zagreb').toISOString(),
