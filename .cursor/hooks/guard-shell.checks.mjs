@@ -554,3 +554,46 @@ test('push -o takes a value the way --push-option does', () => {
   denied('git push -o feature/decoy', /feature\/\*/, localEnv(), upstreamDevelop)
   denied('git push -o ci.skip origin develop', /feature\/\*/, localEnv(), upstreamDevelop)
 })
+
+test('suite commands are blocked when DATABASE_URL names another database', () => {
+  const devDatabase = 'postgres://transferpro_app:app-secret@127.0.0.1:5432/transferpro'
+  const e2eDatabase = 'postgres://transferpro_app:app-secret@127.0.0.1:5432/transferpro_e2e'
+  const cloud = { ...localDeps, conversationId: 'bc-123' }
+
+  for (const command of [
+    'pnpm test:rls',
+    'pnpm test:e2e',
+    'pnpm run test:rls',
+    'pnpm --dir . test:e2e',
+  ]) {
+    denied(command, /transferpro_e2e/, localEnv({ DATABASE_URL: devDatabase }))
+    allowed(command, localEnv({ DATABASE_URL: e2eDatabase }))
+    allowed(command)
+  }
+
+  denied(`DATABASE_URL=${devDatabase} pnpm test:rls`, /transferpro_e2e/)
+  const prefixed = verdict(`DATABASE_URL=${devDatabase} pnpm test:rls`)
+  assert.equal(prefixed.agent_message.includes('app-secret'), false)
+  assert.equal(prefixed.agent_message.includes('postgres://'), false)
+  assert.match(prefixed.agent_message, /DATABASE_URL=…/)
+  allowed(`DATABASE_URL=${e2eDatabase} pnpm test:rls`, localEnv({ DATABASE_URL: devDatabase }))
+  denied(`export DATABASE_URL=${devDatabase}; pnpm test:e2e`, /transferpro_e2e/)
+  allowed(`export DATABASE_URL=${devDatabase}; unset DATABASE_URL; pnpm test:rls`)
+  allowed('pnpm test', localEnv({ DATABASE_URL: devDatabase }))
+  denied(
+    'pnpm test:rls',
+    /transferpro_e2e/,
+    localEnv({ DATABASE_URL: devDatabase, CURSOR_AGENT_WORKER_ID: 'worker-1' }),
+    cloud,
+  )
+
+  const result = verdict('pnpm test:rls', localEnv({ DATABASE_URL: devDatabase }))
+  assert.equal(result.agent_message.includes('app-secret'), false)
+  assert.equal(result.agent_message.includes('postgres://'), false)
+
+  const sneaky = 'postgres://transferpro_app:app-secret@127.0.0.1:5432/transferpro_e2e?host=db.example'
+  const hostOverride = verdict('pnpm test:e2e', localEnv({ DATABASE_URL: sneaky }))
+  assert.equal(hostOverride.permission, 'deny')
+  assert.equal(hostOverride.agent_message.includes('app-secret'), false)
+  assert.equal(hostOverride.agent_message.includes('db.example'), false)
+})
