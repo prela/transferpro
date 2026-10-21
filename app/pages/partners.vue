@@ -51,6 +51,7 @@ const office = computed(() => isOfficeMember(session.value?.role))
       <PartnerList
         v-if="office"
         :time-zone="session.timeZone"
+        :locale="session.locale"
       />
       <UAlert
         v-if="shellError"

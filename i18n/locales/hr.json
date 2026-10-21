@@ -791,7 +791,19 @@
     "saveFailed": "Podizvođač nije spremljen. Pokušajte ponovno.",
     "tabs": {
       "data": "Podaci",
+      "rides": "Vožnje",
       "unavailability": "Nedostupnost"
+    },
+    "rides": {
+      "loading": "Učitavanje vožnji",
+      "loadFailed": "Vožnje nije bilo moguće učitati. Pokušajte ponovno.",
+      "rejected": "Zahtjev za vožnje nije prihvaćen.",
+      "notFound": "Taj podizvođač više nije na popisu.",
+      "forbidden": "Vozač ne može vidjeti vožnje podizvođača.",
+      "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
+      "empty": "Još nema vožnji.",
+      "loadMore": "Učitaj još",
+      "counts": "Ukupno {total} · Obavljeno {done} · Nedolazak {noShow} · Otkazano {cancelled}"
     },
     "fields": {
       "name": "Naziv",

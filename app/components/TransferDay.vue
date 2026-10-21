@@ -42,6 +42,7 @@ const {
   rides,
   declineAlerts,
   clientBriefs,
+  partnerBriefs,
   clients,
   locations,
   drivers,
@@ -818,6 +819,7 @@ onUnmounted(() => {
               v-model:locations="locations"
               v-model:clients="clients"
               :client-briefs="clientBriefs"
+              :partner-briefs="partnerBriefs"
               :ride="openRide"
               :command="command"
               :drivers="drivers"
@@ -894,6 +896,7 @@ onUnmounted(() => {
           v-model:locations="locations"
           v-model:clients="clients"
           :client-briefs="clientBriefs"
+          :partner-briefs="partnerBriefs"
           :ride="openRide"
           :command="command"
           :drivers="drivers"
