@@ -469,15 +469,17 @@ const primaryLabel = computed(() => {
         <dt>{{ t('ride.partner') }}</dt>
         <dd id="ride-partner-contact">
           <span class="block">{{ partnerLabel(ride.partnerId) }}</span>
-          <!-- tap-to-call and mail. The note stays on the Partner record. -->
+          <!-- 28 px in the office, 48 px on the phone. A smaller link fails the 24 px target-size check. -->
           <a
             v-if="partnerContact?.phone"
-            class="mt-0.5 block text-primary underline"
+            class="mt-1 flex items-center text-primary underline"
+            :class="commandControlClass(pinActions)"
             :href="`tel:${partnerContact.phone}`"
           >{{ partnerContact.phone }}</a>
           <a
             v-if="partnerContact?.email"
-            class="mt-0.5 block text-primary underline"
+            class="mt-1 flex items-center text-primary underline"
+            :class="commandControlClass(pinActions)"
             :href="`mailto:${partnerContact.email}`"
           >{{ partnerContact.email }}</a>
         </dd>
