@@ -14,8 +14,8 @@ import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, Mark
  * that is not `assigned` or `accepted`. `ride_vehicle_unchanged` is the same
  * Vehicle. `ride_same_driver` is a reassignment to the Driver already on the Ride.
  * `ride_overlap` is a true overlap of the Driver or the Vehicle.
- * `ride_unavailable` is an unavailability window over the Driver or the
- * Vehicle (ADR-0034). `confirm: true` passes both.
+ * `ride_unavailable` is an unavailability window over the Driver, the
+ * Vehicle, or the Partner (ADR-0034). `confirm: true` passes both.
  * `ride_not_finishable` is done refused: the copied flag and the state do
  * not allow it, or a concurrent command already won. Nothing was written.
  * `ride_not_no_show` is a No-show refused: the copied flag and the state do

@@ -43,7 +43,7 @@ export interface RideAttentionSource {
     readonly expiredDocuments: readonly string[]
     readonly rosterMismatch: boolean
     readonly overlappingRideIds: readonly string[]
-    /** The Driver or Vehicle an unavailability window covers. Absent when none is. */
+    /** The Driver, Vehicle, or Partner an unavailability window covers. Absent when none is. */
     readonly unavailable?: readonly string[]
   }
 }

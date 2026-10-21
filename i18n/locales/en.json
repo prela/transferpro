@@ -505,7 +505,7 @@
       "overlap": "The time overlaps another ride, or the gap to it is too short.",
       "rosterMismatch": "The vehicle is not the one the roster gives this driver for that day.",
       "expiredDocument": "A document for the driver or the vehicle has expired.",
-      "unavailable": "The driver or the vehicle is marked unavailable during this ride."
+      "unavailable": "The driver, the vehicle, or the subcontractor is marked unavailable during this ride."
     },
     "rowAccept": "Confirm by phone",
     "rowAcceptFor": "Confirm by phone: {guest}",
@@ -791,7 +791,8 @@
     "saveFailed": "The subcontractor was not saved. Try again.",
     "tabs": {
       "data": "Data",
-      "rides": "Rides"
+      "rides": "Rides",
+      "unavailability": "Unavailability"
     },
     "rides": {
       "loading": "Loading rides",
@@ -1056,7 +1057,7 @@
     "clientOffice": "Contacts and note",
     "clientOfficeNoNote": "No note.",
     "unknownVehicle": "Unknown vehicle",
-    "unavailableTitle": "This driver or vehicle is unavailable then",
+    "unavailableTitle": "This driver, vehicle, or subcontractor is unavailable then",
     "unavailableBody": "Unavailability is recorded during this ride. If the ride also overlaps another, this confirmation covers both. Confirm to continue anyway."
   },
   "liveRefresh": {
@@ -1150,13 +1151,14 @@
   "unavailability": {
     "ofDriver": "Driver",
     "ofVehicle": "Vehicle",
+    "ofPartner": "Subcontractor",
     "fields": {
       "startsAt": "From",
       "endsAt": "To",
       "removed": "Removed"
     },
     "title": "Unavailability",
-    "intro": "Periods when this one does not drive. No reason is recorded. Times are in the company time zone.",
+    "intro": "Periods when this one is not available. No reason is recorded. Times are in the company time zone.",
     "loading": "Loading unavailability",
     "loadFailed": "Unavailability could not be loaded. Try again.",
     "empty": "No unavailability recorded.",
@@ -1179,7 +1181,7 @@
     "added": "Unavailability added.",
     "changed": "Unavailability changed.",
     "removedNotice": "Unavailability removed.",
-    "covered": "This unavailability covers rides that are already assigned. They stay assigned and show the Unavailable warning on the board:",
+    "covered": "This unavailability covers rides that are already assigned or handed off. They stay as they are and show the Unavailable warning on the board:",
     "dateInvalid": "Enter the first and the last day; the last may not be before the first.",
     "timeInvalid": "Enter a start and an end.",
     "orderInvalid": "The end must be after the start.",
@@ -1187,7 +1189,7 @@
     "notFound": "That unavailability or record no longer exists.",
     "forbidden": "Only the office can record unavailability.",
     "signedOut": "You are signed out. Sign in and try again.",
-    "archived": "An archived driver or vehicle cannot get a new or moved unavailability.",
+    "archived": "An archived driver, vehicle, or subcontractor cannot get a new or moved unavailability.",
     "saveFailed": "The unavailability was not saved. Try again.",
     "removeFailed": "The unavailability was not removed. Try again."
   }

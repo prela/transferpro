@@ -7,7 +7,7 @@ import { commandControlClass, commandControlSize, commandInputClass } from '../r
 import { httpStatus } from '../transfer-day-http'
 
 defineProps<{
-  /** Pickup times on Vožnje use the Tenant zone. */
+  /** Tenant time zone. Window times and Vožnje pickups are shown in it. */
   timeZone: string
   locale: DisplayLocale
 }>()
@@ -31,11 +31,12 @@ const restoring = ref(false)
 /**
  * Add and correct share one panel. Archive stays a separate confirm.
  * An archived row opens read-only and can be restored from that panel.
- * Podaci is the record. Vožnje is the Ride history. Nedostupnost arrives later.
+ * Podaci is the record. Vožnje is the Ride history (ADR-0049). Nedostupnost
+ * is the window list and the from–to form (ADR-0034).
  */
 const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
-const cardTab = ref<'data' | 'rides'>('data')
+const cardTab = ref<'data' | 'rides' | 'unavailability'>('data')
 /** The panel title stays the name that was opened, not the half-typed correction. */
 const openedName = ref('')
 const archiveTarget = ref<Partner | null>(null)
@@ -57,6 +58,7 @@ interface PartnerForm {
 const cardTabs = computed(() => [
   { label: t('partners.tabs.data'), value: 'data' as const },
   { label: t('partners.tabs.rides'), value: 'rides' as const },
+  { label: t('partners.tabs.unavailability'), value: 'unavailability' as const },
 ])
 
 const phoneColumn = { class: { td: 'max-lg:hidden', th: 'max-lg:hidden' } }
@@ -536,22 +538,31 @@ onMounted(() => {
         :time-zone="timeZone"
         :locale="locale"
       />
+      <!-- Its own form, so Enter in a window field does not save the Partner. -->
+      <UnavailabilityWindows
+        v-if="formMode === 'edit' && editingId && cardTab === 'unavailability'"
+        owner="partner"
+        :resource-id="editingId"
+        :time-zone="timeZone"
+        :archived="archivedView"
+        :phone="phone"
+      />
     </template>
 
     <template #footer="{ phone }">
+      <UButton
+        type="button"
+        color="neutral"
+        variant="outline"
+        :size="commandControlSize(phone)"
+        class="w-full justify-center sm:w-auto"
+        :class="commandControlClass(phone)"
+        :disabled="saving || restoring"
+        @click="formOpen = false"
+      >
+        {{ t('partners.cancel') }}
+      </UButton>
       <template v-if="formMode !== 'edit' || cardTab === 'data'">
-        <UButton
-          type="button"
-          color="neutral"
-          variant="outline"
-          :size="commandControlSize(phone)"
-          class="w-full justify-center sm:w-auto"
-          :class="commandControlClass(phone)"
-          :disabled="saving || restoring"
-          @click="formOpen = false"
-        >
-          {{ t('partners.cancel') }}
-        </UButton>
         <UButton
           v-if="archivedView"
           type="button"
