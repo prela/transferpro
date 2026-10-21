@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { expectSettingsRedirect, signIn } from './fixtures/ui'
 
-const officeLinks = ['Početna', 'Naručitelji', 'Lokacije', 'Vozači', 'Vozila', 'Raspored'] as const
+const officeLinks = ['Početna', 'Naručitelji', 'Podizvođači', 'Lokacije', 'Vozači', 'Vozila', 'Raspored'] as const
 
 test('a dispatcher sees office screens, and Home has no member list or settings form', async ({ page }) => {
   const tenant = await seedTenant('office-disp')

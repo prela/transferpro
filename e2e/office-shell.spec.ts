@@ -4,7 +4,7 @@ import { expectNoAxeViolations } from './fixtures/axe'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { openUserMenu, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
-const sections = ['Početna', 'Transferi', 'Raspored', 'Naručitelji', 'Lokacije', 'Vozači', 'Vozila', 'Revizija', 'Postavke tvrtke'] as const
+const sections = ['Početna', 'Transferi', 'Raspored', 'Naručitelji', 'Podizvođači', 'Lokacije', 'Vozači', 'Vozila', 'Revizija', 'Postavke tvrtke'] as const
 
 test('an admin moves through the sidebar, sees the current item, and the office page fills the panel', async ({ page }) => {
   const tenant = await seedTenant('shell-admin')
@@ -24,6 +24,7 @@ test('an admin moves through the sidebar, sees the current item, and the office 
   const pages = [
     ['Transferi', 'Transferi'],
     ['Naručitelji', 'Naručitelji'],
+    ['Podizvođači', 'Podizvođači'],
     ['Lokacije', 'Lokacije'],
     ['Vozači', 'Vozači'],
     ['Vozila', 'Vozila'],
@@ -298,7 +299,8 @@ test('the user menu is reachable and operable from the keyboard', async ({ page 
     if (document.activeElement instanceof HTMLElement)
       document.activeElement.blur()
   })
-  for (let step = 0; step < 12 && !(await trigger.evaluate(el => el === document.activeElement)); step++)
+  // One tab per sidebar item, then the top bar, through the Tenant menu. Podizvođači is one of those stops.
+  for (let step = 0; step < 13 && !(await trigger.evaluate(el => el === document.activeElement)); step++)
     await page.keyboard.press('Tab')
   await expect(trigger).toBeFocused()
   await page.keyboard.press('Enter')

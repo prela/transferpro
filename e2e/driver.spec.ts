@@ -9,6 +9,7 @@ import { expectSettingsRedirect, signIn } from './fixtures/ui'
  */
 const officeVisits = [
   { path: '/clients', collection: '/api/clients' },
+  { path: '/partners', collection: '/api/partners' },
   { path: '/locations', collection: '/api/locations' },
   { path: '/drivers', collection: '/api/drivers' },
   { path: '/vehicles', collection: '/api/vehicles' },
@@ -26,6 +27,7 @@ test('a driver who opens an office address lands on Driver Home before office da
   await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Postavke tvrtke', exact: true })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Naručitelji' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Podizvođači' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Lokacije' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Vozila' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Vozači' })).toHaveCount(0)
