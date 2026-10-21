@@ -335,6 +335,7 @@ async function rideCount(tenantId: string, transferId?: string) {
 
 it('post answers 400 for a bad body and does not echo the guest name, and no session is 401', async () => {
   const refused = await call('POST', '/api/transfers', undefined, {
+    externalId: crypto.randomUUID(),
     clientId: '9e4b3f6d-5555-4555-8555-555555555555',
     pickupAt: pickupInsideWindow(),
     startLocationId: 'a1b2c3d4-5555-4555-8555-555555555555',
@@ -359,6 +360,7 @@ it('a driver cannot record or list a Transfer, and nothing is created', async ()
   await addMember(created.tenantId, 'htr-driver-driver@example.test', 'Drago Driver', 'driver')
   const driver = await signIn('htr-driver-driver@example.test')
   const body = {
+    externalId: crypto.randomUUID(),
     clientId: '9e4b3f6d-5555-4555-8555-555555555555',
     pickupAt: pickupInsideWindow(),
     startLocationId: 'a1b2c3d4-5555-4555-8555-555555555555',
@@ -392,6 +394,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
   await archiveLocation(dispatcher, archived.id)
 
   const blocked = await call('POST', '/api/transfers', dispatcher, {
+    externalId: crypto.randomUUID(),
     clientId: client.id,
     pickupAt: pickupInsideWindow(),
     startLocationId: archived.id,
@@ -413,6 +416,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
   // 00:30 in Zagreb is still the previous UTC date, and it belongs to the previous operational day.
   const sample = upcomingZagrebHalfPast()
   const added = await call('POST', '/api/transfers', dispatcher, {
+    externalId: crypto.randomUUID(),
     clientId: client.id,
     pickupAt: sample.pickupAt,
     startLocationId: start.id,
@@ -514,6 +518,7 @@ it('a Client reference survives save and correction, and another Tenant cannot r
   const end = await createLocation(officeA, { name: 'Hotel Park', kind: 'hotel' })
   const pickupAt = pickupOnOpenBoard()
   const added = await call('POST', '/api/transfers', officeA, {
+    externalId: crypto.randomUUID(),
     clientId: client.id,
     pickupAt,
     startLocationId: start.id,
@@ -583,6 +588,7 @@ it('an office user of Tenant B cannot record a Transfer that names Tenant A, and
   const beforeA = await tenantCounts(firmA.tenantId)
   const beforeB = await tenantCounts(firmB.tenantId)
   const body = {
+    externalId: crypto.randomUUID(),
     pickupAt: pickupOnOpenBoard(),
     passengerCount: 1,
     guestName: guest,
@@ -645,6 +651,7 @@ it('refuses a pickup earlier than 30 days or later than 18 months, and writes no
   const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
   const before = await tenantCounts(created.tenantId)
   const body = {
+    externalId: crypto.randomUUID(),
     clientId: client.id,
     startLocationId: start.id,
     endLocationId: end.id,
@@ -679,6 +686,7 @@ it('refuses the same start and end place, and writes nothing', async () => {
   const before = await tenantCounts(created.tenantId)
 
   const refused = await call('POST', '/api/transfers', dispatcher, {
+    externalId: crypto.randomUUID(),
     clientId: client.id,
     pickupAt: pickupInsideWindow(),
     startLocationId: start.id,
@@ -800,6 +808,25 @@ function correctionBody(
     note,
     tabla,
     ...overrides,
+  }
+}
+
+/**
+ * A Transfer create body. Each call sends a fresh entry key, so the same
+ * helper still records a new Transfer once that key is required. A test
+ * that repeats one entry passes `externalId` in `overrides`, and that id
+ * wins. A correction stays on `correctionBody`, which has no key.
+ */
+function createBody(
+  clientId: string,
+  startLocationId: string,
+  endLocationId: string,
+  pickupAt: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    externalId: crypto.randomUUID(),
+    ...correctionBody(clientId, startLocationId, endLocationId, pickupAt, overrides),
   }
 }
 
@@ -952,7 +979,7 @@ it('a driver cannot correct a Transfer, and the booking is unchanged', async () 
   const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
   const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
   const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupInsideWindow()))
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupInsideWindow()))
   expect(recorded.status).toBe(200)
   const body = await recorded.json() as { transfer: { id: string } }
   const before = await correctionAudits(created.tenantId)
@@ -991,7 +1018,7 @@ it('keeps an accepted Ride accepted when the Client, the guest, the price, the p
     insuranceExpiresOn: '2031-01-01',
   })
   const pickupAt = pickupInsideWindow()
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt))
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt))
   const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
   await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
   await acceptRide(driverSession, createdBody.ride.id, {})
@@ -1067,7 +1094,7 @@ it('returns an accepted Ride to assigned when the trip changes, alerts the Drive
     insuranceExpiresOn: '2031-01-01',
   })
   const pickupAt = pickupOnOpenBoard()
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU384' }))
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU384' }))
   const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
   await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
   await acceptRide(driverSession, createdBody.ride.id, {})
@@ -1141,7 +1168,7 @@ it('clears live-flight facts when the flight designator changes, and returns an 
     insuranceExpiresOn: '2031-01-01',
   })
   const pickupAt = pickupOnOpenBoard()
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
   const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
   await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
   await acceptRide(driverSession, createdBody.ride.id, {})
@@ -1197,7 +1224,7 @@ it('keeps live-flight facts and acceptance when only the flight designator spaci
     insuranceExpiresOn: '2031-01-01',
   })
   const pickupAt = pickupOnOpenBoard()
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
   const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
   await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
   await acceptRide(driverSession, createdBody.ride.id, {})
@@ -1253,7 +1280,7 @@ it('leaves an assigned Ride assigned, and a save of the same trip writes nothing
     insuranceExpiresOn: '2031-01-01',
   })
   const pickupAt = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString()
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt))
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt))
   const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
   await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
   const before = await correctionAudits(created.tenantId)
@@ -1281,7 +1308,7 @@ it('refuses a finished Ride and writes nothing', async () => {
   const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
   const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
   for (const state of ['done', 'no-show', 'cancelled'] as const) {
-    const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()))
+    const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()))
     const body = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
     await ownerPool.query('update app.rides set state = $2 where id = $1', [body.ride.id, state])
     const before = await correctionAudits(created.tenantId)
@@ -1302,7 +1329,7 @@ it('refuses a flight-number change on a finished Ride and keeps the live-flight 
   const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
   for (const state of ['done', 'no-show', 'cancelled'] as const) {
     const pickupAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()
-    const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
+    const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
     const body = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
     await ownerPool.query('update app.rides set state = $2 where id = $1', [body.ride.id, state])
     await rememberLiveFlight(body.transfer.id, pickupAt)
@@ -1333,7 +1360,7 @@ it('another Tenant cannot correct the Transfer', async () => {
   const client = await createClient(officeA, { name: 'Agencija Mora', kind: 'agency' })
   const start = await createLocation(officeA, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
   const end = await createLocation(officeA, { name: 'Hotel Park', kind: 'hotel' })
-  const recorded = await call('POST', '/api/transfers', officeA, correctionBody(client.id, start.id, end.id, pickupInsideWindow()))
+  const recorded = await call('POST', '/api/transfers', officeA, createBody(client.id, start.id, end.id, pickupInsideWindow()))
   const body = await recorded.json() as { transfer: { id: string } }
   const before = await correctionAudits(firmA.tenantId)
 
@@ -1353,7 +1380,7 @@ it('refuses an archived Location and writes nothing', async () => {
   const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
   const hidden = await createLocation(dispatcher, { name: 'Stari hotel', kind: 'hotel' })
   await archiveLocation(dispatcher, hidden.id)
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupInsideWindow()))
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupInsideWindow()))
   const body = await recorded.json() as { transfer: { id: string } }
   const before = await correctionAudits(created.tenantId)
 
@@ -1423,7 +1450,7 @@ it('emails one changed work order for each mailed fact, and a quiet save sends n
     insuranceExpiresOn: '2031-01-01',
   })
   const pickupAt = '2026-10-15T22:30:00.000Z'
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
     flightNumber: 'OU 384',
     note: 'Čeka',
     tabla: 'GOSPOĐA',
@@ -1502,7 +1529,7 @@ it('emails one changed work order for each mailed fact, and a quiet save sends n
   expect(marked.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
   expect(sent.at(-1)?.text).toBe(previous)
 
-  const openRecorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, '2026-10-17T10:00:00.000Z'))
+  const openRecorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, '2026-10-17T10:00:00.000Z'))
   const openBody = await openRecorded.json() as { transfer: { id: string } }
   const beforeOpen = sent.length
   const open = await correctTransfer(dispatcher, openBody.transfer.id, correctionBody(client.id, start.id, end.id, '2026-10-17T10:00:00.000Z', {
@@ -1512,7 +1539,7 @@ it('emails one changed work order for each mailed fact, and a quiet save sends n
   expect(open.ride.driverId).toBeNull()
   expect(sent).toHaveLength(beforeOpen)
 
-  const blankRecorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, '2026-10-17T16:00:00.000Z'))
+  const blankRecorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, '2026-10-17T16:00:00.000Z'))
   const blankBody = await blankRecorded.json() as { transfer: { id: string }, ride: { id: string } }
   await assignRide(dispatcher, { rideId: blankBody.ride.id, driverId: blank.id, vehicleId: vehicle.id })
   const noEmail = await correctTransfer(dispatcher, blankBody.transfer.id, correctionBody(client.id, start.id, end.id, '2026-10-17T16:00:00.000Z', {
@@ -1556,7 +1583,7 @@ it('mails a price change only while payment is cash, and a payment-method change
     insuranceExpiresOn: '2031-01-01',
   })
   const pickupAt = '2026-10-15T22:30:00.000Z'
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt))
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt))
   const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
   await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
   const sent: SentWorkOrder[] = []
@@ -1630,7 +1657,7 @@ it('a rejected send leaves the correction, and the audit stays the correction', 
     insuranceExpiresOn: '2031-01-01',
   })
   const pickupAt = '2026-10-15T22:30:00.000Z'
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
     guestName,
     tabla: 'TABLA ODBIJENA',
     price: 77.5,
@@ -1707,7 +1734,7 @@ it('a change that returns an accepted Ride to assigned uses changed and does not
     insuranceExpiresOn: '2031-01-01',
   })
   const pickupAt = '2026-10-15T22:30:00.000Z'
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU384' }))
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU384' }))
   const createdBody = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
   await assignRide(dispatcher, { rideId: createdBody.ride.id, driverId: driver.id, vehicleId: vehicle.id })
   await acceptRide(driverSession, createdBody.ride.id, {})
@@ -1777,8 +1804,8 @@ it('refuses a pickup correction that overlaps the Driver and writes nothing', as
   })
   const heldAt = '2026-11-02T10:00:00.000Z'
   const movingAt = '2026-11-02T14:00:00.000Z'
-  const held = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, heldAt))
-  const moving = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, movingAt))
+  const held = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, heldAt))
+  const moving = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, movingAt))
   const heldBody = await held.json() as { ride: { id: string } }
   const movingBody = await moving.json() as { transfer: { id: string }, ride: { id: string } }
   await assignRide(dispatcher, { rideId: heldBody.ride.id, driverId: driver.id, vehicleId: heldVehicle.id })
@@ -1830,7 +1857,7 @@ async function recordRide(
   endLocationId: string,
   pickupAt: string,
 ) {
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(clientId, startLocationId, endLocationId, pickupAt))
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(clientId, startLocationId, endLocationId, pickupAt))
   expect(recorded.status).toBe(200)
   return recorded.json() as Promise<{ transfer: { id: string }, ride: { id: string } }>
 }
@@ -2160,7 +2187,7 @@ it('refuses confirm on the record route and a non-boolean confirm on a correctio
     'b1b2c3d4-6666-4666-8666-666666666666',
     '2026-11-02T10:00:00.000Z',
   )
-  expect((await call('POST', '/api/transfers', undefined, { ...body, confirm: true })).status).toBe(400)
+  expect((await call('POST', '/api/transfers', undefined, { externalId: crypto.randomUUID(), ...body, confirm: true })).status).toBe(400)
   expect((await call('PATCH', '/api/transfers/9e4b3f6d-5555-4555-8555-555555555555', undefined, { ...body, confirm: 'yes' })).status).toBe(400)
 })
 
@@ -2172,7 +2199,7 @@ async function correctionOffice(slug: string) {
   const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
   const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
   const pickupAt = pickupInsideWindow()
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt))
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt))
   expect(recorded.status).toBe(200)
   const body = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
   return { created, dispatcherId, dispatcher, client, start, end, pickupAt, body }
@@ -2560,6 +2587,7 @@ it('records the same manual external id once, and a body without the key still r
   expect(csv).not.toContain('external')
   expect(csv.toLowerCase()).not.toContain('channel')
 
+  // This create omits the key on purpose: the server still assigns one.
   const plain = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { guestName: 'Bez Ključa' }))
   expect(plain.status).toBe(200)
   const unkeyed = await plain.json() as { alreadyRecorded: boolean, transfer: { id: string } }
@@ -2604,8 +2632,8 @@ it('accepts the same external id in two Tenants, and Tenant A does not find Tena
   const endB = await createLocation(officeB, { name: 'Dolazak B', kind: 'hotel' })
   const externalId = 'c9c9c9c9-1919-4191-8191-191919191919'
   const pickupAt = pickupInsideWindow()
-  const first = await call('POST', '/api/transfers', officeA, correctionBody(clientA.id, startA.id, endA.id, pickupAt, { externalId, guestName: 'Ana A' }))
-  const second = await call('POST', '/api/transfers', officeB, correctionBody(clientB.id, startB.id, endB.id, pickupAt, { externalId, guestName: 'Ana B' }))
+  const first = await call('POST', '/api/transfers', officeA, createBody(clientA.id, startA.id, endA.id, pickupAt, { externalId, guestName: 'Ana A' }))
+  const second = await call('POST', '/api/transfers', officeB, createBody(clientB.id, startB.id, endB.id, pickupAt, { externalId, guestName: 'Ana B' }))
   expect(first.status).toBe(200)
   expect(second.status).toBe(200)
   const bodyA = await first.json() as { alreadyRecorded: boolean, transfer: { id: string, guestName: string } }
@@ -2618,7 +2646,7 @@ it('accepts the same external id in two Tenants, and Tenant A does not find Tena
     [left.tenantId, externalId],
   )
   expect(seenByA.rows.map(row => row.id)).toEqual([bodyA.transfer.id])
-  const repeatA = await call('POST', '/api/transfers', officeA, correctionBody(clientA.id, startA.id, endA.id, pickupAt, { externalId, guestName: 'Ana B' }))
+  const repeatA = await call('POST', '/api/transfers', officeA, createBody(clientA.id, startA.id, endA.id, pickupAt, { externalId, guestName: 'Ana B' }))
   expect(repeatA.status).toBe(200)
   const again = await repeatA.json() as { alreadyRecorded: boolean, transfer: { id: string, guestName: string } }
   expect(again).toMatchObject({ alreadyRecorded: true, transfer: { id: bodyA.transfer.id, guestName: 'Ana A' } })
@@ -2641,7 +2669,7 @@ it('a held insert settles the concurrent create onto that one Transfer', async (
     pickupAt,
     externalId,
     guestName: 'Held Guest',
-  }, () => call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+  }, () => call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
     externalId,
     guestName: 'Other Guest',
   })))
@@ -2668,7 +2696,7 @@ it('a correction leaves the external ref unchanged and refuses a body that sends
   const end = await createLocation(dispatcher, { name: 'Dolazak Ispravak', kind: 'hotel' })
   const pickupAt = pickupInsideWindow()
   const externalId = 'e1e1e1e1-2121-4212-8212-212121212121'
-  const recorded = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
     externalId,
     guestName: 'Ana Ispravak',
   }))

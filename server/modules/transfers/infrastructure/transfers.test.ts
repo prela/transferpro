@@ -154,7 +154,7 @@ it('records one unassigned Ride and names fields, not the guest, the flight, the
     clients: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }],
     locations: places,
   })
-  await expect(recordTransfer(transaction, actorUserId, input)).resolves.toEqual({
+  await expect(recordTransfer(transaction, actorUserId, input, crypto.randomUUID())).resolves.toEqual({
     transfer: {
       id: transferId,
       clientId,
@@ -250,7 +250,7 @@ it('stores a tabla as its own fact, names the field, and keeps the words off the
     clients: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }],
     locations: places,
   })
-  await expect(recordTransfer(transaction, actorUserId, { ...input, tabla })).resolves.toMatchObject({
+  await expect(recordTransfer(transaction, actorUserId, { ...input, tabla }, crypto.randomUUID())).resolves.toMatchObject({
     transfer: { tabla, guestName: guest, note },
   })
   const payload = auditPayloads(queries)
@@ -273,7 +273,7 @@ it('stores a Client reference, names the field, and keeps the number off the aud
     clients: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }],
     locations: places,
   })
-  await expect(recordTransfer(transaction, actorUserId, { ...input, clientReference: reference })).resolves.toMatchObject({
+  await expect(recordTransfer(transaction, actorUserId, { ...input, clientReference: reference }, crypto.randomUUID())).resolves.toMatchObject({
     transfer: { clientReference: reference },
   })
   const payload = auditPayloads(queries)
@@ -295,7 +295,7 @@ it('omits a blank flight, note, and tabla from the field list', async () => {
     clients: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }],
     locations: places,
   })
-  await recordTransfer(transaction, actorUserId, { ...input, flightNumber: null, note: null })
+  await recordTransfer(transaction, actorUserId, { ...input, flightNumber: null, note: null }, crypto.randomUUID())
   expect(auditPayloads(queries)).toEqual([
     JSON.stringify({
       transferId,
@@ -313,13 +313,13 @@ it('refuses an archived Location before any insert', async () => {
     clients: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }],
     locations: places.map(place => place.id === startLocationId ? { ...place, archivedAt: '2026-10-05T10:00:00.000Z' } : place),
   })
-  await expect(recordTransfer(transaction, actorUserId, input)).rejects.toBeInstanceOf(LocationArchivedError)
+  await expect(recordTransfer(transaction, actorUserId, input, crypto.randomUUID())).rejects.toBeInstanceOf(LocationArchivedError)
   expect(queries.some(query => query.sql.includes('insert into app.transfers'))).toBe(false)
 })
 
 it('refuses a Client that is not in this Tenant before any insert', async () => {
   const { transaction, queries } = fakeTransaction({ clients: [], locations: places })
-  await expect(recordTransfer(transaction, actorUserId, input)).rejects.toBeInstanceOf(ClientNotFoundError)
+  await expect(recordTransfer(transaction, actorUserId, input, crypto.randomUUID())).rejects.toBeInstanceOf(ClientNotFoundError)
   expect(queries.some(query => query.sql.includes('insert into app.transfers'))).toBe(false)
 })
 
@@ -329,7 +329,7 @@ it('replaces a write failure so the log line does not keep the guest name', asyn
     locations: places,
     failInsert: { message: `check violation ${guest} ${flight} ${note} ${tabla}` },
   })
-  const error = await recordTransfer(transaction, actorUserId, input).catch(caught => caught)
+  const error = await recordTransfer(transaction, actorUserId, input, crypto.randomUUID()).catch(caught => caught)
   expect(error).toMatchObject({ message: 'Transfer write failed' })
   expect(String(error)).not.toContain(guest)
   expect(logLine(error)).not.toContain(guest)

@@ -177,6 +177,8 @@ async function transferVersion(transferId: string): Promise<number> {
 
 function transferBody(clientId: string, startId: string, endId: string, pickupAt: string, price: number, payment: PaymentMethod) {
   return {
+    // Fresh entry key. The create stays idempotent once the key is required.
+    externalId: crypto.randomUUID(),
     clientId,
     pickupAt,
     startLocationId: startId,
