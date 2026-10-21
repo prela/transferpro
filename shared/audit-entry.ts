@@ -72,6 +72,7 @@ export const auditActions = [
   'partner.changed',
   'partner.archived',
   'partner.restored',
+  'client_note.saved',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -726,6 +727,20 @@ const partnerRestored = z.object({
   }),
 })
 
+/*
+ * A Client note (ADR-0049) names the Client and the field. The text stays
+ * on the note row. One field, always `note`, so a clear and a correction
+ * record the same array.
+ */
+const clientNoteSaved = z.object({
+  action: z.literal('client_note.saved'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    clientId,
+    fields: z.tuple([z.literal('note')]),
+  }),
+})
+
 /** What happened: the action, the member it was done to, and its data. */
 export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
@@ -782,6 +797,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   partnerChanged,
   partnerArchived,
   partnerRestored,
+  clientNoteSaved,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -924,6 +940,7 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   partnerChanged.extend(listed),
   partnerArchived.extend(listed),
   partnerRestored.extend(listed),
+  clientNoteSaved.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

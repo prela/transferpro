@@ -249,6 +249,9 @@
         "changed": "Contact person corrected",
         "removed": "Contact person removed"
       },
+      "client_note": {
+        "saved": "Client note saved"
+      },
       "partner": {
         "created": "Subcontractor added",
         "changed": "Subcontractor corrected",
@@ -314,7 +317,8 @@
     },
     "tabs": {
       "data": "Details",
-      "contacts": "Contacts"
+      "contacts": "Contacts",
+      "note": "Note"
     },
     "contacts": {
       "add": "Add a contact person",
@@ -351,6 +355,22 @@
         "phone": "Phone",
         "email": "Email",
         "removed": "Removed"
+      }
+    },
+    "note": {
+      "label": "Note",
+      "tooLong": "A note can be at most 2000 characters.",
+      "save": "Save",
+      "saving": "Saving",
+      "loading": "Loading the note",
+      "loadFailed": "The note could not be loaded. Try again.",
+      "rejected": "The note was not accepted.",
+      "notFound": "That client is no longer on the list.",
+      "forbidden": "A driver cannot change the note.",
+      "signedOut": "You are signed out. Sign in and try again.",
+      "saveFailed": "The note was not saved. Try again.",
+      "fields": {
+        "note": "Note"
       }
     }
   },

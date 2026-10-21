@@ -4,6 +4,8 @@
  * A daily job deletes contact persons removed more than 90 days ago.
  */
 export { ClientNotFoundError, createClient, listClients, updateClient } from './infrastructure/client-access'
+/** The one standing note on the Client card (ADR-0049). */
+export { readClientNote, writeClientNote } from './infrastructure/client-note-access'
 /**
  * The list a Transfer offers, inside the caller's tenant transaction.
  * This module does not import transfers (ADR-0018).

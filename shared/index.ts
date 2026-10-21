@@ -7,6 +7,8 @@ export type { ScheduleClash, ScheduleResource, ScheduleRide, ScheduleVerdict } f
 export { catalogSearchMatches } from './catalog-query'
 export { CLIENT_KINDS, CLIENT_NAME_MAX_LENGTH, ClientInputError, clientKindError, clientKindSchema, clientListEntrySchema, clientListSchema, clientNameError, clientNameSchema, clientPatchSchema, clientSchema, createClientSchema, parseClientPatch, parseCreateClient } from './client'
 export type { Client, ClientKind, ClientKindError, ClientList, ClientListEntry, ClientNameError, ClientPatch, CreateClient } from './client'
+export { CLIENT_NOTE_FIELD, CLIENT_NOTE_MAX_LENGTH, ClientNoteInputError, clientNoteSchema, parseClientNoteSave } from './client-note'
+export type { ClientNote, ClientNoteSave } from './client-note'
 export { parseCommandDay } from './command-day'
 export { barePath, companySettingsRedirect, companySettingsTab, isCompanySettingsPath } from './company-settings'
 export type { CompanySettingsTab } from './company-settings'

@@ -30,8 +30,8 @@ const saving = ref(false)
  */
 const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
-/** Podaci is the name and the kind. Kontakti is this Client's contact persons. */
-const cardTab = ref<'data' | 'contacts'>('data')
+/** Podaci is the name and the kind. Kontakti and Napomena are the card's other tabs. */
+const cardTab = ref<'data' | 'contacts' | 'note'>('data')
 /** The panel title stays the name that was opened, not the half-typed correction. */
 const openedName = ref('')
 /** The version the edit form opened with. Only Osvježi replaces it (ADR-0046). */
@@ -61,6 +61,7 @@ interface ClientForm {
 const cardTabs = computed(() => [
   { label: t('clients.tabs.data'), value: 'data' as const },
   { label: t('clients.tabs.contacts'), value: 'contacts' as const },
+  { label: t('clients.tabs.note'), value: 'note' as const },
 ])
 
 const kindItems = computed(() => [
@@ -402,6 +403,13 @@ onMounted(loadClients)
       </div>
       <ClientContactPersons
         v-if="formMode === 'edit' && editingId && cardTab === 'contacts'"
+        :client-id="editingId"
+        :phone="phone"
+        :time-zone="timeZone"
+        :locale="locale"
+      />
+      <ClientNote
+        v-if="formMode === 'edit' && editingId && cardTab === 'note'"
         :client-id="editingId"
         :phone="phone"
         :time-zone="timeZone"

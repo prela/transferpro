@@ -794,6 +794,23 @@ it('records a contact person by the Client id, the contact person id, and the fi
   expect(auditFactSchema.safeParse({ ...added, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records a Client note by the Client id and the field name, never the text', () => {
+  const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const saved = {
+    action: 'client_note.saved' as const,
+    subjectUserId: null,
+    data: { clientId, fields: ['note'] as const },
+  }
+  expect(auditFactSchema.parse(saved)).toEqual(saved)
+  // The text would stay forever on a row that is never deleted.
+  expect(auditFactSchema.safeParse({ ...saved, data: { ...saved.data, note: 'Gosti se čekaju na izlazu.' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...saved, data: { ...saved.data, text: 'Gosti se čekaju na izlazu.' } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...saved, data: { ...saved.data, fields: ['text'] } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...saved, data: { ...saved.data, fields: [] } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...saved, data: { clientId } }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...saved, subjectUserId: memberId }).success).toBe(false)
+})
+
 it('records a Partner by id and field names, and refuses the name, the phone, the email, and the note', () => {
   const partnerId = '2e3d4c5b-7777-4777-8777-777777777777'
   const created = {
