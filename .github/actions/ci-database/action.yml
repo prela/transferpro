@@ -41,6 +41,15 @@ runs:
         export TRANSFERPRO_PLATFORM_PASSWORD="$platform_password"
         bash docker/postgres/init-roles.sh
 
+        # RLS and e2e both refuse any database name other than transferpro_e2e.
+        # The service's POSTGRES_DB stays transferpro so role setup has a
+        # maintenance database. The suite URLs point at the database below.
+        psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<'SQL'
+        CREATE DATABASE transferpro_e2e;
+        GRANT CONNECT ON DATABASE transferpro_e2e TO transferpro_owner, transferpro_app, transferpro_auth, transferpro_queue, transferpro_platform;
+        GRANT CREATE ON DATABASE transferpro_e2e TO transferpro_owner;
+        SQL
+
         umask 077
         cat > .env <<EOF
         TRANSFERPRO_OWNER_PASSWORD=${owner_password}
@@ -48,15 +57,15 @@ runs:
         TRANSFERPRO_AUTH_PASSWORD=${auth_password}
         TRANSFERPRO_QUEUE_PASSWORD=${queue_password}
         TRANSFERPRO_PLATFORM_PASSWORD=${platform_password}
-        DATABASE_URL=postgres://transferpro_app:${app_password}@127.0.0.1:5432/transferpro
-        AUTH_DATABASE_URL=postgres://transferpro_auth:${auth_password}@127.0.0.1:5432/transferpro
-        QUEUE_DATABASE_URL=postgres://transferpro_queue:${queue_password}@127.0.0.1:5432/transferpro
-        PLATFORM_DATABASE_URL=postgres://transferpro_platform:${platform_password}@127.0.0.1:5432/transferpro
+        DATABASE_URL=postgres://transferpro_app:${app_password}@127.0.0.1:5432/transferpro_e2e
+        AUTH_DATABASE_URL=postgres://transferpro_auth:${auth_password}@127.0.0.1:5432/transferpro_e2e
+        QUEUE_DATABASE_URL=postgres://transferpro_queue:${queue_password}@127.0.0.1:5432/transferpro_e2e
+        PLATFORM_DATABASE_URL=postgres://transferpro_platform:${platform_password}@127.0.0.1:5432/transferpro_e2e
         BETTER_AUTH_SECRET=${better_auth_secret}
         BETTER_AUTH_URL=http://127.0.0.1:3000
         EOF
         cat > .env.migrate <<EOF
-        DATABASE_MIGRATE_URL=postgres://transferpro_owner:${owner_password}@127.0.0.1:5432/transferpro
+        DATABASE_MIGRATE_URL=postgres://transferpro_owner:${owner_password}@127.0.0.1:5432/transferpro_e2e
         EOF
 
         pnpm db:migrate:local

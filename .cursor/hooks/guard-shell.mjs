@@ -175,7 +175,13 @@ export function decide(command, env = process.env, depth = 0, deps = {}) {
 
   // Exports stick for later statements in this shell. Prefix assignments do not.
   // A nested `sh -c` inherits a copy so its exports do not leak back out.
-  const shell = deps.shell ?? { ci: false, gitConfigNames: new Set() }
+  const shell = deps.shell ?? {
+    ci: false,
+    gitConfigNames: new Set(),
+    // Prefix and export update this. A blank value means the command's
+    // own env does not name a database, so the suite script checks `.env`.
+    databaseUrl: env.DATABASE_URL ?? '',
+  }
 
   for (const statement of splitStatements(command)) {
     const verdict = inspectStatement(statement, env, depth, deps, shell)
@@ -379,6 +385,15 @@ function inspectStatement(statement, env, depth, deps, shell) {
       return deny('do not run pnpm with CI=1.', statement)
     if (isPnpmInstall(pnpmCommandName(argv)))
       return deny('do not run pnpm install.', statement)
+  }
+
+  // Both local and cloud. The suite scripts refuse too; this stops the
+  // command before a shell whose DATABASE_URL already names another database.
+  if (suiteScript(argv) && suiteDatabaseRefused(effective.databaseUrl ?? '')) {
+    return deny(
+      'pnpm test:rls and pnpm test:e2e run only against the database transferpro_e2e.',
+      statement,
+    )
   }
 
   if (removesProtected(argv)) {
@@ -958,13 +973,14 @@ function isGitConfigEnv(name) {
 
 /**
  * Prefix assignments apply to this command only. The parent shell is copied.
- * @param {{ ci: boolean, gitConfigNames: Set<string> }} shell
+ * @param {{ ci: boolean, gitConfigNames: Set<string>, databaseUrl?: string }} shell
  * @param {string[]} assignments
  */
 function shellAfterAssignments(shell, assignments) {
   const next = {
     ci: shell.ci,
     gitConfigNames: new Set(shell.gitConfigNames),
+    databaseUrl: shell.databaseUrl ?? '',
   }
   for (const token of assignments)
     applyConfigAssignment(next, token)
@@ -972,7 +988,7 @@ function shellAfterAssignments(shell, assignments) {
 }
 
 /**
- * @param {{ ci: boolean, gitConfigNames: Set<string> }} shell
+ * @param {{ ci: boolean, gitConfigNames: Set<string>, databaseUrl?: string }} shell
  * @param {string} token
  */
 function applyConfigAssignment(shell, token) {
@@ -981,6 +997,8 @@ function applyConfigAssignment(shell, token) {
   const value = token.slice(eq + 1)
   if (key === 'CI')
     shell.ci = value === '1'
+  if (key === 'DATABASE_URL')
+    shell.databaseUrl = value
   if (isGitConfigEnv(key))
     shell.gitConfigNames.add(key)
 }
@@ -1013,6 +1031,8 @@ function recordExports(statement, shell) {
       continue
     if (key === 'CI')
       shell.ci = false
+    if (key === 'DATABASE_URL')
+      shell.databaseUrl = ''
     if (isGitConfigEnv(key))
       shell.gitConfigNames.delete(key)
   }
@@ -1102,24 +1122,79 @@ function isPnpmInstall(commandName) {
   return commandName === 'install' || commandName === 'i'
 }
 
+const SUITE_SCRIPTS = new Set(['test:rls', 'test:e2e'])
+
 /**
- * The pnpm subcommand, after flags. Empty when the line is only flags.
+ * pnpm words that are not flags. `--` keeps the rest as words.
  * @param {string[]} argv
  */
-function pnpmCommandName(argv) {
+function pnpmPositionals(argv) {
+  /** @type {string[]} */
+  const positionals = []
   for (let i = 1; i < argv.length; i++) {
     const token = argv[i]
-    if (token === '--')
-      return argv[i + 1] ?? ''
+    if (token === '--') {
+      positionals.push(...argv.slice(i + 1))
+      break
+    }
     if (token.startsWith('-')) {
       const opt = token.includes('=') ? token.slice(0, token.indexOf('=')) : token
       if (!token.includes('=') && PNPM_OPTIONS_WITH_VALUE.has(opt))
         i++
       continue
     }
-    return token
+    positionals.push(token)
   }
-  return ''
+  return positionals
+}
+
+/**
+ * `pnpm test:rls` and `pnpm run test:e2e`. Empty for every other command.
+ * @param {string[]} argv
+ */
+function suiteScript(argv) {
+  if (baseName(argv[0]) !== 'pnpm')
+    return ''
+  const positionals = pnpmPositionals(argv)
+  const name = positionals[0] === 'run' ? positionals[1] : positionals[0]
+  return SUITE_SCRIPTS.has(name) ? name : ''
+}
+
+/**
+ * A set DATABASE_URL whose database is not `transferpro_e2e`.
+ * Blank is not a refusal: the suite script then reads `.env`.
+ * An unparseable URL is a refusal, and the reason never includes it.
+ * @param {string} raw
+ */
+function suiteDatabaseRefused(raw) {
+  if (raw === '')
+    return false
+  return postgresDatabaseName(raw) !== 'transferpro_e2e'
+}
+
+/**
+ * @param {string} raw
+ */
+function postgresDatabaseName(raw) {
+  let url
+  try {
+    url = new URL(raw)
+  }
+  catch {
+    return ''
+  }
+  if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:')
+    return ''
+  const name = decodeURIComponent(url.pathname.replace(/^\//, ''))
+  return name.split('/')[0] ?? ''
+}
+
+/**
+ * The pnpm subcommand, after flags. Empty when the line is only flags.
+ * @param {string[]} argv
+ */
+function pnpmCommandName(argv) {
+  return pnpmPositionals(argv)[0] ?? ''
 }
 
 /**
