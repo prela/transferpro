@@ -1,10 +1,12 @@
 /**
  * Loaders the mail outbox worker calls. They return tenant data and check
- * no role: the worker has no actor (#344). This array is the only list.
+ * no role: the worker has no actor (ADR-0050). This array is the only list.
  *
  * A non-test file under server/api or server/routes may import or call a
  * name here only when the function that uses it, or a function enclosing
- * that use, calls `officeOnly` or `requireRole`. The lint rule
+ * that use, calls `officeOnly` or `requireRole` imported from the tenancy
+ * module (`workerLoaderRoleModule`), and that call precedes the use. A
+ * local function or any same-named callee does not count. The lint rule
  * `transferpro/worker-loader-role` reads this array.
  *
  * `workerLoaderModules` are the infrastructure files that exist to serve
@@ -34,3 +36,10 @@ export const workerLoaderBarrels = [
   'transfers',
   'tenancy',
 ]
+
+/**
+ * HTTP code imports `officeOnly` and `requireRole` from the tenancy module
+ * index. Tenancy owns the session role. A deep import, a local function,
+ * and a same-named import from any other module are not that check.
+ */
+export const workerLoaderRoleModule = 'tenancy'

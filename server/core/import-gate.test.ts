@@ -347,10 +347,12 @@ it('blocks console outside the logger module', async () => {
 })
 
 /**
- * Lint seam (#344): the mail outbox worker has no actor, so its loaders
+ * Lint seam (ADR-0050): the mail outbox worker has no actor, so its loaders
  * check no role. An HTTP handler under server/api or server/routes may
  * use one only when the function that uses it, or a function enclosing
- * that use, calls officeOnly or requireRole. The names below are the spec.
+ * that use, calls officeOnly or requireRole imported from the tenancy
+ * module, and that call precedes the use. A local function or any
+ * same-named callee does not count. The names below are the spec.
  * eslint/worker-used-loaders.mjs is the list the rule reads.
  */
 const WORKER_USED_LOADERS = [
@@ -376,19 +378,46 @@ it('rejects an HTTP handler that uses a worker-used loader without a role guard'
     const fromRoutes = await workerLoaderRole('server/routes/leak.get.ts', source)
     expect(fromApi, name).not.toEqual([])
     expect(fromApi.some(message => message.message.includes(name)), name).toBe(true)
+    expect(fromApi.some(message => message.message.includes('ADR-0050')), name).toBe(true)
     expect(fromRoutes, name).not.toEqual([])
   }
 })
 
 it('allows the loader when the same handler calls officeOnly or requireRole', async () => {
   for (const guard of ['officeOnly', 'requireRole']) {
-    const source = `import { loadInvitationAttempt } from '../modules/mail'\nexport default function handler(role: string) {\n  ${guard}(role)\n  return loadInvitationAttempt()\n}\n`
+    const source = `import { loadInvitationAttempt } from '../modules/mail'\nimport { ${guard} } from '../modules/tenancy'\nexport default function handler(role: string) {\n  ${guard}(role)\n  return loadInvitationAttempt()\n}\n`
     expect(await workerLoaderRole('server/api/guarded.get.ts', source), guard).toEqual([])
   }
-  const nuxt = `import { loadInvitationAttempt } from '../modules/mail'\nexport default defineEventHandler(async () => {\n  officeOnly('admin')\n  return loadInvitationAttempt()\n})\n`
+  const nuxt = `import { loadInvitationAttempt } from '../modules/mail'\nimport { officeOnly } from '../modules/tenancy'\nexport default defineEventHandler(async () => {\n  officeOnly('admin')\n  return loadInvitationAttempt()\n})\n`
   expect(await workerLoaderRole('server/api/guarded.get.ts', nuxt)).toEqual([])
-  const later = `import { mailOutboxStore } from '../modules/transfers'\nexport default function handler(role: string) {\n  function inner() {\n    return mailOutboxStore()\n  }\n  requireRole(role)\n  return inner()\n}\n`
-  expect(await workerLoaderRole('server/api/guarded.get.ts', later)).toEqual([])
+})
+
+it('reports a local no-op named officeOnly', async () => {
+  const local = `import { loadInvitationAttempt } from '../modules/mail'\nfunction officeOnly() {}\nexport default function handler() {\n  officeOnly()\n  return loadInvitationAttempt()\n}\n`
+  expect(await workerLoaderRole('server/api/leak.get.ts', local)).not.toEqual([])
+  // The import is the real binding. The inner function shadows it, so the call is the no-op.
+  const shadowed = `import { loadInvitationAttempt } from '../modules/mail'\nimport { officeOnly } from '../modules/tenancy'\nexport default function handler() {\n  function officeOnly() {}\n  officeOnly()\n  return loadInvitationAttempt()\n}\n`
+  expect(await workerLoaderRole('server/api/leak.get.ts', shadowed)).not.toEqual([])
+  // A member call and an import from another module are the same name, not the tenancy binding.
+  const member = `import { loadInvitationAttempt } from '../modules/mail'\nimport * as tenancy from '../modules/tenancy'\nexport default function handler() {\n  tenancy.officeOnly('admin')\n  return loadInvitationAttempt()\n}\n`
+  expect(await workerLoaderRole('server/api/leak.get.ts', member)).not.toEqual([])
+  const otherModule = `import { loadInvitationAttempt } from '../modules/mail'\nimport { officeOnly } from '../modules/transfers'\nexport default function handler(role: string) {\n  officeOnly(role)\n  return loadInvitationAttempt()\n}\n`
+  expect(await workerLoaderRole('server/api/leak.get.ts', otherModule)).not.toEqual([])
+})
+
+it('reports a role call that follows the loader use', async () => {
+  const after = `import { loadInvitationAttempt } from '../modules/mail'\nimport { officeOnly } from '../modules/tenancy'\nexport default function handler(role: string) {\n  const row = loadInvitationAttempt()\n  officeOnly(role)\n  return row\n}\n`
+  expect(await workerLoaderRole('server/api/leak.get.ts', after)).not.toEqual([])
+  // The guard sits in the enclosing handler, but after the nested function that uses the loader.
+  const enclosingAfter = `import { mailOutboxStore } from '../modules/transfers'\nimport { requireRole } from '../modules/tenancy'\nexport default function handler(role: string) {\n  function inner() {\n    return mailOutboxStore()\n  }\n  requireRole(role)\n  return inner()\n}\n`
+  expect(await workerLoaderRole('server/api/leak.get.ts', enclosingAfter)).not.toEqual([])
+})
+
+it('allows an imported role call that precedes the loader use', async () => {
+  const source = `import { loadInvitationAttempt } from '../modules/mail'\nimport { officeOnly } from '../modules/tenancy'\nexport default function handler(role: string) {\n  officeOnly(role)\n  return loadInvitationAttempt()\n}\n`
+  expect(await workerLoaderRole('server/api/guarded.get.ts', source)).toEqual([])
+  const renamed = `import { loadInvitationAttempt } from '../modules/mail'\nimport { requireRole as allow } from '../modules/tenancy'\nexport default function handler(role: string) {\n  allow(role)\n  return loadInvitationAttempt()\n}\n`
+  expect(await workerLoaderRole('server/api/guarded.get.ts', renamed)).toEqual([])
 })
 
 it('does not treat a role guard in another function as the handler check', async () => {
@@ -397,7 +426,7 @@ it('does not treat a role guard in another function as the handler check', async
 })
 
 it('allows a nested call when the enclosing handler checked the role', async () => {
-  const source = `import { readInvitationForMail } from '../modules/tenancy'\nexport default function handler(role: string) {\n  requireRole(role)\n  return inner()\n  function inner() {\n    return readInvitationForMail()\n  }\n}\n`
+  const source = `import { readInvitationForMail, requireRole } from '../modules/tenancy'\nexport default function handler(role: string) {\n  requireRole(role)\n  return inner()\n  function inner() {\n    return readInvitationForMail()\n  }\n}\n`
   expect(await workerLoaderRole('server/api/guarded.get.ts', source)).toEqual([])
 })
 
@@ -434,6 +463,7 @@ it('keeps the worker-used loader names in one list', async () => {
   expect([...listed.workerUsedLoaders].sort()).toEqual([...WORKER_USED_LOADERS].sort())
   expect([...listed.workerLoaderModules].sort()).toEqual(['invitation-attempt', 'work-order-attempt'])
   expect([...listed.workerLoaderBarrels].sort()).toEqual(['mail', 'tenancy', 'transfers'])
+  expect(listed.workerLoaderRoleModule).toBe('tenancy')
 })
 
 it('leaves the current HTTP tree alone', async () => {
@@ -446,6 +476,11 @@ it('leaves the current HTTP tree alone', async () => {
   expect(hits).toEqual([])
 }, 60_000)
 
+it('does not let a role call in another function cover an unused loader import', async () => {
+  const source = `import { mailOutboxStore } from '../modules/transfers'\nimport { requireRole } from '../modules/tenancy'\nfunction other(role: string) {\n  requireRole(role)\n}\nexport default function handler() {\n  return 1\n}\n`
+  expect(await workerLoaderRole('server/api/leak.get.ts', source)).not.toEqual([])
+})
+
 it('rejects an unused import of a worker loader and allows a type-only import', async () => {
   expect(await workerLoaderRole(
     'server/api/leak.get.ts',
@@ -457,6 +492,6 @@ it('rejects an unused import of a worker loader and allows a type-only import', 
   )).toEqual([])
   expect(await workerLoaderRole(
     'server/api/guarded.get.ts',
-    `import { mailOutboxStore } from '../modules/transfers'\nexport default function handler(role: string) {\n  requireRole(role)\n  return 1\n}\n`,
+    `import { mailOutboxStore } from '../modules/transfers'\nimport { requireRole } from '../modules/tenancy'\nexport default function handler(role: string) {\n  requireRole(role)\n  return 1\n}\n`,
   )).toEqual([])
 })

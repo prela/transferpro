@@ -1,6 +1,6 @@
 import path from 'node:path'
 import antfu from '@antfu/eslint-config'
-import { workerLoaderBarrels, workerLoaderModules, workerUsedLoaders } from './eslint/worker-used-loaders.mjs'
+import { workerLoaderBarrels, workerLoaderModules, workerLoaderRoleModule, workerUsedLoaders } from './eslint/worker-used-loaders.mjs'
 
 /**
  * ADR-0011: the kernel adapter and the Postgres drivers stay behind
@@ -658,13 +658,14 @@ const capacityCoreImports = {
 }
 
 /**
- * #344: the mail outbox worker has no actor, so the loaders it calls check
- * no role. A non-test file under server/api or server/routes may use one
- * only from a function that calls officeOnly or requireRole, or from a
- * function enclosed by that call. A guard in a sibling function does not
- * cover the handler. The names live in worker-used-loaders.mjs.
- * A renamed destructure is judged at the pattern. The path check sees
- * string-literal sources.
+ * ADR-0050: the mail outbox worker has no actor, so the loaders it calls
+ * check no role. A non-test file under server/api or server/routes may use
+ * one only from a function that calls officeOnly or requireRole imported
+ * from the tenancy module, or from a function enclosed by that call, and
+ * the call has to precede the use. A local function, a same-named callee,
+ * and a guard in a sibling function do not cover the handler. The names
+ * live in worker-used-loaders.mjs. A renamed destructure is judged at the
+ * pattern. The path check sees string-literal sources.
  */
 const WORKER_LOADER_GUARDS = new Set(['officeOnly', 'requireRole'])
 const WORKER_LOADER_NAMES = new Set(workerUsedLoaders)
@@ -674,7 +675,7 @@ const workerLoaderRole = {
     type: 'problem',
     schema: [],
     messages: {
-      unguarded: 'A worker-used mail loader ({{name}}) needs officeOnly or requireRole in the handler that uses it (#344).',
+      unguarded: 'A worker-used mail loader ({{name}}) needs officeOnly or requireRole, imported from the tenancy module and called before that use (ADR-0050).',
     },
   },
   create(context) {
@@ -682,8 +683,8 @@ const workerLoaderRole = {
     if (!isWorkerLoaderHttpFile(filename))
       return {}
 
-    /** @type {{ parent: number | null, role: boolean, hits: { node: import('estree').Node, label: string }[] }[]} */
-    const scopes = [{ parent: null, role: false, hits: [] }]
+    /** @type {{ parent: number | null, functionNode: import('estree').Node | null, guards: import('estree').CallExpression[], loaderUses: { node: import('estree').Node, label: string }[] }[]} */
+    const scopes = [{ parent: null, functionNode: null, guards: [], loaderUses: [] }]
     /** @type {number[]} */
     const stack = [0]
     /** Local binding imported from a worker loader, mapped to the name the message should cite. */
@@ -694,9 +695,9 @@ const workerLoaderRole = {
 
     /**
      * The function being visited, or the program when the node is at the top.
-     * @returns {{ parent: number | null, role: boolean, hits: { node: import('estree').Node, label: string }[] }} the scope of the current node
+     * @returns {{ parent: number | null, functionNode: import('estree').Node | null, guards: import('estree').CallExpression[], loaderUses: { node: import('estree').Node, label: string }[] }} the scope of the current node
      */
-    function current() {
+    function activeScope() {
       return scopes[stack[stack.length - 1] ?? 0]
     }
 
@@ -705,7 +706,7 @@ const workerLoaderRole = {
      * @param {string} label
      * @param {import('estree').Node} node
      */
-    function remember(local, label, node) {
+    function recordImportedLoader(local, label, node) {
       loaderLocals.set(local, label)
       importedNodes.set(local, node)
     }
@@ -714,22 +715,78 @@ const workerLoaderRole = {
      * @param {import('estree').Node} node
      * @param {string} label
      */
-    function hit(node, label) {
-      current().hits.push({ node, label })
+    function recordLoaderUse(node, label) {
+      activeScope().loaderUses.push({ node, label })
     }
 
     /**
-     * @param {number} id
+     * The binding this identifier resolves to. A local declaration of the
+     * same name is found first, which is what makes a shadowed officeOnly fail.
+     * @param {import('estree').Identifier} identifier
      */
-    function guarded(id) {
-      let cursor = id
-      while (cursor !== null) {
-        const scope = scopes[cursor]
+    function resolvedVariable(identifier) {
+      let scope = context.sourceCode.getScope(identifier)
+      while (scope) {
+        const variable = scope.set.get(identifier.name)
+        if (variable)
+          return variable
+        scope = scope.upper
+      }
+      return null
+    }
+
+    /**
+     * True when this call is the tenancy binding officeOnly or requireRole.
+     * A local function, a member call, and an import from any other module
+     * resolve to something else, so they do not count (ADR-0050).
+     * @param {import('estree').CallExpression} node
+     */
+    function isRoleGuardCall(node) {
+      if (node.callee.type !== 'Identifier')
+        return false
+      const variable = resolvedVariable(node.callee)
+      const def = variable?.defs.find(item => item.type === 'ImportBinding')
+      if (!def || def.node.type !== 'ImportSpecifier')
+        return false
+      if (def.node.importKind === 'type' || def.parent?.importKind === 'type')
+        return false
+      const imported = importedBindingName(def.node)
+      if (!imported || !WORKER_LOADER_GUARDS.has(imported))
+        return false
+      const source = literalSource(def.parent?.source)
+      return source !== null && isWorkerLoaderRoleModule(source)
+    }
+
+    /**
+     * @param {import('estree').Node} node
+     */
+    function sourceOffset(node) {
+      return node.range?.[0] ?? 0
+    }
+
+    /**
+     * A guard in this function must sit before the use. A guard in an
+     * enclosing function must sit before that nested function. Source order
+     * is the check: the rule does not follow calls.
+     * @param {number} scopeId
+     * @param {import('estree').Node} useNode
+     */
+    function roleCallPrecedes(scopeId, useNode) {
+      let boundary = sourceOffset(useNode)
+      /** @type {number | null} */
+      let id = scopeId
+      while (id !== null) {
+        const scope = scopes[id]
         if (!scope)
           return false
-        if (scope.role)
-          return true
-        cursor = scope.parent
+        if (scope.functionNode) {
+          for (const guard of scope.guards) {
+            if (sourceOffset(guard) < boundary)
+              return true
+          }
+          boundary = sourceOffset(scope.functionNode)
+        }
+        id = scope.parent
       }
       return false
     }
@@ -737,10 +794,16 @@ const workerLoaderRole = {
     /**
      * Enter and leave are separate keys. A comma-separated `:exit` selector
      * is handed to esquery whole, and ESLint 10 rejects the class name.
+     * @param {import('estree').Node} node
      */
-    function enterFunction() {
+    function enterFunction(node) {
       const id = scopes.length
-      scopes.push({ parent: stack[stack.length - 1] ?? 0, role: false, hits: [] })
+      scopes.push({
+        parent: stack[stack.length - 1] ?? 0,
+        functionNode: node,
+        guards: [],
+        loaderUses: [],
+      })
       stack.push(id)
     }
     function leaveFunction() {
@@ -755,9 +818,9 @@ const workerLoaderRole = {
       'ArrowFunctionExpression': enterFunction,
       'ArrowFunctionExpression:exit': leaveFunction,
       CallExpression(node) {
-        const name = calledName(node.callee)
-        if (name && WORKER_LOADER_GUARDS.has(name))
-          current().role = true
+        // A top-level call is not a handler and does not cover a nested use.
+        if (activeScope().functionNode && isRoleGuardCall(node))
+          activeScope().guards.push(node)
       },
       ImportDeclaration(node) {
         if (node.importKind === 'type')
@@ -765,7 +828,7 @@ const workerLoaderRole = {
         const source = literalSource(node.source)
         const moduleName = source ? workerLoaderModuleName(source) : null
         if (moduleName && node.specifiers.length === 0)
-          hit(node, moduleName)
+          recordLoaderUse(node, moduleName)
         for (const spec of node.specifiers) {
           if (spec.type === 'ImportSpecifier' && spec.importKind === 'type')
             continue
@@ -776,18 +839,18 @@ const workerLoaderRole = {
             const imported = importedBindingName(spec)
             // Another export of a loader file is not itself a worker loader.
             if (imported && WORKER_LOADER_NAMES.has(imported))
-              remember(local, imported, spec)
+              recordImportedLoader(local, imported, spec)
             continue
           }
           if (moduleName)
-            remember(local, moduleName, spec)
+            recordImportedLoader(local, moduleName, spec)
         }
       },
       ImportExpression(node) {
         const source = literalSource(node.source)
         const moduleName = source ? workerLoaderModuleName(source) : null
         if (moduleName)
-          hit(node, moduleName)
+          recordLoaderUse(node, moduleName)
       },
       ExportNamedDeclaration(node) {
         if (node.exportKind === 'type' || !node.source)
@@ -797,7 +860,7 @@ const workerLoaderRole = {
             continue
           const local = spec.local.type === 'Identifier' ? spec.local.name : String(spec.local.value)
           if (WORKER_LOADER_NAMES.has(local))
-            hit(spec, local)
+            recordLoaderUse(spec, local)
         }
       },
       ExportAllDeclaration(node) {
@@ -806,9 +869,9 @@ const workerLoaderRole = {
           return
         const moduleName = workerLoaderModuleName(source)
         if (moduleName)
-          hit(node, moduleName)
+          recordLoaderUse(node, moduleName)
         else if (isWorkerLoaderBarrel(source))
-          hit(node, 'workerUsedLoaders')
+          recordLoaderUse(node, 'workerUsedLoaders')
       },
       Identifier(node) {
         // Only a binding that was imported. A local of the same name is not a loader.
@@ -816,33 +879,39 @@ const workerLoaderRole = {
         if (!label || isImportBinding(node) || isDeclaredName(node) || isMemberProperty(node) || isNonShorthandKey(node))
           return
         usedLocals.add(node.name)
-        hit(node, label)
+        recordLoaderUse(node, label)
       },
       MemberExpression(node) {
         const name = memberPropertyName(node)
         if (name && WORKER_LOADER_NAMES.has(name))
-          hit(node, name)
+          recordLoaderUse(node, name)
       },
       Property(node) {
         if (node.parent?.type !== 'ObjectPattern' || node.computed)
           return
         const name = node.key.type === 'Identifier' ? node.key.name : null
         if (name && WORKER_LOADER_NAMES.has(name))
-          hit(node, name)
+          recordLoaderUse(node, name)
       },
       'Program:exit': function () {
         scopes.forEach((scope, id) => {
-          if (guarded(id))
-            return
-          for (const item of scope.hits)
+          for (const item of scope.loaderUses) {
+            if (roleCallPrecedes(id, item.node))
+              continue
             context.report({ node: item.node, messageId: 'unguarded', data: { name: item.label } })
+          }
         })
-        // An unused import is the handler's import. A role call anywhere in
-        // the file covers it. A use in a function that never calls the guard
-        // is still reported from that function's hits.
-        const fileGuarded = scopes.some(scope => scope.role)
+        // An unused import is not inside a function, so order cannot apply.
+        // Only a guard in the default-exported handler covers it. A call in
+        // a sibling function does not (ADR-0050). A use the guard does not
+        // precede is still reported from that function's loader uses.
+        const handlerGuarded = scopes.some(scope =>
+          scope.functionNode !== null
+          && scope.guards.length > 0
+          && isRouteHandler(scope.functionNode),
+        )
         for (const [local, spec] of importedNodes) {
-          if (!usedLocals.has(local) && !fileGuarded) {
+          if (!usedLocals.has(local) && !handlerGuarded) {
             context.report({
               node: spec,
               messageId: 'unguarded',
@@ -907,14 +976,27 @@ function isWorkerLoaderBarrel(source) {
 }
 
 /**
- * @param {import('estree').Node} callee
+ * @param {string} source
  */
-function calledName(callee) {
-  if (callee.type === 'Identifier')
-    return callee.name
-  if (callee.type === 'MemberExpression' && !callee.computed && callee.property.type === 'Identifier')
-    return callee.property.name
-  return null
+function isWorkerLoaderRoleModule(source) {
+  return matchingPathSegment(source, [workerLoaderRoleModule]) !== null
+}
+
+/**
+ * The route handler is the default export, or the function passed straight
+ * to that export (`defineEventHandler(async () => …)`). A sibling function
+ * is not the handler, so its role call does not cover an unused import.
+ * @param {import('estree').Node} functionNode
+ */
+function isRouteHandler(functionNode) {
+  const parent = functionNode.parent
+  if (!parent)
+    return false
+  if (parent.type === 'ExportDefaultDeclaration')
+    return true
+  if (parent.type === 'CallExpression' && parent.arguments.includes(functionNode))
+    return parent.parent?.type === 'ExportDefaultDeclaration'
+  return false
 }
 
 /**
