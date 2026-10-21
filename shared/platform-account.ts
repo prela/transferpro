@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { foldedPath } from './company-settings'
 import { TENANT_NAME_MAX_LENGTH, tenantNameSchema } from './tenant-name'
 
 /**
@@ -36,6 +37,15 @@ export type CompanyAccount = z.infer<typeof companyAccountSchema>
  * the whole directory is what made `/admin/tenants` fail to paint.
  */
 export const PLATFORM_TENANT_PAGE_SIZE = 20
+
+/**
+ * Firm list and one firm. The page router serves `/Admin/tenants` as this
+ * screen, so the session middleware has to recognise that spelling too.
+ * Anything else is left to the middleware that owns that page.
+ */
+export function isPlatformTenantsPath(path: string): boolean {
+  return foldedPath(path).startsWith('/admin/tenants')
+}
 
 export const companyAccountListSchema = z.strictObject({
   accounts: z.array(companyAccountSchema),

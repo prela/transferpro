@@ -1,10 +1,15 @@
+import { isPlatformTenantsPath } from '../../shared'
+
 /**
  * Platform screens. A missing session is the login page.
  * useRequestFetch forwards the cookie on the document request; bare $fetch
  * would look unsigned during SSR and bounce a signed-in owner out.
+ * The path check keeps this middleware idle if a page outside the firm
+ * screens ever names it. Letter case is part of that check: `/Admin/tenants`
+ * is the same screen.
  */
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (!to.path.startsWith('/admin/tenants'))
+  if (!isPlatformTenantsPath(to.path))
     return
   try {
     await useRequestFetch()('/api/platform/session')

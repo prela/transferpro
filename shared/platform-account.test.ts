@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { companyAccountListSchema, companyAccountSchema, parsePlatformTenantListQuery, parseRenameTenantAccount, PLATFORM_TENANT_PAGE_SIZE, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './index'
+import { companyAccountListSchema, companyAccountSchema, isPlatformTenantsPath, parsePlatformTenantListQuery, parseRenameTenantAccount, PLATFORM_TENANT_PAGE_SIZE, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './index'
 
 const account = {
   id: '6b1e0c3a-2222-4222-8222-222222222222',
@@ -50,6 +50,16 @@ it('accepts a rename name and refuses any other key', () => {
   expect(() => parseRenameTenantAccount({ name: 'Mora', email: 'ana@example.test' })).toThrow(PlatformInputError)
   expect(() => parseRenameTenantAccount({ name: '' })).toThrow(PlatformInputError)
   expect(() => parseRenameTenantAccount({ name: 'A'.repeat(121) })).toThrow(PlatformInputError)
+})
+
+it('keeps the firm list protected when only the path case changes', () => {
+  expect(isPlatformTenantsPath('/admin/tenants')).toBe(true)
+  expect(isPlatformTenantsPath('/Admin/tenants')).toBe(true)
+  expect(isPlatformTenantsPath('/ADMIN/TENANTS/firm')).toBe(true)
+  expect(isPlatformTenantsPath('/admin/tenants/')).toBe(true)
+  expect(isPlatformTenantsPath('/transfers')).toBe(false)
+  expect(isPlatformTenantsPath('/forgot-password')).toBe(false)
+  expect(isPlatformTenantsPath('/Forgot-password')).toBe(false)
 })
 
 it('builds a shell without reading a tenant settings row', () => {

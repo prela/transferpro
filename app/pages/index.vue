@@ -33,6 +33,10 @@ watch(session, (next) => {
   setPageLayout(isOfficeMember(next?.role) ? 'dashboard' : 'default')
 })
 
+// Nuxt 4.6 typechecks the template against script bindings. The auto-import
+// alone is not one, so the class reads this computed.
+const office = computed(() => isOfficeMember(session.value?.role))
+
 const documents = ref<{ reload: () => Promise<void> } | null>(null)
 
 function refreshDocuments() {
@@ -178,7 +182,7 @@ function httpStatus(error: unknown): number | undefined {
   <main
     v-else
     class="box-border w-full p-4"
-    :class="isOfficeMember(session?.role) ? undefined : 'mx-auto max-w-md'"
+    :class="office ? undefined : 'mx-auto max-w-md'"
   >
     <section v-if="loadError">
       <UAlert

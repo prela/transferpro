@@ -3,12 +3,24 @@ import type { TenantRole } from './tenant-role'
 /** Operativa is the address with no query. Članovi is `?tab=members`. */
 export type CompanySettingsTab = 'operations' | 'members'
 
+/** Drop a trailing slash so `/settings/` and `/settings` are the same address. */
+export function barePath(path: string): string {
+  return path.replace(/\/$/, '') || '/'
+}
+
+/** Same address the page router matches, including a different letter case. */
+export function foldedPath(path: string): string {
+  return barePath(path).toLowerCase()
+}
+
 /**
  * `/settings`, and the old Tenant and Members addresses.
  * Profile is not one of these: it redirects for every role, including Admin.
+ * The page router matches these addresses without regard to case, and from
+ * Nuxt 4.6.2 the server route rules do too, so `/Settings` is this route.
  */
 export function isCompanySettingsPath(path: string): boolean {
-  const bare = barePath(path)
+  const bare = foldedPath(path)
   return bare === '/settings' || bare === '/settings/tenant' || bare === '/settings/members'
 }
 
@@ -19,7 +31,7 @@ export function isCompanySettingsPath(path: string): boolean {
  * An admin bookmark to `/settings/tenant` or `/settings/members` lands on the tab.
  */
 export function companySettingsRedirect(path: string, role: TenantRole): string | null {
-  const bare = barePath(path)
+  const bare = foldedPath(path)
   if (bare === '/settings/profile')
     return '/profile'
   if (!isCompanySettingsPath(bare))
@@ -37,9 +49,4 @@ export function companySettingsRedirect(path: string, role: TenantRole): string 
 export function companySettingsTab(tab: unknown): CompanySettingsTab {
   const value = Array.isArray(tab) ? tab[0] : tab
   return value === 'members' ? 'members' : 'operations'
-}
-
-/** Drop a trailing slash so `/settings/` and `/settings` are the same address. */
-export function barePath(path: string): string {
-  return path.replace(/\/$/, '') || '/'
 }

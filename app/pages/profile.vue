@@ -26,6 +26,10 @@ function applyLayout() {
   setPageLayout(isOfficeMember(session.value?.role) ? 'dashboard' : 'default')
 }
 
+// Nuxt 4.6 typechecks the template against script bindings. The auto-import
+// alone is not one, so the class reads this computed.
+const office = computed(() => isOfficeMember(session.value?.role))
+
 applyLayout()
 watch(() => session.value?.role, applyLayout)
 
@@ -51,7 +55,7 @@ const member = computed(() => session.value)
   -->
   <main
     class="box-border w-full p-4"
-    :class="isOfficeMember(session?.role) ? undefined : 'mx-auto max-w-md'"
+    :class="office ? undefined : 'mx-auto max-w-md'"
   >
     <section v-if="loadError">
       <UAlert

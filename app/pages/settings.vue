@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { NavigationMenuItem } from '@nuxt/ui'
-import { barePath, companySettingsRedirect, companySettingsTab } from '../../shared'
+import { barePath, companySettingsRedirect, companySettingsTab, foldedPath } from '../../shared'
 
 /**
  * Company settings is Admin only (ADR-0038). The page is `/settings`, with
@@ -58,7 +58,8 @@ onBeforeRouteUpdate((to) => {
 })
 
 const onSettings = computed(() =>
-  barePath(route.path) === '/settings' && session.value?.role === 'admin',
+  // `/Settings` is this page. The router does not care about letter case.
+  foldedPath(route.path) === '/settings' && session.value?.role === 'admin',
 )
 const tab = computed(() => companySettingsTab(route.query.tab))
 const pendingGeneration = ref(0)

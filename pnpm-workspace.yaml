@@ -1,14 +1,14 @@
 minimumReleaseAgeExcludePrune: true
-# 1.7.9 is younger than the release-age gate. Drop each line once that version installs without an exclude.
+# 1.7.12 is younger than the release-age gate. Drop each line once that version installs without an exclude.
 minimumReleaseAgeExclude:
-  - '@better-auth/core@1.7.9'
-  - '@better-auth/drizzle-adapter@1.7.9'
-  - '@better-auth/kysely-adapter@1.7.9'
-  - '@better-auth/memory-adapter@1.7.9'
-  - '@better-auth/mongo-adapter@1.7.9'
-  - '@better-auth/prisma-adapter@1.7.9'
-  - '@better-auth/telemetry@1.7.9'
-  - better-auth@1.7.9
+  - '@better-auth/core@1.7.12'
+  - '@better-auth/drizzle-adapter@1.7.12'
+  - '@better-auth/kysely-adapter@1.7.12'
+  - '@better-auth/memory-adapter@1.7.12'
+  - '@better-auth/mongo-adapter@1.7.12'
+  - '@better-auth/prisma-adapter@1.7.12'
+  - '@better-auth/telemetry@1.7.12'
+  - better-auth@1.7.12
 # Babel still depends on semver 6.3.1, which this policy flags as a trust downgrade.
 trustPolicy: no-downgrade
 trustPolicyExclude:
@@ -19,9 +19,23 @@ shellEmulator: true
 # @sentry/browser-utils pulls web-vitals; 6.2.3 shipped the same day as the Sentry pin (#34).
 # launch-editor 2.14.1 (via nuxt > @nuxt/devtools) and vite 8.3.1 (via vitest) are GHSA-587h-7wmj-h5pm (#393).
 # Drop these two lines once nuxt and vitest depend on launch-editor >= 2.14.2 and vite >= 8.3.3.
+# unifont (via @nuxt/fonts) resolved undici 8.11.2, under the 8.12.2 floor (#406). No 6.x or 7.x is installed. Drop once unifont depends on undici >= 8.12.2.
+# @better-auth/telemetry and vue-router resolved vue 3.5.43 beside the app's 3.5.44.
+# Two copies make the traced server render fail once the CI artifact materializes the links.
 overrides:
+  '@vue/compiler-core': 3.5.44
+  '@vue/compiler-dom': 3.5.44
+  '@vue/compiler-sfc': 3.5.44
+  '@vue/compiler-ssr': 3.5.44
+  '@vue/reactivity': 3.5.44
+  '@vue/runtime-core': 3.5.44
+  '@vue/runtime-dom': 3.5.44
+  '@vue/server-renderer': 3.5.44
+  '@vue/shared': 3.5.44
   launch-editor: 2.14.2
+  undici: ^8.12.2
   vite: ^8.3.3
+  vue: 3.5.44
   web-vitals: 6.2.2
 
 allowBuilds:
