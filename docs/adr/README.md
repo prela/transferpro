@@ -65,3 +65,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0047 | Invitation outbox entry after the Better Auth commit | accepted |
 | ADR-0048 | A Ride handed off to a Partner | accepted |
 | ADR-0049 | Client card and Partner record | accepted |
+| ADR-0050 | Worker mail loaders check no role | accepted |

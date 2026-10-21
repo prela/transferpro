@@ -264,6 +264,7 @@ export interface InvitationForMail {
  * Read by the auth role, limited to `tenantId`, which the caller takes from
  * the session or the job envelope. Null when this Tenant has no such
  * invitation. The address and the link are bearer material: do not log them.
+ * No role check: the worker has no actor. HTTP use is the worker-used loader list (#344).
  */
 export async function readInvitationForMail(tenantId: string, invitationId: string): Promise<InvitationForMail | null> {
   const { handle } = tenantRuntime()
