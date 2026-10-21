@@ -391,6 +391,8 @@ function zagrebMidnightBoundary() {
 
 function transferBody(world: Awaited<ReturnType<typeof office>>, pickupAt: string) {
   return {
+    // Fresh entry key. The create stays idempotent once the key is required.
+    externalId: crypto.randomUUID(),
     clientId: world.client.id,
     pickupAt,
     startLocationId: world.start.id,

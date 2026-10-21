@@ -246,6 +246,7 @@ it('lists only failed work orders that still matter, and a driver cannot read th
     const pickupAt = new Date(Date.parse('2026-11-02T09:00:00.000Z') + day * 24 * 60 * 60 * 1000).toISOString()
     day += 1
     const recorded = await createTransfer(admin, {
+      externalId: crypto.randomUUID(),
       clientId: client.id,
       pickupAt,
       startLocationId: start.id,
@@ -373,6 +374,7 @@ it('lists only failed work orders that still matter, and a driver cannot read th
     insuranceExpiresOn: '2030-01-01',
   })
   const otherRecorded = await createTransfer(outsider, {
+    externalId: crypto.randomUUID(),
     clientId: otherClient.id,
     pickupAt: '2026-11-02T09:00:00.000Z',
     startLocationId: otherStart.id,
@@ -466,6 +468,7 @@ it('resends one failed work order, refuses the other roles, and does not audit',
     const pickupAt = new Date(Date.parse('2026-11-03T09:00:00.000Z') + day * 24 * 60 * 60 * 1000).toISOString()
     day += 1
     const recorded = await createTransfer(admin, {
+      externalId: crypto.randomUUID(),
       clientId: client.id,
       pickupAt,
       startLocationId: start.id,
@@ -538,6 +541,7 @@ it('resends one failed work order, refuses the other roles, and does not audit',
     insuranceExpiresOn: '2030-01-01',
   })
   const otherRecorded = await createTransfer(outsider, {
+    externalId: crypto.randomUUID(),
     clientId: otherClient.id,
     pickupAt: '2026-11-03T09:00:00.000Z',
     startLocationId: otherStart.id,

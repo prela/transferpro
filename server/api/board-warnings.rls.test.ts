@@ -214,6 +214,7 @@ async function ride(
   confirm = false,
 ) {
   const recorded = await createTransfer(session, {
+    externalId: crypto.randomUUID(),
     clientId: places.clientId,
     pickupAt,
     startLocationId: places.startId,
@@ -254,6 +255,7 @@ it('names each expired document in kind order, and a document valid on the picku
   await ride(places.dispatcher, places, 'Lapsed Ivo', at('2026-10-20T12:00'), lapsed.id, lapsedCar.id)
   await ride(places.dispatcher, places, 'Quiet Tea', at('2026-10-20T15:00'), quiet.id, quietCar.id)
   const recorded = await createTransfer(places.dispatcher, {
+    externalId: crypto.randomUUID(),
     clientId: places.clientId,
     pickupAt: at('2026-10-20T18:00'),
     startLocationId: places.startId,

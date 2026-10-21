@@ -222,6 +222,7 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
     flightNumber?: string,
   ) {
     const recorded = await createTransfer(admin, {
+      externalId: crypto.randomUUID(),
       clientId: client.id,
       pickupAt: instantFromWallClock(wall, zone).toISOString(),
       startLocationId: start.id,
@@ -390,6 +391,7 @@ it('counts the stored hour, and a pickup before that hour stays on the unassigne
 
   async function record(guestName: string, wall: string) {
     const recorded = await createTransfer(admin, {
+      externalId: crypto.randomUUID(),
       clientId: client.id,
       pickupAt: instantFromWallClock(wall, zone).toISOString(),
       startLocationId: start.id,
@@ -443,6 +445,7 @@ it('turns the landing alarm on from the stored landing plus the Tenant transfer 
     insuranceExpiresOn: '2030-01-01',
   })
   const recorded = await createTransfer(admin, {
+    externalId: crypto.randomUUID(),
     clientId: client.id,
     pickupAt: instantFromWallClock(`${calendar}T10:30`, zone).toISOString(),
     startLocationId: start.id,
@@ -511,6 +514,7 @@ it('carries a decline alert and the Driver name for any day, drops it when the R
 
   async function declinedRide(guestName: string, wall: string) {
     const recorded = await createTransfer(admin, {
+      externalId: crypto.randomUUID(),
       clientId: client.id,
       pickupAt: instantFromWallClock(wall, zone).toISOString(),
       startLocationId: start.id,
@@ -556,6 +560,7 @@ it('carries a decline alert and the Driver name for any day, drops it when the R
     insuranceExpiresOn: '2030-01-01',
   })
   const foreignRecorded = await createTransfer(foreignAdmin, {
+    externalId: crypto.randomUUID(),
     clientId: foreignClient.id,
     pickupAt: instantFromWallClock(`${calendar}T15:00`, zone).toISOString(),
     startLocationId: foreignStart.id,

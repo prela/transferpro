@@ -202,6 +202,7 @@ it('finds a guest, a Client reference, and a flight on past, current, and future
   }) {
     const pickupAt = instantFromWallClock(input.wall, zone).toISOString()
     const recorded = await createTransfer(admin, {
+      externalId: crypto.randomUUID(),
       clientId: client.id,
       pickupAt,
       startLocationId: start.id,
@@ -253,6 +254,7 @@ it('finds a guest, a Client reference, and a flight on past, current, and future
   const foreignStart = await createLocation(outsider, { name: 'Strani Početak', kind: 'hotel' })
   const foreignEnd = await createLocation(outsider, { name: 'Strani Kraj', kind: 'hotel' })
   const foreignRide = await createTransfer(outsider, {
+    externalId: crypto.randomUUID(),
     clientId: foreignClient.id,
     pickupAt: instantFromWallClock(`${calendar}T12:00`, zone).toISOString(),
     startLocationId: foreignStart.id,

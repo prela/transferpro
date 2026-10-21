@@ -251,6 +251,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     movePickupTo?: string
   }) {
     const recorded = await createTransfer(admin, {
+      externalId: crypto.randomUUID(),
       clientId: client.id,
       pickupAt: input.pickupAt,
       startLocationId: input.startLocationId ?? start.id,
@@ -427,6 +428,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     insuranceExpiresOn: '2030-01-01',
   })
   const foreignRide = await createTransfer(foreignAdmin, {
+    externalId: crypto.randomUUID(),
     clientId: foreignClient.id,
     pickupAt: at('10:00'),
     startLocationId: foreignStart.id,

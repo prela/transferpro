@@ -203,7 +203,8 @@ async function office(slug: string) {
       }
     },
     async transfer(pickupAt: Date, guestName?: string) {
-      return createTransfer(dispatcher, this.booking(pickupAt, guestName))
+      // The key is added here, not on booking(), because a correction spreads booking() and refuses the key.
+      return createTransfer(dispatcher, { externalId: crypto.randomUUID(), ...this.booking(pickupAt, guestName) })
     },
     // An email, so a passing assign stages a work order in the mail outbox.
     async driver() {
