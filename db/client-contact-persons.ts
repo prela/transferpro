@@ -1,16 +1,18 @@
 import { sql } from 'drizzle-orm'
-import { check, foreignKey, integer, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { check, foreignKey, integer, pgPolicy, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 import { CLIENT_NAME_MAX_LENGTH, CONTACT_PERSON_ROLE_MAX_LENGTH, DRIVER_EMAIL_MAX_LENGTH, DRIVER_PHONE_MAX_LENGTH } from '../shared'
 import { clients } from './clients'
-import { tenantTable } from './tenant-table'
+import { appRole, tenantTable } from './tenant-table'
 
 /**
  * Contact persons of one Client (ADR-0049). A child of `app.clients`:
  * the Client table itself does not change (ADR-0018). The composite foreign
  * key refuses another Tenant's Client. None of these rows is the main contact.
  *
- * `removed_at` is the soft remove. A removed person no longer shows and stays
- * until the retention ticket deletes it. This ticket grants no DELETE.
+ * `removed_at` is the soft remove. A removed person no longer shows. The app
+ * role may DELETE for the daily job only: ADR-0049 allows that grant on this
+ * table, for rows removed more than 90 days ago. The restrictive policy holds
+ * every delete to that, so no request can delete a live person or a recent one.
  *
  * Phone and email use the Driver checks. At least one of them is set.
  * The version columns are the Client's (ADR-0046): version 0 has no author,
@@ -65,4 +67,10 @@ export const clientContactPersons = tenantTable('client_contact_persons', {
   ),
   check('client_contact_persons_version', sql`${table.version} >= 0`),
   check('client_contact_persons_data_change', sql`(${table.version} = 0 and ${table.dataChangedAt} is null and ${table.dataChangedBy} is null) or (${table.version} >= 1 and ${table.dataChangedAt} is not null and ${table.dataChangedBy} <> '')`),
+  pgPolicy('client_contact_persons_retention_delete', {
+    as: 'restrictive',
+    for: 'delete',
+    to: appRole,
+    using: sql`${table.removedAt} < now() - interval '90 days'`,
+  }),
 ], { oneRowPerTenant: false })

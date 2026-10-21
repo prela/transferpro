@@ -105,6 +105,7 @@ it('grants DELETE on the outbox to the app role, and on no other new table', asy
     order by 1
   `)
   expect(grants.rows.map(row => row.grant)).toEqual([
+    'app.client_contact_persons transferpro_app',
     'app.mail_outbox transferpro_app',
     'app.roster transferpro_app',
     'app.tenant_settings transferpro_app',

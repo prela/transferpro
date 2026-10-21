@@ -8,7 +8,7 @@ loadEnvFile('.env.migrate')
 /**
  * The contact-person table on its own (ADR-0049). A route test cannot show
  * that the composite foreign key refuses another Tenant's Client, or that
- * the app role has no DELETE. The observation is the rows and the error codes.
+ * a live contact person cannot be deleted. The observation is the rows and the error codes.
  */
 const databaseUrl = process.env.DATABASE_URL
 if (!databaseUrl)
@@ -25,7 +25,7 @@ const tenantA = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'
 const tenantB = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd2'
 
 beforeAll(async () => {
-  // transferpro_app has no DELETE. The owner bypasses RLS and clears the fixture tenants.
+  // The owner bypasses RLS and clears the fixture tenants. The app role's policy would leave a live row.
   const owner = await ownerPool.connect()
   try {
     await owner.query('delete from app.client_contact_persons where tenant_id in ($1, $2)', [tenantA, tenantB])
@@ -89,7 +89,7 @@ it('forces row level security on app.client_contact_persons', async () => {
   }
 })
 
-it('tenant B cannot read or change Tenant A contact persons, and the app role cannot delete one', async () => {
+it('tenant B cannot read or change Tenant A contact persons, and a live contact person cannot be deleted', async () => {
   const clientA = await insertClient(tenantA, 'Hotel Jadran')
   await withTenant(tenantA, client => client.query(
     `insert into app.client_contact_persons (client_id, name, phone)
@@ -116,8 +116,9 @@ it('tenant B cannot read or change Tenant A contact persons, and the app role ca
     [tenantB],
   ))).rejects.toMatchObject({ code: '42501' })
 
-  // The retention ticket is the only one that may grant DELETE.
-  await expect(withTenant(tenantA, client => client.query('delete from app.client_contact_persons'))).rejects.toMatchObject({ code: '42501' })
+  // A live person has no removal instant, so the retention policy removes nothing.
+  const deleted = await withTenant(tenantA, client => client.query('delete from app.client_contact_persons'))
+  expect(deleted.rowCount).toBe(0)
 
   const seenByA = await withTenant(tenantA, client => client.query(
     'select name, phone, version, data_changed_at, data_changed_by from app.client_contact_persons',
