@@ -41,5 +41,7 @@ export const clients = tenantTable('clients', {
   uniqueIndex('clients_tenant_id_id').on(table.tenantId, table.id),
   check('clients_version', sql`${table.version} >= 0`),
   // Version 0 has no recorded change. A later version names when and who.
-  check('clients_data_change', sql`(${table.version} = 0 and ${table.dataChangedAt} is null and ${table.dataChangedBy} is null) or (${table.version} >= 1 and ${table.dataChangedAt} is not null and ${table.dataChangedBy} <> '')`),
+  // `<> ''` is unknown when the member is null, and a CHECK accepts unknown,
+  // so the member must also be present. Otherwise version >= 1 with no member passes.
+  check('clients_data_change', sql`(${table.version} = 0 and ${table.dataChangedAt} is null and ${table.dataChangedBy} is null) or (${table.version} >= 1 and ${table.dataChangedAt} is not null and ${table.dataChangedBy} is not null and ${table.dataChangedBy} <> '')`),
 ], { oneRowPerTenant: false })

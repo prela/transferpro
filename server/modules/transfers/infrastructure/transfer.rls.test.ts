@@ -691,3 +691,51 @@ it('tenant B cannot read or write Tenant A expected arrival', async () => {
   })
   expect(kept.rows[0]?.expected_arrival_at.toISOString()).toBe(arrival)
 })
+
+// `data_changed_by <> ''` is unknown when the member is null, and a CHECK
+// accepts unknown. A version that names a time and no member must still fail.
+it('refuses a Transfer version that records a time and a null member', async () => {
+  const seeded = await withTenant(tenantA, async (client) => {
+    const clientRow = await client.query<{ id: string }>(
+      `insert into app.clients (name, kind) values ('Agencija Bez Autora', 'agency') returning id`,
+    )
+    const start = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Polazak Bez Autora', 'address') returning id`,
+    )
+    const end = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Dolazak Bez Autora', 'hotel') returning id`,
+    )
+    const transfer = await client.query<{ id: string }>(
+      `insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, price, payment, airport_mark,
+        luggage_count, child_seat_count, external_id
+      ) values ($1, '2026-10-06T10:00:00.000Z', $2, $3, 1, 'Ana Anić', 10, 'cash', false, 0, 0, gen_random_uuid()::text)
+      returning id`,
+      [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id],
+    )
+    return {
+      clientId: clientRow.rows[0]?.id,
+      startId: start.rows[0]?.id,
+      endId: end.rows[0]?.id,
+      transferId: transfer.rows[0]?.id,
+    }
+  })
+
+  await expect(withTenant(tenantA, client => client.query(
+    `insert into app.transfers (
+      client_id, pickup_at, start_location_id, end_location_id,
+      passenger_count, guest_name, price, payment, airport_mark,
+      luggage_count, child_seat_count, external_id,
+      version, data_changed_at, data_changed_by
+    ) values ($1, '2026-10-06T11:00:00.000Z', $2, $3, 1, 'Ana Anić', 10, 'cash', false, 0, 0, gen_random_uuid()::text, 1, now(), null)`,
+    [seeded.clientId, seeded.startId, seeded.endId],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'transfers_data_change' })
+
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.transfers
+     set version = 1, data_changed_at = now(), data_changed_by = null
+     where id = $1`,
+    [seeded.transferId],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'transfers_data_change' })
+})
