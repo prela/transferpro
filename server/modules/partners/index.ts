@@ -5,4 +5,4 @@
  * (ADR-0036, ADR-0049).
  */
 export { archivePartner, createPartner, listPartners, PartnerArchivedError, PartnerNotFoundError, restorePartner, updatePartner } from './infrastructure/partner-access'
-export { loadActivePartnerIds, partnerIsActive } from './infrastructure/partners'
+export { loadActivePartnerIds, loadPartners, partnerIsActive, partnerPresenceForHandoff } from './infrastructure/partners'

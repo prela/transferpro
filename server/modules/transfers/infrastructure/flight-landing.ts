@@ -3,7 +3,7 @@ import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { chooseFlightArrival, FLIGHT_ASK_LEAD_MS, flightAskDates, flightDesignator, landingTimeInFuture, parseFlightArrivals, rememberWillNotArrive, storeExpectedArrival } from '../../../../shared'
+import { chooseFlightArrival, FLIGHT_ASK_LEAD_MS, flightAskDates, flightDesignator, landingTimeInFuture, parseFlightArrivals, rememberWillNotArrive, rideStateSchema, storeExpectedArrival } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 
 /**
@@ -39,7 +39,7 @@ interface TrackedRide {
 const trackedRowSchema = z.object({
   rideId: z.uuid(),
   transferId: z.uuid(),
-  state: z.enum(['unassigned', 'assigned', 'accepted', 'done', 'no-show', 'cancelled']),
+  state: rideStateSchema,
   driverId: z.uuid().nullable(),
   pickupAt: z.unknown(),
   flightNumber: z.string().nullable(),
@@ -56,7 +56,7 @@ const trackedRowSchema = z.object({
 const recordRowSchema = z.object({
   rows: z.array(z.object({
     transferId: z.uuid(),
-    state: z.enum(['unassigned', 'assigned', 'accepted', 'done', 'no-show', 'cancelled']),
+    state: rideStateSchema,
     landingAt: z.unknown().nullable(),
   })),
 })
@@ -116,7 +116,8 @@ function toTracked(row: z.infer<typeof trackedRowSchema>): TrackedRide | null {
  * to arrive here is not asked of the status port.
  */
 function isTrackable(ride: TrackedRide, now: Date): boolean {
-  if (finished.includes(ride.state))
+  // A handed-off Ride is not asked. Landing time stays on a Ride the office still runs.
+  if (finished.includes(ride.state) || ride.state === 'handed_off')
     return false
   if (!ride.airportMark)
     return false
@@ -399,7 +400,8 @@ export async function recordLandingTime(
   const row = selected.rows[0]
   if (!row)
     throw new Error('Landing time read failed')
-  if (finished.includes(row.state))
+  // handed_off is unfinished, and landing time is still refused: the office no longer runs it.
+  if (finished.includes(row.state) || row.state === 'handed_off')
     throw new LandingTimeClosedError()
 
   const stored = landingAt === null ? null : landingAt.toISOString()

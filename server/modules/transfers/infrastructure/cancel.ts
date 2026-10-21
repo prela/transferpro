@@ -45,6 +45,7 @@ const lockedRows = z.object({
     driverId: z.uuid().nullable(),
     vehicleId: z.uuid().nullable(),
     mustAccept: z.boolean().nullable(),
+    partnerId: z.uuid().nullable(),
   })),
 })
 
@@ -77,9 +78,12 @@ function parseCancel(rideId: unknown, body: unknown): string {
 
 /**
  * A dispatcher or an admin cancels the Ride from `unassigned`, `assigned`,
- * or `accepted`. The Driver, the Vehicle, and the copied flag stay, including
- * when there is no Driver. `ride.cancelled` names the office member.
- * A driver is refused before this runs. The mail is sent after this commits.
+ * `accepted`, or `handed_off`. The Driver, the Vehicle, and the copied flag
+ * stay. A handed-off cancel clears the Partner, because the check allows a
+ * Partner only while the state is `handed_off`. `ride.cancelled` stores that
+ * Partner id in the driver slot. Any other cancel stores the Driver id, or
+ * null when there was none. A driver is refused before this runs. The mail
+ * is sent after this commits, and a handed-off Ride has no Driver to mail.
  */
 export async function cancelRideForOffice(
   transaction: TenantTransaction,
@@ -91,13 +95,16 @@ export async function cancelRideForOffice(
     throw new RideNotFoundError()
   if (!canCancelRide(current.state))
     throw new RideNotCancellableError()
+  if (current.state === 'handed_off' && current.partnerId === null)
+    throw new RideNotCancellableError()
 
   const updated = await writeCancelledRide(transaction, rideId)
   // The locked row was cancellable. Zero rows means a concurrent command committed first.
   if (!updated)
     throw new RideNotCancellableError()
 
-  await appendCancelled(transaction, actorUserId, updated)
+  const auditDriverId = current.state === 'handed_off' ? current.partnerId : updated.driverId
+  await appendCancelled(transaction, actorUserId, updated.id, auditDriverId)
   return updated
 }
 
@@ -143,7 +150,8 @@ async function lockRideForCancel(transaction: TenantTransaction, rideId: string)
            state,
            driver_id as "driverId",
            vehicle_id as "vehicleId",
-           must_accept as "mustAccept"
+           must_accept as "mustAccept",
+           partner_id as "partnerId"
     from app.rides
     where id = ${rideId}
     for update
@@ -151,9 +159,11 @@ async function lockRideForCancel(transaction: TenantTransaction, rideId: string)
 }
 
 /**
- * Sets `cancelled` only while the Ride is still `unassigned`, `assigned`, or
- * `accepted`. The Driver, the Vehicle, and the flag are not rewritten.
- * Zero rows means a concurrent command won.
+ * Sets `cancelled` only while the Ride is still `unassigned`, `assigned`,
+ * `accepted`, or `handed_off`. The Driver, the Vehicle, and the flag are
+ * not rewritten. `partner_id` is cleared: the other states already have it
+ * null, and `handed_off` must drop it or the check fails. Zero rows means
+ * a concurrent command won.
  */
 async function writeCancelledRide(
   transaction: TenantTransaction,
@@ -161,9 +171,10 @@ async function writeCancelledRide(
 ): Promise<CancelledRide | undefined> {
   return cancelledRows.parse(await runCancelStep(transaction, sql`
     update app.rides
-    set state = 'cancelled'
+    set state = 'cancelled',
+        partner_id = null
     where id = ${rideId}
-      and state in ('unassigned', 'assigned', 'accepted')
+      and state in ('unassigned', 'assigned', 'accepted', 'handed_off')
     returning
       id,
       transfer_id as "transferId",
@@ -182,15 +193,17 @@ async function writeCancelledRide(
 async function appendCancelled(
   transaction: TenantTransaction,
   actorUserId: string,
-  updated: CancelledRide,
+  rideId: string,
+  driverId: string | null,
 ): Promise<void> {
   await hideDatabaseError(() => appendAuditEntry(transaction, {
     action: 'ride.cancelled',
     actorUserId,
     subjectUserId: null,
     data: {
-      rideId: updated.id,
-      driverId: updated.driverId,
+      rideId,
+      // A handed-off cancel stores the Partner id here. The cleared row's driver id is null.
+      driverId,
       fields: [...RIDE_ACCEPTED_FIELDS],
     },
   }), 'Ride cancel failed')

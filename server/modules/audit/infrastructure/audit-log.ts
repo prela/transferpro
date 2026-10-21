@@ -75,11 +75,11 @@ export async function listAuditEntries(transaction: TenantTransaction): Promise<
     left join app.tenant_member as actor on actor.user_id = e.actor_user_id
     left join app.tenant_member as subject on subject.user_id = e.subject_user_id
     left join app.drivers as assigned_driver
-      on e.action in ('ride.assigned', 'ride.accepted', 'ride.returned_to_assigned', 'ride.done', 'ride.no_show', 'ride.no_show_early', 'ride.cancelled', 'ride.declined', 'ride.landing_recorded', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned')
+      on e.action in ('ride.assigned', 'ride.accepted', 'ride.returned_to_assigned', 'ride.done', 'ride.no_show', 'ride.no_show_early', 'ride.cancelled', 'ride.declined', 'ride.landing_recorded', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned', 'ride.handed_off')
       and assigned_driver.tenant_id = e.tenant_id
       and assigned_driver.id = (e.data->>'driverId')::uuid
     left join app.vehicles as assigned_vehicle
-      on e.action in ('ride.assigned', 'ride.declined', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned')
+      on e.action in ('ride.assigned', 'ride.declined', 'ride.vehicle_changed', 'ride.cleared', 'ride.reassigned', 'ride.handed_off')
       and assigned_vehicle.tenant_id = e.tenant_id
       and assigned_vehicle.id = (e.data->>'vehicleId')::uuid
     order by e.occurred_at desc, e.id desc

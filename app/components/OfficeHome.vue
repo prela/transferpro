@@ -33,6 +33,7 @@ const countLabel: Record<OfficeHomeCountKey, string> = {
   waitingOnAcceptance: 'officeHome.waiting',
   assignedNotStarted: 'officeHome.assignedNotStarted',
   inProgress: 'officeHome.inProgress',
+  handedOff: 'transfers.states.handed_off',
   done: 'transfers.states.done',
   noShow: 'transfers.states.no-show',
   cancelled: 'transfers.states.cancelled',

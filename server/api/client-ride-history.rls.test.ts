@@ -61,6 +61,9 @@ beforeAll(async () => {
     await owner.query(`delete from app.rides where tenant_id::text in (
       select id from auth.organization where slug like 'crh-%'
     )`)
+    await owner.query(`delete from app.partners where tenant_id::text in (
+      select id from auth.organization where slug like 'crh-%'
+    )`)
     await owner.query(`delete from app.transfers where tenant_id::text in (
       select id from auth.organization where slug like 'crh-%'
     )`)
@@ -167,6 +170,7 @@ interface SeedRide {
   driverId?: string | null
   vehicleId?: string | null
   mustAccept?: boolean | null
+  partnerId?: string | null
 }
 
 function historyState(index: number): RideState {
@@ -202,8 +206,8 @@ async function seedRide(seed: SeedRide): Promise<string> {
   if (transferId === undefined)
     throw new Error('transfer insert returned no row')
   const ride = await ownerPool.query<{ id: string }>(
-    `insert into app.rides (id, tenant_id, transfer_id, state, driver_id, vehicle_id, must_accept)
-     values (coalesce($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7)
+    `insert into app.rides (id, tenant_id, transfer_id, state, driver_id, vehicle_id, must_accept, partner_id)
+     values (coalesce($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8)
      returning id`,
     [
       seed.rideId ?? null,
@@ -213,6 +217,7 @@ async function seedRide(seed: SeedRide): Promise<string> {
       seed.driverId ?? null,
       seed.vehicleId ?? null,
       seed.mustAccept ?? null,
+      seed.partnerId ?? null,
     ],
   )
   const rideId = ride.rows[0]?.id
@@ -320,6 +325,20 @@ it('lists every state newest first, in the Tenant time zone, with whole-history 
   })
   await seedRide({ ...places, pickupAt: instantFromWallClock('2026-06-01T08:00', zone).toISOString(), guestName: 'Završeni gost', state: 'done' })
   await seedRide({ ...places, pickupAt: instantFromWallClock('2026-05-20T16:40', zone).toISOString(), guestName: 'Nedolazak', state: 'no-show' })
+  const partner = await ownerPool.query<{ id: string }>(
+    `insert into app.partners (tenant_id, name) values ($1, 'Mora Transfer') returning id`,
+    [created.tenantId],
+  )
+  const partnerId = partner.rows[0]?.id
+  if (partnerId === undefined)
+    throw new Error('partner insert returned no row')
+  await seedRide({
+    ...places,
+    pickupAt: instantFromWallClock('2026-05-01T12:00', zone).toISOString(),
+    guestName: 'Predani gost',
+    state: 'handed_off',
+    partnerId,
+  })
   await seedRide({ ...places, pickupAt: instantFromWallClock('2026-04-01T11:00', zone).toISOString(), guestName: 'Otkazani gost', state: 'cancelled', price: '0.00', payment: 'invoice_to_agency' })
   await seedRide({ ...places, pickupAt: same, guestName: 'Stariji isti sat', rideId: lowId, state: 'done' })
   await seedRide({ ...places, pickupAt: same, guestName: 'Noviji isti sat', rideId: highId, state: 'cancelled' })
@@ -344,7 +363,7 @@ it('lists every state newest first, in the Tenant time zone, with whole-history 
   const body = rideHistorySchema.parse(await (await call(`/api/clients/${client.id}/ride-history`, admin)).json())
   const again = rideHistorySchema.parse(await (await call(`/api/clients/${client.id}/ride-history`, dispatcher)).json())
   expect(again.counts).toEqual(body.counts)
-  expect(body.counts).toEqual({ total: 8, done: 2, noShow: 1, cancelled: 2 })
+  expect(body.counts).toEqual({ total: 9, done: 2, noShow: 1, cancelled: 2 })
   expect(body.nextCursor).toBeNull()
   expect(body.rides.map(ride => ride.guestName)).toEqual([
     'Noviji isti sat',
@@ -353,6 +372,7 @@ it('lists every state newest first, in the Tenant time zone, with whole-history 
     'Dodijeljeni gost',
     'Završeni gost',
     'Nedolazak',
+    'Predani gost',
     'Otkazani gost',
     'Rani gost',
   ])
@@ -386,7 +406,12 @@ it('lists every state newest first, in the Tenant time zone, with whole-history 
     payment: 'invoice_to_agency',
     driverName: null,
   })
-  expect(body.rides.every(ride => ride.partnerName === null)).toBe(true)
+  expect(body.rides.find(ride => ride.guestName === 'Predani gost')).toMatchObject({
+    state: 'handed_off',
+    driverName: null,
+    partnerName: 'Mora Transfer',
+  })
+  expect(body.rides.filter(ride => ride.state !== 'handed_off').every(ride => ride.partnerName === null)).toBe(true)
 })
 
 it('pages 50 rides and keeps the counts on the whole history', async () => {

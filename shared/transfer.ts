@@ -55,11 +55,12 @@ export const PICKUP_PAST_DAYS = 30
 export const PICKUP_FUTURE_MONTHS = 18
 
 /**
- * ADR-0005. Creating a Transfer writes `unassigned`. Assignment writes
- * `assigned`. Acceptance writes `accepted`. Done writes `done`.
- * `no-show` and `cancelled` stay reserved for later commands.
+ * ADR-0005, extended by ADR-0048. Creating a Transfer writes `unassigned`.
+ * Assignment writes `assigned`. Acceptance writes `accepted`. A handoff
+ * writes `handed_off`. Done writes `done`. `no-show` and `cancelled` are
+ * terminal, and so is `done`.
  */
-export const RIDE_STATES = ['unassigned', 'assigned', 'accepted', 'done', 'no-show', 'cancelled'] as const
+export const RIDE_STATES = ['unassigned', 'assigned', 'accepted', 'handed_off', 'done', 'no-show', 'cancelled'] as const
 
 /**
  * How the Transfer will be paid. `invoice_to_agency` is a recorded choice.
@@ -103,30 +104,33 @@ export function canMarkRideDone(state: RideState, mustAccept: boolean | null): b
 }
 
 /**
- * ADR-0005. A dispatcher or an admin may cancel from `unassigned`,
- * `assigned`, or `accepted`. The copied flag does not matter. `done`,
- * `no-show`, and a second cancel are terminal and are refused.
+ * ADR-0005, extended by ADR-0048. A dispatcher or an admin may cancel from
+ * `unassigned`, `assigned`, `accepted`, or `handed_off`. The copied flag
+ * does not matter. `done`, `no-show`, and a second cancel are terminal
+ * and are refused.
  */
 export function canCancelRide(state: RideState): boolean {
-  return state === 'unassigned' || state === 'assigned' || state === 'accepted'
+  return state === 'unassigned' || state === 'assigned' || state === 'accepted' || state === 'handed_off'
 }
 
 /**
  * ADR-0007 and ADR-0028. A landing time can be recorded or cleared while the
- * Ride is unfinished, including before anyone is assigned. `done`, `no-show`,
- * and `cancelled` keep the time they already have. The Ride state is not a
- * landing-time change.
+ * Ride is unfinished, including before anyone is assigned. `handed_off` is
+ * not included: landing time stays on a Ride the office still runs.
+ * `done`, `no-show`, and `cancelled` keep the time they already have.
+ * The Ride state is not a landing-time change.
  */
 export function canRecordLandingTime(state: RideState): boolean {
   return state === 'unassigned' || state === 'assigned' || state === 'accepted'
 }
 
 /**
- * ADR-0010. A dispatcher or an admin may correct the booking while the Ride
- * is unfinished. `done`, `no-show`, and `cancelled` keep the details they have.
+ * ADR-0010, extended by ADR-0048. A dispatcher or an admin may correct the
+ * booking while the Ride is unfinished, including when it is handed to a
+ * Partner. `done`, `no-show`, and `cancelled` keep the details they have.
  */
 export function canCorrectTransfer(state: RideState): boolean {
-  return state === 'unassigned' || state === 'assigned' || state === 'accepted'
+  return state === 'unassigned' || state === 'assigned' || state === 'accepted' || state === 'handed_off'
 }
 
 /**

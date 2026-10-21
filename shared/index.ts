@@ -62,6 +62,8 @@ export { classifyRideAttention, homeRowNamesTheDate, parseTransferDayFilter, pic
 export type { RideAttentionItem, RideAttentionKind, RideAttentionSource, RideAttentionTier, RideDecline, RideStateMark, TransferBoardFilter, TransferDayFilter, TransferDayFilterRide } from './ride-attention'
 export { buildRideExportCsv, calendarDayBounds, parseRideExportQuery, RIDE_EXPORT_MAX_DAYS, rideExportFilename, RideExportRangeError } from './ride-export'
 export type { RideExportRide } from './ride-export'
+export { canChangeHandedOffPartner, canCloseHandedOffRide, canHandOffRide, canTakeBackHandedOffRide, handedOffRideResultSchema, handedOffRideSchema, parseChangeRidePartner, parseHandOffRide, parseTakeBackRide, RIDE_HANDOFF_CLEAR_FIELDS, RIDE_HANDOFF_OPEN_FIELDS, RIDE_PARTNER_CHANGED_FIELDS, RIDE_TAKEN_BACK_FIELDS } from './ride-handoff'
+export type { HandedOffRideResult, HandOffRideInput } from './ride-handoff'
 export { RIDE_HISTORY_PAGE_SIZE, rideHistoryCountsSchema, rideHistoryRowSchema, rideHistorySchema } from './ride-history'
 export type { RideHistory, RideHistoryCounts, RideHistoryCursor, RideHistoryRow } from './ride-history'
 export { parseRosterDate, parseSetRoster, planRosterCopy, rosterAssignmentSchema, rosterDateSchema, rosterDaySchema, RosterInputError, setRosterResultSchema, setRosterSchema } from './roster'

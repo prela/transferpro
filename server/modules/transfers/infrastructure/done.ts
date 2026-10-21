@@ -3,7 +3,7 @@ import type { Ride } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { canMarkRideDone, RIDE_ACCEPTED_FIELDS, rideStateSchema } from '../../../../shared'
+import { canCloseHandedOffRide, canMarkRideDone, RIDE_ACCEPTED_FIELDS, rideStateSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { loadDriverLinkedToMember } from '../../drivers'
@@ -43,6 +43,7 @@ const lockedRows = z.object({
     driverId: z.uuid().nullable(),
     vehicleId: z.uuid().nullable(),
     mustAccept: z.boolean().nullable(),
+    partnerId: z.uuid().nullable(),
   })),
 })
 
@@ -59,6 +60,22 @@ const doneRows = z.object({
 
 /** A done Ride still has the Driver, the Vehicle, and the copied flag it had. */
 type DoneRide = z.infer<typeof doneRows>['rows'][number]
+
+/**
+ * Closing a handed-off Ride clears the Partner. The check allows a Partner
+ * only while the state is `handed_off`. The Driver and Vehicle were already
+ * null. The audit keeps the Partner id in the driver slot.
+ */
+const handedOffDoneRows = z.object({
+  rows: z.array(z.object({
+    id: z.uuid(),
+    transferId: z.uuid(),
+    state: z.literal('done'),
+    driverId: z.null(),
+    vehicleId: z.null(),
+    mustAccept: z.null(),
+  })),
+})
 
 /**
  * Accepts an empty body and a Ride id. Any key, or a path that is not an id,
@@ -96,6 +113,9 @@ export async function markOwnRideDone(
   const current = await lockRideForDone(transaction, rideId)
   if (!current)
     throw new RideNotFoundError()
+  // A handed-off Ride is office work. 403, not the 404 used when the Driver does not hold it.
+  if (canCloseHandedOffRide(current.state))
+    throw new TenantAccessError(403)
   // A clear leaves no Driver. A reassignment leaves another Driver.
   // Both are hidden the same way a missing Ride is.
   if (current.driverId !== driver.id)
@@ -108,14 +128,16 @@ export async function markOwnRideDone(
   if (!updated)
     throw new RideNotFinishableError()
 
-  await appendDone(transaction, actorUserId, updated)
+  await appendDone(transaction, actorUserId, updated.id, updated.driverId)
   return updated
 }
 
 /**
  * A dispatcher or an admin marks the Ride done. The same flag rule applies.
  * The Driver id is the Ride's, including when that Driver has no account.
- * `ride.done` names the office member. The caller has already required that role.
+ * A handed-off Ride is closed with no wait and no version bump. The Partner
+ * is cleared so the check still holds, and `ride.done` stores that Partner
+ * id in the driver slot. The caller has already required that role.
  */
 export async function markRideDoneForOffice(
   transaction: TenantTransaction,
@@ -125,6 +147,8 @@ export async function markRideDoneForOffice(
   const current = await lockRideForDone(transaction, rideId)
   if (!current)
     throw new RideNotFoundError()
+  if (canCloseHandedOffRide(current.state))
+    return closeHandedOffDone(transaction, actorUserId, rideId, current.partnerId)
   // Unassigned has no Driver. Any other pair the flag rule refuses stays as it was.
   if (current.driverId === null || !canMarkRideDone(current.state, current.mustAccept))
     throw new RideNotFinishableError()
@@ -133,7 +157,36 @@ export async function markRideDoneForOffice(
   if (!updated)
     throw new RideNotFinishableError()
 
-  await appendDone(transaction, actorUserId, updated)
+  await appendDone(transaction, actorUserId, updated.id, updated.driverId)
+  return updated
+}
+
+async function closeHandedOffDone(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  rideId: string,
+  partnerId: string | null,
+): Promise<Ride> {
+  if (partnerId === null)
+    throw new RideNotFinishableError()
+  const updated = handedOffDoneRows.parse(await runDoneStep(transaction, sql`
+    update app.rides
+    set state = 'done',
+        partner_id = null
+    where id = ${rideId}
+      and state = 'handed_off'
+      and partner_id = ${partnerId}
+    returning
+      id,
+      transfer_id as "transferId",
+      state,
+      driver_id as "driverId",
+      vehicle_id as "vehicleId",
+      must_accept as "mustAccept"
+  `)).rows[0]
+  if (!updated)
+    throw new RideNotFinishableError()
+  await appendDone(transaction, actorUserId, updated.id, partnerId)
   return updated
 }
 
@@ -160,7 +213,8 @@ async function lockRideForDone(transaction: TenantTransaction, rideId: string) {
            state,
            driver_id as "driverId",
            vehicle_id as "vehicleId",
-           must_accept as "mustAccept"
+           must_accept as "mustAccept",
+           partner_id as "partnerId"
     from app.rides
     where id = ${rideId}
     for update
@@ -201,15 +255,17 @@ async function writeDoneRide(
 async function appendDone(
   transaction: TenantTransaction,
   actorUserId: string,
-  updated: DoneRide,
+  rideId: string,
+  driverId: string,
 ): Promise<void> {
   await hideDatabaseError(() => appendAuditEntry(transaction, {
     action: 'ride.done',
     actorUserId,
     subjectUserId: null,
     data: {
-      rideId: updated.id,
-      driverId: updated.driverId,
+      rideId,
+      // A handed-off close stores the Partner id in this slot. The row itself no longer has it.
+      driverId,
       fields: [...RIDE_ACCEPTED_FIELDS],
     },
   }), 'Ride done failed')

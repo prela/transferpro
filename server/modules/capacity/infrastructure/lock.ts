@@ -20,7 +20,7 @@ const CAPACITY_LOCK_SPACE = 34
  * Lock order. The caller has already locked its Transfer and Ride rows and
  * made every refusal that needs no other row: role, input, `stale_save`,
  * and state. It takes this lock next, and only after that reads a Driver,
- * a Vehicle, or another Ride. Occupation is read without row locks, so no
+ * a Vehicle, a Partner, or another Ride. Occupation is read without row locks, so no
  * lock cycle can form with this one, and the second of two concurrent
  * commands sees the first.
  */

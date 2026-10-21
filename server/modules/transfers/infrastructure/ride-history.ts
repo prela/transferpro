@@ -8,6 +8,7 @@ import { hideDatabaseError } from '../../../core/index'
 import { ClientNotFoundError, loadClient } from '../../clients'
 import { loadDrivers } from '../../drivers'
 import { loadLocations } from '../../locations'
+import { loadPartners } from '../../partners'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { toInstant, toPrice } from './transfers'
 
@@ -22,6 +23,7 @@ const historyRowSchema = z.object({
   rideId: z.uuid(),
   state: rideStateSchema,
   driverId: z.uuid().nullable(),
+  partnerId: z.uuid().nullable(),
   pickupAt: z.unknown(),
   startLocationId: z.uuid(),
   endLocationId: z.uuid(),
@@ -76,9 +78,11 @@ function parseRideHistoryQuery(raw: unknown): RideHistoryCursor | null {
  * One Client's Rides, every state, newest pickup first. The page is
  * {@link RIDE_HISTORY_PAGE_SIZE} rows. Counts cover every Ride of this
  * Client, including rows the page does not return. v1 has no index on
- * `client_id` (ADR-0049). Names come from the catalog modules. A Ride has
- * no Partner yet, so `partnerName` is null (#415). A missing Client is the
- * caller's 404. A database failure is logged as a SQLSTATE only.
+ * `client_id` (ADR-0049). Names come from the catalog modules. The Partner
+ * name is loaded through the Partners index, including an archived Partner,
+ * because a handed-off Ride still shows that name (ADR-0048, ADR-0049).
+ * A closed Ride no longer stores the Partner (#415), so that name is null.
+ * A missing Client is the caller's 404. A database failure is logged as a SQLSTATE only.
  */
 async function loadClientRideHistory(
   transaction: TenantTransaction,
@@ -114,6 +118,7 @@ async function loadClientRideHistory(
         r.id as "rideId",
         r.state,
         r.driver_id as "driverId",
+        r.partner_id as "partnerId",
         t.pickup_at as "pickupAt",
         t.start_location_id as "startLocationId",
         t.end_location_id as "endLocationId",
@@ -131,12 +136,15 @@ async function loadClientRideHistory(
   ))
   const places = new Map((await loadLocations(transaction, true)).map(place => [place.id, locationLabel(place)]))
   const drivers = new Map((await loadDrivers(transaction, true)).map(driver => [driver.id, driver.name]))
+  // Archived Partners stay in the map. A Ride already handed to one still names it.
+  const partners = new Map((await loadPartners(transaction, true)).map(partner => [partner.id, partner.name]))
   const page = selected.rows.slice(0, RIDE_HISTORY_PAGE_SIZE)
   const rides = page.map((row) => {
     const start = places.get(row.startLocationId)
     const end = places.get(row.endLocationId)
     const driverName = row.driverId === null ? null : drivers.get(row.driverId)
-    if (start === undefined || end === undefined || driverName === undefined)
+    const partnerName = row.partnerId === null ? null : partners.get(row.partnerId)
+    if (start === undefined || end === undefined || driverName === undefined || partnerName === undefined)
       throw new Error('Ride history failed')
     const pickupAt = toInstant(row.pickupAt)
     const pickup = new Date(pickupAt)
@@ -150,8 +158,7 @@ async function loadClientRideHistory(
       end,
       state: row.state,
       driverName,
-      // Handoff is not stored yet. The Partner history reuses this row (#415).
-      partnerName: null,
+      partnerName,
       price: toPrice(row.price),
       payment: row.payment,
     }

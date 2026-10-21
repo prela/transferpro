@@ -9,9 +9,10 @@ const LANDING_ALARM_AFTER_END_MS = 60 * 60 * 1000
 
 /**
  * In progress, the same way the office-home list decides it (ADR-0022).
- * Unassigned and waiting on acceptance are not in progress. A finished
- * Ride is not. The pickup instant is excluded: the Ride becomes in
- * progress once that instant is past.
+ * Unassigned, handed off, and waiting on acceptance are not in progress.
+ * A handed-off Ride has no Driver (ADR-0048). A finished Ride is not.
+ * The pickup instant is excluded: the Ride becomes in progress once that
+ * instant is past.
  */
 export function rideIsInProgress(
   state: RideState,
@@ -20,7 +21,7 @@ export function rideIsInProgress(
   pickupMs: number,
   nowMs: number,
 ): boolean {
-  if (state === 'unassigned')
+  if (state === 'unassigned' || state === 'handed_off')
     return false
   if (state === 'assigned' && mustAccept === true)
     return false

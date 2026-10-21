@@ -331,6 +331,7 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
     waitingOnAcceptance: 1,
     assignedNotStarted: 1,
     inProgress: 1,
+    handedOff: 0,
     done: 1,
     noShow: 1,
     cancelled: 1,
@@ -340,6 +341,7 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
     + snapshot.counts.waitingOnAcceptance
     + snapshot.counts.assignedNotStarted
     + snapshot.counts.inProgress
+    + snapshot.counts.handedOff
     + snapshot.counts.done
     + snapshot.counts.noShow
     + snapshot.counts.cancelled,
@@ -356,6 +358,7 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
     unassigned: [],
     waitingOnAcceptance: [],
     inProgress: [],
+    handedOff: [],
     operationalDate: calendar,
     operationalDayStartHour: 5,
     counts: {
@@ -364,6 +367,7 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
       waitingOnAcceptance: 0,
       assignedNotStarted: 0,
       inProgress: 0,
+      handedOff: 0,
       done: 0,
       noShow: 0,
       cancelled: 0,

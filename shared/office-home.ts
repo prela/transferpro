@@ -84,6 +84,10 @@ const officeHomeInProgressSchema = officeHomeRowSchema.extend({
   landingAlarm: z.boolean(),
 }).strict()
 
+const officeHomeHandedOffSchema = officeHomeRowSchema.extend({
+  unclosedMark: z.boolean(),
+}).strict()
+
 const officeHomeCountsSchema = z.strictObject({
   rides: z.number().int().nonnegative(),
   unassigned: z.number().int().nonnegative(),
@@ -91,14 +95,18 @@ const officeHomeCountsSchema = z.strictObject({
   // Assigned or accepted, pickup still ahead, not waiting on acceptance (ADR-0039).
   assignedNotStarted: z.number().int().nonnegative(),
   inProgress: z.number().int().nonnegative(),
+  // Handed to a Partner, on this operational day. It is not in progress (ADR-0048).
+  handedOff: z.number().int().nonnegative(),
   done: z.number().int().nonnegative(),
   noShow: z.number().int().nonnegative(),
   cancelled: z.number().int().nonnegative(),
 })
 
 /**
- * The three lists and the eight counts from one moment (ADR-0024, ADR-0039).
- * The seven parts add up to `rides`. An unassigned row also carries decline
+ * The three lists and the nine counts from one moment (ADR-0024, ADR-0039).
+ * The eight parts add up to `rides`. Handed off is one of those parts and
+ * is not a fourth list: a row appears only in Pozornost, once the unclosed
+ * mark is on (ADR-0048). An unassigned row also carries decline
  * alerts for any pickup day and the past-pickup flag. Waiting has no mark.
  * In progress carries the unclosed mark (ADR-0027) and the landing alarm
  * (ADR-0030). The lists still include a Ride that Home shows only in
@@ -141,6 +149,7 @@ export const officeHomeSchema = z.strictObject({
   unassigned: z.array(officeHomeUnassignedSchema),
   waitingOnAcceptance: z.array(officeHomeRowSchema),
   inProgress: z.array(officeHomeInProgressSchema),
+  handedOff: z.array(officeHomeHandedOffSchema),
   counts: officeHomeCountsSchema,
   failedMails: z.array(officeHomeFailedMailSchema),
 })
@@ -171,6 +180,10 @@ export function officeHomeUrgentKeys(home: OfficeHome): string[] {
   for (const ride of home.inProgress) {
     if (ride.landingAlarm)
       keys.push(`landing-alarm:${ride.rideId}`)
+    if (ride.unclosedMark)
+      keys.push(`unclosed-mark:${ride.rideId}`)
+  }
+  for (const ride of home.handedOff) {
     if (ride.unclosedMark)
       keys.push(`unclosed-mark:${ride.rideId}`)
   }
@@ -217,8 +230,8 @@ function byPickup(a: { pickupAt: string, rideId: string }, b: { pickupAt: string
  * Build the office snapshot from rides already read at `now`.
  * Lists are every match, soonest pickup first. Counts are the operational
  * day that contains `now`, so a list can be longer than its count.
- * Assigned and not started is counted and is on no list, so the seven
- * parts add up to the total (ADR-0039).
+ * Assigned and not started is counted and is on no list. Handed off is
+ * counted the same way, so the eight parts add up to the total (ADR-0039, ADR-0048).
  */
 export function buildOfficeHome(
   rides: readonly OfficeHomeRide[],
@@ -239,12 +252,14 @@ export function buildOfficeHome(
   const unassigned: z.infer<typeof officeHomeUnassignedSchema>[] = []
   const waitingOnAcceptance: z.infer<typeof officeHomeRowSchema>[] = []
   const inProgress: z.infer<typeof officeHomeInProgressSchema>[] = []
+  const handedOff: z.infer<typeof officeHomeHandedOffSchema>[] = []
   const counts = {
     rides: 0,
     unassigned: 0,
     waitingOnAcceptance: 0,
     assignedNotStarted: 0,
     inProgress: 0,
+    handedOff: 0,
     done: 0,
     noShow: 0,
     cancelled: 0,
@@ -281,6 +296,8 @@ export function buildOfficeHome(
         counts.waitingOnAcceptance += 1
       else if (list === 'inProgress')
         counts.inProgress += 1
+      else if (ride.state === 'handed_off')
+        counts.handedOff += 1
       else if (ride.state === 'done')
         counts.done += 1
       else if (ride.state === 'no-show')
@@ -310,11 +327,19 @@ export function buildOfficeHome(
         landingAlarm: landingAlarmOn(ride.landingAt, nowMs, transferDurationMinutes, true),
       })
     }
+    else if (ride.state === 'handed_off') {
+      // The same threshold as an in-progress Ride. The instant is included (ADR-0048).
+      handedOff.push({
+        ...shown,
+        unclosedMark: nowMs - pickup >= UNCLOSED_MARK_MS,
+      })
+    }
   }
 
   unassigned.sort(byPickup)
   waitingOnAcceptance.sort(byPickup)
   inProgress.sort(byPickup)
+  handedOff.sort(byPickup)
 
   return officeHomeSchema.parse({
     operationalDate,
@@ -322,6 +347,7 @@ export function buildOfficeHome(
     unassigned,
     waitingOnAcceptance,
     inProgress,
+    handedOff,
     counts,
     // The Ride snapshot does not know about mail. The Home read fills this afterwards.
     failedMails: [],
@@ -393,6 +419,7 @@ export const OFFICE_HOME_COUNT_KEYS = [
   'waitingOnAcceptance',
   'assignedNotStarted',
   'inProgress',
+  'handedOff',
   'done',
   'noShow',
   'cancelled',
@@ -406,6 +433,7 @@ const COUNT_FILTER: Record<OfficeHomeCountKey, string | null> = {
   waitingOnAcceptance: 'waiting',
   assignedNotStarted: 'assignedNotStarted',
   inProgress: 'inProgress',
+  handedOff: 'handedOff',
   done: 'done',
   noShow: 'noShow',
   cancelled: 'cancelled',
@@ -439,6 +467,13 @@ export function officeHomeBlocks(home: OfficeHome): OfficeHomeBlocks {
     place(row, [], 'accept', waitingOnAcceptance, grouped)
   for (const row of home.inProgress)
     place(row, progressMarks(row), 'done', inProgress, grouped)
+  // Only the unclosed mark is shown. A handed-off Ride before that instant is a count, not a row.
+  // The mark is urgent, so place() keeps the row out of the unused list.
+  const handedOffParked: OfficeHomeBlockRide[] = []
+  for (const row of home.handedOff) {
+    if (row.unclosedMark)
+      place(row, [{ kind: 'unclosed-mark' }], 'done', handedOffParked, grouped)
+  }
 
   return {
     attention: HOME_ATTENTION_KINDS.flatMap((kind) => {

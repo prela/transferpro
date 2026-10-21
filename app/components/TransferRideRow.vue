@@ -44,6 +44,7 @@ const stateIcon = {
   waiting: 'i-lucide-phone',
   assigned: 'i-lucide-user',
   accepted: 'i-lucide-circle-check',
+  handedOff: 'i-lucide-handshake',
   inProgress: 'i-lucide-car',
   done: 'i-lucide-check',
   noShow: 'i-lucide-user-x',

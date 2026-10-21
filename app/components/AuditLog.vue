@@ -164,6 +164,11 @@ function detailText(entry: AuditEntry): string {
         driver: entry.driverName ?? '',
         vehicle: entry.vehiclePlate ?? '',
       })
+    case 'ride.handed_off':
+    case 'ride.partner_changed':
+    case 'ride.taken_back':
+      // Field names only. The Partner id stays on the row. A name is not joined.
+      return entry.data.fields.map(field => t(`ride.handoffFields.${field}`)).join(', ')
     case 'roster.assigned':
     case 'roster.changed':
     case 'roster.cleared':

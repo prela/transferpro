@@ -22,7 +22,7 @@ export class RecordLandingInputError extends Error {
 }
 
 /**
- * The Ride is `done`, `no-show`, or `cancelled`. The stored time stays.
+ * The Ride is `done`, `no-show`, `cancelled`, or `handed_off`. The stored time stays.
  * Nothing was written.
  */
 export class RideLandingClosedError extends Error {

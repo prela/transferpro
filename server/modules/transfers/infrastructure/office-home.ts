@@ -46,7 +46,9 @@ const MISSING_DECLINE_DRIVER = '—'
  * read in that same statement: assignment does not delete the stored row,
  * and a decline committed later must not appear on this snapshot.
  * A Ride outside this filter is on no list and not on the operational day,
- * so leaving it out does not change the result. Names are resolved
+ * so leaving it out does not change the result. A handed-off Ride whose
+ * pickup is already past is included even on an earlier day, so the
+ * unclosed mark can still surface it (ADR-0048). Names are resolved
  * afterwards, through each catalog module, on this same transaction
  * (ADR-0018).
  * `viewer` is the session's Tenant and role. Failed invitations are listed
@@ -102,6 +104,7 @@ export async function loadOfficeHome(
           and r.state not in ('done', 'no-show', 'cancelled', 'unassigned')
           and not (r.state = 'assigned' and r.must_accept is true)
         )
+        or (r.state = 'handed_off' and t.pickup_at < ${nowIso})
     `),
     'Office home read failed',
   ))
