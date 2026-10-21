@@ -36,6 +36,9 @@ const when = computed(() => {
 })
 
 const crew = computed(() => {
+  // A handed-off Ride has no Driver. The unassigned label would be the wrong state (ADR-0048).
+  if (props.ride.state === 'handed_off')
+    return t('transfers.states.handed_off')
   if (!props.ride.driverName)
     return t('transfers.unassignedCrew')
   return props.ride.vehiclePlate ? `${props.ride.driverName} · ${props.ride.vehiclePlate}` : props.ride.driverName

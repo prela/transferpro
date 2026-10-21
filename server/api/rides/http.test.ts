@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotOpenError, RideNotUnassignedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
+import { RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotHandedOffError, RideNotHandoffableError, RideNotOpenError, RideNotUnassignedError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
 import { rideHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -94,6 +94,38 @@ describe('rideHttpError', () => {
     expect(error).toMatchObject({
       statusCode: 409,
       data: { code: 'ride_unavailable' },
+    })
+  })
+
+  it('returns a distinct code when the ride cannot be handed off', () => {
+    const error = thrown(() => rideHttpError(new RideNotHandoffableError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'ride_not_handoffable' },
+    })
+  })
+
+  it('returns a distinct code when the ride is not handed off', () => {
+    const error = thrown(() => rideHttpError(new RideNotHandedOffError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'ride_not_handed_off' },
+    })
+  })
+
+  it('returns a distinct code when the partner is archived', () => {
+    const error = thrown(() => rideHttpError(new RidePartnerArchivedError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'ride_partner_archived' },
+    })
+  })
+
+  it('returns a distinct code when the partner is already on the ride', () => {
+    const error = thrown(() => rideHttpError(new RidePartnerUnchangedError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'ride_partner_unchanged' },
     })
   })
 })

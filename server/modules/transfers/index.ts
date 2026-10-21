@@ -26,6 +26,12 @@
  * payment is cash. A Ride with no Driver sends nothing.
  * The office can change only the Vehicle, clear the Ride, or reassign it.
  * Each of those mails a work order after the Ride is saved.
+ * The office can hand a Ride to a Partner from `unassigned`, `assigned`,
+ * or `accepted`. That clears a Driver and mails them no longer yours.
+ * A Partner is not mailed. The office can change that Partner, take the
+ * Ride back to `unassigned`, or close it as done, No-show, or cancelled.
+ * Handoff and a Partner change take the Tenant capacity lock. They are
+ * not judged yet. Take-back and closing take no lock (ADR-0048).
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
  * their index files, by id. Those modules do not import this one (ADR-0018).
  * Whether a Driver or a Vehicle is taken is the capacity module's decision
@@ -62,6 +68,7 @@ export { listUpcomingRides } from './infrastructure/driver-ride-access'
 export { FailedMailInputError, FailedMailNotFoundError, resendFailedMail } from './infrastructure/failed-mail'
 export { askFlightLandings, LandingTimeClosedError, LandingTimeInFutureError, recordLandingTime, refreshFlightLandings } from './infrastructure/flight-landing'
 export { startFlightLandingWorker } from './infrastructure/flight-landing-worker'
+export { changeRidePartner, handOffRide, RideNotHandedOffError, RideNotHandoffableError, RidePartnerArchivedError, RidePartnerUnchangedError, takeBackRide } from './infrastructure/handoff'
 export { RecordLandingInputError, recordRideLanding, RideLandingClosedError, RideLandingInFutureError } from './infrastructure/landing'
 export { closeMailOutboxQueue, mailOutboxQueue, mailOutboxStore, startMailOutboxWorker } from './infrastructure/mail-outbox-worker'
 export { markNoShow, MarkNoShowInputError, NoShowTooEarlyError, RideNotNoShowError } from './infrastructure/no-show'

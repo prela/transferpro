@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, CLIENT_KINDS, CONTACT_PERSON_ADDED_FIELD_LISTS, CONTACT_PERSON_CHANGED_FIELD_LISTS, DRIVER_FIELDS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, PARTNER_CHANGED_FIELD_LISTS, PARTNER_CREATED_FIELD_LISTS, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_LANDING_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, CLIENT_KINDS, CONTACT_PERSON_ADDED_FIELD_LISTS, CONTACT_PERSON_CHANGED_FIELD_LISTS, DRIVER_FIELDS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, PARTNER_CHANGED_FIELD_LISTS, PARTNER_CREATED_FIELD_LISTS, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_HANDOFF_CLEAR_FIELDS, RIDE_HANDOFF_OPEN_FIELDS, RIDE_LANDING_FIELDS, RIDE_PARTNER_CHANGED_FIELDS, RIDE_TAKEN_BACK_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -287,6 +287,22 @@ function partnerFields(data: AnyPgColumn, lists: readonly (readonly string[])[])
   return sql`${keysOnly(data, 'partnerId', 'fields')} and ${uuidText(data, 'partnerId')} and ${data} -> ${sql.raw(`'fields'`)} in (${sql.raw(allowed)})`
 }
 
+/** `fields` equals this canonical array. Order is part of the check, so a name cannot be rearranged in. */
+function fieldsEqual(data: AnyPgColumn, fields: readonly string[]) {
+  return sql`${data} -> ${sql.raw(`'fields'`)} = ${sql.raw(`'${JSON.stringify([...fields])}'::jsonb`)}`
+}
+
+/**
+ * A handoff is the open shape when no Driver was cleared, or the clear
+ * shape when the Driver and Vehicle ids were on the Ride. A name, a
+ * plate, or a phone cannot sit in either (ADR-0048).
+ */
+function rideHandedOffShape(data: AnyPgColumn) {
+  const open = sql`${keysOnly(data, 'rideId', 'partnerId', 'fields')} and ${uuidText(data, 'rideId')} and ${uuidText(data, 'partnerId')} and ${fieldsEqual(data, RIDE_HANDOFF_OPEN_FIELDS)}`
+  const cleared = sql`${keysOnly(data, 'rideId', 'partnerId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(data, 'rideId')} and ${uuidText(data, 'partnerId')} and ${uuidText(data, 'driverId')} and ${uuidText(data, 'vehicleId')} and ${fieldsEqual(data, RIDE_HANDOFF_CLEAR_FIELDS)}`
+  return sql`((${open}) or (${cleared}))`
+}
+
 /** A change names the instants it moved: one of them, or both once each. */
 function unavailabilityChangedFields(data: AnyPgColumn) {
   const fields = sql.raw(`'fields'`)
@@ -358,6 +374,9 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'ride.vehicle_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')} and ${rideVehicleChangeFieldsArray(table.data)}
     when 'ride.cleared' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')} and ${rideChangeFieldsArray(table.data)}
     when 'ride.reassigned' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')} and ${rideChangeFieldsArray(table.data)}
+    when 'ride.handed_off' then ${table.subjectUserId} is null and ${rideHandedOffShape(table.data)}
+    when 'ride.partner_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'partnerId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'partnerId')} and ${fieldsEqual(table.data, RIDE_PARTNER_CHANGED_FIELDS)}
+    when 'ride.taken_back' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'partnerId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'partnerId')} and ${fieldsEqual(table.data, RIDE_TAKEN_BACK_FIELDS)}
     when 'roster.assigned' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'vehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')}
     when 'roster.changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'fromVehicleId', 'toVehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'fromVehicleId')} and ${uuidText(table.data, 'toVehicleId')}
     when 'roster.cleared' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rosterDate', 'driverId', 'vehicleId')} and ${rosterDateText(table.data)} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')}

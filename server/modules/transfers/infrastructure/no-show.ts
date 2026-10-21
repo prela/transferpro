@@ -58,6 +58,7 @@ const lockedRows = z.object({
     driverId: z.uuid().nullable(),
     vehicleId: z.uuid().nullable(),
     mustAccept: z.boolean().nullable(),
+    partnerId: z.uuid().nullable(),
     pickupAt: z.unknown(),
     landingAt: z.unknown().nullable(),
     airportMark: z.boolean(),
@@ -79,6 +80,22 @@ const noShowRows = z.object({
 
 /** A No-show still has the Driver, the Vehicle, and the copied flag it had. No fee is stored. */
 type NoShowRide = z.infer<typeof noShowRows>['rows'][number]
+
+/**
+ * Closing a handed-off Ride clears the Partner. The audit stores that
+ * Partner id in the driver slot, and the action is always the early office
+ * No-show: there is no wait on a Ride the office no longer runs.
+ */
+const handedOffNoShowRows = z.object({
+  rows: z.array(z.object({
+    id: z.uuid(),
+    transferId: z.uuid(),
+    state: z.literal('no-show'),
+    driverId: z.null(),
+    vehicleId: z.null(),
+    mustAccept: z.null(),
+  })),
+})
 
 /**
  * Accepts an empty body and a Ride id. Any key, or a path that is not an id,
@@ -117,6 +134,9 @@ export async function markOwnNoShow(
   const current = await lockRideForNoShow(transaction, rideId)
   if (!current)
     throw new RideNotFoundError()
+  // A handed-off Ride is office work. 403, not the 404 used when the Driver does not hold it.
+  if (current.state === 'handed_off')
+    throw new TenantAccessError(403)
   // A clear leaves no Driver. A reassignment leaves another Driver.
   // Both are hidden the same way a missing Ride is.
   if (current.driverId !== driver.id)
@@ -131,7 +151,7 @@ export async function markOwnNoShow(
   if (!updated)
     throw new RideNotNoShowError()
 
-  await appendNoShow(transaction, actorUserId, updated, 'ride.no_show')
+  await appendNoShow(transaction, actorUserId, updated.id, updated.driverId, 'ride.no_show')
   return updated
 }
 
@@ -151,6 +171,8 @@ export async function markNoShowForOffice(
   const current = await lockRideForNoShow(transaction, rideId)
   if (!current)
     throw new RideNotFoundError()
+  if (current.state === 'handed_off')
+    return closeHandedOffNoShow(transaction, actorUserId, rideId, current.partnerId)
   // Unassigned has no Driver. Any other pair the flag rule refuses stays as it was.
   if (current.driverId === null || !canMarkNoShow(current.state, current.mustAccept))
     throw new RideNotNoShowError()
@@ -160,7 +182,37 @@ export async function markNoShowForOffice(
   if (!updated)
     throw new RideNotNoShowError()
 
-  await appendNoShow(transaction, actorUserId, updated, elapsed ? 'ride.no_show' : 'ride.no_show_early')
+  await appendNoShow(transaction, actorUserId, updated.id, updated.driverId, elapsed ? 'ride.no_show' : 'ride.no_show_early')
+  return updated
+}
+
+async function closeHandedOffNoShow(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  rideId: string,
+  partnerId: string | null,
+): Promise<Ride> {
+  if (partnerId === null)
+    throw new RideNotNoShowError()
+  const updated = handedOffNoShowRows.parse(await runNoShowStep(transaction, sql`
+    update app.rides
+    set state = 'no-show',
+        partner_id = null
+    where id = ${rideId}
+      and state = 'handed_off'
+      and partner_id = ${partnerId}
+    returning
+      id,
+      transfer_id as "transferId",
+      state,
+      driver_id as "driverId",
+      vehicle_id as "vehicleId",
+      must_accept as "mustAccept"
+  `)).rows[0]
+  if (!updated)
+    throw new RideNotNoShowError()
+  // No wait. The office No-show of a Partner Ride is always the early action.
+  await appendNoShow(transaction, actorUserId, updated.id, partnerId, 'ride.no_show_early')
   return updated
 }
 
@@ -191,6 +243,7 @@ async function lockRideForNoShow(transaction: TenantTransaction, rideId: string)
            r.driver_id as "driverId",
            r.vehicle_id as "vehicleId",
            r.must_accept as "mustAccept",
+           r.partner_id as "partnerId",
            t.pickup_at as "pickupAt",
            t.landing_at as "landingAt",
            t.airport_mark as "airportMark"
@@ -250,7 +303,8 @@ async function writeNoShowRide(
 async function appendNoShow(
   transaction: TenantTransaction,
   actorUserId: string,
-  updated: NoShowRide,
+  rideId: string,
+  driverId: string,
   action: 'ride.no_show' | 'ride.no_show_early',
 ): Promise<void> {
   await hideDatabaseError(() => appendAuditEntry(transaction, {
@@ -258,8 +312,9 @@ async function appendNoShow(
     actorUserId,
     subjectUserId: null,
     data: {
-      rideId: updated.id,
-      driverId: updated.driverId,
+      rideId,
+      // A handed-off close stores the Partner id in this slot. The row itself no longer has it.
+      driverId,
       fields: [...RIDE_ACCEPTED_FIELDS],
     },
   }), 'Ride no-show failed')

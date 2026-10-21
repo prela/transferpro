@@ -97,7 +97,10 @@ export function classifyRideAttention(
     items.push({ tier: 'urgent', kind: 'landing-alarm' })
 
   const inProgress = rideIsInProgress(ride.state, ride.mustAccept, ride.driverId, pickup, nowMs)
-  if (inProgress && nowMs - pickup >= UNCLOSED_MARK_MS)
+  // A handed-off Ride is not in progress. It takes the same mark, from the
+  // same instant, so a Partner Ride nobody closes is not forgotten (ADR-0048).
+  const unclosed = inProgress || ride.state === 'handed_off'
+  if (unclosed && nowMs - pickup >= UNCLOSED_MARK_MS)
     items.push({ tier: 'urgent', kind: 'unclosed-mark' })
 
   if (ride.warnings.overlappingRideIds.length > 0)
@@ -137,11 +140,11 @@ export type TransferDayFilter = (typeof TRANSFER_DAY_FILTERS)[number]
  * Toolbar chips stay the seven in ADR-0038. Home's balance also links to
  * the part that has no chip: assigned and not started, and each finished state.
  */
-export type TransferBoardFilter = TransferDayFilter | 'assignedNotStarted' | 'done' | 'noShow' | 'cancelled'
+export type TransferBoardFilter = TransferDayFilter | 'assignedNotStarted' | 'handedOff' | 'done' | 'noShow' | 'cancelled'
 
 const CLOSED = new Set<RideState>(['done', 'no-show', 'cancelled'])
 
-const HOME_PART_FILTERS = ['assignedNotStarted', 'done', 'noShow', 'cancelled'] as const
+const HOME_PART_FILTERS = ['assignedNotStarted', 'handedOff', 'done', 'noShow', 'cancelled'] as const
 
 export function parseTransferDayFilter(value: unknown): TransferBoardFilter {
   if (typeof value === 'string' && (HOME_PART_FILTERS as readonly string[]).includes(value))
@@ -176,6 +179,8 @@ export function transferDayFilterMatches(
     return rideIsInProgress(ride.state, ride.mustAccept, ride.driverId, pickupMillis(ride.pickupAt), nowMs)
   if (filter === 'assignedNotStarted')
     return assignedNotStarted(ride, nowMs)
+  if (filter === 'handedOff')
+    return ride.state === 'handed_off'
   if (filter === 'done')
     return ride.state === 'done'
   if (filter === 'noShow')
@@ -222,7 +227,7 @@ export function transferDayFilterCounts(
 }
 
 export interface RideStateMark {
-  readonly key: 'unassigned' | 'waiting' | 'assigned' | 'accepted' | 'inProgress' | 'done' | 'noShow' | 'cancelled'
+  readonly key: 'unassigned' | 'waiting' | 'assigned' | 'accepted' | 'handedOff' | 'inProgress' | 'done' | 'noShow' | 'cancelled'
   readonly color: 'warning' | 'neutral' | 'primary' | 'info' | 'success' | 'error'
   readonly variant: 'subtle' | 'outline'
   readonly muted: boolean
@@ -241,6 +246,8 @@ export function rideStateMark(ride: RideAttentionSource, nowMs: number): RideSta
     return { key: 'cancelled', color: 'neutral', variant: 'subtle', muted: true }
   if (ride.state === 'unassigned')
     return { key: 'unassigned', color: 'warning', variant: 'outline', muted: false }
+  if (ride.state === 'handed_off')
+    return { key: 'handedOff', color: 'neutral', variant: 'outline', muted: false }
   if (waitingOnAcceptance(ride))
     return { key: 'waiting', color: 'warning', variant: 'outline', muted: false }
   const pickup = pickupMillis(ride.pickupAt)

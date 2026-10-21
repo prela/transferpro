@@ -10,6 +10,7 @@ import {
   transferDayFilterCounts,
   transferDayFilterMatches,
 } from './ride-attention'
+import { UNCLOSED_MARK_MS } from './unclosed-mark'
 
 /**
  * Urgent and warning kinds for one Ride (ADR-0039). Expected kinds are
@@ -156,6 +157,31 @@ it('opens the Home balance parts that are not toolbar chips', () => {
   expect(transferDayFilterMatches('noShow', source({ state: 'no-show' }), [], NOW)).toBe(true)
   expect(transferDayFilterMatches('cancelled', source({ state: 'cancelled' }), [], NOW)).toBe(true)
   expect(transferDayFilterMatches('closed', done, [], NOW)).toBe(true)
+  expect(parseTransferDayFilter('handedOff')).toBe('handedOff')
+  expect(transferDayFilterMatches('handedOff', source({ state: 'handed_off' }), [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('unassigned', source({ state: 'handed_off' }), [], NOW)).toBe(false)
+  expect(transferDayFilterMatches('inProgress', source({ state: 'handed_off' }), [], NOW)).toBe(false)
+})
+
+it('marks a handed-off Ride at the shared unclosed threshold, and not as unassigned or in progress', () => {
+  const at = source({
+    state: 'handed_off',
+    pickupAt: new Date(NOW - UNCLOSED_MARK_MS).toISOString(),
+  })
+  expect(classifyRideAttention(at, [], NOW)).toEqual([
+    { tier: 'urgent', kind: 'unclosed-mark' },
+  ])
+  expect(rideStateMark(at, NOW).key).toBe('handedOff')
+  const before = source({
+    state: 'handed_off',
+    pickupAt: new Date(NOW - UNCLOSED_MARK_MS + 1).toISOString(),
+  })
+  expect(classifyRideAttention(before, [], NOW)).toEqual([])
+  const recent = source({
+    state: 'handed_off',
+    pickupAt: new Date(NOW - 60_000).toISOString(),
+  })
+  expect(classifyRideAttention(recent, [], NOW)).toEqual([])
 })
 
 it('shows the calendar date when the pickup falls on the next calendar day', () => {

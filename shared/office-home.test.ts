@@ -2,6 +2,7 @@ import type { OfficeHomeRide } from './office-home'
 import { expect, it } from 'vitest'
 import { instantFromWallClock } from './date'
 import { buildOfficeHome, officeHomeBlocks, officeHomeCountPath, officeHomeUrgentKeys, officeHomeUrgentRideCount } from './office-home'
+import { UNCLOSED_MARK_MS } from './unclosed-mark'
 
 /**
  * The office home snapshot. Lists keep every matching Ride. Counts keep
@@ -460,6 +461,7 @@ it('counts the operational day only, so a list can be larger than its count, and
     waitingOnAcceptance: 0,
     assignedNotStarted: 1,
     inProgress: 0,
+    handedOff: 0,
     done: 1,
     noShow: 1,
     cancelled: 1,
@@ -471,6 +473,7 @@ it('counts the operational day only, so a list can be larger than its count, and
     + snapshot.counts.waitingOnAcceptance
     + snapshot.counts.assignedNotStarted
     + snapshot.counts.inProgress
+    + snapshot.counts.handedOff
     + snapshot.counts.done
     + snapshot.counts.noShow
     + snapshot.counts.cancelled,
@@ -631,12 +634,14 @@ it('returns empty lists and zero counts when nothing matches', () => {
   expect(snapshot.unassigned).toEqual([])
   expect(snapshot.waitingOnAcceptance).toEqual([])
   expect(snapshot.inProgress).toEqual([])
+  expect(snapshot.handedOff).toEqual([])
   expect(snapshot.counts).toEqual({
     rides: 0,
     unassigned: 0,
     waitingOnAcceptance: 0,
     assignedNotStarted: 0,
     inProgress: 0,
+    handedOff: 0,
     done: 0,
     noShow: 0,
     cancelled: 0,
@@ -746,6 +751,7 @@ it('puts each listed Ride in one Home block, and past pickup and a decline in Po
     waitingOnAcceptance: 1,
     assignedNotStarted: 1,
     inProgress: 2,
+    handedOff: 0,
     done: 1,
     noShow: 1,
     cancelled: 1,
@@ -755,6 +761,7 @@ it('puts each listed Ride in one Home block, and past pickup and a decline in Po
     + snapshot.counts.waitingOnAcceptance
     + snapshot.counts.assignedNotStarted
     + snapshot.counts.inProgress
+    + snapshot.counts.handedOff
     + snapshot.counts.done
     + snapshot.counts.noShow
     + snapshot.counts.cancelled,
@@ -813,4 +820,55 @@ it('puts each listed Ride in one Home block, and past pickup and a decline in Po
   expect(officeHomeCountPath(snapshot.operationalDate, 'rides')).toBe('/transfers?day=2026-06-15')
   expect(officeHomeCountPath(snapshot.operationalDate, 'assignedNotStarted')).toBe('/transfers?day=2026-06-15&filter=assignedNotStarted')
   expect(officeHomeCountPath(snapshot.operationalDate, 'done')).toBe('/transfers?day=2026-06-15&filter=done')
+  expect(officeHomeCountPath(snapshot.operationalDate, 'handedOff')).toBe('/transfers?day=2026-06-15&filter=handedOff')
+})
+
+it('counts a handed-off Ride on the day and shows it only once the unclosed mark is on', () => {
+  const now = new Date('2026-06-15T10:00:00.000Z')
+  const atMark = new Date(now.getTime() - UNCLOSED_MARK_MS).toISOString()
+  const before = new Date(now.getTime() - UNCLOSED_MARK_MS + 1).toISOString()
+  const snapshot = buildOfficeHome([
+    ride({
+      rideId: '00000000-0000-4000-8000-0000000000a1',
+      guestName: 'At the mark',
+      pickupAt: atMark,
+      state: 'handed_off',
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-0000000000a2',
+      guestName: 'Just before',
+      pickupAt: before,
+      state: 'handed_off',
+    }),
+  ], now, zone)
+  expect(snapshot.counts.handedOff).toBe(2)
+  expect(snapshot.counts.unassigned).toBe(0)
+  expect(snapshot.counts.inProgress).toBe(0)
+  expect(snapshot.unassigned).toEqual([])
+  expect(snapshot.inProgress).toEqual([])
+  expect(snapshot.handedOff.map(row => [row.guestName, row.unclosedMark])).toEqual([
+    ['At the mark', true],
+    ['Just before', false],
+  ])
+  const blocks = officeHomeBlocks(snapshot)
+  expect(blocks.attention.map(group => [group.kind, group.rides.map(row => row.guestName)])).toEqual([
+    ['unclosed-mark', ['At the mark']],
+  ])
+  expect(blocks.inProgress).toEqual([])
+  expect(blocks.unassigned).toEqual([])
+  expect(blocks.attention[0]?.rides[0]?.state).toBe('handed_off')
+  expect(blocks.attention[0]?.rides[0]?.action).toBe('done')
+  expect(officeHomeUrgentKeys(snapshot)).toEqual([
+    'unclosed-mark:00000000-0000-4000-8000-0000000000a1',
+  ])
+  expect(
+    snapshot.counts.unassigned
+    + snapshot.counts.waitingOnAcceptance
+    + snapshot.counts.assignedNotStarted
+    + snapshot.counts.inProgress
+    + snapshot.counts.handedOff
+    + snapshot.counts.done
+    + snapshot.counts.noShow
+    + snapshot.counts.cancelled,
+  ).toBe(snapshot.counts.rides)
 })

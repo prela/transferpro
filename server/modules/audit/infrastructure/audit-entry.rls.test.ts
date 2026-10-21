@@ -545,6 +545,35 @@ it('append_entry accepts a Partner create, change, archive, and restore with the
   ])
 })
 
+it('append_entry accepts a handoff, a partner change, and a take-back, and refuses a name', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const partnerId = 'c1c1c1c1-3333-4333-8333-333333333333'
+  const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
+  const vehicleId = 'd1d1d1d1-4444-4444-8444-444444444444'
+  const append = `select audit.append_entry($1, $2, null, $3::jsonb)`
+  const open = { rideId, partnerId, fields: ['state', 'partnerId'] }
+  const cleared = { rideId, partnerId, driverId, vehicleId, fields: ['state', 'partnerId', 'driverId', 'vehicleId', 'mustAccept'] }
+  const changed = { rideId, partnerId, fields: ['partnerId'] }
+  const taken = { rideId, partnerId, fields: ['state', 'partnerId'] }
+  await inSession(appPool, tenant, async (client) => {
+    await client.query(append, ['ride.handed_off', actor, JSON.stringify(open)])
+    await client.query(append, ['ride.handed_off', actor, JSON.stringify(cleared)])
+    await client.query(append, ['ride.partner_changed', actor, JSON.stringify(changed)])
+    await client.query(append, ['ride.taken_back', actor, JSON.stringify(taken)])
+  })
+  expect((await entriesOf(tenant)).map(row => row.data)).toEqual([open, cleared, changed, taken])
+
+  const named = await refusal(appPool, tenant, append, [
+    'ride.handed_off',
+    actor,
+    JSON.stringify({ ...open, partnerName: 'Mora Transfer' }),
+  ])
+  expect(named).toMatchObject({ code: '23514' })
+  expect(await entriesOf(tenant)).toHaveLength(4)
+})
+
 it('the owner cannot update, delete, or truncate an entry either', async () => {
   const tenant = crypto.randomUUID()
   await appendRemoval(appPool, tenant, crypto.randomUUID(), crypto.randomUUID())

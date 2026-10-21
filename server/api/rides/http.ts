@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
-import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
+import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotHandedOffError, RideNotHandoffableError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
 
 /**
  * Turn an assignment or accept failure into an HTTP error. The message stays
@@ -29,6 +29,11 @@ import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, Mark
  * `cancelled`. The stored time stays. `landing_time_in_future` is an instant
  * still ahead of now. Nothing was written.
  * `stale_save` is a version the form no longer holds. Nothing was written.
+ * `ride_not_handoffable` is a handoff from a state other than `unassigned`,
+ * `assigned`, or `accepted`. `ride_not_handed_off` is a Partner change or a
+ * take-back when the Ride is not `handed_off`. `ride_partner_archived` is an
+ * archived Partner. `ride_partner_unchanged` is the Partner already on the
+ * Ride. Each of those writes nothing.
  */
 export function rideHttpError(error: unknown): never {
   if (
@@ -63,6 +68,10 @@ export function rideHttpError(error: unknown): never {
     || error instanceof RideOverlapError
     || error instanceof RideUnavailableError
     || error instanceof StaleSaveError
+    || error instanceof RideNotHandoffableError
+    || error instanceof RideNotHandedOffError
+    || error instanceof RidePartnerArchivedError
+    || error instanceof RidePartnerUnchangedError
   ) {
     throw createError({
       statusCode: error.statusCode,

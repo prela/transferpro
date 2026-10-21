@@ -4,6 +4,7 @@ import { CHILD_SEAT_COUNT_MAX, CHILD_SEAT_COUNT_MIN, CLIENT_REFERENCE_MAX_LENGTH
 import { clients } from './clients'
 import { drivers } from './drivers'
 import { locations } from './locations'
+import { partners } from './partners'
 import { tenantTable } from './tenant-table'
 import { vehicles } from './vehicles'
 
@@ -127,7 +128,15 @@ export const transfers = tenantTable('transfers', {
  * There is no `assigned_at` or `assigned_by`. The audit entry records the
  * actor and the time (ADR-0014). `done`, `no-show`, and `cancelled` are
  * not constrained here.
- * The composite foreign keys refuse another Tenant's Driver or Vehicle.
+ * `handed_off` has a Partner and neither a Driver nor a Vehicle. The
+ * check is both ways, so closing or taking the Ride back must clear the
+ * Partner, and a Partner cannot be stored on any other state. The column
+ * is nullable and has no default: existing rows stay as they are, with
+ * the Partner null, and this migration does not update them.
+ * The copied flag is not part of that check. The handoff and take-back
+ * commands clear it, because `unassigned` requires it null and a
+ * handed-off Ride has no Driver whose setting to copy.
+ * The composite foreign keys refuse another Tenant's Driver, Vehicle, or Partner.
  */
 
 const states = sql.raw(RIDE_STATES.map(state => `'${state}'`).join(', '))
@@ -140,6 +149,8 @@ export const rides = tenantTable('rides', {
   vehicleId: uuid('vehicle_id'),
   // Null until assignment copies the Driver's setting. A later change to the Driver does not rewrite this.
   mustAccept: boolean('must_accept'),
+  // Set only while `handed_off`. Nullable, no default, so existing rows are not rewritten.
+  partnerId: uuid('partner_id'),
 }, table => [
   uniqueIndex('rides_transfer_id').on(table.transferId),
   // A decline alert references this Ride by (tenant_id, id). The id is already the key; this pair is what that foreign key needs.
@@ -159,8 +170,16 @@ export const rides = tenantTable('rides', {
     columns: [table.tenantId, table.vehicleId],
     foreignColumns: [vehicles.tenantId, vehicles.id],
   }),
+  // A Partner from another Tenant cannot be stored. Null is allowed on every other state.
+  foreignKey({
+    name: 'rides_partner_fk',
+    columns: [table.tenantId, table.partnerId],
+    foreignColumns: [partners.tenantId, partners.id],
+  }),
   check('rides_state', sql`${table.state} in (${states})`),
   check('rides_unassigned_open', sql`${table.state} <> 'unassigned' or (${table.driverId} is null and ${table.vehicleId} is null and ${table.mustAccept} is null)`),
   check('rides_assigned_pair', sql`${table.state} <> 'assigned' or (${table.driverId} is not null and ${table.vehicleId} is not null and ${table.mustAccept} is not null)`),
   check('rides_accepted_pair', sql`${table.state} <> 'accepted' or (${table.driverId} is not null and ${table.vehicleId} is not null and ${table.mustAccept} is true)`),
+  // Both directions: handed off exactly when a Partner is set and the crew is clear (ADR-0048).
+  check('rides_handed_off_partner', sql`(${table.state} = 'handed_off') = (${table.partnerId} is not null and ${table.driverId} is null and ${table.vehicleId} is null)`),
 ], { oneRowPerTenant: false })

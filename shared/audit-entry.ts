@@ -5,6 +5,7 @@ import { driverFieldSchema } from './driver'
 import { locationFieldSchema } from './location'
 import { partnerChangedFieldsSchema, partnerCreatedFieldsSchema } from './partner'
 import { RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideAssignmentFieldSchema, rideVehicleChangeFieldSchema } from './ride-assignment'
+import { RIDE_HANDOFF_CLEAR_FIELDS, RIDE_HANDOFF_OPEN_FIELDS, RIDE_PARTNER_CHANGED_FIELDS, RIDE_TAKEN_BACK_FIELDS } from './ride-handoff'
 import { rosterDateSchema } from './roster'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, operationalDayStartHourSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
@@ -54,6 +55,9 @@ export const auditActions = [
   'ride.vehicle_changed',
   'ride.cleared',
   'ride.reassigned',
+  'ride.handed_off',
+  'ride.partner_changed',
+  'ride.taken_back',
   'roster.assigned',
   'roster.changed',
   'roster.cleared',
@@ -741,6 +745,59 @@ const clientNoteSaved = z.object({
   }),
 })
 
+/*
+ * A handoff names the Ride and the Partner. When it cleared a Driver, it
+ * also names that Driver and the Vehicle. The field order is the constant
+ * in ride-handoff.ts. A name, a contact, a plate, or a guest is not a key
+ * (ADR-0048). `subjectUserId` stays null.
+ */
+const rideHandedOff = z.object({
+  action: z.literal('ride.handed_off'),
+  subjectUserId: z.null(),
+  data: z.union([
+    z.strictObject({
+      rideId,
+      partnerId,
+      fields: z.tuple([z.literal(RIDE_HANDOFF_OPEN_FIELDS[0]), z.literal(RIDE_HANDOFF_OPEN_FIELDS[1])]),
+    }),
+    z.strictObject({
+      rideId,
+      partnerId,
+      driverId,
+      vehicleId,
+      fields: z.tuple([
+        z.literal(RIDE_HANDOFF_CLEAR_FIELDS[0]),
+        z.literal(RIDE_HANDOFF_CLEAR_FIELDS[1]),
+        z.literal(RIDE_HANDOFF_CLEAR_FIELDS[2]),
+        z.literal(RIDE_HANDOFF_CLEAR_FIELDS[3]),
+        z.literal(RIDE_HANDOFF_CLEAR_FIELDS[4]),
+      ]),
+    }),
+  ]),
+})
+
+/** A Partner change names the new Partner. The previous Partner is not a key. */
+const ridePartnerChanged = z.object({
+  action: z.literal('ride.partner_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    partnerId,
+    fields: z.tuple([z.literal(RIDE_PARTNER_CHANGED_FIELDS[0])]),
+  }),
+})
+
+/** Taking a handoff back names the Partner that was cleared. */
+const rideTakenBack = z.object({
+  action: z.literal('ride.taken_back'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    rideId,
+    partnerId,
+    fields: z.tuple([z.literal(RIDE_TAKEN_BACK_FIELDS[0]), z.literal(RIDE_TAKEN_BACK_FIELDS[1])]),
+  }),
+})
+
 /** What happened: the action, the member it was done to, and its data. */
 export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
@@ -779,6 +836,9 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   rideVehicleChanged,
   rideCleared,
   rideReassigned,
+  rideHandedOff,
+  ridePartnerChanged,
+  rideTakenBack,
   rosterAssigned,
   rosterChanged,
   rosterCleared,
@@ -922,6 +982,14 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
     driverName: z.string().nullable(),
     vehiclePlate: z.string().nullable(),
   }),
+  rideHandedOff.extend({
+    ...listed,
+    // The cleared Driver and Vehicle, when the handoff had any. A Partner name is not joined.
+    driverName: z.string().nullable(),
+    vehiclePlate: z.string().nullable(),
+  }),
+  ridePartnerChanged.extend(listed),
+  rideTakenBack.extend(listed),
   rosterAssigned.extend(listed),
   rosterChanged.extend(listed),
   rosterCleared.extend(listed),

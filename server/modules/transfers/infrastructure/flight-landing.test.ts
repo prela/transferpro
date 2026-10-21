@@ -275,7 +275,7 @@ it('stores nothing when the arrival is more than 6 hours away, tied, at another 
   expect(empty.log).not.toContain(iata)
 })
 
-it('does not ask a Ride that is not one designator, not an airport pickup, missing an IATA code, finished, or more than 12 hours ahead', async () => {
+it('does not ask a Ride that is not one designator, not an airport pickup, missing an IATA code, finished, handed off, or more than 12 hours ahead', async () => {
   const rows = [
     ride({ rideId: '11111111-1111-4111-8111-111111111111', flightNumber: 'OU 384 or OU 392' }),
     ride({ rideId: '22222222-2222-4222-8222-222222222222', airportMark: false }),
@@ -283,6 +283,7 @@ it('does not ask a Ride that is not one designator, not an airport pickup, missi
     ride({ rideId: '44444444-4444-4444-8444-444444444444', state: 'done' }),
     ride({ rideId: '55555555-5555-4555-8555-555555555555', state: 'no-show' }),
     ride({ rideId: '66666666-6666-4666-8666-666666666666', state: 'cancelled' }),
+    ride({ rideId: '88888888-8888-4888-8888-888888888888', state: 'handed_off' }),
     ride({
       rideId: '77777777-7777-4777-8777-777777777777',
       pickupAt: new Date(now.getTime() + 12 * 60 * 60 * 1000 + 1),
@@ -306,6 +307,13 @@ it('refuses a landing time on a finished Ride and leaves the stored time', async
   await expect(recordLandingTime(transaction, rideId, null, now)).rejects.toBeInstanceOf(LandingTimeClosedError)
   expect(stored[0]?.landingAt?.toISOString()).toBe(landedAt)
   expect(stored[0]?.state).toBe('done')
+})
+
+it('refuses a landing time on a handed-off Ride and leaves the stored time', async () => {
+  const { transaction, stored } = fake([ride({ state: 'handed_off', landingAt: new Date(landedAt) })])
+  await expect(recordLandingTime(transaction, rideId, null, now)).rejects.toBeInstanceOf(LandingTimeClosedError)
+  expect(stored[0]?.landingAt?.toISOString()).toBe(landedAt)
+  expect(stored[0]?.state).toBe('handed_off')
 })
 
 it('opens the ask on the Tenant from the schedule, every 15 minutes, without waiting', async () => {

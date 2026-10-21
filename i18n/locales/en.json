@@ -227,7 +227,10 @@
         "landing_recorded": "Landing time recorded",
         "vehicle_changed": "Vehicle changed",
         "cleared": "Ride cleared",
-        "reassigned": "Ride reassigned"
+        "reassigned": "Ride reassigned",
+        "handed_off": "Ride handed to a subcontractor",
+        "partner_changed": "Subcontractor changed",
+        "taken_back": "Ride taken back"
       },
       "roster": {
         "assigned": "Vehicle given for the day",
@@ -614,6 +617,7 @@
       "unassigned": "Unassigned",
       "assigned": "Assigned",
       "accepted": "Accepted",
+      "handed_off": "Handed off",
       "done": "Done",
       "no-show": "No-show",
       "cancelled": "Cancelled"
@@ -898,6 +902,13 @@
     "assignFor": "Assign: {guest}",
     "driver": "Driver",
     "vehicle": "Vehicle",
+    "handoffFields": {
+      "state": "State",
+      "partnerId": "Subcontractor",
+      "driverId": "Driver",
+      "vehicleId": "Vehicle",
+      "mustAccept": "Must accept"
+    },
     "chooseDriver": "Choose a driver",
     "chooseVehicle": "Choose a vehicle",
     "fromRoster": "From the roster for that day",

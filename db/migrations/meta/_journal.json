@@ -393,6 +393,13 @@
       "when": 1791400045000,
       "tag": "0055_version_changed_by_present",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1791400046000,
+      "tag": "0056_handed_off_partner",
+      "breakpoints": true
     }
   ]
 }

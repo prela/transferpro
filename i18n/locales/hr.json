@@ -227,7 +227,10 @@
         "landing_recorded": "Zabilježeno vrijeme slijetanja",
         "vehicle_changed": "Vozilo promijenjeno",
         "cleared": "Dodjela uklonjena",
-        "reassigned": "Vožnja prebačena"
+        "reassigned": "Vožnja prebačena",
+        "handed_off": "Vožnja predana podizvođaču",
+        "partner_changed": "Podizvođač promijenjen",
+        "taken_back": "Vožnja vraćena iz predaje"
       },
       "roster": {
         "assigned": "Vozilo dodijeljeno za dan",
@@ -614,6 +617,7 @@
       "unassigned": "Nedodijeljeno",
       "assigned": "Dodijeljeno",
       "accepted": "Prihvaćeno",
+      "handed_off": "Predano podizvođaču",
       "done": "Obavljeno",
       "no-show": "Nedolazak",
       "cancelled": "Otkazano"
@@ -898,6 +902,13 @@
     "assignFor": "Dodijeli: {guest}",
     "driver": "Vozač",
     "vehicle": "Vozilo",
+    "handoffFields": {
+      "state": "Stanje",
+      "partnerId": "Podizvođač",
+      "driverId": "Vozač",
+      "vehicleId": "Vozilo",
+      "mustAccept": "Mora prihvatiti"
+    },
     "chooseDriver": "Odaberite vozača",
     "chooseVehicle": "Odaberite vozilo",
     "fromRoster": "Iz rasporeda za taj dan",

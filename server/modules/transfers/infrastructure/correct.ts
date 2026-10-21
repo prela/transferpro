@@ -243,6 +243,7 @@ async function occupiedWindowMoves(
   input: CreateTransfer,
   clearLanding: boolean,
 ): Promise<{ driverId: string, vehicleId: string } | null> {
+  // A handed-off Ride has no Driver and no Vehicle, so a correction is not judged (ADR-0048).
   if (current.driverId === null || current.vehicleId === null)
     return null
   if (current.state !== 'assigned' && current.state !== 'accepted')
