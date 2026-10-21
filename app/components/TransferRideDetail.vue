@@ -542,6 +542,7 @@ const primaryLabel = computed(() => {
       :partners="partners"
       :drivers="drivers"
       :current-partner-id="formRide.partnerId"
+      :clears-crew="formRide.driverId !== null || formRide.vehicleId !== null"
       :mode="command === 'changePartner' ? 'changePartner' : 'handOff'"
       :version="formRide.version"
       :phone="pinActions"

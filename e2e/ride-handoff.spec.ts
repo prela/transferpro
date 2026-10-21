@@ -141,6 +141,7 @@ test.describe('@phone', () => {
       await detail.getByRole('button', { name: 'Više', exact: true }).click()
       await page.getByRole('menuitem', { name: 'Predaj podizvođaču', exact: true }).click()
       await expect(detail.getByRole('heading', { name: 'Predaj podizvođaču' })).toBeVisible()
+      await expect(detail.getByText('Predaja uklanja vozača i vozilo.')).toHaveCount(0)
       await expectNoAxeViolations(page)
       await pickPartner(page, first)
       await detail.getByRole('button', { name: 'Predaj vožnju', exact: true }).click()
@@ -202,4 +203,47 @@ test.describe('@phone', () => {
       await expect(page.getByRole('menuitem', { name: 'Promijeni podizvođača', exact: true })).toHaveCount(0)
     })
   }
+})
+
+const licence = '2031-01-01'
+
+test('handing off an assigned ride says the driver and vehicle are cleared', async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const tenant = await seedTenant('handoff-clears-crew')
+  await useTheme(page, 'light')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const guest = 'Iva Dodjela'
+  await createdId(page, '/api/partners', { name: 'Mora Transfer' })
+  const driverId = await createdId(page, '/api/drivers', {
+    name: 'Ana Posada',
+    kind: 'own',
+    phone: '+385911410410',
+    drivingLicenceExpiresOn: licence,
+    transportLicenceExpiresOn: licence,
+  })
+  const vehicleId = await createdId(page, '/api/vehicles', {
+    registrationPlate: 'DU410AA',
+    kind: 'fixed',
+    registrationExpiresOn: licence,
+    technicalInspectionExpiresOn: licence,
+    insuranceExpiresOn: licence,
+  })
+  const { rideId, day } = await recordTodayRide(page, guest)
+  const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
+    data: { version: 0, driverId, vehicleId },
+  })
+  expect(assigned.ok()).toBeTruthy()
+
+  await openRide(page, day, rideId, guest)
+  const detail = page.locator('#ride-detail')
+  await detail.getByRole('button', { name: 'Više', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Predaj podizvođaču', exact: true }).click()
+  await expect(detail.getByText('Predaja uklanja vozača i vozilo.')).toBeVisible()
+
+  await switchLocale(page, 'en')
+  await openRide(page, day, rideId, guest)
+  await detail.getByRole('button', { name: 'More', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Hand off to a subcontractor', exact: true }).click()
+  await expect(detail.getByText('Handing off clears the driver and the vehicle.')).toBeVisible()
 })

@@ -913,6 +913,7 @@
     "handOff": "Hand off to a subcontractor",
     "handOffTitle": "Hand off to a subcontractor",
     "handOffSubmit": "Hand off the ride",
+    "handOffClearsCrew": "Handing off clears the driver and the vehicle.",
     "handingOff": "Handing off",
     "handedOff": "Handed off",
     "changePartner": "Change subcontractor",

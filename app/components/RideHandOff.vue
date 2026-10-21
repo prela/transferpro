@@ -15,6 +15,12 @@ const props = defineProps<{
    * picker: the same active Partner is 409 `ride_partner_unchanged`.
    */
   currentPartnerId: string | null
+  /**
+   * True when the Ride still has a Driver or a Vehicle. A handoff from
+   * assigned or accepted clears both (ADR-0048). The form states that
+   * before the office submits (ADR-0038).
+   */
+  clearsCrew: boolean
   mode: 'handOff' | 'changePartner'
   /** The Transfer version this form was opened with. ADR-0046. */
   version: number
@@ -151,6 +157,12 @@ async function save() {
     </h2>
     <p class="mb-4">
       {{ guestName }}
+    </p>
+    <p
+      v-if="mode === 'handOff' && clearsCrew"
+      class="mb-4"
+    >
+      {{ t('ride.handOffClearsCrew') }}
     </p>
     <UAlert
       v-if="formErrorKey"
