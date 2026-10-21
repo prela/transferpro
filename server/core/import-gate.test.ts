@@ -407,7 +407,7 @@ it('rejects an alias, a member call, a re-export, and an import of a loader modu
     `import * as mail from '../modules/mail'\nexport default function handler() {\n  return mail.loadInvitationAttempt()\n}\n`,
     `export { outboxAttemptStore } from '../modules/transfers'\n`,
     `await import('../modules/mail/infrastructure/invitation-attempt')\n`,
-    `import { readWorkOrderCurrentFacts } from '../modules/transfers/infrastructure/work-order-attempt'\nexport default function handler() {\n  return readWorkOrderCurrentFacts()\n}\n`,
+    `import * as attempt from '../modules/transfers/infrastructure/work-order-attempt'\nexport default function handler() {\n  return attempt\n}\n`,
     `export * from '../modules/transfers/infrastructure/work-order-attempt'\n`,
     `import * as mail from '../modules/mail'\nexport default function handler() {\n  const { loadInvitationAttempt } = mail\n  return 1\n}\n`,
     `export * from '../modules/mail'\n`,
@@ -423,6 +423,10 @@ it('ignores module code, HTTP tests, and a handler that does not use a worker lo
   expect(await workerLoaderRole('server/routes/outbox.rls.test.ts', source)).toEqual([])
   const ordinary = `import { listUpcomingRides } from '../../modules/transfers'\nexport default function handler() {\n  return listUpcomingRides()\n}\n`
   expect(await workerLoaderRole('server/api/rides/upcoming.get.ts', ordinary)).toEqual([])
+  const otherExport = `import { readWorkOrderCurrentFacts } from '../modules/transfers/infrastructure/work-order-attempt'\nexport default function handler() {\n  return readWorkOrderCurrentFacts()\n}\n`
+  expect(await workerLoaderRole('server/api/rides/facts.get.ts', otherExport)).toEqual([])
+  const localName = `function loadInvitationAttempt() {\n  return 1\n}\nexport default function handler() {\n  return loadInvitationAttempt()\n}\n`
+  expect(await workerLoaderRole('server/api/rides/local.get.ts', localName)).toEqual([])
 })
 
 it('keeps the worker-used loader names in one list', async () => {
@@ -450,5 +454,9 @@ it('rejects an unused import of a worker loader and allows a type-only import', 
   expect(await workerLoaderRole(
     'server/api/leak.get.ts',
     `import type { InvitationReader } from '../modules/mail'\nexport default function handler() {\n  return 1\n}\n`,
+  )).toEqual([])
+  expect(await workerLoaderRole(
+    'server/api/guarded.get.ts',
+    `import { mailOutboxStore } from '../modules/transfers'\nexport default function handler(role: string) {\n  requireRole(role)\n  return 1\n}\n`,
   )).toEqual([])
 })

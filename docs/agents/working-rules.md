@@ -59,7 +59,7 @@ The auth URL is `transferpro_auth` (no grant on schema `app`). The migrate URL i
 
 ## Worker-used mail loaders
 
-The mail outbox worker has no actor, so the loaders it calls do not check a role (issue #344). That is the exception to the rule that every loader enforces the allow-list itself. The only list is `workerUsedLoaders` in `eslint/worker-used-loaders.mjs`. That file also names the loader modules and the indexes whose `export *` would republish a loader. A file under `server/api/` or `server/routes/` that is not a test may import or call one only when the function that uses it, or a function enclosing that use, calls `officeOnly` or `requireRole`. A call in a different function does not count. `pnpm lint` fails the file otherwise (`transferpro/worker-loader-role`). Module code and tests are outside the guard. The resend route does not import the loaders: `resendFailedMail` checks the role, then loads.
+The mail outbox worker has no actor, so the loaders it calls do not check a role (issue #344). ADR-0050 (proposed) records that exception to the rule that every loader enforces the allow-list itself. The only list is `workerUsedLoaders` in `eslint/worker-used-loaders.mjs`. That file also names the loader modules and the indexes whose `export *` would republish a loader. A file under `server/api/` or `server/routes/` that is not a test may import or call one only when the function that uses it, or a function enclosing that use, calls `officeOnly` or `requireRole`. A call in a different function does not count. `pnpm lint` fails the file otherwise (`transferpro/worker-loader-role`). Module code and tests are outside the guard. The resend route does not import the loaders: `resendFailedMail` checks the role, then loads.
 
 ## Sign-in
 

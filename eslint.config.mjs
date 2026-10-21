@@ -774,10 +774,10 @@ const workerLoaderRole = {
             continue
           if (spec.type === 'ImportSpecifier') {
             const imported = importedBindingName(spec)
-            if (imported && WORKER_LOADER_NAMES.has(imported)) {
+            // Another export of a loader file is not itself a worker loader.
+            if (imported && WORKER_LOADER_NAMES.has(imported))
               remember(local, imported, spec)
-              continue
-            }
+            continue
           }
           if (moduleName)
             remember(local, moduleName, spec)
@@ -792,16 +792,12 @@ const workerLoaderRole = {
       ExportNamedDeclaration(node) {
         if (node.exportKind === 'type' || !node.source)
           return
-        const source = literalSource(node.source)
-        const moduleName = source ? workerLoaderModuleName(source) : null
         for (const spec of node.specifiers) {
           if (spec.type !== 'ExportSpecifier' || spec.exportKind === 'type')
             continue
           const local = spec.local.type === 'Identifier' ? spec.local.name : String(spec.local.value)
           if (WORKER_LOADER_NAMES.has(local))
             hit(spec, local)
-          else if (moduleName)
-            hit(spec, moduleName)
         }
       },
       ExportAllDeclaration(node) {
@@ -815,12 +811,11 @@ const workerLoaderRole = {
           hit(node, 'workerUsedLoaders')
       },
       Identifier(node) {
-        const fromLocal = loaderLocals.get(node.name)
-        const label = fromLocal ?? (WORKER_LOADER_NAMES.has(node.name) ? node.name : null)
+        // Only a binding that was imported. A local of the same name is not a loader.
+        const label = loaderLocals.get(node.name)
         if (!label || isImportBinding(node) || isDeclaredName(node) || isMemberProperty(node) || isNonShorthandKey(node))
           return
-        if (fromLocal)
-          usedLocals.add(node.name)
+        usedLocals.add(node.name)
         hit(node, label)
       },
       MemberExpression(node) {
@@ -842,8 +837,12 @@ const workerLoaderRole = {
           for (const item of scope.hits)
             context.report({ node: item.node, messageId: 'unguarded', data: { name: item.label } })
         })
+        // An unused import is the handler's import. A role call anywhere in
+        // the file covers it. A use in a function that never calls the guard
+        // is still reported from that function's hits.
+        const fileGuarded = scopes.some(scope => scope.role)
         for (const [local, spec] of importedNodes) {
-          if (!usedLocals.has(local)) {
+          if (!usedLocals.has(local) && !fileGuarded) {
             context.report({
               node: spec,
               messageId: 'unguarded',
@@ -885,22 +884,26 @@ function bareModulePath(source) {
 
 /**
  * @param {string} source
+ * @param {readonly string[]} names
+ * @returns {string | null} the listed segment this path ends with
+ */
+function matchingPathSegment(source, names) {
+  const bare = bareModulePath(source)
+  return names.find(name => bare === name || bare.endsWith(`/${name}`)) ?? null
+}
+
+/**
+ * @param {string} source
  */
 function workerLoaderModuleName(source) {
-  const bare = bareModulePath(source)
-  for (const name of workerLoaderModules) {
-    if (bare === name || bare.endsWith(`/${name}`))
-      return name
-  }
-  return null
+  return matchingPathSegment(source, workerLoaderModules)
 }
 
 /**
  * @param {string} source
  */
 function isWorkerLoaderBarrel(source) {
-  const bare = bareModulePath(source)
-  return workerLoaderBarrels.some(name => bare === name || bare.endsWith(`/${name}`))
+  return matchingPathSegment(source, workerLoaderBarrels) !== null
 }
 
 /**
