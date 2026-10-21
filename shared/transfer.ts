@@ -408,8 +408,8 @@ const transferBookingSchema = z.strictObject({
 /**
  * POST /api/transfers. The airport mark is required, so a flight number
  * cannot stand in for it. An unknown key is refused. `externalId` is
- * required: a body without it is not idempotent, and the server does not
- * assign one (ADR-0035). The pickup window and the same-place rule are
+ * required. A body without it is 400 and writes nothing. The server does
+ * not assign one (ADR-0035). The pickup window and the same-place rule are
  * applied in {@link parseRecordTransfer}, which is the boundary the route
  * calls, so a refused body never opens a session.
  */
@@ -458,7 +458,7 @@ export function parseCreateTransfer(raw: unknown, now: Date = new Date()): Creat
 }
 
 /**
- * The create body, split into the booking and the required ExternalRef.
+ * The create body, split into the booking and the required entry key.
  * A missing `externalId` is the same 400 as any other bad body. The server
  * does not assign one. The id is not part of {@link CreateTransfer}.
  */
