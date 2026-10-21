@@ -42,5 +42,8 @@ export const clientNotes = tenantTable('client_notes', {
     sql`${table.note} is null or (${table.note} = btrim(${table.note}) and length(${table.note}) between 1 and ${noteMax})`,
   ),
   check('client_notes_version', sql`${table.version} >= 0`),
-  check('client_notes_data_change', sql`(${table.version} = 0 and ${table.dataChangedAt} is null and ${table.dataChangedBy} is null) or (${table.version} >= 1 and ${table.dataChangedAt} is not null and ${table.dataChangedBy} <> '')`),
+  // Version 0 has no recorded change. A later version names when and who.
+  // `<> ''` is unknown when the member is null, and a CHECK accepts unknown,
+  // so the member must also be present. Otherwise version >= 1 with no member passes.
+  check('client_notes_data_change', sql`(${table.version} = 0 and ${table.dataChangedAt} is null and ${table.dataChangedBy} is null) or (${table.version} >= 1 and ${table.dataChangedAt} is not null and ${table.dataChangedBy} is not null and ${table.dataChangedBy} <> '')`),
 ], { oneRowPerTenant: false })

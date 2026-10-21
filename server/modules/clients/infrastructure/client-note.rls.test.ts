@@ -215,3 +215,25 @@ it('refuses an untrimmed note, an empty string, a note past 2000 characters, and
   ))
   expect(cleared.rows).toEqual([{ note: null, version: 2 }])
 })
+
+// `data_changed_by <> ''` is unknown when the member is null, and a CHECK
+// accepts unknown. A version that names a time and no member must still fail.
+it('refuses a Client note version that records a time and a null member', async () => {
+  const clientA = await insertClient(tenantA, 'Hotel Bez Autora')
+  await expect(withTenant(tenantA, client => client.query(
+    `insert into app.client_notes (client_id, note, version, data_changed_at, data_changed_by)
+     values ($1, 'Na izlazu', 1, now(), null)`,
+    [clientA],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'client_notes_data_change' })
+
+  await withTenant(tenantA, client => client.query(
+    `insert into app.client_notes (client_id, note) values ($1, 'Na izlazu')`,
+    [clientA],
+  ))
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.client_notes
+     set version = 1, data_changed_at = now(), data_changed_by = null
+     where client_id = $1`,
+    [clientA],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'client_notes_data_change' })
+})

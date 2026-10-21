@@ -66,7 +66,10 @@ export const clientContactPersons = tenantTable('client_contact_persons', {
     sql`${table.phone} is not null or ${table.email} is not null`,
   ),
   check('client_contact_persons_version', sql`${table.version} >= 0`),
-  check('client_contact_persons_data_change', sql`(${table.version} = 0 and ${table.dataChangedAt} is null and ${table.dataChangedBy} is null) or (${table.version} >= 1 and ${table.dataChangedAt} is not null and ${table.dataChangedBy} <> '')`),
+  // Version 0 has no recorded change. A later version names when and who.
+  // `<> ''` is unknown when the member is null, and a CHECK accepts unknown,
+  // so the member must also be present. Otherwise version >= 1 with no member passes.
+  check('client_contact_persons_data_change', sql`(${table.version} = 0 and ${table.dataChangedAt} is null and ${table.dataChangedBy} is null) or (${table.version} >= 1 and ${table.dataChangedAt} is not null and ${table.dataChangedBy} is not null and ${table.dataChangedBy} <> '')`),
   pgPolicy('client_contact_persons_retention_delete', {
     as: 'restrictive',
     for: 'delete',
