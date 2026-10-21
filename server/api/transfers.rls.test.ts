@@ -473,6 +473,7 @@ it('records one unassigned Ride, keeps a flight from implying an airport, and li
     rides: [],
     declineAlerts: [],
     clientBriefs: [{ clientId: client.id, contactPersons: [], note: null }],
+    partnerBriefs: [],
   })
 
   const operationalDay = await call('GET', `/api/transfers?date=${sample.operational}`, dispatcher)

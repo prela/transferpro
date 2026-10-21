@@ -51,10 +51,13 @@
  * The day read also returns each Client's live contact persons and Client
  * note, for the Ride detail and the Transfer form. The Driver's read does
  * not. Transfers loads them through the Clients index (ADR-0049).
- * Ride history lists one Client's Rides, every state, newest pickup first,
- * 50 per page, with counts over the whole history. It is office-only.
- * The pickup wall is the Tenant time zone. A Partner history will reuse
- * this shape (#415). `clients` does not import this module (ADR-0036).
+ * Ride history lists one Client's Rides, or the Rides handed to one
+ * Partner, newest pickup first, 50 per page, with counts over the whole
+ * history. It is office-only. The pickup wall is the Tenant time zone.
+ * A closed Ride keeps the Partner only on the close audit, in the driver
+ * slot. `clients` and `partners` do not import this module (ADR-0036, ADR-0049).
+ * The day read also returns the Partner's phone and email for a handed-off
+ * Ride, through the Partners index. The Driver's read does not.
  */
 export { RideOverlapError, RideUnavailableError, startUnavailabilityRetention, UnavailabilityArchivedError, UnavailabilityNotFoundError } from '../capacity'
 export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableError } from './infrastructure/accept'
@@ -75,7 +78,7 @@ export { markNoShow, MarkNoShowInputError, NoShowTooEarlyError, RideNotNoShowErr
 export { readOfficeHome } from './infrastructure/office-home-access'
 export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './infrastructure/ride-change'
 export { exportRides } from './infrastructure/ride-export'
-export { listClientRideHistory } from './infrastructure/ride-history'
+export { listClientRideHistory, listPartnerRideHistory } from './infrastructure/ride-history'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'
 export { searchTransfers } from './infrastructure/transfer-search'
 export { StaleSaveError } from './infrastructure/transfer-version'

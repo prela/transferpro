@@ -2,6 +2,7 @@ import { createError } from 'h3'
 import { QueryParamError, RideExportRangeError, TransferInputError } from '../../../shared'
 import { ClientNotFoundError } from '../../modules/clients'
 import { LocationArchivedError, LocationNotFoundError } from '../../modules/locations'
+import { PartnerNotFoundError } from '../../modules/partners'
 import { TenantAccessError } from '../../modules/tenancy'
 import { RideOverlapError, RideUnavailableError, StaleSaveError, TransferNotCorrectableError, TransferNotFoundError } from '../../modules/transfers'
 
@@ -19,6 +20,7 @@ export function transferHttpError(error: unknown): never {
     || error instanceof QueryParamError
     || error instanceof RideExportRangeError
     || error instanceof ClientNotFoundError
+    || error instanceof PartnerNotFoundError
     || error instanceof LocationNotFoundError
     || error instanceof TenantAccessError
     || error instanceof TransferNotFoundError

@@ -3,6 +3,7 @@ import { boardWarningsSchema } from './board-warnings'
 import { clientOfficeBriefSchema } from './client-office-brief'
 import { isCalendarDate } from './date'
 import { sameFlightDesignator } from './flight-landing'
+import { partnerOfficeContactSchema } from './partner'
 import { QueryParamError } from './query'
 
 /**
@@ -364,6 +365,13 @@ export const transferDaySchema = z.object({
    * The Driver's read does not carry this list. ADR-0049.
    */
   clientBriefs: z.array(clientOfficeBriefSchema),
+  /**
+   * Phone and email of each Partner a Ride on this day is handed to.
+   * An archived Partner stays here while the Ride still names it.
+   * A day with no handed-off Ride is an empty list. The note is not here.
+   * The Driver's read does not carry this list. ADR-0049.
+   */
+  partnerBriefs: z.array(partnerOfficeContactSchema),
 })
 
 export type TransferDay = z.infer<typeof transferDaySchema>
