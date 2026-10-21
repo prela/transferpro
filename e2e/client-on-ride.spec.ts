@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { chooseOption, hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
 
@@ -73,7 +74,7 @@ test.describe('@phone', () => {
       const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Jadran', kind: 'address' })
       const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Jadran', kind: 'hotel' })
       const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
-      const recorded = await page.request.post('/api/transfers', {
+      const recorded = await recordTransfer(page.request, {
         data: {
           clientId,
           pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
@@ -167,7 +168,7 @@ test.describe('@phone', () => {
     const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Jadran', kind: 'address' })
     const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Jadran', kind: 'hotel' })
     const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
-    const recorded = await page.request.post('/api/transfers', {
+    const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
         pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
