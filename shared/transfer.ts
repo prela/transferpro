@@ -408,13 +408,13 @@ const transferBookingSchema = z.strictObject({
 /**
  * POST /api/transfers. The airport mark is required, so a flight number
  * cannot stand in for it. An unknown key is refused. `externalId` is
- * optional in this ticket: absent means the server assigns one, and that
- * create is not idempotent. The pickup window and the same-place rule are
+ * required. A body without it is 400 and writes nothing. The server does
+ * not assign one (ADR-0035). The pickup window and the same-place rule are
  * applied in {@link parseRecordTransfer}, which is the boundary the route
  * calls, so a refused body never opens a session.
  */
 export const createTransferSchema = transferBookingSchema.extend({
-  externalId: z.uuid().optional(),
+  externalId: z.uuid(),
 })
 
 export interface CreateTransfer {
@@ -450,7 +450,7 @@ type BookingBody = z.infer<typeof transferBookingSchema>
 /**
  * Accepts a new Transfer. Any other body throws first, so the caller does not
  * open a session. `now` is the clock for the pickup window. The route leaves
- * it unset. Tests pass a fixed instant. `externalId` is accepted and dropped
+ * it unset. Tests pass a fixed instant. `externalId` is required and dropped
  * here; {@link parseRecordTransfer} is what keeps it.
  */
 export function parseCreateTransfer(raw: unknown, now: Date = new Date()): CreateTransfer {
@@ -458,15 +458,15 @@ export function parseCreateTransfer(raw: unknown, now: Date = new Date()): Creat
 }
 
 /**
- * The create body, split into the booking and the optional ExternalRef.
- * A missing `externalId` is null: the server assigns a random one, and that
- * create is not idempotent. The id is not part of {@link CreateTransfer}.
+ * The create body, split into the booking and the required entry key.
+ * A missing `externalId` is the same 400 as any other bad body. The server
+ * does not assign one. The id is not part of {@link CreateTransfer}.
  */
-export function parseRecordTransfer(raw: unknown, now: Date = new Date()): { input: CreateTransfer, externalId: string | null } {
+export function parseRecordTransfer(raw: unknown, now: Date = new Date()): { input: CreateTransfer, externalId: string } {
   const parsed = readBooking(createTransferSchema, raw, now)
   return {
     input: toCreateTransfer(parsed),
-    externalId: parsed.externalId ?? null,
+    externalId: parsed.externalId,
   }
 }
 

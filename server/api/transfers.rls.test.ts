@@ -2524,7 +2524,7 @@ async function whileTransferHeld(
   return { order, response: await sent }
 }
 
-it('records the same manual external id once, and a body without the key still records', async () => {
+it('records the same manual external id once', async () => {
   const created = await tenant('htr-ext-once', 'Hana Admin')
   const dispatcher = await signIn('htr-ext-once-admin@example.test')
   const client = await createClient(dispatcher, { name: 'Agencija Ključ', kind: 'agency' })
@@ -2586,18 +2586,24 @@ it('records the same manual external id once, and a body without the key still r
   const csv = await file.text()
   expect(csv).not.toContain('external')
   expect(csv.toLowerCase()).not.toContain('channel')
+})
 
-  // This create omits the key on purpose: the server still assigns one.
-  const plain = await call('POST', '/api/transfers', dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { guestName: 'Bez Ključa' }))
-  expect(plain.status).toBe(200)
-  const unkeyed = await plain.json() as { alreadyRecorded: boolean, transfer: { id: string } }
-  expect(unkeyed.alreadyRecorded).toBe(false)
-  expect(carriesExternalRef(unkeyed)).toBe(false)
-  const assigned = await externalRef(unkeyed.transfer.id)
-  expect(assigned?.channel).toBe('manual')
-  expect(assigned?.external_id).toMatch(/^[0-9a-f-]{36}$/i)
-  expect(assigned?.external_id).not.toBe(externalId)
-  expect(await tenantCounts(created.tenantId)).toMatchObject({ transfers: 2, rides: 2 })
+it('a create body without the key is 400 and writes nothing', async () => {
+  const created = await tenant('htr-ext-required', 'Hana Admin')
+  const dispatcher = await signIn('htr-ext-required-admin@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Bez', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Polazak Bez', kind: 'address' })
+  const end = await createLocation(dispatcher, { name: 'Dolazak Bez', kind: 'hotel' })
+  const body = correctionBody(client.id, start.id, end.id, pickupInsideWindow(), { guestName: 'Bez Ključa' })
+  const before = await tenantCounts(created.tenantId)
+
+  // The body is refused before a session. No cookie would be 401 if the session opened first.
+  const unsigned = await call('POST', '/api/transfers', undefined, body)
+  expect(unsigned.status).toBe(400)
+
+  const refused = await call('POST', '/api/transfers', dispatcher, body)
+  expect(refused.status).toBe(400)
+  expect(await tenantCounts(created.tenantId)).toEqual(before)
 })
 
 it('a driver is refused before the external id is looked up', async () => {
