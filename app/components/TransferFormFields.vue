@@ -317,7 +317,7 @@ onUnmounted(() => {
   </div>
 
   <form
-    v-if="clientTarget"
+    v-if="clientTarget && !alreadySaved"
     class="mb-6"
     :class="commandInputClass"
     @submit.prevent="addClient"
@@ -374,7 +374,7 @@ onUnmounted(() => {
   </form>
 
   <form
-    v-if="placeTarget"
+    v-if="placeTarget && !alreadySaved"
     class="mb-6"
     :class="commandInputClass"
     @submit.prevent="addPlace"

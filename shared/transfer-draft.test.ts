@@ -155,6 +155,9 @@ it('keeps the entry key across a reload, and keeps the draft after already recor
     externalId: ENTRY_KEY,
   })
   expect(transferDraftIsBlank(blankWithKey, '2026-10-16T12:00')).toBe(true)
+  const blankStore = memory()
+  rememberTransferDraft(blankStore, USER, TENANT, blankWithKey, NOW, '2026-10-16T12:00')
+  expect(blankStore.getItem(transferDraftKey(USER, TENANT))).toBeNull()
 
   const kept = memory()
   rememberTransferDraft(kept, USER, TENANT, fields({ externalId: ENTRY_KEY }), NOW)
