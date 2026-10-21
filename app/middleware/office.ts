@@ -1,5 +1,5 @@
 /**
- * Transfers, Clients, Locations, Drivers, Vehicles, and Roster.
+ * Transfers, Clients, Partners, Locations, Drivers, Vehicles, and Roster.
  * A Driver is sent Home before the page loads, so the browser does not
  * request that page's collection. A signed-out visitor gets the sign-in
  * form. Each page declares the dashboard layout. This middleware only

@@ -1,6 +1,6 @@
 /**
  * The office frame's navigation (ADR-0038).
- * Podizvođači, Cjenik, and Računi stay out until those modules exist.
+ * Cjenik and Računi stay out until those modules exist. Podizvođači is the Partner catalog.
  * The urgent count on Home is the number of Rides in Pozornost (ADR-0039).
  * Null until that read arrives. Other items never carry it.
  */
@@ -15,6 +15,7 @@ export interface OfficeNavLabels {
   readonly transfers: string
   readonly roster: string
   readonly clients: string
+  readonly partners: string
   readonly locations: string
   readonly drivers: string
   readonly vehicles: string
@@ -23,7 +24,7 @@ export interface OfficeNavLabels {
 }
 
 export interface OfficeNavLink {
-  readonly id: 'home' | 'transfers' | 'roster' | 'clients' | 'locations' | 'drivers' | 'vehicles' | 'audit' | 'companySettings'
+  readonly id: 'home' | 'transfers' | 'roster' | 'clients' | 'partners' | 'locations' | 'drivers' | 'vehicles' | 'audit' | 'companySettings'
   readonly label: string
   readonly to: string
   readonly exact: boolean
@@ -56,6 +57,7 @@ export function officeNav(
     label: labels.catalogs,
     links: [
       link('clients', labels.clients, '/clients', false),
+      link('partners', labels.partners, '/partners', false),
       link('locations', labels.locations, '/locations', false),
       link('drivers', labels.drivers, '/drivers', false),
       link('vehicles', labels.vehicles, '/vehicles', false),

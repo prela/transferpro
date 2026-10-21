@@ -9,6 +9,7 @@ const labels = {
   transfers: 'Transferi',
   roster: 'Raspored',
   clients: 'Naručitelji',
+  partners: 'Podizvođači',
   locations: 'Lokacije',
   drivers: 'Vozači',
   vehicles: 'Vozila',
@@ -20,11 +21,11 @@ it('gives an admin the three groups and leaves the urgent count empty', () => {
   const groups = officeNav('admin', labels)
   expect(groups.map(group => group.label)).toEqual(['Operativa', 'Katalozi', 'Uprava'])
   expect(groups[0]?.links.map(item => item.label)).toEqual(['Početna', 'Transferi', 'Raspored'])
-  expect(groups[1]?.links.map(item => item.to)).toEqual(['/clients', '/locations', '/drivers', '/vehicles'])
+  expect(groups[1]?.links.map(item => item.to)).toEqual(['/clients', '/partners', '/locations', '/drivers', '/vehicles'])
   expect(groups[2]?.links.map(item => item.label)).toEqual(['Revizija', 'Postavke tvrtke'])
   expect(groups[2]?.links.map(item => item.to)).toEqual(['/audit', '/settings'])
   expect(groups[0]?.links[0]?.urgentCount).toBeNull()
-  expect(groups.flatMap(group => group.links).some(item => item.to === '/partners' || item.to === '/prices')).toBe(false)
+  expect(groups.flatMap(group => group.links).some(item => item.to === '/prices')).toBe(false)
 })
 
 it('hides audit and company settings from a dispatcher', () => {
