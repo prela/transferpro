@@ -46,6 +46,7 @@ const {
   locations,
   drivers,
   vehicles,
+  partners,
   unassignedPickups,
   loading,
   loadError,
@@ -65,6 +66,7 @@ const table = ref<{ focusList: () => void } | null>(null)
 const listPane = ref<HTMLElement | null>(null)
 const commands = ref<{
   openClear: (ride: TransferDayRide) => void
+  openTakeBack: (ride: TransferDayRide) => void
   openMarkDone: (ride: TransferDayRide) => void
   openMarkNoShow: (ride: TransferDayRide) => void
   openCancelRide: (ride: TransferDayRide) => void
@@ -507,7 +509,7 @@ function onCommand(next: RideDetailCommand | null) {
     return
   }
   // Cancel of assign or accept-by-phone returns to the facts. The detail stays.
-  if (next === null && (command.value === 'accept' || command.value === 'assign')) {
+  if (next === null && (command.value === 'accept' || command.value === 'assign' || command.value === 'handOff' || command.value === 'changePartner')) {
     command.value = null
     focusDetail()
     return
@@ -753,6 +755,7 @@ onUnmounted(() => {
           :locations="locations"
           :drivers="drivers"
           :vehicles="vehicles"
+          :partners="partners"
           :clients="clients"
           :declines-for="declinesFor"
           :time-zone="timeZone"
@@ -770,6 +773,9 @@ onUnmounted(() => {
           @change-vehicle="showRide($event, 'vehicle')"
           @reassign="showRide($event, 'reassign')"
           @clear="ride => commands?.openClear(ride)"
+          @hand-off="showRide($event, 'handOff')"
+          @change-partner="showRide($event, 'changePartner')"
+          @take-back="ride => commands?.openTakeBack(ride)"
           @correct="showRide($event, 'correct')"
           @duplicate="startPrefill($event, 'duplicate')"
           @return-journey="startPrefill($event, 'return')"
@@ -816,6 +822,7 @@ onUnmounted(() => {
               :command="command"
               :drivers="drivers"
               :vehicles="vehicles"
+              :partners="partners"
               :declines="declinesFor(openRide.rideId)"
               :time-zone="timeZone"
               :locale="locale"
@@ -834,6 +841,7 @@ onUnmounted(() => {
               @no-show="commands?.openMarkNoShow(openRide)"
               @cancel-ride="commands?.openCancelRide(openRide)"
               @clear="commands?.openClear(openRide)"
+              @take-back="commands?.openTakeBack(openRide)"
               @duplicate="openRide && startPrefill(openRide, 'duplicate')"
               @return-journey="openRide && startPrefill(openRide, 'return')"
               @saved="onCommandSaved"
@@ -890,6 +898,7 @@ onUnmounted(() => {
           :command="command"
           :drivers="drivers"
           :vehicles="vehicles"
+          :partners="partners"
           :declines="declinesFor(openRide.rideId)"
           :time-zone="timeZone"
           :locale="locale"
@@ -907,6 +916,7 @@ onUnmounted(() => {
           @done="commands?.openMarkDone(openRide)"
           @no-show="commands?.openMarkNoShow(openRide)"
           @clear="commands?.openClear(openRide)"
+          @take-back="commands?.openTakeBack(openRide)"
           @cancel-ride="commands?.openCancelRide(openRide)"
           @duplicate="openRide && startPrefill(openRide, 'duplicate')"
           @return-journey="openRide && startPrefill(openRide, 'return')"

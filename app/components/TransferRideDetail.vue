@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
-import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, Location, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, Location, Partner, TransferDayRide, Vehicle } from '../../shared'
 import type { RideDetailCommand } from '../ride-detail'
 import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel } from '../../shared'
 import { useKeptWorkOrders } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, rideFormStamp } from '../ride-detail'
 import { driverDisplayName } from '../transfer-day-labels'
-import { canCallOff, canChangeAssignment, canFinish, canNoShow, canRecordAcceptanceByPhone } from '../transfer-ride-guards'
+import { canCallOff, canChangeAssignment, canChangePartner, canFinish, canHandOff, canNoShow, canRecordAcceptanceByPhone, canTakeBack } from '../transfer-ride-guards'
 import { workOrderNotice } from '../work-order-notice'
 
 const props = defineProps<{
@@ -14,6 +14,7 @@ const props = defineProps<{
   command: RideDetailCommand | null
   drivers: Driver[]
   vehicles: Vehicle[]
+  partners: Partner[]
   declines: { driverName: string }[]
   timeZone: string
   locale: DisplayLocale
@@ -39,6 +40,7 @@ const emit = defineEmits<{
   noShow: []
   cancelRide: []
   clear: []
+  takeBack: []
   duplicate: []
   returnJourney: []
   saved: []
@@ -98,6 +100,10 @@ const staleAuthorHidden = computed(() =>
 function openedCommandStillAllowed(ride: TransferDayRide): boolean {
   if (props.command === 'assign')
     return ride.state === 'unassigned'
+  if (props.command === 'handOff')
+    return canHandOff(ride)
+  if (props.command === 'changePartner')
+    return canChangePartner(ride)
   if (props.command === 'reassign' || props.command === 'vehicle')
     return canChangeAssignment(ride)
   if (props.command === 'correct')
@@ -157,6 +163,15 @@ function place(id: string): string {
   return found ? locationLabel(found) : t('transfers.unknownPlace')
 }
 
+function partnerLabel(id: string | null): string {
+  if (id === null)
+    return t('ride.unknownPartner')
+  const partner = props.partners.find(item => item.id === id)
+  if (!partner)
+    return t('ride.unknownPartner')
+  return partner.archivedAt === null ? partner.name : `${partner.name} · ${t('partners.archived')}`
+}
+
 function plate(id: string | null): string {
   if (id === null)
     return ''
@@ -198,6 +213,8 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     items.push({ label: t('ride.reassign'), icon: 'i-lucide-arrow-left-right', onSelect: () => emit('command', 'reassign') })
     items.push({ label: t('ride.clear'), icon: 'i-lucide-user-minus', onSelect: () => emit('clear') })
   }
+  if (canTakeBack(ride))
+    items.push({ label: t('ride.takeBack'), icon: 'i-lucide-corner-up-left', onSelect: () => emit('takeBack') })
   if (primary.value === null && canFinish(ride))
     items.push({ label: t('ride.markDone'), onSelect: () => emit('done') })
   // Both only open a new form. They stay available after the Ride is closed.
@@ -422,6 +439,10 @@ const primaryLabel = computed(() => {
       <dd class="font-mono">
         {{ plate(ride.vehicleId) || t('transfers.unassignedCrew') }}
       </dd>
+      <template v-if="ride.state === 'handed_off'">
+        <dt>{{ t('ride.partner') }}</dt>
+        <dd>{{ partnerLabel(ride.partnerId) }}</dd>
+      </template>
       <dt>{{ t('transfers.status') }}</dt>
       <dd>{{ t(`transfers.states.${ride.state}`) }}</dd>
       <dt>{{ t('transfers.fields.price') }}</dt>
@@ -504,6 +525,20 @@ const primaryLabel = computed(() => {
       @saved="emit('saved')"
       @cancel="emit('command', null)"
     />
+    <RideHandOff
+      v-else-if="command === 'handOff' || command === 'changePartner'"
+      :ride-id="formRide.rideId"
+      :guest-name="formRide.guestName"
+      :partners="partners"
+      :drivers="drivers"
+      :current-partner-id="formRide.partnerId"
+      :mode="command === 'changePartner' ? 'changePartner' : 'handOff'"
+      :version="formRide.version"
+      :phone="pinActions"
+      :on-stale="noteStale"
+      @saved="emit('saved')"
+      @cancel="emit('command', null)"
+    />
     <RideAcceptByPhoneDialog
       v-else-if="command === 'accept'"
       :ride="formRide"
@@ -537,7 +572,7 @@ const primaryLabel = computed(() => {
 
     <div
       v-if="!command"
-      class="flex items-center gap-2 bg-default"
+      class="flex flex-wrap items-center gap-2 bg-default"
       :class="pinActions ? 'sticky bottom-0 z-10 mt-auto -mx-1 border-t border-default px-1 py-3' : 'mt-4'"
     >
       <UButton
@@ -548,6 +583,28 @@ const primaryLabel = computed(() => {
         @click="runPrimary"
       >
         {{ primaryLabel }}
+      </UButton>
+      <UButton
+        v-if="canHandOff(ride)"
+        type="button"
+        color="neutral"
+        variant="outline"
+        :size="pinActions ? 'xl' : 'sm'"
+        :class="pinActions ? 'min-h-12 flex-1 justify-center' : 'h-7 min-h-7 flex-1 justify-center'"
+        @click="emit('command', 'handOff')"
+      >
+        {{ t('ride.handOff') }}
+      </UButton>
+      <UButton
+        v-else-if="canChangePartner(ride)"
+        type="button"
+        color="neutral"
+        variant="outline"
+        :size="pinActions ? 'xl' : 'sm'"
+        :class="pinActions ? 'min-h-12 flex-1 justify-center' : 'h-7 min-h-7 flex-1 justify-center'"
+        @click="emit('command', 'changePartner')"
+      >
+        {{ t('ride.changePartner') }}
       </UButton>
       <UDropdownMenu
         v-if="menuItems.length > 0"

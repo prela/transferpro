@@ -318,6 +318,9 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   driverId: z.uuid().nullable(),
   vehicleId: z.uuid().nullable(),
   mustAccept: z.boolean().nullable(),
+  // Set while the Ride is handed off. Null on every other state, and after
+  // a take-back or a close. The screen names the Partner from the catalog.
+  partnerId: z.uuid().nullable(),
   // Empty until the aircraft has landed. Shown in the Tenant time zone.
   landingAt: z.iso.datetime().nullable(),
   // The live estimate. Shown in the Tenant time zone. Empty until the status reports one.
