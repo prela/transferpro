@@ -159,6 +159,8 @@ it('accepts a suggestion lookup and refuses a short text, a bad token, or an ext
 })
 
 it('shows the saved Embed URL only while the address field is untouched', () => {
+  // A null URL is what a typed Location, an archived Location, and Embed
+  // switched off already produce. The panel then has no button.
   const embedUrl = 'about:blank#placeRef=ChIJfakeDubrovnik&language=hr'
   expect(locationPanelEmbedUrl(embedUrl, true)).toBe(embedUrl)
   expect(locationPanelEmbedUrl(null, true)).toBeNull()

@@ -19,9 +19,9 @@ export function setTestMapsUnavailable(value: boolean): void {
 }
 
 /**
- * E2E and the route tests turn the fake Embed off.
+ * Unit and route tests turn the fake Embed off.
  * Production never reaches the fake, and the route that calls this is
- * 404 outside test (ADR-0052).
+ * 404 outside test (ADR-0052). E2E leaves the flag alone.
  */
 export function setTestMapsEmbedOff(value: boolean): void {
   embedOff = value
@@ -32,10 +32,7 @@ export function lastTestMapsQuery(): SuggestAddressesQuery | null {
   return queries.at(-1) ?? null
 }
 
-export function createFakeMaps(env: {
-  readonly MAPS: 'google' | 'none'
-  readonly MAPS_EMBED_KEY?: string | undefined
-} = { MAPS: 'google' }): MapsPort {
+export function createFakeMaps(): MapsPort {
   return {
     async suggestAddresses(query) {
       queries.push(query)
@@ -58,10 +55,11 @@ export function createFakeMaps(env: {
     navigationLink,
     embedUrl(target, language) {
       // about:blank so a test page never loads Google. The fragment carries
-      // the reference and the language, and not the address or the name.
-      if (env.MAPS === 'none' || env.MAPS_EMBED_KEY === undefined || embedOff)
-        return null
-      if (!embeddable(target))
+      // the reference and the language, and not the address, the name, or a
+      // key. The e2e server keeps its own MAPS config, often `none` and no
+      // Embed key. This fake still yields a URL. Production does not use it
+      // (ADR-0052): outside test, `none` or a missing key means no URL.
+      if (embedOff || !embeddable(target))
         return null
       const fragment = new URLSearchParams({
         placeRef: target.place.placeRef,
@@ -76,8 +74,10 @@ export function createFakeMaps(env: {
  * Test always gets the fake, even when `MAPS=google` and a key are set.
  * `google` outside test uses Places. Anything else, including the default
  * `none`, answers unavailable. The link is the same in every mode.
- * The Embed URL needs `MAPS=google` and `MAPS_EMBED_KEY`. Either one missing
- * means there is no URL (ADR-0052).
+ * Outside test, the Embed URL needs `MAPS=google` and `MAPS_EMBED_KEY`.
+ * Either one missing means there is no URL (ADR-0052). In test the fake
+ * yields an about:blank URL for an embeddable Location and never calls
+ * Google, including when MAPS is `none` and no Embed key is set.
  */
 export function mapsForApp(env: {
   readonly MAPS: 'google' | 'none'
@@ -85,7 +85,7 @@ export function mapsForApp(env: {
   readonly MAPS_EMBED_KEY?: string | undefined
 }): MapsPort {
   if (nodeEnv() === 'test')
-    return createFakeMaps(env)
+    return createFakeMaps()
   if (env.MAPS === 'google') {
     if (env.MAPS_API_KEY === undefined)
       throw new Error('MAPS=google requires MAPS_API_KEY')

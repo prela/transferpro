@@ -105,12 +105,14 @@ const embedTarget = {
   place: { provider: 'google' as const, placeRef: 'ChIJembedPlace' },
 }
 
-it('returns an about:blank Embed URL in test, and none when the switch is off or the key is missing', () => {
+it('returns an about:blank Embed URL in test under the server MAPS config, and none when Embed is off', () => {
   const previous = process.env.NODE_ENV
   process.env.NODE_ENV = 'test'
   setTestMapsEmbedOff(false)
   try {
-    const maps = mapsForApp({ MAPS: 'google', MAPS_API_KEY: 'live-key', MAPS_EMBED_KEY: 'embed-live-key' })
+    // The e2e server leaves MAPS at its existing value, often `none` with
+    // no Embed key. The fake still yields a URL and never calls Google.
+    const maps = mapsForApp({ MAPS: 'none' })
     const url = maps.embedUrl(embedTarget, 'hr')
     const parsed = new URL(url ?? '')
     expect(`${parsed.protocol}${parsed.pathname}`).toBe('about:blank')
@@ -118,9 +120,13 @@ it('returns an about:blank Embed URL in test, and none when the switch is off or
     expect(new URLSearchParams(parsed.hash.slice(1)).get('language')).toBe('hr')
     expect(url).not.toContain('Hotel')
     expect(url).not.toContain('Čilipi')
-    expect(url).not.toContain('embed-live-key')
-    expect(mapsForApp({ MAPS: 'google', MAPS_API_KEY: 'live-key' }).embedUrl(embedTarget, 'en')).toBeNull()
-    expect(mapsForApp({ MAPS: 'none', MAPS_EMBED_KEY: 'embed-live-key' }).embedUrl(embedTarget, 'en')).toBeNull()
+    expect(url).not.toContain('key=')
+    const withoutKey = mapsForApp({ MAPS: 'google', MAPS_API_KEY: 'live-key' }).embedUrl(embedTarget, 'en')
+    expect(withoutKey).toContain('placeRef=ChIJembedPlace')
+    expect(withoutKey).toContain('language=en')
+    expect(withoutKey).not.toContain('live-key')
+    expect(maps.embedUrl({ ...embedTarget, archivedAt: '2026-01-01T00:00:00.000Z' }, 'hr')).toBeNull()
+    expect(maps.embedUrl({ ...embedTarget, place: null }, 'hr')).toBeNull()
 
     setTestMapsEmbedOff(true)
     expect(maps.embedUrl(embedTarget, 'hr')).toBeNull()
