@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Client, ClientOfficeBrief, DisplayLocale, Driver, Location, TransferDayRide } from '../../shared'
+import type { Client, ClientOfficeBrief, DisplayLocale, Driver, OfficeLocation, TransferDayRide } from '../../shared'
 import { transferFormKey } from '../composables/transfer-form'
 
 const props = defineProps<{
@@ -33,7 +33,7 @@ const emit = defineEmits<{
 const day = defineModel<string>('day', { required: true })
 const saved = defineModel<boolean>('saved', { required: true })
 const corrected = defineModel<boolean>('corrected', { required: true })
-const locations = defineModel<Location[]>('locations', { required: true })
+const locations = defineModel<OfficeLocation[]>('locations', { required: true })
 const clients = defineModel<Client[]>('clients', { required: true })
 
 const onStale = props.onStale

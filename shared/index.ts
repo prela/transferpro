@@ -60,6 +60,8 @@ export { ASSIGNMENT_REFUSED_STATES, AssignRideInputError, assignRideSchema, assi
 export type { AssignRide, ChangeRideVehicle, ReassignRide, RideAssignmentField, RosterVehicleSuggestion } from './ride-assignment'
 export { classifyRideAttention, homeRowNamesTheDate, parseTransferDayFilter, pickupNeedsCalendarDate, rideAttentionTier, rideStateMark, rideUrgentKeys, TRANSFER_DAY_FILTERS, transferDayFilterCounts, transferDayFilterMatches } from './ride-attention'
 export type { RideAttentionItem, RideAttentionKind, RideAttentionSource, RideAttentionTier, RideDecline, RideStateMark, TransferBoardFilter, TransferDayFilter, TransferDayFilterRide } from './ride-attention'
+export { rideDetailEmbedUrls, rideDetailMapOpen } from './ride-detail-map'
+export type { RideDetailMapState } from './ride-detail-map'
 export { buildRideExportCsv, calendarDayBounds, parseRideExportQuery, RIDE_EXPORT_MAX_DAYS, rideExportFilename, RideExportRangeError } from './ride-export'
 export type { RideExportRide } from './ride-export'
 export { canChangeHandedOffPartner, canCloseHandedOffRide, canHandOffRide, canTakeBackHandedOffRide, handedOffRideResultSchema, handedOffRideSchema, parseChangeRidePartner, parseHandOffRide, parseTakeBackRide, RIDE_HANDOFF_CLEAR_FIELDS, RIDE_HANDOFF_OPEN_FIELDS, RIDE_PARTNER_CHANGED_FIELDS, RIDE_TAKEN_BACK_FIELDS } from './ride-handoff'

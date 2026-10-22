@@ -5,7 +5,7 @@ const props = defineProps<{
   rides: TransferDayRide[]
   loading: boolean
   loadError: boolean
-  locations: Location[]
+  locations: readonly Location[]
   drivers: Driver[]
   vehicles: Vehicle[]
   partners: Partner[]
