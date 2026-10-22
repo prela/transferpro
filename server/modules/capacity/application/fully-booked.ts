@@ -22,10 +22,10 @@ export interface FullyBookedSubject {
 
 /**
  * Whether this window is fully booked (ADR-0034). The Ride in `leaveOut`
- * occupies nothing. A chosen pair that is free makes the answer false
- * before the rest of the fleet is read. Occupation is the whole Tenant,
- * widened by the transfer duration so a Ride that started earlier and has
- * no landing is still seen.
+ * occupies nothing. Occupation is the whole Tenant, widened by the
+ * transfer duration so a Ride that started earlier and has no landing is
+ * still seen. A free chosen pair makes the answer false. The caller skips
+ * this read when that pair is already free.
  */
 export async function readFullyBooked(
   ports: CapacityPorts,
@@ -33,23 +33,23 @@ export async function readFullyBooked(
   subject: FullyBookedSubject,
 ): Promise<boolean> {
   const end = occupiedEnd(subject.pickupAt, subject.landingAt, subject.durationMinutes)
-  const fleetWindow = await readFleetWindow(ports, fleet, {
+  const fleetRead = await readFleetSpan(ports, fleet, {
     from: subject.pickupAt,
     to: end,
     durationMinutes: subject.durationMinutes,
     leaveOut: subject.rideId,
   })
-  if (fleetWindow === null)
+  if (fleetRead === null)
     return true
   return windowIsFullyBooked({
     from: subject.pickupAt,
     to: end,
     durationMinutes: subject.durationMinutes,
-    activeDriverIds: fleetWindow.driverIds,
-    activeVehicleIds: fleetWindow.vehicleIds,
-    activePartnerIds: fleetWindow.partnerIds,
-    occupying: fleetWindow.occupying,
-    windows: fleetWindow.windows,
+    activeDriverIds: fleetRead.driverIds,
+    activeVehicleIds: fleetRead.vehicleIds,
+    activePartnerIds: fleetRead.partnerIds,
+    occupying: fleetRead.occupying,
+    windows: fleetRead.windows,
     leaveOutRideId: subject.rideId,
     chosen: subject.chosen,
   })
@@ -75,12 +75,12 @@ export async function readBoardFullyBooked(
   const duration = input.durationMinutes
   const start = Math.min(...input.rides.map(ride => ride.pickupAt.getTime()))
   const end = Math.max(...input.rides.map(ride => occupiedEnd(ride.pickupAt, ride.landingAt, duration).getTime()))
-  const fleetWindow = await readFleetWindow(ports, fleet, {
+  const fleetRead = await readFleetSpan(ports, fleet, {
     from: new Date(start),
     to: new Date(end),
     durationMinutes: duration,
   })
-  if (fleetWindow === null)
+  if (fleetRead === null)
     return new Set(input.rides.map(ride => ride.rideId))
 
   for (const ride of input.rides) {
@@ -89,11 +89,11 @@ export async function readBoardFullyBooked(
       from: ride.pickupAt,
       to: rideEnd,
       durationMinutes: duration,
-      activeDriverIds: fleetWindow.driverIds,
-      activeVehicleIds: fleetWindow.vehicleIds,
-      activePartnerIds: fleetWindow.partnerIds,
-      occupying: fleetWindow.occupying,
-      windows: fleetWindow.windows,
+      activeDriverIds: fleetRead.driverIds,
+      activeVehicleIds: fleetRead.vehicleIds,
+      activePartnerIds: fleetRead.partnerIds,
+      occupying: fleetRead.occupying,
+      windows: fleetRead.windows,
       leaveOutRideId: ride.rideId,
     })) {
       booked.add(ride.rideId)
@@ -114,8 +114,8 @@ interface FleetSpan {
   readonly leaveOut?: string
 }
 
-/** Active ids, occupying Rides, and windows for one span. */
-interface FleetWindow {
+/** Active ids, occupying Rides, and unavailability windows for one span. */
+interface FleetSpanRead {
   readonly driverIds: readonly string[]
   readonly vehicleIds: readonly string[]
   readonly partnerIds: readonly string[]
@@ -130,11 +130,11 @@ interface FleetWindow {
  * Partner, so the span is booked and occupation is not read. When a pair
  * is impossible the occupation stays empty; a Partner may still be free.
  */
-async function readFleetWindow(
+async function readFleetSpan(
   ports: CapacityPorts,
   fleet: ActiveFleet,
   span: FleetSpan,
-): Promise<FleetWindow | null> {
+): Promise<FleetSpanRead | null> {
   const driverIds = await fleet.driverIds()
   const vehicleIds = await fleet.vehicleIds()
   const partnerIds = await fleet.partnerIds()
