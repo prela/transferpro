@@ -215,7 +215,7 @@ export function capacityConfirmReason(code: string | undefined): CapacityConfirm
  */
 export type CapacityRefusalReason = CapacityConfirmReason | 'fullyBooked'
 
-export function capacityDialogReason(code: string | undefined): CapacityRefusalReason | null {
+export function capacityRefusalReason(code: string | undefined): CapacityRefusalReason | null {
   const confirmable = capacityConfirmReason(code)
   if (confirmable)
     return confirmable

@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 24.21.0
+          node-version: 24.22.1
 
       - name: Shell guard and text checks
         run: node --test .cursor/hooks/guard-shell.checks.mjs .cursor/hooks/agent-text.checks.mjs
@@ -45,7 +45,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 24.21.0
+          node-version: 24.22.1
 
       - name: Reject banned names and agent footers in the PR text
         env:

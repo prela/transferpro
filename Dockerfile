@@ -1,7 +1,7 @@
 # Coolify builds this from `develop` for the preview environment.
 # The image does not migrate. The owner applies migrations with the owner URL.
 
-FROM node:24.21.0-bookworm-slim AS build
+FROM node:24.22.1-bookworm-slim AS build
 
 WORKDIR /src
 
@@ -15,7 +15,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm exec nuxi build
 
-FROM node:24.21.0-bookworm-slim AS runtime
+FROM node:24.22.1-bookworm-slim AS runtime
 
 WORKDIR /app
 

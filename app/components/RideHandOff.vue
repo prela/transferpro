@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CapacityRefusalReason, Driver, Partner } from '../../shared'
-import { capacityDialogReason, handedOffRideResultSchema } from '../../shared'
+import { capacityRefusalReason, handedOffRideResultSchema } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 import { errorCode, httpStatus } from '../transfer-day-http'
@@ -141,7 +141,7 @@ async function save(confirm = false) {
     emit('saved')
   }
   catch (error) {
-    const reason = capacityDialogReason(errorCode(error))
+    const reason = capacityRefusalReason(errorCode(error))
     if (reason) {
       refusalReason.value = reason
       refusalOpen.value = true
