@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
-import type { AddressSuggestion, Location, LocationKind, LocationPlace } from '../../shared'
+import type { AddressSuggestion, LocationKind, LocationPlace, OfficeLocation } from '../../shared'
 import { z } from 'zod'
-import { catalogSearchMatches, LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, LOCATION_SUGGEST_MIN_LENGTH, locationAddressSchema, locationIataError, locationIataSchema, locationListSchema, locationSchema, suggestAddressesResponseSchema } from '../../shared'
+import { catalogSearchMatches, LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, LOCATION_SUGGEST_MIN_LENGTH, locationAddressSchema, locationIataError, locationIataSchema, locationPanelEmbedUrl, locationSchema, officeLocationListSchema, suggestAddressesResponseSchema } from '../../shared'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
 const { t } = useI18n()
@@ -10,7 +10,7 @@ const { notifyAuditChanged } = useAuditRefresh()
 const listTitleId = useId()
 const searchId = useId()
 
-const locations = ref<Location[]>([])
+const locations = ref<OfficeLocation[]>([])
 const query = ref('')
 const includeArchived = ref(false)
 const loading = ref(false)
@@ -25,7 +25,10 @@ const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
 /** The panel title stays the name that was opened, not the half-typed correction. */
 const openedName = ref('')
-const confirming = ref<Location | null>(null)
+const confirming = ref<OfficeLocation | null>(null)
+/** The map frame. It is in the document only after the press (ADR-0052). */
+const mapFrameId = useId()
+const mapOpen = ref(false)
 const state = reactive<{ name: string, kind?: LocationKind, address: string, iata: string }>({
   name: '',
   address: '',
@@ -151,7 +154,7 @@ function locationErrorCode(error: unknown): string | undefined {
   return typeof data.code === 'string' ? data.code : undefined
 }
 
-function locationActions(location: Location): DropdownMenuItem[][] {
+function locationActions(location: OfficeLocation): DropdownMenuItem[][] {
   if (location.archivedAt !== null)
     return []
   return [[
@@ -163,7 +166,7 @@ function locationActions(location: Location): DropdownMenuItem[][] {
   ]]
 }
 
-function locationSecondLine(location: Location): string {
+function locationSecondLine(location: OfficeLocation): string {
   const kind = t(`locations.kinds.${location.kind}`)
   const extra = location.archivedAt ? t('locations.archived') : (location.address ?? '')
   return extra ? `${kind} · ${extra}` : kind
@@ -174,7 +177,7 @@ async function loadLocations() {
   loadErrorKey.value = null
   try {
     const query = includeArchived.value ? '?includeArchived=true' : ''
-    const next = locationListSchema.parse(await $fetch(`/api/locations${query}`)).locations
+    const next = officeLocationListSchema.parse(await $fetch(`/api/locations${query}`)).locations
     locations.value = next
   }
   catch (error) {
@@ -219,13 +222,15 @@ function resetForm() {
 }
 
 function openAdd() {
+  mapOpen.value = false
   editingId.value = null
   openedName.value = ''
   resetForm()
   formMode.value = 'add'
 }
 
-function openEdit(location: Location) {
+function openEdit(location: OfficeLocation) {
+  mapOpen.value = false
   editingId.value = location.id
   openedName.value = location.name
   state.name = location.name
@@ -242,6 +247,36 @@ function openEdit(location: Location) {
 }
 
 const suggestionItems = computed(() => suggestions.value.map(suggestion => suggestion.text))
+
+/**
+ * The button follows the Embed URL from the last save. An address edit
+ * hides it, including a pick that is not saved yet (ADR-0052).
+ */
+const mapEmbedUrl = computed(() => {
+  if (formMode.value !== 'edit' || editingId.value === null)
+    return null
+  const location = locations.value.find(item => item.id === editingId.value)
+  if (!location)
+    return null
+  return locationPanelEmbedUrl(location.embedUrl, location.address, state.address)
+})
+
+watch(mapEmbedUrl, (url) => {
+  if (url === null)
+    mapOpen.value = false
+})
+
+/**
+ * The press opens Google's frame. Focus stays on this button so a keyboard
+ * user is not dropped into that frame (ADR-0052).
+ */
+async function toggleMap(event: MouseEvent) {
+  mapOpen.value = !mapOpen.value
+  const button = event.currentTarget
+  await nextTick()
+  if (button instanceof HTMLElement)
+    button.focus()
+}
 
 function onAddressInput(value: string | number | null | undefined) {
   const next = value == null ? '' : String(value)
@@ -349,7 +384,7 @@ async function onSubmit(event: FormSubmitEvent<LocationForm>) {
   }
 }
 
-function askArchive(location: Location) {
+function askArchive(location: OfficeLocation) {
   archiveErrorKey.value = null
   confirming.value = location
 }
@@ -455,7 +490,7 @@ onMounted(loadLocations)
             :columns="columns"
             :loading="loading"
             class="lg:whitespace-nowrap"
-            @select="(_event: Event, row: { original: Location }) => openEdit(row.original)"
+            @select="(_event: Event, row: { original: OfficeLocation }) => openEdit(row.original)"
           >
             <template #name-cell="{ row }">
               <button
@@ -629,6 +664,36 @@ onMounted(loadLocations)
               >{{ error }}</span>
             </template>
           </UFormField>
+          <div v-if="mapEmbedUrl">
+            <UButton
+              type="button"
+              color="neutral"
+              variant="outline"
+              :size="commandControlSize(phone)"
+              class="w-full justify-center sm:w-auto"
+              :class="commandControlClass(phone)"
+              :aria-expanded="mapOpen"
+              :aria-controls="mapFrameId"
+              @click="toggleMap"
+            >
+              {{ mapOpen ? t('locations.hideMap') : t('locations.showMap') }}
+            </UButton>
+            <!--
+              The frame exists only after the press, so nothing is sent
+              before then. No sandbox: Google's scripts and its larger-map
+              link must run. allow grants nothing. The border is the theme
+              token. The map is not restyled, cropped, or credited again.
+            -->
+            <iframe
+              v-if="mapOpen"
+              :id="mapFrameId"
+              :src="mapEmbedUrl"
+              :title="t('locations.mapTitle', { name: openedName })"
+              class="mt-2 block h-[240px] w-full border border-default"
+              referrerpolicy="strict-origin-when-cross-origin"
+              allow=""
+            />
+          </div>
           <UFormField
             v-if="state.kind === 'airport'"
             :label="t('locations.iata')"
