@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { CapacityConfirmReason, Driver, Vehicle } from '../../shared'
-import { assignedRideSchema, capacityConfirmReason, rosterVehicleSuggestionSchema } from '../../shared'
+import type { CapacityDialogReason, Driver, Vehicle } from '../../shared'
+import { assignedRideSchema, capacityDialogReason, rosterVehicleSuggestionSchema } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
@@ -36,7 +36,7 @@ const nextDriverId = ref<string | undefined>()
 const vehicleId = ref<string | undefined>()
 const pending = ref(false)
 const overlapOpen = ref(false)
-const confirmReason = ref<CapacityConfirmReason>('overlap')
+const confirmReason = ref<CapacityDialogReason>('overlap')
 const formErrorKey = ref<RideFailure | null>(null)
 const rosterVehicleId = ref<string | null>(null)
 
@@ -197,7 +197,7 @@ async function submit(confirm = false) {
     emit('saved')
   }
   catch (error) {
-    const reason = capacityConfirmReason(errorCode(error))
+    const reason = capacityDialogReason(errorCode(error))
     if (reason) {
       confirmReason.value = reason
       overlapOpen.value = true

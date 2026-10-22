@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { CapacityConfirmReason, Driver, Partner } from '../../shared'
-import { capacityConfirmReason, handedOffRideResultSchema } from '../../shared'
+import type { CapacityDialogReason, Driver, Partner } from '../../shared'
+import { capacityDialogReason, handedOffRideResultSchema } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 import { errorCode, httpStatus } from '../transfer-day-http'
@@ -48,7 +48,7 @@ const partnerId = ref<string | undefined>()
 const pending = ref(false)
 const formErrorKey = ref<HandOffFailure | null>(null)
 const confirmOpen = ref(false)
-const confirmReason = ref<CapacityConfirmReason>('unavailable')
+const confirmReason = ref<CapacityDialogReason>('unavailable')
 
 type HandOffFailure
   = 'ride.partnerArchived'
@@ -103,8 +103,10 @@ function failureKey(error: unknown): HandOffFailure {
 
 /**
  * POST /api/rides/:id/hand-off or /partner. The body is the Partner and the
- * version. An unavailable Partner is 409 `ride_unavailable` and writes
- * nothing; the same body with `confirm: true` passes the window (ADR-0034).
+ * version. A fully booked window is 409 `fully_booked` and the dialog
+ * offers no confirmation. An unavailable Partner is 409 `ride_unavailable`
+ * and writes nothing; the same body with `confirm: true` passes that
+ * window (ADR-0034).
  * A Partner is not mailed. From assigned or accepted the Driver gets no
  * longer yours.
  */
@@ -139,7 +141,7 @@ async function save(confirm = false) {
     emit('saved')
   }
   catch (error) {
-    const reason = capacityConfirmReason(errorCode(error))
+    const reason = capacityDialogReason(errorCode(error))
     if (reason) {
       confirmReason.value = reason
       confirmOpen.value = true

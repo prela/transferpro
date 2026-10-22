@@ -88,6 +88,8 @@ test('desktop columns fit 1366 and a row stays compact', async ({ page }) => {
   const tenant = await seedTenant('transfers-columns')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   const spot = await places(page)
+  // An empty fleet is fully booked. A free partner keeps this row one line.
+  await createdId(page, '/api/partners', { name: 'Slobodan Prijevoz' })
   const day = addCalendarDays(operationalDay(page), 1)
   await record(page, 'Ana Stupac', day, '12:00', spot)
   await page.setViewportSize({ width: 1366, height: 768 })

@@ -19,6 +19,7 @@ const iconFor: Record<RideAttentionItem['kind'], string> = {
   'unclosed-mark': 'i-lucide-circle-alert',
   'overlap': 'i-lucide-triangle-alert',
   'unavailable': 'i-lucide-calendar-off',
+  'fully-booked': 'i-lucide-ban',
   'roster-mismatch': 'i-lucide-calendar-x',
   'expired-document': 'i-lucide-file-warning',
 }
@@ -36,6 +37,7 @@ function label(item: RideAttentionItem): string {
     'unclosed-mark': `${group}.unclosed`,
     'overlap': `${group}.overlap`,
     'unavailable': `${group}.unavailable`,
+    'fully-booked': `${group}.fullyBooked`,
     'roster-mismatch': `${group}.rosterMismatch`,
     'expired-document': `${group}.expiredDocument`,
   }[item.kind]
