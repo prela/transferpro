@@ -395,6 +395,55 @@ it('keeps the place when the correction does not change the address', async () =
   expect(JSON.stringify(auditPayloads(queries))).not.toContain(picked.placeRef)
 })
 
+function writeSql(queries: Array<{ sql: string, params: unknown[] }>, kind: 'insert' | 'update') {
+  const marker = kind === 'insert' ? 'insert into app.locations' : 'update app.locations'
+  const query = queries.find(entry => entry.sql.includes(marker))
+  if (!query)
+    throw new Error(`missing ${kind}`)
+  return query
+}
+
+it('stamps place_ref_checked_at on a pick and leaves it null for a typed address', async () => {
+  const pickedWrite = fakeTransaction([])
+  await addLocation(pickedWrite.transaction, actorUserId, { ...input, address, place: picked })
+  const pickedSql = writeSql(pickedWrite.queries, 'insert')
+  expect(pickedSql.sql).toContain('place_ref_checked_at')
+  expect(pickedSql.sql).toContain('now()')
+  expect(pickedSql.params).toContain(picked.placeRef)
+
+  const typed = fakeTransaction([])
+  await addLocation(typed.transaction, actorUserId, { ...input, address })
+  const typedSql = writeSql(typed.queries, 'insert')
+  expect(typedSql.sql).toContain('when')
+  expect(typedSql.params.filter(value => value === picked.placeRef)).toEqual([])
+})
+
+it('stamps a new pick, clears a hand edit, and keeps the time when the reference stays', async () => {
+  const again = fakeTransaction([{ ...stored, address, place: picked }])
+  await correctLocation(again.transaction, actorUserId, locationId, {
+    address: 'Put od Republike 9',
+    place: replacement,
+  })
+  const pickedSql = writeSql(again.queries, 'update')
+  expect(pickedSql.sql).toContain('place_ref_checked_at')
+  expect(pickedSql.sql).toContain('is not distinct from')
+  expect(pickedSql.sql).toContain('then place_ref_checked_at')
+  expect(pickedSql.sql).toContain('else now()')
+  expect(pickedSql.params).toContain(replacement.placeRef)
+
+  const edited = fakeTransaction([{ ...stored, address, place: picked }])
+  await correctLocation(edited.transaction, actorUserId, locationId, { address: 'Frana Supila 12' })
+  const clearedSql = writeSql(edited.queries, 'update')
+  expect(clearedSql.params).toContain(null)
+  expect(clearedSql.params).not.toContain(picked.placeRef)
+
+  const kept = fakeTransaction([{ ...stored, address, place: picked }])
+  await correctLocation(kept.transaction, actorUserId, locationId, { name: 'Hotel Excelsior' })
+  const keptSql = writeSql(kept.queries, 'update')
+  expect(keptSql.sql).toContain('is not distinct from')
+  expect(keptSql.params).toContain(picked.placeRef)
+})
+
 it('refuses a correction of an archived Location and writes nothing', async () => {
   const archived = { ...stored, archivedAt: '2026-10-05T10:00:00.000Z' }
   const { transaction, queries } = fakeTransaction([archived])

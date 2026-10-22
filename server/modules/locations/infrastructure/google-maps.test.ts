@@ -10,14 +10,16 @@ const sessionToken = 'a1b2c3d4-5555-4555-8555-555555555555'
 const placeRef = 'ChIJ68aBlEKuEmsRHUA9oME5Zh0'
 
 function client(answer: { status: number, body: string } | Error) {
-  const seen: { url: string, body: string, key: string }[] = []
+  const seen: { url: string, method: string, body: string, key: string, fieldMask: string }[] = []
   return {
     seen,
-    http: async (url: string, init: { body: string, headers: Record<string, string>, signal: AbortSignal }) => {
+    http: async (url: string, init: { method?: 'GET' | 'POST', body?: string, headers: Record<string, string>, signal: AbortSignal }) => {
       seen.push({
         url,
-        body: init.body,
+        method: init.method ?? 'POST',
+        body: init.body ?? '',
         key: init.headers['X-Goog-Api-Key'] ?? '',
+        fieldMask: init.headers['X-Goog-FieldMask'] ?? '',
       })
       if (answer instanceof Error)
         throw answer
@@ -113,6 +115,82 @@ it('builds a place-mode Embed URL from the reference, the key, and the language'
   expect(url).not.toContain('Čilipi')
   expect(url).not.toContain('Cilipi')
   expect(seen).toEqual([])
+})
+
+it('checks one place reference with the field mask id on the server key', async () => {
+  const { http, seen } = client({
+    status: 200,
+    body: JSON.stringify({ id: placeRef }),
+  })
+  const maps = createGoogleMaps('test-maps-key', http, embedKey)
+  await expect(maps.checkPlaceRef(placeRef)).resolves.toEqual({ outcome: 'same' })
+  expect(seen).toEqual([{
+    url: `https://places.googleapis.com/v1/places/${placeRef}`,
+    method: 'GET',
+    body: '',
+    key: 'test-maps-key',
+    fieldMask: 'id',
+  }])
+  expect(seen[0]?.key).not.toBe(embedKey)
+})
+
+it('maps a Place Details answer to same, replaced, gone, or unavailable', async () => {
+  const replaced = 'ChIJreplacedPlace'
+  const secret = 'place id leaked in the error'
+  const cases: Array<{ answer: { status: number, body: string } | Error, outcome: unknown }> = [
+    {
+      answer: { status: 200, body: JSON.stringify({ id: placeRef, displayName: { text: secret } }) },
+      outcome: { outcome: 'same' },
+    },
+    {
+      answer: { status: 200, body: JSON.stringify({ id: replaced }) },
+      outcome: { outcome: 'replaced', placeRef: replaced },
+    },
+    {
+      answer: { status: 404, body: JSON.stringify({ error: { code: 404, status: 'NOT_FOUND', message: secret } }) },
+      outcome: { outcome: 'gone' },
+    },
+    {
+      answer: { status: 400, body: JSON.stringify({ error: { code: 400, status: 'INVALID_REQUEST', message: secret } }) },
+      outcome: { outcome: 'unavailable' },
+    },
+    {
+      answer: { status: 403, body: JSON.stringify({ error: { status: 'PERMISSION_DENIED', message: secret } }) },
+      outcome: { outcome: 'unavailable' },
+    },
+    {
+      answer: { status: 429, body: JSON.stringify({ error: { status: 'RESOURCE_EXHAUSTED', message: secret } }) },
+      outcome: { outcome: 'unavailable' },
+    },
+    {
+      answer: { status: 500, body: JSON.stringify({ error: { message: secret } }) },
+      outcome: { outcome: 'unavailable' },
+    },
+    {
+      answer: { status: 404, body: 'not json' },
+      outcome: { outcome: 'unavailable' },
+    },
+    {
+      answer: { status: 200, body: JSON.stringify({ id: `  ${replaced}  ` }) },
+      outcome: { outcome: 'replaced', placeRef: `  ${replaced}  ` },
+    },
+    {
+      answer: { status: 200, body: JSON.stringify({ id: '' }) },
+      outcome: { outcome: 'unavailable' },
+    },
+  ]
+  for (const entry of cases) {
+    const { http } = client(entry.answer)
+    const result = await createGoogleMaps('test-maps-key', http).checkPlaceRef(placeRef)
+    expect(result).toEqual(entry.outcome)
+    expect(JSON.stringify(result)).not.toContain(secret)
+    expect(JSON.stringify(result)).not.toContain(placeRef)
+  }
+
+  const timedOut = client(new Error(`timed out ${secret}`))
+  const result = await createGoogleMaps('test-maps-key', timedOut.http).checkPlaceRef(placeRef)
+  expect(result).toEqual({ outcome: 'unavailable' })
+  expect(JSON.stringify(result)).not.toContain(secret)
 })
 
 it('has no Embed URL without a key, for a typed Location, for another provider, or when archived', () => {

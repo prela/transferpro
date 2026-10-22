@@ -38,6 +38,12 @@ export const locations = tenantTable('locations', {
    */
   placeProvider: text('place_provider'),
   placeRef: text('place_ref'),
+  /**
+   * When this reference was last checked (ADR-0052). Nullable.
+   * It must be null when `place_ref` is null. A reference with no
+   * timestamp is due. Existing rows are not rewritten.
+   */
+  placeRefCheckedAt: timestamp('place_ref_checked_at', { withTimezone: true, mode: 'date' }),
   archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
 }, table => [
   check(
@@ -75,6 +81,10 @@ export const locations = tenantTable('locations', {
   check(
     'locations_place_ref',
     sql`${table.placeRef} is null or (${table.placeRef} = btrim(${table.placeRef}) and length(${table.placeRef}) between 1 and ${placeRefMax})`,
+  ),
+  check(
+    'locations_place_ref_checked_at',
+    sql`${table.placeRefCheckedAt} is null or ${table.placeRef} is not null`,
   ),
   uniqueIndex('locations_iata_active').on(table.tenantId, table.iata).where(sql`${table.archivedAt} is null and ${table.iata} is not null`),
   uniqueIndex('locations_tenant_id_id').on(table.tenantId, table.id),

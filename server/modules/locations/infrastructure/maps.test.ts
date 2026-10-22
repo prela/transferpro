@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { nodeEnv } from '../../../core/index'
-import { FAKE_PLACE_REF, lastTestMapsQuery, mapsForApp, setTestMapsEmbedOff, setTestMapsUnavailable } from './maps'
+import { FAKE_PLACE_REF, lastTestMapsQuery, lastTestPlaceReference, mapsForApp, setTestMapsEmbedOff, setTestMapsUnavailable, setTestPlaceReferenceCheck } from './maps'
 import { createNoneMaps } from './none-maps'
 
 const text = 'Villa Rosa 12'
@@ -74,6 +74,7 @@ it('answers unavailable when the fake is told to, and when MAPS is none', async 
       sessionToken: 'a1b2c3d4-5555-4555-8555-555555555555',
       language: 'hr',
     })).resolves.toEqual({ available: false })
+    await expect(createNoneMaps().checkPlaceRef('ChIJnone')).resolves.toEqual({ outcome: 'unavailable' })
   }
   finally {
     restoreNodeEnv(previousEnv)
@@ -133,6 +134,24 @@ it('returns an about:blank Embed URL in test under the server MAPS config, and n
   }
   finally {
     setTestMapsEmbedOff(false)
+    restoreNodeEnv(previous)
+  }
+})
+
+it('returns the place-reference check the test set, and records the reference', async () => {
+  const previous = process.env.NODE_ENV
+  process.env.NODE_ENV = 'test'
+  try {
+    setTestPlaceReferenceCheck({ outcome: 'replaced', placeRef: 'ChIJnext' })
+    const maps = mapsForApp({ MAPS: 'none' })
+    await expect(maps.checkPlaceRef(FAKE_PLACE_REF)).resolves.toEqual({
+      outcome: 'replaced',
+      placeRef: 'ChIJnext',
+    })
+    expect(lastTestPlaceReference()).toBe(FAKE_PLACE_REF)
+  }
+  finally {
+    setTestPlaceReferenceCheck({ outcome: 'unavailable' })
     restoreNodeEnv(previous)
   }
 })

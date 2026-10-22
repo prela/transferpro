@@ -587,3 +587,101 @@ it('carries an Embed URL for an active google place, and null when there is no m
     setTestMapsEmbedOff(false)
   }
 })
+
+async function checkedAt(locationId: string): Promise<Date | null> {
+  const result = await ownerPool.query<{ place_ref_checked_at: Date | null }>(
+    'select place_ref_checked_at from app.locations where id = $1',
+    [locationId],
+  )
+  const value = result.rows[0]?.place_ref_checked_at ?? null
+  return value === null ? null : new Date(value)
+}
+
+it('stamps a pick, keeps the time when the reference stays, and clears it on a hand edit or a clear', async () => {
+  const created = await tenant('hlc-checked', 'Cila Admin')
+  await tenant('hlc-checked-b', 'Ciro Admin')
+  const admin = await signIn('hlc-checked-admin@example.test')
+  const other = await signIn('hlc-checked-b-admin@example.test')
+  const placeRef = 'ChIJcheckedPlace'
+  const nextRef = 'ChIJcheckedNext'
+
+  const picked = await call('POST', '/api/locations', admin, {
+    name: 'Hotel Check',
+    kind: 'hotel',
+    address: 'Put 4',
+    place: { provider: 'google', placeRef },
+  })
+  expect(picked.status).toBe(200)
+  const row = await picked.json()
+  expect(row.place).toEqual({ provider: 'google', placeRef })
+  expect(row.placeRefCheckedAt).toBeUndefined()
+  const stamped = await checkedAt(row.id)
+  expect(stamped).not.toBeNull()
+  expect(Math.abs((stamped?.getTime() ?? 0) - Date.now())).toBeLessThan(60_000)
+  const ownerRow = await ownerPool.query<{ tenant_id: string }>(
+    'select tenant_id from app.locations where id = $1',
+    [row.id],
+  )
+  expect(ownerRow.rows[0]?.tenant_id).toBe(created.tenantId)
+
+  const listed = await call('GET', '/api/locations', other)
+  expect(listed.status).toBe(200)
+  expect(await listed.text()).not.toContain(row.id)
+  const refused = await call('PATCH', `/api/locations/${row.id}`, other, { name: 'Hotel Stolen' })
+  expect(refused.status).toBe(404)
+  expect((await checkedAt(row.id))?.toISOString()).toBe(stamped?.toISOString())
+
+  const kept = await call('PATCH', `/api/locations/${row.id}`, admin, { name: 'Hotel Check 2' })
+  expect(kept.status).toBe(200)
+  expect((await kept.json()).place).toEqual({ provider: 'google', placeRef })
+  expect((await checkedAt(row.id))?.toISOString()).toBe(stamped?.toISOString())
+
+  const edited = await call('PATCH', `/api/locations/${row.id}`, admin, { address: 'Put 5' })
+  expect(edited.status).toBe(200)
+  expect((await edited.json()).place).toBeNull()
+  expect(await checkedAt(row.id)).toBeNull()
+
+  const again = await call('PATCH', `/api/locations/${row.id}`, admin, {
+    address: 'Put 6',
+    place: { provider: 'google', placeRef: nextRef },
+  })
+  expect(again.status).toBe(200)
+  expect(await checkedAt(row.id)).not.toBeNull()
+
+  const cleared = await call('PATCH', `/api/locations/${row.id}`, admin, { place: null })
+  expect(cleared.status).toBe(200)
+  const clearedBody = await cleared.json()
+  expect(clearedBody.place).toBeNull()
+  expect(clearedBody.address).toBe('Put 6')
+  expect(await checkedAt(row.id)).toBeNull()
+})
+
+it('saves a typed address as plain text when suggestions are off', async () => {
+  setTestMapsUnavailable(true)
+  try {
+    const created = await tenant('hlc-plain', 'Pia Admin')
+    const admin = await signIn('hlc-plain-admin@example.test')
+    const typed = 'Ulica bez mjesta 1'
+    const suggestions = await call('POST', '/api/locations/suggestions', admin, {
+      text: typed,
+      sessionToken: 'c1b2c3d4-5555-4555-8555-555555555555',
+    })
+    expect(suggestions.status).toBe(200)
+    expect(await suggestions.json()).toEqual({ available: false, suggestions: [], attribution: null })
+
+    const saved = await call('POST', '/api/locations', admin, {
+      name: 'Kuća Pia',
+      kind: 'address',
+      address: typed,
+    })
+    expect(saved.status).toBe(200)
+    const row = await saved.json()
+    expect(row.place).toBeNull()
+    expect(row.address).toBe(typed)
+    expect(await checkedAt(row.id)).toBeNull()
+    expect(created.tenantId).toBeTruthy()
+  }
+  finally {
+    setTestMapsUnavailable(false)
+  }
+})
