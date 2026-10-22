@@ -1,10 +1,11 @@
 import type { InjectionKey } from 'vue'
-import type { CapacityRefusalReason, Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
+import type { Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
 import { z } from 'zod'
-import { applyTransferDraftEvent, calendarDateInTimeZone, capacityRefusalReason, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
+import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
+import { useCapacityRefusal } from './capacity-refusal'
 
 type TransferFailure
   = 'transfers.rejected'
@@ -98,8 +99,10 @@ export function useTransferForm(options: {
   const pending = ref(false)
   const placePending = ref(false)
   // A capacity refusal keeps the slideover. Confirm re-sends an overlap or an unavailability. Popunjeno does not.
-  const refusalOpen = ref(false)
-  const refusalReason = ref<CapacityRefusalReason>('overlap')
+  // A correction hands a stale save to the detail. Without that handler the form shows the error.
+  const { refusalOpen, refusalReason, handleCapacityRefusal } = useCapacityRefusal({
+    onStale: options.onStale,
+  })
   /**
    * Add and correct share one slideover. Null is closed.
    * `edit` patches the Transfer in `editingTransferId`.
@@ -669,20 +672,10 @@ export function useTransferForm(options: {
       await options.loadDay()
     }
     catch (error) {
-      const reason = capacityRefusalReason(errorCode(error))
-      if (reason) {
-        refusalReason.value = reason
-        refusalOpen.value = true
-        return
-      }
-      refusalOpen.value = false
-      // A correction hands the refusal to the detail. Without that handler the form shows the error.
-      if (errorCode(error) === 'stale_save' && options.onStale) {
-        await options.onStale()
-        return
-      }
-      formErrorKey.value = failureKey(error)
-      markInvalid()
+      await handleCapacityRefusal(error, () => {
+        formErrorKey.value = failureKey(error)
+        markInvalid()
+      })
     }
     finally {
       pending.value = false

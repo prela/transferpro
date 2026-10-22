@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { CapacityRefusalReason, Driver, Vehicle } from '../../shared'
-import { assignedRideSchema, capacityRefusalReason } from '../../shared'
+import type { Driver, Vehicle } from '../../shared'
+import { assignedRideSchema } from '../../shared'
+import { useCapacityRefusal } from '../composables/capacity-refusal'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
@@ -34,8 +35,9 @@ const titleId = useId()
 
 const nextVehicleId = ref<string | undefined>()
 const pending = ref(false)
-const refusalOpen = ref(false)
-const refusalReason = ref<CapacityRefusalReason>('overlap')
+const { refusalOpen, refusalReason, handleCapacityRefusal } = useCapacityRefusal({
+  onStale: () => props.onStale(),
+})
 const formErrorKey = ref<RideFailure | null>(null)
 
 type RideFailure
@@ -129,18 +131,9 @@ async function submit(confirm = false) {
     emit('saved')
   }
   catch (error) {
-    const reason = capacityRefusalReason(errorCode(error))
-    if (reason) {
-      refusalReason.value = reason
-      refusalOpen.value = true
-      return
-    }
-    refusalOpen.value = false
-    if (errorCode(error) === 'stale_save') {
-      await props.onStale()
-      return
-    }
-    formErrorKey.value = failureKey(error)
+    await handleCapacityRefusal(error, () => {
+      formErrorKey.value = failureKey(error)
+    })
   }
   finally {
     pending.value = false
