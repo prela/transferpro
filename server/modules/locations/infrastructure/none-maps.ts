@@ -14,5 +14,10 @@ export function createNoneMaps(): MapsPort {
     embedUrl() {
       return null
     },
+    // No Place Details call in this mode. Unavailable leaves a stored
+    // reference alone if something asks anyway (ADR-0052).
+    async checkPlaceRef() {
+      return { outcome: 'unavailable' }
+    },
   }
 }

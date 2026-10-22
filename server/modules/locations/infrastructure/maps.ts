@@ -1,4 +1,4 @@
-import type { MapsPort, SuggestAddressesQuery } from '../maps-port'
+import type { MapsPort, PlaceReferenceCheck, SuggestAddressesQuery } from '../maps-port'
 import { LOCATION_ADDRESS_MAX_LENGTH } from '../../../../shared'
 import { nodeEnv } from '../../../core/index'
 import { embeddable } from '../maps-port'
@@ -12,6 +12,8 @@ export const FAKE_PLACE_REF = 'ChIJfakeDubrovnik'
 const queries: SuggestAddressesQuery[] = []
 let unavailable = false
 let embedOff = false
+let placeReferenceCheck: PlaceReferenceCheck = { outcome: 'unavailable' }
+const checkedPlaceRefs: string[] = []
 
 /** E2E flips this. Production never reaches the fake. */
 export function setTestMapsUnavailable(value: boolean): void {
@@ -30,6 +32,19 @@ export function setTestMapsEmbedOff(value: boolean): void {
 /** The last lookup the fake saw. Tests assert the language and the text. */
 export function lastTestMapsQuery(): SuggestAddressesQuery | null {
   return queries.at(-1) ?? null
+}
+
+/**
+ * The next `checkPlaceRef` answer. Production never reaches the fake.
+ * The default is unavailable, so an unset test does not look like a clear.
+ */
+export function setTestPlaceReferenceCheck(value: PlaceReferenceCheck): void {
+  placeReferenceCheck = value
+}
+
+/** The last reference the fake was asked to check. */
+export function lastTestPlaceReference(): string | null {
+  return checkedPlaceRefs.at(-1) ?? null
 }
 
 export function createFakeMaps(): MapsPort {
@@ -66,6 +81,10 @@ export function createFakeMaps(): MapsPort {
         language,
       })
       return `about:blank#${fragment.toString()}`
+    },
+    async checkPlaceRef(placeRef) {
+      checkedPlaceRefs.push(placeRef)
+      return placeReferenceCheck
     },
   }
 }
