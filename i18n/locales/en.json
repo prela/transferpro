@@ -494,7 +494,8 @@
       "overlap": "Overlap",
       "rosterMismatch": "Roster mismatch",
       "expiredDocument": "Expired document",
-      "unavailable": "Unavailable"
+      "unavailable": "Unavailable",
+      "fullyBooked": "Fully booked"
     },
     "attentionDetail": {
       "unassignedAlarm": "The ride is unassigned and the pickup is within four hours.",
@@ -505,7 +506,8 @@
       "overlap": "The time overlaps another ride, or the gap to it is too short.",
       "rosterMismatch": "The vehicle is not the one the roster gives this driver for that day.",
       "expiredDocument": "A document for the driver or the vehicle has expired.",
-      "unavailable": "The driver, the vehicle, or the subcontractor is marked unavailable during this ride."
+      "unavailable": "The driver, the vehicle, or the subcontractor is marked unavailable during this ride.",
+      "fullyBooked": "No free driver with a free vehicle, and no free subcontractor."
     },
     "rowAccept": "Confirm by phone",
     "rowAcceptFor": "Confirm by phone: {guest}",
@@ -1058,7 +1060,9 @@
     "clientOfficeNoNote": "No note.",
     "unknownVehicle": "Unknown vehicle",
     "unavailableTitle": "This driver, vehicle, or subcontractor is unavailable then",
-    "unavailableBody": "Unavailability is recorded during this ride. If the ride also overlaps another, this confirmation covers both. Confirm to continue anyway."
+    "unavailableBody": "Unavailability is recorded during this ride. If the ride also overlaps another, this confirmation covers both. Confirm to continue anyway.",
+    "fullyBookedTitle": "Fully booked",
+    "fullyBookedBody": "There is no free driver with a free vehicle, and no free subcontractor. This cannot be confirmed."
   },
   "liveRefresh": {
     "refresh": "Refresh",

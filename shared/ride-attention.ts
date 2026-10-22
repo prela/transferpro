@@ -17,6 +17,7 @@ export const RIDE_ATTENTION_KINDS = [
   'unclosed-mark',
   'overlap',
   'unavailable',
+  'fully-booked',
   'roster-mismatch',
   'expired-document',
 ] as const
@@ -45,6 +46,8 @@ export interface RideAttentionSource {
     readonly overlappingRideIds: readonly string[]
     /** The Driver, Vehicle, or Partner an unavailability window covers. Absent when none is. */
     readonly unavailable?: readonly string[]
+    /** Popunjeno on an unfinished unassigned Ride. Absent otherwise (ADR-0034). */
+    readonly fullyBooked?: boolean
   }
 }
 
@@ -75,7 +78,8 @@ function pickupMillis(pickupAt: string): number {
  * Urgent items and warnings for one Ride, in a stable order.
  * An unassigned past pickup and the four-hour alarm do not both apply.
  * A short gap and a true overlap are one warning, as the day read already
- * folded them into `overlappingRideIds`.
+ * folded them into `overlappingRideIds`. Popunjeno follows an unavailability
+ * warning and comes only from an unfinished unassigned Ride.
  */
 export function classifyRideAttention(
   ride: RideAttentionSource,
@@ -107,6 +111,10 @@ export function classifyRideAttention(
     items.push({ tier: 'warning', kind: 'overlap' })
   if ((ride.warnings.unavailable?.length ?? 0) > 0)
     items.push({ tier: 'warning', kind: 'unavailable' })
+  // Popunjeno is a warning only while the Ride is unfinished and unassigned.
+  // An assignment or a handoff refuses the same window instead (ADR-0034).
+  if (ride.state === 'unassigned' && ride.warnings.fullyBooked === true)
+    items.push({ tier: 'warning', kind: 'fully-booked' })
   if (ride.warnings.rosterMismatch)
     items.push({ tier: 'warning', kind: 'roster-mismatch' })
   if (ride.warnings.expiredDocuments.length > 0)

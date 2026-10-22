@@ -224,6 +224,41 @@ it('paints a Ride state as icon-ready text: waiting outlined, in progress, finis
   })
 })
 
+it('shows Popunjeno as a warning on an unfinished unassigned Ride, and not on an assigned one', () => {
+  const booked = classifyRideAttention(source({
+    warnings: {
+      expiredDocuments: [],
+      rosterMismatch: false,
+      overlappingRideIds: [],
+      fullyBooked: true,
+    },
+  }), [], NOW)
+  expect(booked).toEqual([
+    { tier: 'warning', kind: 'fully-booked' },
+  ])
+  expect(rideAttentionTier('fully-booked')).toBe('warning')
+  expect(transferDayFilterMatches('warnings', source({
+    warnings: {
+      expiredDocuments: [],
+      rosterMismatch: false,
+      overlappingRideIds: [],
+      fullyBooked: true,
+    },
+  }), [], NOW)).toBe(true)
+  const assigned = classifyRideAttention(source({
+    state: 'assigned',
+    driverId: '00000000-0000-4000-8000-000000000010',
+    mustAccept: false,
+    warnings: {
+      expiredDocuments: [],
+      rosterMismatch: false,
+      overlappingRideIds: [],
+      fullyBooked: true,
+    },
+  }), [], NOW)
+  expect(assigned).toEqual([])
+})
+
 it('puts the unavailability warning in the Warning tier, after an overlap and before a roster mismatch', () => {
   const items = classifyRideAttention(source({
     state: 'accepted',

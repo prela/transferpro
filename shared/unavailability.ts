@@ -207,6 +207,22 @@ export function capacityConfirmReason(code: string | undefined): CapacityConfirm
   return null
 }
 
+/**
+ * Which capacity refusal the dialog names. `fullyBooked` is not in
+ * {@link CapacityConfirmReason}: the dialog offers no confirmation, and
+ * `confirm` does not pass 409 `fully_booked` (ADR-0034).
+ */
+export type CapacityDialogReason = CapacityConfirmReason | 'fullyBooked'
+
+export function capacityDialogReason(code: string | undefined): CapacityDialogReason | null {
+  const confirmable = capacityConfirmReason(code)
+  if (confirmable)
+    return confirmable
+  if (code === 'fully_booked')
+    return 'fullyBooked'
+  return null
+}
+
 /** Whether any part of the window falls on this local calendar date. The roster grid shows it there. */
 export function windowTouchesDate(
   window: { readonly startsAt: string, readonly endsAt: string },

@@ -1,7 +1,7 @@
 import type { InjectionKey } from 'vue'
-import type { CapacityConfirmReason, Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
+import type { CapacityDialogReason, Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
 import { z } from 'zod'
-import { applyTransferDraftEvent, calendarDateInTimeZone, capacityConfirmReason, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
+import { applyTransferDraftEvent, calendarDateInTimeZone, capacityDialogReason, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -99,7 +99,7 @@ export function useTransferForm(options: {
   const placePending = ref(false)
   // A true overlap or an unavailability window keeps the slideover. Confirm re-sends the same booking.
   const overlapOpen = ref(false)
-  const confirmReason = ref<CapacityConfirmReason>('overlap')
+  const confirmReason = ref<CapacityDialogReason>('overlap')
   /**
    * Add and correct share one slideover. Null is closed.
    * `edit` patches the Transfer in `editingTransferId`.
@@ -166,6 +166,17 @@ export function useTransferForm(options: {
     { label: t('clients.kinds.hotel'), value: 'hotel' as const },
     { label: t('clients.kinds.individual'), value: 'individual' as const },
   ])
+
+  // Popunjeno warns and the save still stands (ADR-0034). The board shows the same word on the Ride.
+  function warnIfFullyBooked(fullyBooked: boolean) {
+    if (!fullyBooked)
+      return
+    toast.add({
+      title: t('ride.fullyBookedTitle'),
+      description: t('transfers.attentionDetail.fullyBooked'),
+      color: 'warning',
+    })
+  }
 
   function failureKey(error: unknown): TransferFailure {
     if (errorCode(error) === 'location_archived')
@@ -642,6 +653,7 @@ export function useTransferForm(options: {
       overlapOpen.value = false
       options.corrected.value = true
       notifyAuditChanged()
+      warnIfFullyBooked(correction.fullyBooked)
       if (correction.relocationWarnings.length > 0) {
         toast.add({
           title: t('ride.tightGap'),
@@ -657,7 +669,7 @@ export function useTransferForm(options: {
       await options.loadDay()
     }
     catch (error) {
-      const reason = capacityConfirmReason(errorCode(error))
+      const reason = capacityDialogReason(errorCode(error))
       if (reason) {
         confirmReason.value = reason
         overlapOpen.value = true
@@ -707,6 +719,7 @@ export function useTransferForm(options: {
       }
       options.saved.value = true
       toast.add({ title: t('transfers.recorded') })
+      warnIfFullyBooked(recorded.fullyBooked)
       const rideId = recorded.ride.id
       ignoreDraft = true
       if (options.persistDraft && import.meta.client)

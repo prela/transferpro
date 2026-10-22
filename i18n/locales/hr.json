@@ -494,7 +494,8 @@
       "overlap": "Preklapanje",
       "rosterMismatch": "Nesklad rasporeda",
       "expiredDocument": "Istekao dokument",
-      "unavailable": "Nedostupan"
+      "unavailable": "Nedostupan",
+      "fullyBooked": "Popunjeno"
     },
     "attentionDetail": {
       "unassignedAlarm": "Vožnja nije dodijeljena, a do preuzimanja je manje od četiri sata.",
@@ -505,7 +506,8 @@
       "overlap": "Vrijeme se preklapa s drugom vožnjom ili je razmak do nje preuzak.",
       "rosterMismatch": "Vozilo nije ono koje raspored daje vozaču za taj dan.",
       "expiredDocument": "Vozaču ili vozilu je istekao dokument.",
-      "unavailable": "Vozač, vozilo ili podizvođač ima zabilježenu nedostupnost u vrijeme ove vožnje."
+      "unavailable": "Vozač, vozilo ili podizvođač ima zabilježenu nedostupnost u vrijeme ove vožnje.",
+      "fullyBooked": "Nema slobodnog vozača sa slobodnim vozilom ni slobodnog podizvođača."
     },
     "rowAccept": "Potvrdi telefonom",
     "rowAcceptFor": "Potvrdi telefonom: {guest}",
@@ -1058,7 +1060,9 @@
     "clientOfficeNoNote": "Nema napomene.",
     "unknownVehicle": "Nepoznato vozilo",
     "unavailableTitle": "Ovaj vozač, vozilo ili podizvođač je tada nedostupan",
-    "unavailableBody": "U vrijeme ove vožnje zabilježena je nedostupnost. Ako se vožnja i preklapa s drugom, ova potvrda vrijedi za oboje. Potvrdite da svejedno nastavite."
+    "unavailableBody": "U vrijeme ove vožnje zabilježena je nedostupnost. Ako se vožnja i preklapa s drugom, ova potvrda vrijedi za oboje. Potvrdite da svejedno nastavite.",
+    "fullyBookedTitle": "Popunjeno",
+    "fullyBookedBody": "U tom terminu nema slobodnog vozača sa slobodnim vozilom ni slobodnog podizvođača. Ovo se ne može potvrditi."
   },
   "liveRefresh": {
     "refresh": "Osvježi",
