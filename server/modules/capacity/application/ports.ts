@@ -72,6 +72,17 @@ export interface CapacityPorts {
   readonly windows: UnavailabilityReader
 }
 
+/**
+ * Active ids, through the drivers, vehicles, and partners modules.
+ * Archived rows are absent. The roster is not here: any Driver may pair
+ * with any Vehicle (ADR-0034).
+ */
+export interface ActiveFleet {
+  readonly driverIds: () => Promise<readonly string[]>
+  readonly vehicleIds: () => Promise<readonly string[]>
+  readonly partnerIds: () => Promise<readonly string[]>
+}
+
 /** A new window: exactly one of the three ids is set. */
 export interface UnavailabilityRecord extends WindowTimes {
   readonly driverId: string | null

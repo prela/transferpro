@@ -16,6 +16,8 @@ const transferId = 'd1d1d1d1-1111-4111-8111-111111111111'
 const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
 const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
 const otherVehicleId = 'c2c2c2c2-2222-4222-8222-222222222222'
+const spareDriverId = 'b9b9b9b9-9999-4999-8999-999999999999'
+const spareVehicleId = 'c9c9c9c9-9999-4999-8999-999999999999'
 const dialect = new PgDialect()
 
 interface Script {
@@ -65,6 +67,10 @@ function fakeTransaction(script: Script) {
           }],
         }
       }
+      if (text.includes('from app.drivers') && text.includes('archived_at is null') && !text.includes('must_accept')) {
+        // The fully booked read. A spare free pair keeps an overlap an overlap.
+        return { rows: [{ id: driverId }, { id: spareDriverId }] }
+      }
       if (text.includes('from app.drivers')) {
         if (script.driverMustAccept === 'missing')
           return { rows: [] }
@@ -81,6 +87,9 @@ function fakeTransaction(script: Script) {
             archivedAt: script.driverArchived ? new Date('2026-10-01T00:00:00.000Z') : null,
           }],
         }
+      }
+      if (text.includes('from app.vehicles') && text.includes('archived_at is null') && !text.includes('for share') && !text.includes('"archivedAt"')) {
+        return { rows: [{ id: vehicleId }, { id: otherVehicleId }, { id: spareVehicleId }] }
       }
       if (text.includes('from app.vehicles')) {
         // Prefill asks after the roster read. Assign asks before any roster read.

@@ -40,6 +40,7 @@ it('returns a true overlap in the verdict and leaves the refusal to the caller',
   await expect(judgeRideCapacity(ports, subject)).resolves.toEqual({
     overlaps: [{ resource: 'driver', rideId: otherId }],
     tightGaps: [],
+    fullyBooked: true,
   })
 })
 
@@ -48,6 +49,7 @@ it('returns a tight relocation gap and no overlap', async () => {
   await expect(judgeRideCapacity(ports, subject)).resolves.toEqual({
     overlaps: [],
     tightGaps: [{ resource: 'vehicle', rideId: otherId }],
+    fullyBooked: false,
   })
 })
 
@@ -56,12 +58,13 @@ it('judges the window with the Tenant minutes read through tenancy', async () =>
   await expect(judgeRideCapacity(ports, subject)).resolves.toEqual({
     overlaps: [{ resource: 'vehicle', rideId: otherId }],
     tightGaps: [],
+    fullyBooked: true,
   })
 })
 
 it('returns an empty verdict when nothing else occupies the Driver or the Vehicle', async () => {
   const { ports } = fakeCapacityPorts()
-  await expect(judgeRideCapacity(ports, subject)).resolves.toEqual({ overlaps: [], tightGaps: [] })
+  await expect(judgeRideCapacity(ports, subject)).resolves.toEqual({ overlaps: [], tightGaps: [], fullyBooked: false })
 })
 
 function away(startsAt: Date, endsAt: Date, owner: { driverId?: string, vehicleId?: string, partnerId?: string }) {
@@ -96,20 +99,22 @@ it('lists the unavailable Driver and Vehicle in the verdict, Driver first', asyn
     overlaps: [],
     tightGaps: [],
     unavailable: ['driver', 'vehicle'],
+    fullyBooked: true,
   })
 })
 
 it('names nothing unavailable when the window ends where the Ride starts', async () => {
   const { ports } = fakeCapacityPorts([], undefined, [away(at(8, 0), at(10, 0), { driverId })])
-  await expect(judgeRideCapacity(ports, subject)).resolves.toEqual({ overlaps: [], tightGaps: [] })
+  await expect(judgeRideCapacity(ports, subject)).resolves.toEqual({ overlaps: [], tightGaps: [], fullyBooked: false })
 })
 
 it('lists an unavailable Partner and does not ask who else is taken', async () => {
   const { ports, asked } = fakeCapacityPorts([], undefined, [away(at(10, 0), at(11, 0), { partnerId })])
-  await expect(judgePartnerCapacity(ports, { partnerId, pickupAt: at(10, 0), landingAt: null })).resolves.toEqual({
+  await expect(judgePartnerCapacity(ports, { rideId, partnerId, pickupAt: at(10, 0), landingAt: null })).resolves.toEqual({
     overlaps: [],
     tightGaps: [],
     unavailable: ['partner'],
+    fullyBooked: true,
   })
   expect(asked.ridesOf).toEqual([])
   expect(asked.ridesDuring).toEqual([])
@@ -131,13 +136,14 @@ it('a handed-off Ride does not make its Partner unavailable', async () => {
     pickupAt: at(10, 0),
     landingAt: null,
   }])
-  await expect(judgePartnerCapacity(ports, { partnerId, pickupAt: at(10, 0), landingAt: null })).resolves.toEqual({
+  await expect(judgePartnerCapacity(ports, { rideId, partnerId, pickupAt: at(10, 0), landingAt: null })).resolves.toEqual({
     overlaps: [],
     tightGaps: [],
+    fullyBooked: false,
   })
 })
 
 it('ignores a window of another Driver that the port answered with', async () => {
   const { ports } = fakeCapacityPorts([], undefined, [away(at(9, 0), at(12, 0), { driverId: otherDriverId })])
-  await expect(judgeRideCapacity(ports, subject)).resolves.toEqual({ overlaps: [], tightGaps: [] })
+  await expect(judgeRideCapacity(ports, subject)).resolves.toEqual({ overlaps: [], tightGaps: [], fullyBooked: false })
 })

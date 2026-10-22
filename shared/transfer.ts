@@ -307,6 +307,9 @@ export type RecordedTransfer = z.infer<typeof recordedTransferSchema>
  */
 export const recordedCreateSchema = recordedTransferSchema.extend({
   alreadyRecorded: z.boolean(),
+  // True when the new Transfer's window has no free Driver with a free
+  // Vehicle and no free Partner. The save still stands (ADR-0034).
+  fullyBooked: z.boolean(),
 })
 
 export type RecordedCreate = z.infer<typeof recordedCreateSchema>

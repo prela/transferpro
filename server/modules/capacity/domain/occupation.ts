@@ -1,4 +1,4 @@
-import type { ScheduleClash, ScheduleRide, UnavailableResource } from '../../../../shared'
+import type { ScheduleRide, ScheduleVerdict, UnavailableResource } from '../../../../shared'
 import { judgeSchedule } from '../../../../shared'
 
 /**
@@ -22,15 +22,17 @@ export interface CapacityMinutes {
 }
 
 /**
- * What capacity says about one Ride's Driver and Vehicle. A true overlap
- * is in `overlaps`; the caller decides whether that refuses the command.
- * A gap shorter than the relocation gap is in `tightGaps` and never refuses.
+ * What capacity says about one Ride. A true overlap is in `overlaps`; the
+ * caller decides whether that refuses the command. A gap shorter than the
+ * relocation gap is in `tightGaps` and never refuses. `fullyBooked` is the
+ * hard block (ADR-0034): no free Driver with a free Vehicle, and no free
+ * Partner. The caller refuses an assignment or a handoff from it, and
+ * confirming does not pass it. A Transfer save only warns.
  */
-export interface CapacityVerdict {
-  readonly overlaps: readonly ScheduleClash[]
-  readonly tightGaps: readonly ScheduleClash[]
+export interface CapacityVerdict extends ScheduleVerdict {
   /** The Driver, the Vehicle, the Partner, or a pair, that a window covers (ADR-0034). Absent when none is. */
   readonly unavailable?: readonly UnavailableResource[]
+  readonly fullyBooked: boolean
 }
 
 /**
@@ -57,7 +59,7 @@ export function judgeOccupation(
   subject: ScheduleRide,
   occupying: readonly OccupyingRide[],
   minutes: CapacityMinutes,
-): CapacityVerdict {
+): ScheduleVerdict {
   return judgeSchedule(
     subject,
     occupying.flatMap((ride) => {

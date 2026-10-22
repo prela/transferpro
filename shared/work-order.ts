@@ -191,6 +191,9 @@ export const correctedTransferResultSchema = z.object({
   ride: rideSchema,
   workOrders: z.array(workOrderNoticeSchema),
   relocationWarnings: z.array(relocationWarningSchema),
+  // True when the saved window has no free Driver with a free Vehicle and
+  // no free Partner. The correction still stands (ADR-0034).
+  fullyBooked: z.boolean(),
 })
 
 export type CorrectedTransferResult = z.infer<typeof correctedTransferResultSchema>

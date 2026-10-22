@@ -16,6 +16,8 @@ export const boardWarningsSchema = z.object({
   overlappingRideIds: z.array(z.uuid()),
   // The Driver, Vehicle, or Partner an unavailability window covers (ADR-0034). Absent when none is.
   unavailable: z.array(z.enum(['driver', 'vehicle', 'partner'])).min(1).optional(),
+  // Popunjeno: an unfinished unassigned Ride whose window is fully booked (ADR-0034). Absent otherwise.
+  fullyBooked: z.literal(true).optional(),
 })
 
 export type BoardWarnings = z.infer<typeof boardWarningsSchema>
@@ -68,6 +70,8 @@ export function emptyBoardWarnings(): BoardWarnings {
  * overlap are one warning and a gap equal to the relocation gap is none.
  * `unavailable` is what capacity found covered by an unavailability window
  * (`readBoardUnavailability`); it is shown only when it names something.
+ * `fullyBooked` is Popunjeno on an unfinished unassigned Ride, derived on
+ * read. An assigned, accepted, or handed-off Ride does not show it.
  */
 export function deriveBoardWarnings(input: {
   readonly ride: BoardWarningRide
@@ -78,6 +82,7 @@ export function deriveBoardWarnings(input: {
   readonly durationMinutes: number
   readonly gapMinutes: number
   readonly unavailable?: readonly UnavailableResource[]
+  readonly fullyBooked?: boolean
 }): BoardWarnings {
   if (!isCalendarDate(input.pickupDate))
     throw new RangeError('Pickup date is not a calendar date.')
@@ -87,6 +92,11 @@ export function deriveBoardWarnings(input: {
       ...emptyBoardWarnings(),
       ...(input.unavailable && input.unavailable.length > 0 ? { unavailable: [...input.unavailable] } : {}),
     }
+  }
+  if (input.ride.state === 'unassigned') {
+    return input.fullyBooked === true
+      ? { ...emptyBoardWarnings(), fullyBooked: true }
+      : emptyBoardWarnings()
   }
   if (input.ride.state !== 'assigned' && input.ride.state !== 'accepted')
     return emptyBoardWarnings()

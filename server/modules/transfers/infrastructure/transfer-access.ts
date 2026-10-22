@@ -4,6 +4,7 @@ import { loadClientOfficeBriefs } from '../../clients'
 import { loadPartnerOfficeContacts } from '../../partners'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { applyBoardWarnings } from './board-warnings'
+import { transferFullyBooked } from './capacity-check'
 import { loadDeclineAlertsForDay, loadRidesForDay, recordTransfer } from './transfers'
 
 function officeOnly(role: string): void {
@@ -26,7 +27,21 @@ export async function createTransfer(headers: Headers, raw: unknown): Promise<Re
   const { input, externalId } = parseRecordTransfer(raw)
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return recordTransfer(transaction, actor.userId, input, externalId)
+    const recorded = await recordTransfer(transaction, actor.userId, input, externalId)
+    // A repeat writes nothing, so it carries no fully booked warning.
+    // A new Transfer still saves when the window is fully booked (ADR-0034).
+    if (recorded.alreadyRecorded)
+      return { ...recorded, fullyBooked: false }
+    return {
+      ...recorded,
+      fullyBooked: await transferFullyBooked(transaction, {
+        rideId: recorded.ride.id,
+        pickupAt: new Date(recorded.transfer.pickupAt),
+        landingAt: null,
+        driverId: null,
+        vehicleId: null,
+      }),
+    }
   })
 }
 

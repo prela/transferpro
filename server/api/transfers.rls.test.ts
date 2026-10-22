@@ -1956,6 +1956,8 @@ it('a confirmed overlap saves, returns an accepted Ride to assigned, and sends o
 it('does not judge a correction that leaves the occupied window where it was', async () => {
   const office = await bookedOffice('htr-ovlp-quiet')
   const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112134'))
+  // A free Driver keeps the confirmed overlap an overlap. With only Drago, the window is fully booked.
+  await createDriver(office.dispatcher, driverInput('Leo Slobodni', '+385911112234'))
   const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2134AA'))
   const otherVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2134BB'))
   const later = await createLocation(office.dispatcher, { name: 'Hotel Excelsior', kind: 'hotel' })
@@ -2080,6 +2082,8 @@ it('an archived Location is refused before an overlap', async () => {
 it('a save that changes nothing does not ask about an overlap that is already there', async () => {
   const office = await bookedOffice('htr-ovlp-noop')
   const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112139'))
+  // A free Driver keeps the confirmed overlap an overlap. With only Drago, the window is fully booked.
+  await createDriver(office.dispatcher, driverInput('Leo Slobodni', '+385911112239'))
   const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2139AA'))
   const otherVehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2139BB'))
   const movingAt = '2026-11-02T10:30:00.000Z'

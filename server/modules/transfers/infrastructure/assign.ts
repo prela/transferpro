@@ -118,12 +118,14 @@ export async function assignUnassignedRide(
   if (presence === 'archived')
     throw new RideVehicleArchivedError()
 
-  const relocationWarnings = await checkRideCapacity(transaction, {
+  const capacity = await checkRideCapacity(transaction, {
     rideId: input.rideId,
     driverId: input.driverId,
     vehicleId: input.vehicleId,
     confirm: input.confirm === true,
+    blockFullyBooked: true,
   })
+  const relocationWarnings = capacity.relocationWarnings
 
   // The share lock held both fields. The update does not read the Driver again.
   // The version claim and this update commit together. A lost claim rolls the Ride back.

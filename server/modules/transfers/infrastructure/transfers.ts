@@ -87,7 +87,7 @@ export async function recordTransfer(
   input: CreateTransfer,
   externalId: string,
   log?: Logger,
-): Promise<RecordedCreate> {
+): Promise<Omit<RecordedCreate, 'fullyBooked'>> {
   // The key is resolved before any catalog read, so a different payload
   // is not applied and a missing Client does not turn a repeat into an error.
   const existing = await loadManualTransfer(transaction, externalId)

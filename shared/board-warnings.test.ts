@@ -255,3 +255,17 @@ it('accepts the unavailability warning in the day list contract', () => {
   expect(boardWarningsSchema.safeParse({ ...none, unavailable: ['crew'] }).success).toBe(false)
   expect(boardWarningsSchema.parse(none)).toEqual(none)
 })
+
+it('shows Popunjeno only on an unfinished unassigned Ride', () => {
+  const ride = { rideId, pickupAt: at(10, 0), landingAt: null, driverId: null, vehicleId: null }
+  expect(derive({ ride: { ...ride, state: 'unassigned' }, fullyBooked: true })).toEqual({ ...none, fullyBooked: true })
+  expect(derive({ ride: { ...ride, state: 'unassigned' } })).toEqual(none)
+  expect(derive({ ride: { ...ride, state: 'unassigned', driverId, vehicleId }, fullyBooked: false })).toEqual(none)
+  expect(derive({ fullyBooked: true })).toEqual(none)
+  expect(derive({
+    ride: { rideId, state: 'handed_off', pickupAt: at(10, 0), landingAt: null, driverId: null, vehicleId: null },
+    fullyBooked: true,
+  })).toEqual(none)
+  expect(boardWarningsSchema.parse({ ...none, fullyBooked: true })).toEqual({ ...none, fullyBooked: true })
+  expect(boardWarningsSchema.safeParse({ ...none, fullyBooked: false }).success).toBe(false)
+})

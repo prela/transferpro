@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
-import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotHandedOffError, RideNotHandoffableError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
+import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, FullyBookedError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotHandedOffError, RideNotHandoffableError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
 
 /**
  * Turn an assignment or accept failure into an HTTP error. The message stays
@@ -16,6 +16,9 @@ import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, Mark
  * `ride_overlap` is a true overlap of the Driver or the Vehicle.
  * `ride_unavailable` is an unavailability window over the Driver, the
  * Vehicle, or the Partner (ADR-0034). `confirm: true` passes both.
+ * `fully_booked` is a window with no free Driver and Vehicle and no free
+ * Partner. `confirm: true` does not pass it, and it is named before an
+ * overlap or an unavailability.
  * `ride_not_finishable` is done refused: the copied flag and the state do
  * not allow it, or a concurrent command already won. Nothing was written.
  * `ride_not_no_show` is a No-show refused: the copied flag and the state do
@@ -67,6 +70,7 @@ export function rideHttpError(error: unknown): never {
     || error instanceof RideSameDriverError
     || error instanceof RideOverlapError
     || error instanceof RideUnavailableError
+    || error instanceof FullyBookedError
     || error instanceof StaleSaveError
     || error instanceof RideNotHandoffableError
     || error instanceof RideNotHandedOffError

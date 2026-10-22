@@ -186,6 +186,22 @@ export async function loadVehicleDocumentExpiry(
   return selected.rows
 }
 
+/**
+ * Active Vehicle ids of this Tenant. Capacity uses this for the fully
+ * booked rule, so the plate stays unread. Archived rows are absent.
+ * Another Tenant's rows stay out under the session's row security.
+ * This read does not check a role. The caller already did.
+ */
+export async function loadActiveVehicleIds(transaction: TenantTransaction): Promise<string[]> {
+  const selected = vehicleIdRows.parse(await transaction.execute(sql`
+    select id
+    from app.vehicles
+    where archived_at is null
+    order by id
+  `))
+  return selected.rows.map(row => row.id)
+}
+
 export async function loadVehicles(
   transaction: TenantTransaction,
   includeArchived: boolean,

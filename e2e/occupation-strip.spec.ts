@@ -62,6 +62,21 @@ test('a block names the ride, opens its detail, and the collapsed strip survives
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,
   })
+  // A free Driver and a free Vehicle keep the confirmed overlap an overlap.
+  await createdId(page, '/api/drivers', {
+    name: 'Leo Slobodni',
+    kind: 'own',
+    phone: '+385911110262',
+    drivingLicenceExpiresOn: licence,
+    transportLicenceExpiresOn: licence,
+  })
+  await createdId(page, '/api/vehicles', {
+    registrationPlate: 'DU261BB',
+    kind: 'fixed',
+    registrationExpiresOn: licence,
+    technicalInspectionExpiresOn: licence,
+    insuranceExpiresOn: licence,
+  })
   const clientId = await createdId(page, '/api/clients', { name: 'Klijent Traka', kind: 'agency' })
   const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Traka', kind: 'airport' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Traka', kind: 'hotel' })
