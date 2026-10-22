@@ -2,9 +2,9 @@ import { expect, it } from 'vitest'
 import { decideDemoSeed } from './demo-seed-guard'
 
 /**
- * The only automated check of the demo seed. It decides from the
- * environment and the argument list. It does not open a database and it
- * does not name a password.
+ * The guard decides from the environment and the argument list.
+ * It does not open a database and it does not name a password.
+ * The picture's place ids are checked beside this file.
  */
 it('refuses unless the demo flag and the mail guard both pass', () => {
   expect(decideDemoSeed({ env: {}, argv: [] })).toBe('demo-seed-required')

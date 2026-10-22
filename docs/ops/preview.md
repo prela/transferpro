@@ -22,6 +22,7 @@ Set these names in the preview environment. Values stay in Coolify.
 | `LOG_LEVEL` | No |
 | `MAPS` | No |
 | `MAPS_API_KEY` | Only when `MAPS` is `google` |
+| `MAPS_EMBED_KEY` | No. Optional with either `MAPS` value. Restrict the key to the Maps Embed API and this environment's origin. |
 | `SENTRY_DSN` | No |
 | `SENTRY_RELEASE` | No |
 | `HOST` | No |

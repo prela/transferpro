@@ -21,6 +21,12 @@ import getUpcoming from './upcoming.get'
  */
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
+// Embed is configured, so a Driver payload that grew an Embed URL would
+// carry about:blank and this key. The phone must carry neither.
+process.env.MAPS = 'google'
+if (process.env.MAPS_API_KEY === undefined || process.env.MAPS_API_KEY === '')
+  process.env.MAPS_API_KEY = 'test-places-key'
+process.env.MAPS_EMBED_KEY = 'test-embed-key'
 
 function required(name: string): string {
   const value = process.env[name]
@@ -213,7 +219,12 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
   const client = await createClient(admin, { name: 'Agencija Mora', kind: 'agency' })
   // No address on the start. The end keeps its address after it is archived.
   const start = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
-  const addressedStart = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport', address: 'Čilipi 1' })
+  const addressedStart = await createLocation(admin, {
+    name: 'Zračna luka Dubrovnik',
+    kind: 'airport',
+    address: 'Čilipi 1',
+    place: { provider: 'google', placeRef: 'ChIJdriverMustNotSee' },
+  })
   const end = await createLocation(admin, { name: 'Hotel Park', kind: 'hotel', address: 'Masarykov put 1' })
   // An external Driver sees the agency name. The kind is not rewritten.
   const mine = await createDriver(admin, {
@@ -345,7 +356,14 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
 
   const response = await call(driver, `?driverId=${other.id}`)
   expect(response.status).toBe(200)
-  const listed = driverUpcomingListSchema.parse(await response.json())
+  const text = await response.text()
+  // The directions link may name the place. The Embed URL and its key must not.
+  expect(text).toContain('destination_place_id=ChIJdriverMustNotSee')
+  expect(text).not.toContain('embedUrl')
+  expect(text).not.toContain('maps/embed')
+  expect(text).not.toContain('about:blank')
+  expect(text).not.toContain('test-embed-key')
+  const listed = driverUpcomingListSchema.parse(JSON.parse(text))
   expect(listed.rides.map(row => row.guestName)).toEqual([
     'Iva Past',
     'Iva Card',

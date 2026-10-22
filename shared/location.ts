@@ -112,6 +112,23 @@ export const locationListSchema = z.object({
 export type LocationList = z.infer<typeof locationListSchema>
 
 /**
+ * The Location an Admin or a Dispatcher reads. `embedUrl` is built for
+ * this response and is not stored. Null means there is no map. A Driver's
+ * payload does not use this schema (ADR-0052).
+ */
+export const officeLocationSchema = locationSchema.extend({
+  embedUrl: z.string().min(1).nullable(),
+})
+
+export type OfficeLocation = z.infer<typeof officeLocationSchema>
+
+export const officeLocationListSchema = z.object({
+  locations: z.array(officeLocationSchema),
+})
+
+export type OfficeLocationList = z.infer<typeof officeLocationListSchema>
+
+/**
  * POST /api/locations. Archive is absent: a new Location starts on the list.
  * An unknown key is refused.
  */

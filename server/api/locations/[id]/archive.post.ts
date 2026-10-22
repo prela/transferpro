@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam, toWebRequest } from 'h3'
-import { locationSchema } from '../../../../shared'
+import { officeLocationSchema } from '../../../../shared'
 import { archiveLocation } from '../../../modules/locations'
 import { locationHttpError, parseLocationId } from '../http'
 
@@ -11,7 +11,7 @@ import { locationHttpError, parseLocationId } from '../http'
 export default defineEventHandler(async (event) => {
   const locationId = parseLocationId(getRouterParam(event, 'id'))
   try {
-    return locationSchema.parse(await archiveLocation(toWebRequest(event).headers, locationId))
+    return officeLocationSchema.parse(await archiveLocation(toWebRequest(event).headers, locationId))
   }
   catch (error) {
     locationHttpError(error)

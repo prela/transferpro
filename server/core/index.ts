@@ -70,6 +70,12 @@ export interface AppEnv {
    */
   readonly MAPS_API_KEY: string | undefined
   /**
+   * Maps Embed API key. Optional with either `MAPS` value. A blank value
+   * is missing. With `MAPS=none`, or without this key, there is no Embed
+   * URL. The value is not copied into an error. ADR-0052.
+   */
+  readonly MAPS_EMBED_KEY: string | undefined
+  /**
    * Sentry or GlitchTip DSN. When unset, the SDK is not initialised and no
    * events are sent. ADR charter observability baseline (#34).
    */
@@ -203,6 +209,20 @@ function parseMapsApiKey(source: NodeJS.ProcessEnv, maps: 'google' | 'none'): st
   return z.string().min(1).parse(key)
 }
 
+/**
+ * Optional in every `MAPS` mode. A blank value counts as missing.
+ * A failure throws a fixed sentence, so the key is not written into it.
+ */
+function parseMapsEmbedKey(source: NodeJS.ProcessEnv): string | undefined {
+  const key = blankEnv(source.MAPS_EMBED_KEY)
+  if (key === undefined)
+    return undefined
+  const parsed = z.string().min(1).safeParse(key)
+  if (!parsed.success)
+    throw new Error('MAPS_EMBED_KEY is invalid.')
+  return parsed.data
+}
+
 function parseSentryDsn(source: NodeJS.ProcessEnv): string | undefined {
   const dsn = blankEnv(source.SENTRY_DSN)
   if (dsn === undefined)
@@ -263,6 +283,7 @@ export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
     DEPLOY_ENV,
     MAPS,
     MAPS_API_KEY: parseMapsApiKey(source, MAPS),
+    MAPS_EMBED_KEY: parseMapsEmbedKey(source),
     SENTRY_DSN: parseSentryDsn(source),
     SENTRY_RELEASE: parseSentryRelease(source),
   }

@@ -5,4 +5,4 @@
  */
 export { archiveLocation, createLocation, listLocations, LocationArchivedError, LocationIataTakenError, LocationNotFoundError, suggestAddresses, updateLocation } from './infrastructure/location-access'
 export { loadLocation, loadLocations } from './infrastructure/locations'
-export { FAKE_PLACE_REF, lastTestMapsQuery, mapsForApp, setTestMapsUnavailable } from './infrastructure/maps'
+export { FAKE_PLACE_REF, lastTestMapsQuery, mapsForApp, setTestMapsEmbedOff, setTestMapsUnavailable } from './infrastructure/maps'

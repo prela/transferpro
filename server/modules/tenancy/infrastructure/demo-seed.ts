@@ -194,9 +194,18 @@ async function replaceApp(client: PoolClient, picture: DemoPicture): Promise<voi
   }
   for (const location of picture.locations) {
     await client.query(
-      `insert into app.locations (tenant_id, id, name, kind, address, iata)
-       values ($1, $2, $3, $4, $5, $6)`,
-      [tenantId, location.id, location.name, location.kind, location.address, location.iata],
+      `insert into app.locations (tenant_id, id, name, kind, address, iata, place_provider, place_ref)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        tenantId,
+        location.id,
+        location.name,
+        location.kind,
+        location.address,
+        location.iata,
+        location.place?.provider ?? null,
+        location.place?.placeRef ?? null,
+      ],
     )
   }
   for (const vehicle of picture.vehicles) {
