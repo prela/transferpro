@@ -1,9 +1,9 @@
 import type { TenantTransaction } from '../../../core/index'
-import type { ActivePartnerReader, CapacityMinutesReader, CapacityPorts, OccupationPort, UnavailabilityAuditFact, UnavailabilityPorts } from '../application/ports'
-import { driverPresence } from '../../drivers'
+import type { ActiveFleet, ActivePartnerReader, CapacityMinutesReader, CapacityPorts, OccupationPort, UnavailabilityAuditFact, UnavailabilityPorts } from '../application/ports'
+import { driverPresence, loadActiveDriverIds } from '../../drivers'
 import { loadActivePartnerIds, partnerPresence } from '../../partners'
 import { loadTenantSettings } from '../../tenancy'
-import { vehiclePresence } from '../../vehicles'
+import { loadActiveVehicleIds, vehiclePresence } from '../../vehicles'
 import { lockTenantCapacity } from './lock'
 import { unavailabilityReader, unavailabilityStore } from './unavailability-store'
 
@@ -30,6 +30,15 @@ export function tenantCapacityMinutes(transaction: TenantTransaction): CapacityM
 /** Active Partner ids, through the partners module's public entry (ADR-0034). */
 export function tenantActivePartnerIds(transaction: TenantTransaction): ActivePartnerReader {
   return () => loadActivePartnerIds(transaction)
+}
+
+/** Active Driver, Vehicle, and Partner ids, through each module's public entry (ADR-0034). */
+export function tenantFleet(transaction: TenantTransaction): ActiveFleet {
+  return {
+    driverIds: () => loadActiveDriverIds(transaction),
+    vehicleIds: () => loadActiveVehicleIds(transaction),
+    partnerIds: () => loadActivePartnerIds(transaction),
+  }
 }
 
 export function capacityPorts(transaction: TenantTransaction, occupation: OccupationPort): CapacityPorts {

@@ -28,6 +28,22 @@ export class RideUnavailableError extends Error {
   }
 }
 
+/**
+ * The window has no free Driver with a free Vehicle and no free Partner.
+ * Nothing was written. `confirm: true` does not pass it (ADR-0034).
+ * Capacity owns the class; transfers decides when to throw it.
+ * A Transfer correction never throws this: it saves and warns.
+ */
+export class FullyBookedError extends Error {
+  readonly statusCode = 409
+  readonly code = 'fully_booked'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'FullyBookedError'
+  }
+}
+
 /** The window, the Driver, or the Vehicle is not in this Tenant, or the window was removed. */
 export class UnavailabilityNotFoundError extends Error {
   readonly statusCode = 404

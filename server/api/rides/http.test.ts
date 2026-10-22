@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotHandedOffError, RideNotHandoffableError, RideNotOpenError, RideNotUnassignedError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
+import { FullyBookedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotHandedOffError, RideNotHandoffableError, RideNotOpenError, RideNotUnassignedError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
 import { rideHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -94,6 +94,14 @@ describe('rideHttpError', () => {
     expect(error).toMatchObject({
       statusCode: 409,
       data: { code: 'ride_unavailable' },
+    })
+  })
+
+  it('returns fully_booked, which confirm does not pass', () => {
+    const error = thrown(() => rideHttpError(new FullyBookedError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'fully_booked' },
     })
   })
 

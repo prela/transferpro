@@ -122,12 +122,14 @@ export async function changeRideVehicle(
   if (presence === 'archived')
     throw new RideVehicleArchivedError()
 
-  const relocationWarnings = await checkRideCapacity(transaction, {
+  const capacity = await checkRideCapacity(transaction, {
     rideId: input.rideId,
     driverId: current.driverId,
     vehicleId: input.vehicleId,
     confirm: input.confirm === true,
+    blockFullyBooked: true,
   })
+  const relocationWarnings = capacity.relocationWarnings
 
   await claimTransferVersion(transaction, current.transferId, input.version, actorUserId, 'Ride vehicle change failed')
   const updated = keptRows.parse(await runStep(transaction, sql`
@@ -247,12 +249,14 @@ export async function reassignAssignedRide(
   if (presence === 'archived')
     throw new RideVehicleArchivedError()
 
-  const relocationWarnings = await checkRideCapacity(transaction, {
+  const capacity = await checkRideCapacity(transaction, {
     rideId: input.rideId,
     driverId: input.driverId,
     vehicleId: input.vehicleId,
     confirm: input.confirm === true,
+    blockFullyBooked: true,
   })
+  const relocationWarnings = capacity.relocationWarnings
 
   const mustAccept = driver.mustAccept
   await claimTransferVersion(transaction, current.transferId, input.version, actorUserId, 'Ride reassignment failed')

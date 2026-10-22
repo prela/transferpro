@@ -103,7 +103,7 @@ function sharedResources(subject: ScheduleRide, other: ScheduleRide): ScheduleRe
 }
 
 /** Half-open windows. An empty window (end at or before the start) occupies nothing. */
-function intervalsOverlap(startA: Date, endA: Date, startB: Date, endB: Date): boolean {
+export function intervalsOverlap(startA: Date, endA: Date, startB: Date, endB: Date): boolean {
   if (endA.getTime() <= startA.getTime() || endB.getTime() <= startB.getTime())
     return false
   return startA.getTime() < endB.getTime() && startB.getTime() < endA.getTime()

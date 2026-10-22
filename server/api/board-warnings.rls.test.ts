@@ -358,6 +358,8 @@ it('follows a roster change, including a stored row for an archived vehicle, and
 it('shows an overlap across the operational-day boundary, after a correction, and when the relocation gap changes', async () => {
   const places = await office('hbw-overlap')
   const ana = await driver(places.dispatcher, 'Ana Ana', '+385910000231', validOn, validOn)
+  // A free Driver keeps the confirmed overlap an overlap. With only Ana, the window is fully booked.
+  await driver(places.dispatcher, 'Leo Slobodni', '+385910000239', validOn, validOn)
   const lateCar = await vehicle(places.dispatcher, 'DU231AA', validOn, validOn, validOn)
   const nextCar = await vehicle(places.dispatcher, 'DU232AA', validOn, validOn, validOn)
   const early = await ride(places.dispatcher, places, 'Early Ana', at('2026-10-21T04:30'), ana.id, lateCar.id)
@@ -415,6 +417,8 @@ it('shows an overlap across the operational-day boundary, after a correction, an
 it('a landing that starts before the search window and ends after it still warns', async () => {
   const places = await office('hbw-span')
   const ana = await driver(places.dispatcher, 'Ana Ana', '+385910000261', validOn, validOn)
+  // A free Driver keeps the confirmed overlap an overlap. With only Ana, the window is fully booked.
+  await driver(places.dispatcher, 'Leo Slobodni', '+385910000269', validOn, validOn)
   const earlyCar = await vehicle(places.dispatcher, 'DU261AA', validOn, validOn, validOn)
   const dayCar = await vehicle(places.dispatcher, 'DU262AA', validOn, validOn, validOn)
   const spanned = await ride(places.dispatcher, places, 'Spanned Ana', at('2026-10-17T12:00'), ana.id, earlyCar.id)
@@ -434,6 +438,8 @@ it('a landing that starts before the search window and ends after it still warns
 it('a finished ride neither shows nor causes an overlap', async () => {
   const places = await office('hbw-done')
   const ana = await driver(places.dispatcher, 'Ana Ana', '+385910000241', validOn, validOn)
+  // A free Driver keeps the confirmed overlap an overlap. With only Ana, the window is fully booked.
+  await driver(places.dispatcher, 'Leo Slobodni', '+385910000249', validOn, validOn)
   const car = await vehicle(places.dispatcher, 'DU241AA', validOn, validOn, validOn)
   const other = await vehicle(places.dispatcher, 'DU242AA', validOn, validOn, validOn)
   const done = await ride(places.dispatcher, places, 'Done Ana', at('2026-10-20T12:00'), ana.id, car.id)

@@ -144,6 +144,24 @@ export async function driverAssignState(
 }
 
 /**
+ * Active Driver ids of this Tenant. Capacity uses this for the fully
+ * booked rule, so the name, the phone, and the email stay unread.
+ * Archived rows are absent. Another Tenant's rows stay out under the
+ * session's row security. This read does not check a role. The caller already did.
+ */
+export async function loadActiveDriverIds(transaction: TenantTransaction): Promise<string[]> {
+  const selected = z.object({
+    rows: z.array(z.object({ id: z.uuid() })),
+  }).parse(await transaction.execute(sql`
+    select id
+    from app.drivers
+    where archived_at is null
+    order by id
+  `))
+  return selected.rows.map(row => row.id)
+}
+
+/**
  * This Tenant's Drivers, by name, so the office can find one.
  * Archived rows stay out of the default list. A caller that still needs the
  * name, such as an existing Ride or a decline alert, passes true.

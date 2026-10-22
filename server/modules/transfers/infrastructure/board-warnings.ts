@@ -1,7 +1,7 @@
 import type { TransferDayRide } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
-import { calendarDateInTimeZone, deriveBoardWarnings, emptyBoardWarnings } from '../../../../shared'
-import { capacityPorts, readBoardOccupation, readBoardUnavailability } from '../../capacity'
+import { calendarDateInTimeZone, deriveBoardWarnings } from '../../../../shared'
+import { capacityPorts, readBoardFullyBooked, readBoardOccupation, readBoardUnavailability, tenantFleet } from '../../capacity'
 import { loadDriverDocumentExpiry } from '../../drivers'
 import { rosteredDriversOnDates } from '../../roster'
 import { loadVehicleDocumentExpiry } from '../../vehicles'
@@ -16,7 +16,8 @@ import { rideOccupation } from './occupation-port'
  * The unavailability warning is capacity's too: it reads the live windows
  * of the listed Drivers, Vehicles, and Partners once, so removing or moving
  * a window changes the warning on the next read. A handed-off Ride warns
- * when its Partner is covered.
+ * when its Partner is covered. Popunjeno is derived on the same read, on an
+ * unfinished unassigned Ride whose window is fully booked.
  */
 export async function applyBoardWarnings(
   transaction: TenantTransaction,
@@ -30,8 +31,33 @@ export async function applyBoardWarnings(
 ): Promise<TransferDayRide[]> {
   const occupying = rides.filter(ride => ride.state === 'assigned' || ride.state === 'accepted')
   const handedOff = rides.filter(ride => ride.state === 'handed_off' && ride.partnerId !== null)
-  if (occupying.length === 0 && handedOff.length === 0)
-    return rides.map(ride => ({ ...ride, warnings: emptyBoardWarnings() }))
+  const unassigned = rides.filter(ride => ride.state === 'unassigned')
+  const ports = capacityPorts(transaction, rideOccupation(transaction))
+  const fullyBooked = unassigned.length === 0
+    ? new Set<string>()
+    : await readBoardFullyBooked(ports, tenantFleet(transaction), role, {
+        rides: unassigned.map(ride => ({
+          rideId: ride.rideId,
+          pickupAt: new Date(ride.pickupAt),
+          landingAt: ride.landingAt == null ? null : new Date(ride.landingAt),
+        })),
+        durationMinutes: transferDurationMinutes,
+      })
+  if (occupying.length === 0 && handedOff.length === 0) {
+    return rides.map(ride => ({
+      ...ride,
+      warnings: deriveBoardWarnings({
+        ride: boardRide(ride),
+        pickupDate: calendarDateInTimeZone(timeZone, new Date(ride.pickupAt)),
+        documents: {},
+        rosteredDriverId: null,
+        others: [],
+        durationMinutes: transferDurationMinutes,
+        gapMinutes: relocationGapMinutes,
+        fullyBooked: fullyBooked.has(ride.rideId),
+      }),
+    }))
+  }
 
   const driverIds = idsOf(occupying.map(ride => ride.driverId))
   const vehicleIds = idsOf(occupying.map(ride => ride.vehicleId))
@@ -51,7 +77,7 @@ export async function applyBoardWarnings(
       landingAt: ride.landingAt == null ? null : new Date(ride.landingAt),
     })),
   })
-  const unavailable = await readBoardUnavailability(capacityPorts(transaction, rideOccupation(transaction)).windows, role, {
+  const unavailable = await readBoardUnavailability(ports.windows, role, {
     rides: [...occupying, ...handedOff].map(ride => ({
       rideId: ride.rideId,
       driverId: ride.driverId,
@@ -73,14 +99,7 @@ export async function applyBoardWarnings(
     return {
       ...ride,
       warnings: deriveBoardWarnings({
-        ride: {
-          rideId: ride.rideId,
-          state: ride.state,
-          pickupAt: new Date(ride.pickupAt),
-          landingAt: ride.landingAt == null ? null : new Date(ride.landingAt),
-          driverId: ride.driverId,
-          vehicleId: ride.vehicleId,
-        },
+        ride: boardRide(ride),
         pickupDate,
         documents: {
           drivingLicenceExpiresOn: driver?.drivingLicenceExpiresOn ?? null,
@@ -96,6 +115,7 @@ export async function applyBoardWarnings(
         durationMinutes: transferDurationMinutes,
         gapMinutes: relocationGapMinutes,
         unavailable: unavailable.get(ride.rideId),
+        fullyBooked: fullyBooked.has(ride.rideId),
       }),
     }
   })
@@ -103,4 +123,15 @@ export async function applyBoardWarnings(
 
 function idsOf(values: readonly (string | null)[]): string[] {
   return [...new Set(values.filter((id): id is string => id !== null))]
+}
+
+function boardRide(ride: TransferDayRide) {
+  return {
+    rideId: ride.rideId,
+    state: ride.state,
+    pickupAt: new Date(ride.pickupAt),
+    landingAt: ride.landingAt == null ? null : new Date(ride.landingAt),
+    driverId: ride.driverId,
+    vehicleId: ride.vehicleId,
+  }
 }

@@ -11,7 +11,7 @@ import { correctionMovesWindow, lockTenantCapacity, tenantCapacityMinutes } from
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
 import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
-import { checkRideCapacity } from './capacity-check'
+import { checkRideCapacity, transferFullyBooked } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
 import { refuseStaleVersion, StaleSaveError } from './transfer-version'
 import { toInstant, toPrice } from './transfers'
@@ -131,16 +131,16 @@ export async function correctTransfer(
     const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm, parsed.version)
     // The snapshot needs a Driver. An unassigned correction has nobody to mail.
     if (!corrected.notify || corrected.recorded.ride.driverId === null)
-      return { recorded: corrected.recorded, staged: null, relocationWarnings: corrected.relocationWarnings }
+      return { recorded: corrected.recorded, staged: null, relocationWarnings: corrected.relocationWarnings, fullyBooked: corrected.fullyBooked }
     const order = await readAssignedWorkOrder(transaction, corrected.recorded.ride.id)
     const staged = await stageWorkOrder(transaction, order, 'changed', { queue, context })
-    return { recorded: corrected.recorded, staged, relocationWarnings: corrected.relocationWarnings }
+    return { recorded: corrected.recorded, staged, relocationWarnings: corrected.relocationWarnings, fullyBooked: corrected.fullyBooked }
   })
   if (saved.staged === null)
-    return { ...saved.recorded, workOrders: [], relocationWarnings: saved.relocationWarnings }
+    return { ...saved.recorded, workOrders: [], relocationWarnings: saved.relocationWarnings, fullyBooked: saved.fullyBooked }
   const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
   const notice = await deliverStagedWorkOrder(headers, saved.staged, mailer, delivery?.logger)
-  return { ...saved.recorded, workOrders: [notice], relocationWarnings: saved.relocationWarnings }
+  return { ...saved.recorded, workOrders: [notice], relocationWarnings: saved.relocationWarnings, fullyBooked: saved.fullyBooked }
 }
 
 /**
@@ -156,7 +156,7 @@ export async function correctTransferForOffice(
   input: CreateTransfer,
   confirm: boolean,
   version: number,
-): Promise<{ recorded: RecordedTransfer, notify: boolean, relocationWarnings: ScheduleClash[] }> {
+): Promise<{ recorded: RecordedTransfer, notify: boolean, relocationWarnings: ScheduleClash[], fullyBooked: boolean }> {
   const current = await lockTransfer(transaction, transferId)
   if (!current)
     throw new TransferNotFoundError()
@@ -171,7 +171,7 @@ export async function correctTransferForOffice(
   const stored = toBooking(current)
   const changed = changedTransferFields(stored, input)
   if (changed.length === 0)
-    return { recorded: toRecorded(current, stored), notify: false, relocationWarnings: [] }
+    return { recorded: toRecorded(current, stored), notify: false, relocationWarnings: [], fullyBooked: false }
 
   // A different designator throws away the landing, the expected arrival,
   // and the will-not-arrive memory (ADR-0028). The occupation check reads
@@ -183,14 +183,26 @@ export async function correctTransferForOffice(
   if (occupation)
     await lockTenantCapacity(transaction)
   await writeTransfer(transaction, transferId, input, clearLanding, version, actorUserId)
-  const relocationWarnings = occupation
+  const capacity = occupation
     ? await checkRideCapacity(transaction, {
         rideId: current.rideId,
         driverId: occupation.driverId,
         vehicleId: occupation.vehicleId,
         confirm,
+        // A correction is never refused as fully booked. It warns instead.
+        blockFullyBooked: false,
       })
-    : []
+    : null
+  const relocationWarnings = capacity?.relocationWarnings ?? []
+  const fullyBooked = capacity !== null
+    ? capacity.fullyBooked
+    : await transferFullyBooked(transaction, {
+        rideId: current.rideId,
+        pickupAt: new Date(input.pickupAt),
+        landingAt: clearLanding || current.landingAt == null ? null : new Date(toInstant(current.landingAt)),
+        driverId: current.driverId,
+        vehicleId: current.vehicleId,
+      })
   const returned = correctionReturnsAcceptedRide(current.state, changed, {
     before: stored.flightNumber,
     after: input.flightNumber,
@@ -228,6 +240,7 @@ export async function correctTransferForOffice(
     // number sends nothing.
     notify: changed.some(field => field !== 'clientReference' && (field !== 'price' || input.payment === 'cash')),
     relocationWarnings,
+    fullyBooked,
   }
 }
 

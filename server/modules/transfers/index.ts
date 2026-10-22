@@ -30,15 +30,17 @@
  * or `accepted`. That clears a Driver and mails them no longer yours.
  * A Partner is not mailed. The office can change that Partner, take the
  * Ride back to `unassigned`, or close it as done, No-show, or cancelled.
- * Handoff and a Partner change take the Tenant capacity lock and refuse
- * an unavailable Partner unless the office confirms. Take-back and closing
- * take no lock and are not judged (ADR-0048, ADR-0034).
+ * Handoff and a Partner change take the Tenant capacity lock. A fully
+ * booked window is 409 `fully_booked` and confirming does not pass it.
+ * An unavailable Partner is 409 `ride_unavailable` unless the office
+ * confirms. Take-back and closing take no lock and are not judged
+ * (ADR-0048, ADR-0034).
  * Clients, Locations, Drivers, Vehicles, and the roster are reached through
  * their index files, by id. Those modules do not import this one (ADR-0018).
  * Whether a Driver or a Vehicle is taken is the capacity module's decision
  * (ADR-0034). Transfers implements its occupation port, takes its Tenant
- * lock, and re-exports its `RideOverlapError` and `RideUnavailableError`
- * for the routes, because only transfers imports capacity. For the same
+ * lock, and re-exports its `RideOverlapError`, `RideUnavailableError`, and
+ * `FullyBookedError` for the routes, because only transfers imports capacity. For the same
  * reason the unavailability window routes and the window retention job
  * reach capacity through this file: transfers passes in its occupation
  * adapter and the audit append.
@@ -60,7 +62,7 @@
  * The day read also returns the Partner's phone and email for a handed-off
  * Ride, through the Partners index. The Driver's read does not.
  */
-export { RideOverlapError, RideUnavailableError, startUnavailabilityRetention, UnavailabilityArchivedError, UnavailabilityNotFoundError } from '../capacity'
+export { FullyBookedError, RideOverlapError, RideUnavailableError, startUnavailabilityRetention, UnavailabilityArchivedError, UnavailabilityNotFoundError } from '../capacity'
 export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableError } from './infrastructure/accept'
 export { RideDriverArchivedError, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
 export { assignRide, rosterVehicleForRide } from './infrastructure/assign-access'

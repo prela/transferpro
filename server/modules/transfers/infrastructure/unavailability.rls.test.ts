@@ -520,6 +520,7 @@ it('a window refuses each judged command with ride_unavailable, writing nothing,
 it('one confirmation passes an overlap and an unavailability together, and the refusal names the window', async () => {
   const world = await office('huw-both')
   const away = await world.driver()
+  await world.driver()
   const car = await world.vehicle()
   const otherCar = await world.vehicle()
   const pickup = at('2026-11-24T12:00')

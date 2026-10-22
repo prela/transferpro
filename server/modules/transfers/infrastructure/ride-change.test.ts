@@ -18,6 +18,8 @@ const driverId = 'b1b1b1b1-1111-4111-8111-111111111111'
 const otherDriverId = 'b2b2b2b2-2222-4222-8222-222222222222'
 const vehicleId = 'c1c1c1c1-1111-4111-8111-111111111111'
 const otherVehicleId = 'c2c2c2c2-2222-4222-8222-222222222222'
+const spareDriverId = 'b9b9b9b9-9999-4999-8999-999999999999'
+const spareVehicleId = 'c9c9c9c9-9999-4999-8999-999999999999'
 const dialect = new PgDialect()
 
 interface Script {
@@ -80,6 +82,9 @@ function fakeTransaction(script: Script) {
           }],
         }
       }
+      if (text.includes('from app.drivers') && text.includes('archived_at is null') && !text.includes('must_accept')) {
+        return { rows: [{ id: driverId }, { id: otherDriverId }, { id: spareDriverId }] }
+      }
       if (text.includes('from app.drivers')) {
         if (script.nextMustAccept === 'missing')
           return { rows: [] }
@@ -89,6 +94,9 @@ function fakeTransaction(script: Script) {
             archivedAt: script.driverArchived ? new Date('2026-10-01T00:00:00.000Z') : null,
           }],
         }
+      }
+      if (text.includes('from app.vehicles') && text.includes('archived_at is null') && !text.includes('for share') && !text.includes('"archivedAt"')) {
+        return { rows: [{ id: vehicleId }, { id: otherVehicleId }, { id: spareVehicleId }] }
       }
       if (text.includes('from app.vehicles')) {
         const presence = script.vehicle ?? 'active'

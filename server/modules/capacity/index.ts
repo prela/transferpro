@@ -10,8 +10,12 @@
  * and the relocation gap from tenancy. Assign, a Vehicle change, a
  * reassignment, and a judged Transfer correction take the Tenant capacity
  * lock and then call `judgeRideCapacity`; transfers throws
- * `RideOverlapError` from the verdict unless the office confirmed it.
- * The board reads its neighbours through `readBoardOccupation`.
+ * `FullyBookedError` when the window is fully booked, and confirming does
+ * not pass it. It throws `RideOverlapError` or `RideUnavailableError` from
+ * the rest of the verdict unless the office confirmed it. A Transfer save
+ * returns the fully booked warning and still saves. The board reads its
+ * neighbours through `readBoardOccupation` and Popunjeno through
+ * `readBoardFullyBooked`.
  *
  * Capacity owns the unavailability windows (Nedostupnost) of Drivers,
  * Vehicles, and Partners: their table, the window commands, the board's
@@ -31,12 +35,15 @@ export { readBoardUnavailability } from './application/board-unavailability'
 export type { BoardUnavailabilityRide } from './application/board-unavailability'
 export { correctionMovesWindow } from './application/correction'
 export { freePartners } from './application/free-partners'
+export { readBoardFullyBooked } from './application/fully-booked'
+export type { BoardFullyBookedRide } from './application/fully-booked'
+export { readFullyBooked } from './application/fully-booked'
 export { judgePartnerCapacity, judgeRideCapacity } from './application/judge-ride'
-export type { CapacityMinutes, CapacityMinutesReader, CapacityPorts, OccupationPort, OccupationResources, OccupyingRide, RangeOccupationQuery, RideOccupationQuery, UnavailabilityAuditFact, UnavailabilityPorts, UnavailabilityReader } from './application/ports'
+export type { ActiveFleet, CapacityMinutes, CapacityMinutesReader, CapacityPorts, OccupationPort, OccupationResources, OccupyingRide, RangeOccupationQuery, RideOccupationQuery, UnavailabilityAuditFact, UnavailabilityPorts, UnavailabilityReader } from './application/ports'
 export { changeUnavailability, listUnavailabilityDuring, listUnavailabilityOf, recordUnavailability, removeUnavailability } from './application/unavailability'
-export { RideOverlapError, RideUnavailableError, UnavailabilityArchivedError, UnavailabilityNotFoundError } from './domain/errors'
+export { FullyBookedError, RideOverlapError, RideUnavailableError, UnavailabilityArchivedError, UnavailabilityNotFoundError } from './domain/errors'
 export type { CapacityVerdict } from './domain/occupation'
 export type { RideTimes } from './domain/window'
 export { lockTenantCapacity } from './infrastructure/lock'
-export { capacityPorts, tenantActivePartnerIds, tenantCapacityMinutes, unavailabilityPorts } from './infrastructure/ports'
+export { capacityPorts, tenantActivePartnerIds, tenantCapacityMinutes, tenantFleet, unavailabilityPorts } from './infrastructure/ports'
 export { startUnavailabilityRetention } from './infrastructure/retention'

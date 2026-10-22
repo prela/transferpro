@@ -340,7 +340,7 @@ async function expectOnlyHeldAssignment(
   expect(added.map(row => [row.action, row.data.rideId])).toEqual([['ride.assigned', heldRideId]])
 }
 
-it('a second assignment of the same Driver to a clashing Ride waits for the first and is refused', async () => {
+it('a second assignment of the same Driver to a clashing Ride waits, then is fully booked', async () => {
   const world = await office('hcap-driver')
   const driver = await world.driver()
   const firstVehicle = await world.vehicle()
@@ -362,13 +362,13 @@ it('a second assignment of the same Driver to a clashing Ride waits for the firs
 
   expect(order).toBe('waited')
   expect(response.status).toBe(409)
-  expect(await response.text()).toContain('ride_overlap')
+  expect(await response.text()).toContain('fully_booked')
   expect(await rideRow(first.ride.id)).toMatchObject({ state: 'assigned', driver_id: driver.id })
   expect(await rideRow(second.ride.id)).toEqual({ state: 'unassigned', driver_id: null, vehicle_id: null, must_accept: null })
   await expectOnlyHeldAssignment(world.tenantId, before, second.ride, first.ride.id)
 })
 
-it('a second assignment of the same Vehicle with another Driver waits for the first and is refused', async () => {
+it('a second assignment of the same Vehicle with another Driver waits, then is fully booked', async () => {
   const world = await office('hcap-vehicle')
   const firstDriver = await world.driver()
   const secondDriver = await world.driver()
@@ -390,8 +390,36 @@ it('a second assignment of the same Vehicle with another Driver waits for the fi
 
   expect(order).toBe('waited')
   expect(response.status).toBe(409)
-  expect(await response.text()).toContain('ride_overlap')
+  expect(await response.text()).toContain('fully_booked')
   expect(await rideRow(first.ride.id)).toMatchObject({ state: 'assigned', vehicle_id: vehicle.id })
+  expect(await rideRow(second.ride.id)).toEqual({ state: 'unassigned', driver_id: null, vehicle_id: null, must_accept: null })
+  await expectOnlyHeldAssignment(world.tenantId, before, second.ride, first.ride.id)
+})
+
+it('a confirmed overlap waits while the last free pair is taken, and is fully booked', async () => {
+  const world = await office('hcap-full')
+  const driver = await world.driver()
+  const vehicle = await world.vehicle()
+  const pickup = new Date(Date.now() + 5 * hour)
+  const first = await world.transfer(pickup)
+  const second = await world.transfer(new Date(pickup.getTime() + 30 * 60 * 1000))
+  const before = await snapshot(world.tenantId, second.ride)
+
+  const { order, response } = await whileAssignmentHeld(
+    world.admin,
+    { rideId: first.ride.id, driverId: driver.id, vehicleId: vehicle.id },
+    () => call('POST', `/api/rides/${second.ride.id}/assign`, world.dispatcher, {
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+      version: Number(before.transfer.version),
+      confirm: true,
+    }),
+  )
+
+  expect(order).toBe('waited')
+  expect(response.status).toBe(409)
+  expect(await response.text()).toContain('fully_booked')
+  expect(await rideRow(first.ride.id)).toMatchObject({ state: 'assigned', driver_id: driver.id, vehicle_id: vehicle.id })
   expect(await rideRow(second.ride.id)).toEqual({ state: 'unassigned', driver_id: null, vehicle_id: null, must_accept: null })
   await expectOnlyHeldAssignment(world.tenantId, before, second.ride, first.ride.id)
 })
@@ -507,7 +535,7 @@ it('a ride_overlap through the route leaves the Ride, the Transfer, the version,
     version: Number(beforeAssign.transfer.version),
   })
   expect(assigned.status).toBe(409)
-  expect(await assigned.text()).toContain('ride_overlap')
+  expect(await assigned.text()).toContain('fully_booked')
   expect(await snapshot(world.tenantId, refusedRide.ride)).toEqual(beforeAssign)
 
   const beforeChange = await snapshot(world.tenantId, reassigned.ride)

@@ -2,7 +2,7 @@ export { auditActions, auditActionSchema, auditEntryListSchema, auditEntrySchema
 export type { AuditAction, AuditEntry, AuditEntryList, AuditFact } from './audit-entry'
 export { boardWarningsSchema, deriveBoardWarnings, emptyBoardWarnings } from './board-warnings'
 export type { BoardWarningDocuments, BoardWarningRide, BoardWarnings } from './board-warnings'
-export { judgeSchedule, occupiedEnd, overlappingRideIds } from './capacity'
+export { intervalsOverlap, judgeSchedule, occupiedEnd, overlappingRideIds } from './capacity'
 export type { ScheduleClash, ScheduleResource, ScheduleRide, ScheduleVerdict, UnavailableResource } from './capacity'
 export { catalogSearchMatches } from './catalog-query'
 export { CLIENT_KINDS, CLIENT_NAME_MAX_LENGTH, ClientInputError, clientKindError, clientKindSchema, clientListEntrySchema, clientListSchema, clientNameError, clientNameSchema, clientPatchSchema, clientSchema, createClientSchema, parseClientPatch, parseCreateClient } from './client'

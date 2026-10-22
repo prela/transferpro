@@ -235,6 +235,14 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
   })
+  // A free Vehicle keeps these confirmed overlaps as overlaps. With only DU200AA, the window is fully booked.
+  await createVehicle(admin, {
+    registrationPlate: 'DU200BB',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
 
   // One Zagreb day, midday, so the three office rows cannot fall on two dates.
   const day = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 1)
