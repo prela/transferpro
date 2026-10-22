@@ -129,6 +129,24 @@ export const officeLocationListSchema = z.object({
 export type OfficeLocationList = z.infer<typeof officeLocationListSchema>
 
 /**
+ * The Location panel shows a map only for the Embed URL from the last save,
+ * and only while the address field is still the one that was opened.
+ * The first edit hides the button until the panel is opened again after a
+ * save. Typing the old address back does not bring it back, because that
+ * save would no longer carry the place (ADR-0052). Null means no button.
+ * A typed Location, an archived Location, and a switched-off Embed are
+ * already null on `embedUrl`.
+ */
+export function locationPanelEmbedUrl(
+  embedUrl: string | null,
+  addressUntouched: boolean,
+): string | null {
+  if (embedUrl === null || !addressUntouched)
+    return null
+  return embedUrl
+}
+
+/**
  * POST /api/locations. Archive is absent: a new Location starts on the list.
  * An unknown key is refused.
  */

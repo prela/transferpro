@@ -25,6 +25,8 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
   app: {
     head: {
+      // No referrer policy. `no-referrer` would hide the origin from Google
+      // and break the Embed key's HTTP-referrer restriction (ADR-0052).
       link: [
         { rel: 'manifest', href: '/manifest.webmanifest' },
         { rel: 'apple-touch-icon', href: '/icons/icon-192.png', sizes: '192x192' },

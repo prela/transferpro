@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH, locationAddressError, locationIataError, LocationInputError, locationKindError, locationLabel, locationListSchema, locationNameError, parseCreateLocation, parseLocationPatch, parseSuggestAddresses } from './location'
+import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH, locationAddressError, locationIataError, LocationInputError, locationKindError, locationLabel, locationListSchema, locationNameError, locationPanelEmbedUrl, parseCreateLocation, parseLocationPatch, parseSuggestAddresses } from './location'
 
 const name = 'Zračna luka Dubrovnik'
 const address = 'Dobrota bb, Čilipi'
@@ -156,6 +156,16 @@ it('accepts a suggestion lookup and refuses a short text, a bad token, or an ext
     message = error instanceof Error ? error.message : ''
   }
   expect(message).not.toContain(address)
+})
+
+it('shows the saved Embed URL only while the address field is untouched', () => {
+  // A null URL is what a typed Location, an archived Location, and Embed
+  // switched off already produce. The panel then has no button.
+  const embedUrl = 'about:blank#placeRef=ChIJfakeDubrovnik&language=hr'
+  expect(locationPanelEmbedUrl(embedUrl, true)).toBe(embedUrl)
+  expect(locationPanelEmbedUrl(null, true)).toBeNull()
+  expect(locationPanelEmbedUrl(embedUrl, false)).toBeNull()
+  expect(locationPanelEmbedUrl(null, false)).toBeNull()
 })
 
 it('reads a list of Locations, including one that is archived', () => {

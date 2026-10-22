@@ -426,6 +426,9 @@
     "signedOut": "You are signed out. Sign in and try again.",
     "saveFailed": "The location was not saved. Try again.",
     "suggestionsUnavailable": "Address suggestions are unavailable. You can still type the address.",
+    "showMap": "Show on map",
+    "hideMap": "Hide map",
+    "mapTitle": "Map: {name}",
     "kinds": {
       "airport": "Airport",
       "hotel": "Hotel",

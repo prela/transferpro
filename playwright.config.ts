@@ -34,6 +34,9 @@ function e2eServerEnv(): Record<string, string> {
     env[name] = value
   }
   env.NODE_ENV = 'test'
+  // MAPS and the Embed key stay as the developer env left them. The test
+  // server uses the fake adapter, which yields an Embed URL without calling
+  // Google (ADR-0052). Forcing MAPS here would change every spec.
   env.HOST = '127.0.0.1'
   env.PORT = port
   env.BETTER_AUTH_URL = baseURL
