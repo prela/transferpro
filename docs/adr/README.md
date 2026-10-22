@@ -66,5 +66,6 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0048 | A Ride handed off to a Partner | accepted |
 | ADR-0049 | Client card and Partner record | accepted |
 | ADR-0050 | Worker mail loaders check no role | accepted |
-| ADR-0051 | Invoices through the current tool in v1 | accepted |
+| ADR-0051 | Invoices through the current tool in v1 | accepted; partially superseded by ADR-0053 |
 | ADR-0052 | Maps Embed from the stored place id | accepted |
+| ADR-0053 | A Transfer whose Price is 0 is never invoiced | accepted |

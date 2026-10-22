@@ -1,6 +1,6 @@
 # Invoices through the current tool in v1
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0053
 
 Damir accepted this on 22 October 2026, in the step 27 grill of #206. It decides how ADR-0033's invoice through a provider is issued in v1, and the billing-details fields ADR-0049 left to this step. It partially supersedes ADR-0015, ADR-0036, and ADR-0039; the sentences are named below. ADR-0007, ADR-0020, ADR-0033, and ADR-0035 stand. The finding behind it is `docs/research/225-croatian-invoicing-duties.md` (#225).
 
