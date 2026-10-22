@@ -1,6 +1,6 @@
 import type { Locator, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
-import { calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
+import { calendarDateInTimeZone, instantFromWallClock } from '../shared'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
@@ -348,6 +348,20 @@ async function openLocations(page: Page) {
  * The frame is the panel's width and 240px high. The fake src carries the
  * reference and the language, and not the address or the Embed key.
  */
+/**
+ * The Embed switch is process-wide. Wait until this Location's URL is
+ * present, then reload so the panel reads that list.
+ */
+async function waitForEmbed(page: Page, name: string) {
+  await expect.poll(async () => {
+    const body = await (await page.request.get('/api/locations')).json() as {
+      locations: { name: string, embedUrl: string | null }[]
+    }
+    return body.locations.find(location => location.name === name)?.embedUrl ?? ''
+  }).toContain(`placeRef=${placeRef}`)
+  await page.reload()
+}
+
 async function expectMapFrame(dialog: Locator, name: string, language: 'hr' | 'en') {
   const title = language === 'hr' ? `Karta: ${name}` : `Map: ${name}`
   const frame = dialog.getByTitle(title)
@@ -399,19 +413,11 @@ test('the location panel shows the map only after the press, in both languages a
     await dialog.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
     await expect(dialog).toBeHidden()
 
-    // The list read can land while another test has the Embed switched off.
-    // The place is checked once. The URL is polled, then the list reloads.
     const saved = await (await page.request.get('/api/locations')).json() as {
       locations: { name: string, place: { placeRef: string } | null }[]
     }
     expect(saved.locations.find(location => location.name === 'Nespremljeno')?.place?.placeRef).toBe(placeRef)
-    await expect.poll(async () => {
-      const body = await (await page.request.get('/api/locations')).json() as {
-        locations: { name: string, embedUrl: string | null }[]
-      }
-      return body.locations.find(location => location.name === 'Nespremljeno')?.embedUrl ?? ''
-    }).toContain(`placeRef=${placeRef}`)
-    await page.reload()
+    await waitForEmbed(page, 'Nespremljeno')
     await page.getByRole('button', { name: 'Nespremljeno', exact: true }).click()
     dialog = page.getByRole('dialog')
     const show = dialog.getByRole('button', { name: /^(Prikaži na karti|Sakrij kartu)$/ })
@@ -435,6 +441,10 @@ test('the location panel shows the map only after the press, in both languages a
     await expect(dialog.locator('iframe')).toHaveCount(0)
     await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toHaveCount(0)
     await expect(dialog.getByRole('button', { name: 'Sakrij kartu', exact: true })).toHaveCount(0)
+    // The old text does not bring the button back. That waits for a save.
+    await dialog.getByLabel('Adresa').fill('Obala 12, Dubrovnik')
+    await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toHaveCount(0)
+    await dialog.getByLabel('Adresa').fill('Obala 12, kat 2')
     await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
     await expect(dialog).toBeHidden()
 
@@ -501,7 +511,10 @@ test('a typed location, an archived location, and a switched-off embed have no m
     await createdId(await page.request.post('/api/locations', {
       data: { name: 'Tipkano', kind: 'address', address: 'Ulica 3' },
     }))
-    await page.getByRole('link', { name: 'Lokacije' }).click()
+    // Home refreshes while these creates are in flight. A click on Lokacije
+    // can land on the link that refresh just replaced, so open the address.
+    await page.goto('/locations')
+    await waitForEmbed(page, 'Hotel Karta')
 
     await page.getByRole('button', { name: 'Tipkano', exact: true }).click()
     let dialog = page.getByRole('dialog')
@@ -619,8 +632,12 @@ test('the driver card has no map button', async ({ page }) => {
 })
 
 test.describe('@phone', () => {
-  for (const theme of ['light', 'dark'] as const) {
-    test(`the location map follows ${theme} on a phone and passes axe`, async ({ page }) => {
+  // One theme in each locale, so the phone covers both without a fourth run.
+  for (const { theme, locale } of [
+    { theme: 'light', locale: 'hr' },
+    { theme: 'dark', locale: 'en' },
+  ] as const) {
+    test(`the location map follows ${theme} and ${locale} on a phone and passes axe`, async ({ page }) => {
       const tenant = await seedTenant(`locations-map-phone-${theme}`)
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       await switchTheme(page, theme)
@@ -633,15 +650,15 @@ test.describe('@phone', () => {
         },
       }))
       await openLocations(page)
-      const english = theme === 'dark'
-      if (english)
+      if (locale === 'en')
         await switchLocale(page, 'en')
+      await waitForEmbed(page, 'Hotel Telefon')
 
       await page.getByRole('button', { name: 'Hotel Telefon', exact: true }).click()
       const dialog = page.getByRole('dialog')
-      const showName = english ? 'Show on map' : 'Prikaži na karti'
-      const hideName = english ? 'Hide map' : 'Sakrij kartu'
-      const language = english ? 'en' : 'hr'
+      const showName = locale === 'en' ? 'Show on map' : 'Prikaži na karti'
+      const hideName = locale === 'en' ? 'Hide map' : 'Sakrij kartu'
+      const language = locale
       const show = dialog.getByRole('button', { name: showName, exact: true })
       await expect(show).toBeVisible()
       await expect(dialog.locator('iframe')).toHaveCount(0)

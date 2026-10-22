@@ -129,20 +129,19 @@ export const officeLocationListSchema = z.object({
 export type OfficeLocationList = z.infer<typeof officeLocationListSchema>
 
 /**
- * The Location panel shows a map only for the Embed URL from the last save.
- * A different address field hides that button until the next save, so an
- * unsaved pick is never shown (ADR-0052). Null means there is no button.
+ * The Location panel shows a map only for the Embed URL from the last save,
+ * and only while the address field is still the one that was opened.
+ * The first edit hides the button until the panel is opened again after a
+ * save. Typing the old address back does not bring it back, because that
+ * save would no longer carry the place (ADR-0052). Null means no button.
  * A typed Location, an archived Location, and a switched-off Embed are
  * already null on `embedUrl`.
  */
 export function locationPanelEmbedUrl(
   embedUrl: string | null,
-  savedAddress: string | null,
-  addressField: string,
+  addressUntouched: boolean,
 ): string | null {
-  if (embedUrl === null)
-    return null
-  if (addressField !== (savedAddress ?? ''))
+  if (embedUrl === null || !addressUntouched)
     return null
   return embedUrl
 }
