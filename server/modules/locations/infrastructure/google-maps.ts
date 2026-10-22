@@ -23,8 +23,11 @@ const PLACE_ID_FIELD_MASK = 'id'
  */
 const EMBED_URL = 'https://www.google.com/maps/embed/v1/place'
 
-/** A few seconds. A hang becomes "unavailable" and the form stays plain text. */
-const SUGGEST_TIMEOUT_MS = 4000
+/**
+ * A few seconds. A hang on autocomplete or on the id check becomes
+ * "unavailable", so the form stays plain text and a stored reference stays.
+ */
+const PLACES_TIMEOUT_MS = 4000
 
 /** Named on the suggestion list whenever Google supplied the rows. */
 export const GOOGLE_ATTRIBUTION = 'Google'
@@ -93,7 +96,7 @@ export function createGoogleMaps(
             'content-type': 'application/json',
             'X-Goog-Api-Key': apiKey,
           },
-          signal: AbortSignal.timeout(SUGGEST_TIMEOUT_MS),
+          signal: AbortSignal.timeout(PLACES_TIMEOUT_MS),
         })
         if (response.status !== 200)
           return unavailable
@@ -117,7 +120,7 @@ export function createGoogleMaps(
             'X-Goog-Api-Key': apiKey,
             'X-Goog-FieldMask': PLACE_ID_FIELD_MASK,
           },
-          signal: AbortSignal.timeout(SUGGEST_TIMEOUT_MS),
+          signal: AbortSignal.timeout(PLACES_TIMEOUT_MS),
         })
         return mapPlaceCheck(placeRef, response.status, response.body)
       }
@@ -144,21 +147,20 @@ function googleEmbedUrl(embedKey: string | undefined, target: EmbedTarget, langu
 }
 
 /**
- * `NOT_FOUND` is the only answer that means the id is gone. An invalid id
- * (`INVALID_REQUEST` or anything else) is unavailable: that more often means
- * our request is wrong than that the place was removed (ADR-0052).
- * A returned id is kept only when it would pass the stored-reference check.
+ * `NOT_FOUND` is the only answer that means the id is gone. An invalid-id
+ * answer (`INVALID_REQUEST`) and every other failure is unavailable: that
+ * more often means our request is wrong than that the place was removed
+ * (ADR-0052). A 200 with a different id is replaced, and the id is the one
+ * Google sent. An empty id is not a replacement.
  */
 function mapPlaceCheck(requested: string, status: number, body: string): PlaceReferenceCheck {
   if (status === 200) {
     const id = readPlaceId(body)
-    if (id === null)
+    if (id === null || id.length === 0)
       return { outcome: 'unavailable' }
     if (id === requested)
       return { outcome: 'same' }
-    if (isStoredPlaceRef(id))
-      return { outcome: 'replaced', placeRef: id }
-    return { outcome: 'unavailable' }
+    return { outcome: 'replaced', placeRef: id }
   }
   if (readErrorStatus(body) === 'NOT_FOUND')
     return { outcome: 'gone' }
@@ -187,13 +189,6 @@ function readErrorStatus(body: string): string | null {
   }
   const parsed = placeErrorSchema.safeParse(json)
   return parsed.success ? parsed.data.error?.status ?? null : null
-}
-
-/** The same bounds the locations row check enforces. A padded id is refused. */
-function isStoredPlaceRef(value: string): boolean {
-  return value.length > 0
-    && value.length <= PLACE_REF_MAX_LENGTH
-    && value === value.trim()
 }
 
 function mapSuggestions(body: string): SuggestAddressesResult {

@@ -172,6 +172,10 @@ it('maps a Place Details answer to same, replaced, gone, or unavailable', async 
     },
     {
       answer: { status: 200, body: JSON.stringify({ id: `  ${replaced}  ` }) },
+      outcome: { outcome: 'replaced', placeRef: `  ${replaced}  ` },
+    },
+    {
+      answer: { status: 200, body: JSON.stringify({ id: '' }) },
       outcome: { outcome: 'unavailable' },
     },
   ]
