@@ -83,6 +83,27 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
   expect(text).not.toContain('maps-live-key')
 })
 
+it('redacts the Embed key and the Embed URL', () => {
+  const logs = captureLogs()
+  const key = 'embed-live-key'
+  const url = 'https://www.google.com/maps/embed/v1/place?key=embed-live-key&q=place_id:ChIJpublic'
+  logs.logger.info({
+    'MAPS_EMBED_KEY': key,
+    'embedUrl': url,
+    'embed-url': url,
+  })
+  const [line] = logs.lines()
+  expect(line).toMatchObject({
+    'MAPS_EMBED_KEY': '[Redacted]',
+    'embedUrl': '[Redacted]',
+    'embed-url': '[Redacted]',
+  })
+  const text = JSON.stringify(line)
+  expect(text).not.toContain(key)
+  expect(text).not.toContain('place_id')
+  expect(text).not.toContain('ChIJpublic')
+})
+
 it('redacts an invitation id and an invite link', () => {
   const logs = captureLogs()
   const invitationId = '6b1e0c3a-2222-4222-8222-222222222222'

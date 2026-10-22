@@ -1,7 +1,8 @@
-import type { LocationList } from '../../../../shared'
-import { parseCreateLocation, parseLocationPatch, parseSuggestAddresses, suggestAddressesResponseSchema } from '../../../../shared'
+import type { Location, OfficeLocation, OfficeLocationList } from '../../../../shared'
+import type { TenantTransaction } from '../../../core/index'
+import { officeLocationSchema, parseCreateLocation, parseLocationPatch, parseSuggestAddresses, resolveDisplayLocale, suggestAddressesResponseSchema } from '../../../../shared'
 import { loadAppEnv } from '../../../core/index'
-import { loadTenantDefaultLocale, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { loadTenantDefaultLocale, readUserLocale, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { addLocation, archiveStoredLocation, correctLocation, loadLocations, LocationArchivedError, LocationIataTakenError, LocationNotFoundError } from './locations'
 import { mapsForApp } from './maps'
 
@@ -15,10 +16,11 @@ function officeOnly(role: string): void {
 }
 
 /** This Tenant's Locations. A driver is 403. Another Tenant sees none. */
-export async function listLocations(headers: Headers, includeArchived: boolean): Promise<LocationList> {
+export async function listLocations(headers: Headers, includeArchived: boolean): Promise<OfficeLocationList> {
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return { locations: await loadLocations(transaction, includeArchived) }
+    const locations = await loadLocations(transaction, includeArchived)
+    return { locations: await withEmbedUrls(transaction, actor.userId, locations) }
   })
 }
 
@@ -26,11 +28,11 @@ export async function listLocations(headers: Headers, includeArchived: boolean):
  * Add a Location. The body is parsed first, so an invalid name or kind never
  * opens a session. A driver is 403. The insert and `location.created` commit together.
  */
-export async function createLocation(headers: Headers, raw: unknown) {
+export async function createLocation(headers: Headers, raw: unknown): Promise<OfficeLocation> {
   const input = parseCreateLocation(raw)
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return addLocation(transaction, actor.userId, input)
+    return withEmbedUrl(transaction, actor.userId, await addLocation(transaction, actor.userId, input))
   })
 }
 
@@ -38,11 +40,11 @@ export async function createLocation(headers: Headers, raw: unknown) {
  * Correct a Location. The id and the body are parsed first. A missing Location
  * is 404. A patch that matches the row writes nothing.
  */
-export async function updateLocation(headers: Headers, locationId: string, raw: unknown) {
+export async function updateLocation(headers: Headers, locationId: string, raw: unknown): Promise<OfficeLocation> {
   const patch = parseLocationPatch(raw)
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return correctLocation(transaction, actor.userId, locationId, patch)
+    return withEmbedUrl(transaction, actor.userId, await correctLocation(transaction, actor.userId, locationId, patch))
   })
 }
 
@@ -50,10 +52,46 @@ export async function updateLocation(headers: Headers, locationId: string, raw: 
  * Archive a Location. It leaves the default list. There is no delete.
  * A second archive writes nothing.
  */
-export async function archiveLocation(headers: Headers, locationId: string) {
+export async function archiveLocation(headers: Headers, locationId: string): Promise<OfficeLocation> {
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    return archiveStoredLocation(transaction, actor.userId, locationId)
+    return withEmbedUrl(transaction, actor.userId, await archiveStoredLocation(transaction, actor.userId, locationId))
+  })
+}
+
+/**
+ * The member's chosen locale, otherwise the Tenant default (ADR-0011).
+ * The Embed language follows the viewer, not the stored address language.
+ */
+async function viewerLanguage(transaction: TenantTransaction, userId: string): Promise<string> {
+  return resolveDisplayLocale(
+    await readUserLocale(userId),
+    await loadTenantDefaultLocale(transaction),
+  )
+}
+
+/**
+ * Attach the Embed URL for this read. A failure here must not repeat the
+ * URL: it carries the Embed key once the Google adapter is in use.
+ */
+async function withEmbedUrl(transaction: TenantTransaction, userId: string, location: Location): Promise<OfficeLocation> {
+  const [office] = await withEmbedUrls(transaction, userId, [location])
+  if (!office)
+    throw new Error('Location read failed')
+  return office
+}
+
+async function withEmbedUrls(transaction: TenantTransaction, userId: string, locations: readonly Location[]): Promise<OfficeLocation[]> {
+  const language = await viewerLanguage(transaction, userId)
+  const maps = mapsForApp(loadAppEnv())
+  return locations.map((location) => {
+    const parsed = officeLocationSchema.safeParse({
+      ...location,
+      embedUrl: maps.embedUrl(location, language),
+    })
+    if (!parsed.success)
+      throw new Error('Location read failed')
+    return parsed.data
   })
 }
 

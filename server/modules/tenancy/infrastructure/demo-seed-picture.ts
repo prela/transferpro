@@ -8,6 +8,9 @@ import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, localDay
  * Names, plates, and addresses are obviously fictional. The airport code
  * ZZZ is not a scheduled airport, and flight text is not a designator,
  * so a later status ask has nothing to call.
+ * The airport and the hotel store public Google place ids so a preview
+ * map resolves. Those ids are not the fictional address text. The
+ * address-kind Location has none (ADR-0052).
  */
 
 export const DEMO_SLUG = 'demo'
@@ -50,6 +53,8 @@ export interface DemoLocation {
   readonly kind: DemoLocationKey
   readonly address: string
   readonly iata: string | null
+  /** A public Google place, or null. Never set on an address-kind Location. */
+  readonly place: { readonly provider: 'google', readonly placeRef: string } | null
 }
 
 export interface DemoVehicle {
@@ -166,6 +171,8 @@ const locations: readonly DemoLocation[] = [
     kind: 'airport',
     address: 'Obala Izmišljena 1',
     iata: 'ZZZ',
+    // Dubrovnik Airport (DBV), Dobrota 24, Močići. A public place.
+    place: { provider: 'google', placeRef: 'ChIJ6YIGjkMSTBMR2VHFkRMhOCU' },
   },
   {
     key: 'hotel',
@@ -174,6 +181,8 @@ const locations: readonly DemoLocation[] = [
     kind: 'hotel',
     address: 'Ulica Izmišljena 10',
     iata: null,
+    // Hotel Excelsior, Ul. Frana Supila 12, Dubrovnik. A public place.
+    place: { provider: 'google', placeRef: 'ChIJ_62IVDULTBMRi7eaGcc6tGQ' },
   },
   {
     key: 'address',
@@ -182,6 +191,7 @@ const locations: readonly DemoLocation[] = [
     kind: 'address',
     address: 'Trg Izmišljeni 2',
     iata: null,
+    place: null,
   },
 ]
 

@@ -1,5 +1,5 @@
 import { defineEventHandler, readBody, toWebRequest } from 'h3'
-import { locationSchema } from '../../shared'
+import { officeLocationSchema } from '../../shared'
 import { createLocation } from '../modules/locations'
 import { locationHttpError } from './locations/http'
 
@@ -11,7 +11,7 @@ import { locationHttpError } from './locations/http'
  */
 export default defineEventHandler(async (event) => {
   try {
-    return locationSchema.parse(await createLocation(toWebRequest(event).headers, await readBody(event)))
+    return officeLocationSchema.parse(await createLocation(toWebRequest(event).headers, await readBody(event)))
   }
   catch (error) {
     locationHttpError(error)

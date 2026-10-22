@@ -1,5 +1,5 @@
 import { defineEventHandler, getQuery, toWebRequest } from 'h3'
-import { locationListSchema } from '../../shared'
+import { officeLocationListSchema } from '../../shared'
 import { listLocations } from '../modules/locations'
 import { locationHttpError, parseIncludeArchived } from './locations/http'
 
@@ -12,7 +12,7 @@ import { locationHttpError, parseIncludeArchived } from './locations/http'
 export default defineEventHandler(async (event) => {
   try {
     const includeArchived = parseIncludeArchived(getQuery(event).includeArchived)
-    return locationListSchema.parse(await listLocations(toWebRequest(event).headers, includeArchived))
+    return officeLocationListSchema.parse(await listLocations(toWebRequest(event).headers, includeArchived))
   }
   catch (error) {
     locationHttpError(error)

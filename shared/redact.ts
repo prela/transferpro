@@ -61,6 +61,13 @@ const SECRET_PARTS = ['secret', 'token', 'password', 'cookie', 'authorization', 
  */
 const INVITE_BEARER_KEYS = new Set(['invitationid', 'inviteurl'])
 
+/**
+ * The Embed key and the URL that carries it (ADR-0052).
+ * `MAPS_EMBED_KEY` normalizes to `mapsembedkey`, which does not contain
+ * `apikey`, so the secret-part list would leave it in a log.
+ */
+const EMBED_KEYS = new Set(['mapsembedkey', 'embedurl'])
+
 function scrubInviteBearer(value: string): string {
   // A fresh regex each call: a shared /g pattern would keep lastIndex.
   return value.replace(
@@ -86,7 +93,7 @@ function normalizeKey(key: string): string {
 
 function isRedactedKey(key: string, parentKey?: string): boolean {
   const normalized = normalizeKey(key)
-  if (PERSONAL_KEYS.has(normalized) || INVITE_BEARER_KEYS.has(normalized))
+  if (PERSONAL_KEYS.has(normalized) || INVITE_BEARER_KEYS.has(normalized) || EMBED_KEYS.has(normalized))
     return true
   // `{ invitation: { id } }` is the bearer, not a user id.
   if (parentKey !== undefined && normalizeKey(parentKey) === 'invitation' && normalized === 'id')

@@ -4,12 +4,13 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { FAKE_PLACE_REF, lastTestMapsQuery, setTestMapsUnavailable } from '../modules/locations'
+import { FAKE_PLACE_REF, lastTestMapsQuery, setTestMapsEmbedOff, setTestMapsUnavailable } from '../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
 import getLocations from './locations.get'
 import postLocation from './locations.post'
 import patchLocation from './locations/[id].patch'
 import archiveLocation from './locations/[id]/archive.post'
+import postEmbedMode from './locations/embed-mode.post'
 import postSuggestions from './locations/suggestions.post'
 
 /**
@@ -19,6 +20,12 @@ import postSuggestions from './locations/suggestions.post'
  */
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
+// The Embed is configured for this file. CI leaves MAPS unset, which is
+// `none`, and then an active google place would carry a null URL.
+process.env.MAPS = 'google'
+if (process.env.MAPS_API_KEY === undefined || process.env.MAPS_API_KEY === '')
+  process.env.MAPS_API_KEY = 'test-places-key'
+process.env.MAPS_EMBED_KEY = 'test-embed-key'
 
 function required(name: string): string {
   const value = process.env[name]
@@ -47,6 +54,8 @@ app.use('/api/locations', (event) => {
   }
   if (rest === 'suggestions')
     return postSuggestions(event)
+  if (rest === 'embed-mode')
+    return postEmbedMode(event)
   const [id, action] = rest.split('/')
   event.context.params = { id: id ?? '' }
   if (action === 'archive')
@@ -202,6 +211,7 @@ it('a dispatcher and an admin can add, correct, list, and archive a Location, an
     iata: null,
     place: null,
     archivedAt: null,
+    embedUrl: null,
   })
 
   const listed = await call('GET', '/api/locations', admin)
@@ -489,4 +499,91 @@ it('suggests for the office in the Tenant language, refuses a driver, and does n
     { locationId: row.id, field: 'address' },
     { locationId: row.id, field: 'placeRef' },
   ]))
+})
+
+function embedFragment(url: string): { placeRef: string | null, language: string | null } {
+  const parsed = new URL(url)
+  const fragment = new URLSearchParams(parsed.hash.slice(1))
+  return {
+    placeRef: fragment.get('placeRef'),
+    language: fragment.get('language'),
+  }
+}
+
+it('carries an Embed URL for an active google place, and null when there is no map', async () => {
+  setTestMapsEmbedOff(false)
+  try {
+    const created = await tenant('hlc-embed', 'Ema Admin')
+    await addMember(created.tenantId, 'hlc-embed-dispatcher@example.test', 'Edo Dispatcher', 'dispatcher')
+    await addMember(created.tenantId, 'hlc-embed-driver@example.test', 'Ena Driver', 'driver')
+    const admin = await signIn('hlc-embed-admin@example.test')
+    const dispatcher = await signIn('hlc-embed-dispatcher@example.test')
+    const driver = await signIn('hlc-embed-driver@example.test')
+    const placeRef = 'ChIJofficePlace'
+    const placeName = 'Zračna luka Embed'
+    const placeAddress = 'Dobrota bb, Čilipi'
+
+    const typed = await call('POST', '/api/locations', dispatcher, {
+      name: 'Kuća Mira',
+      kind: 'address',
+      address: 'Put 9',
+    })
+    expect(typed.status).toBe(200)
+    expect((await typed.json()).embedUrl).toBeNull()
+
+    const added = await call('POST', '/api/locations', admin, {
+      name: placeName,
+      kind: 'airport',
+      address: placeAddress,
+      iata: 'EMB',
+      place: { provider: 'google', placeRef },
+    })
+    expect(added.status).toBe(200)
+    const row = await added.json()
+    expect(row.embedUrl.startsWith('about:blank#')).toBe(true)
+    expect(embedFragment(row.embedUrl)).toEqual({ placeRef, language: 'hr' })
+    expect(row.embedUrl).not.toContain(placeName)
+    expect(row.embedUrl).not.toContain(placeAddress)
+    expect(row.embedUrl).not.toContain('test-embed-key')
+
+    await authPool.query(`update auth."user" set locale = 'en' where email = $1`, ['hlc-embed-dispatcher@example.test'])
+    const english = await call('GET', '/api/locations', dispatcher)
+    expect(english.status).toBe(200)
+    const englishBody = await english.json()
+    const englishRow = englishBody.locations.find((location: { id: string }) => location.id === row.id)
+    expect(embedFragment(englishRow.embedUrl)).toEqual({ placeRef, language: 'en' })
+    expect(englishBody.locations.find((location: { name: string }) => location.name === 'Kuća Mira').embedUrl).toBeNull()
+    expect(JSON.stringify(englishBody)).not.toContain('test-embed-key')
+
+    const croatian = await call('GET', '/api/locations', admin)
+    const croatianRow = (await croatian.json()).locations.find((location: { id: string }) => location.id === row.id)
+    expect(embedFragment(croatianRow.embedUrl).language).toBe('hr')
+
+    expect((await call('GET', '/api/locations', driver)).status).toBe(403)
+
+    const archived = await call('POST', `/api/locations/${row.id}/archive`, admin)
+    expect(archived.status).toBe(200)
+    expect((await archived.json()).embedUrl).toBeNull()
+    const withArchived = await call('GET', '/api/locations?includeArchived=true', admin)
+    const archivedRow = (await withArchived.json()).locations.find((location: { id: string }) => location.id === row.id)
+    expect(archivedRow.embedUrl).toBeNull()
+
+    const hotel = await call('POST', '/api/locations', dispatcher, {
+      name: 'Hotel Embed',
+      kind: 'hotel',
+      address: 'Ulica 1',
+      place: { provider: 'google', placeRef: 'ChIJhotelEmbed' },
+    })
+    expect(hotel.status).toBe(200)
+    expect(embedFragment((await hotel.json()).embedUrl)).toEqual({ placeRef: 'ChIJhotelEmbed', language: 'en' })
+
+    const off = await call('POST', '/api/locations/embed-mode', admin, { off: true })
+    expect(off.status).toBe(200)
+    const hidden = await call('GET', '/api/locations', admin)
+    const hiddenRow = (await hidden.json()).locations.find((location: { name: string }) => location.name === 'Hotel Embed')
+    expect(hiddenRow.embedUrl).toBeNull()
+  }
+  finally {
+    setTestMapsEmbedOff(false)
+  }
 })

@@ -1,11 +1,18 @@
-import type { MapsPort, SuggestAddressesResult } from '../maps-port'
+import type { EmbedTarget, MapsPort, SuggestAddressesResult } from '../maps-port'
 import { z } from 'zod'
 import { LOCATION_ADDRESS_MAX_LENGTH, PLACE_REF_MAX_LENGTH } from '../../../../shared'
 import { nodeEnv } from '../../../core/index'
+import { embeddable } from '../maps-port'
 import { navigationLink } from './navigation-link'
 
 /** Places API (New) autocomplete. No Place Details call (ADR-0031). */
 const AUTOCOMPLETE_URL = 'https://places.googleapis.com/v1/places:autocomplete'
+
+/**
+ * Maps Embed place mode. The query is `place_id:` and the stored reference.
+ * The address and the name are not parameters (ADR-0052).
+ */
+const EMBED_URL = 'https://www.google.com/maps/embed/v1/place'
 
 /** A few seconds. A hang becomes "unavailable" and the form stays plain text. */
 const SUGGEST_TIMEOUT_MS = 4000
@@ -41,11 +48,17 @@ const autocompleteSchema = z.object({
 })
 
 /**
- * Google Places autocomplete. The key stays in the header. The body has
- * the typed text, the session token, and the language, and nothing that
- * would restrict a country or bias a region.
+ * Google Places autocomplete, plus the Embed URL.
+ * The Places key stays in the header. The Embed key is a second key and
+ * is the `key` query of the Embed URL only. Suggestions do not use it.
+ * The body has the typed text, the session token, and the language, and
+ * nothing that would restrict a country or bias a region.
  */
-export function createGoogleMaps(apiKey: string, http: PlacesHttp = fetchPlaces): MapsPort {
+export function createGoogleMaps(
+  apiKey: string,
+  http: PlacesHttp = fetchPlaces,
+  embedKey?: string,
+): MapsPort {
   return {
     async suggestAddresses(query) {
       try {
@@ -70,7 +83,25 @@ export function createGoogleMaps(apiKey: string, http: PlacesHttp = fetchPlaces)
       }
     },
     navigationLink,
+    embedUrl(target, language) {
+      return googleEmbedUrl(embedKey, target, language)
+    },
   }
+}
+
+/**
+ * Place mode, or null when the Embed is not configured or the Location
+ * has no map. This builds a string. It does not call Google.
+ */
+function googleEmbedUrl(embedKey: string | undefined, target: EmbedTarget, language: string): string | null {
+  if (embedKey === undefined || !embeddable(target))
+    return null
+  const params = new URLSearchParams({
+    key: embedKey,
+    q: `place_id:${target.place.placeRef}`,
+    language,
+  })
+  return `${EMBED_URL}?${params.toString()}`
 }
 
 function mapSuggestions(body: string): SuggestAddressesResult {

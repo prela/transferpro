@@ -259,3 +259,41 @@ it('defaults MAPS to none and refuses google without a key', () => {
     expect(String(error)).not.toContain('maps-live-key')
   }
 })
+
+it('keeps MAPS_EMBED_KEY optional, treats blank as missing, and never echoes the key', () => {
+  const embedKey = 'embed-secret-value'
+  expect(parseAppEnv(base).MAPS_EMBED_KEY).toBeUndefined()
+  expect(parseAppEnv({ ...base, MAPS: 'none', MAPS_EMBED_KEY: '' }).MAPS_EMBED_KEY).toBeUndefined()
+  expect(parseAppEnv({ ...base, MAPS: 'none', MAPS_EMBED_KEY: embedKey })).toMatchObject({
+    MAPS: 'none',
+    MAPS_EMBED_KEY: embedKey,
+  })
+  expect(parseAppEnv({
+    ...base,
+    MAPS: 'google',
+    MAPS_API_KEY: 'maps-live-key',
+    MAPS_EMBED_KEY: '',
+  }).MAPS_EMBED_KEY).toBeUndefined()
+  expect(parseAppEnv({
+    ...base,
+    MAPS: 'google',
+    MAPS_API_KEY: 'maps-live-key',
+    MAPS_EMBED_KEY: embedKey,
+  })).toMatchObject({
+    MAPS: 'google',
+    MAPS_API_KEY: 'maps-live-key',
+    MAPS_EMBED_KEY: embedKey,
+  })
+  try {
+    parseAppEnv({ ...base, MAPS: 'google', MAPS_EMBED_KEY: embedKey })
+  }
+  catch (error) {
+    expect(String(error)).not.toContain(embedKey)
+  }
+  try {
+    parseAppEnv({ ...base, MAPS: 'osm', MAPS_EMBED_KEY: embedKey })
+  }
+  catch (error) {
+    expect(String(error)).not.toContain(embedKey)
+  }
+})
