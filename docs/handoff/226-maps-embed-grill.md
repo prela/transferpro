@@ -15,7 +15,7 @@ Out of scope: code, migrations, coordinates, distance, routing, a map with sever
 - **What the map shows.** Only `q=place_id:` with a `google` reference, never the address text or the name. The map's language is the viewer's locale.
 - **The frame.** Google's attribution stays as drawn. No `sandbox`, an empty `allow`, `strict-origin-when-cross-origin`, and never `no-referrer`. Google's own error inside the frame is accepted. The button has `aria-expanded` and `aria-controls` and keeps the focus.
 - **The refresh:**
-  - **Storage:** one nullable timestamp, the last check of the reference.
+  - **Storage:** one nullable timestamp, `place_ref_checked_at`, the last check of the reference.
   - **Job:** nightly, only with `MAPS=google`, Tenant by Tenant in the Tenant session, active Locations only, at most 100 checks per Tenant per night. Each request has the field mask `id` only.
   - **Outcomes:** the same id sets the timestamp; a new id replaces the reference; only `NOT_FOUND` clears the place and keeps the address. `INVALID_REQUEST`, an error, a timeout, or a spent quota changes nothing and is logged as a count. An invalid answer more likely means our request is wrong.
   - **Circuit breaker:** it counts only Locations that are not address-kind. When more than half of them, and at least 10, are gone, the run writes no clear that night, for any kind, and logs one warning.

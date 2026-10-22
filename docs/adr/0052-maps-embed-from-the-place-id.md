@@ -48,7 +48,7 @@ The frame is on Google's origin, so the app cannot tell when the map fails: a ke
 
 ### Refreshing the place id
 
-A Location gains one nullable timestamp: when its place reference was last checked. A pick sets it in the same write as the reference. A hand edit or a clear empties it with the provider and the reference. Existing rows are not rewritten. A reference with no timestamp is due.
+A Location gains one nullable timestamp, `place_ref_checked_at`: when its place reference was last checked. A pick sets it in the same write as the reference. A hand edit or a clear empties it with the provider and the reference. Existing rows are not rewritten. A reference with no timestamp is due.
 
 A nightly job, only when `MAPS=google`, walks the Tenants and works inside each Tenant's session. It checks the active Locations whose provider is `google` and whose reference is unchecked or was last checked more than 12 months ago, at most 100 per Tenant per night. Each check is a Place Details request with the field mask `id` and nothing else, on the server key. The outcomes:
 
