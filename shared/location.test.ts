@@ -158,13 +158,12 @@ it('accepts a suggestion lookup and refuses a short text, a bad token, or an ext
   expect(message).not.toContain(address)
 })
 
-it('shows the saved Embed URL until the address field changes', () => {
+it('shows the saved Embed URL only while the address field is untouched', () => {
   const embedUrl = 'about:blank#placeRef=ChIJfakeDubrovnik&language=hr'
-  expect(locationPanelEmbedUrl(embedUrl, address, address)).toBe(embedUrl)
-  expect(locationPanelEmbedUrl(null, address, address)).toBeNull()
-  expect(locationPanelEmbedUrl(embedUrl, address, `${address}x`)).toBeNull()
-  expect(locationPanelEmbedUrl(embedUrl, null, '')).toBe(embedUrl)
-  expect(locationPanelEmbedUrl(embedUrl, null, ' ')).toBeNull()
+  expect(locationPanelEmbedUrl(embedUrl, true)).toBe(embedUrl)
+  expect(locationPanelEmbedUrl(null, true)).toBeNull()
+  expect(locationPanelEmbedUrl(embedUrl, false)).toBeNull()
+  expect(locationPanelEmbedUrl(null, false)).toBeNull()
 })
 
 it('reads a list of Locations, including one that is archived', () => {

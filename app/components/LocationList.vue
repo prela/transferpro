@@ -29,6 +29,11 @@ const confirming = ref<OfficeLocation | null>(null)
 /** The map frame. It is in the document only after the press (ADR-0052). */
 const mapFrameId = useId()
 const mapOpen = ref(false)
+/**
+ * The first address edit hides the map until this panel is opened again.
+ * Typing the saved address back does not clear it (ADR-0052).
+ */
+const addressUntouched = ref(true)
 const state = reactive<{ name: string, kind?: LocationKind, address: string, iata: string }>({
   name: '',
   address: '',
@@ -223,6 +228,7 @@ function resetForm() {
 
 function openAdd() {
   mapOpen.value = false
+  addressUntouched.value = true
   editingId.value = null
   openedName.value = ''
   resetForm()
@@ -231,6 +237,7 @@ function openAdd() {
 
 function openEdit(location: OfficeLocation) {
   mapOpen.value = false
+  addressUntouched.value = true
   editingId.value = location.id
   openedName.value = location.name
   state.name = location.name
@@ -244,13 +251,16 @@ function openEdit(location: OfficeLocation) {
   dropPendingSuggestions()
   formErrorKey.value = null
   formMode.value = 'edit'
+  // A field update while the panel opens is not an edit.
+  addressUntouched.value = true
 }
 
 const suggestionItems = computed(() => suggestions.value.map(suggestion => suggestion.text))
 
 /**
  * The button follows the Embed URL from the last save. An address edit
- * hides it, including a pick that is not saved yet (ADR-0052).
+ * hides it until the next open, including a pick that is not saved yet
+ * (ADR-0052).
  */
 const mapEmbedUrl = computed(() => {
   if (formMode.value !== 'edit' || editingId.value === null)
@@ -258,7 +268,7 @@ const mapEmbedUrl = computed(() => {
   const location = locations.value.find(item => item.id === editingId.value)
   if (!location)
     return null
-  return locationPanelEmbedUrl(location.embedUrl, location.address, state.address)
+  return locationPanelEmbedUrl(location.embedUrl, addressUntouched.value)
 })
 
 watch(mapEmbedUrl, (url) => {
@@ -280,6 +290,13 @@ async function toggleMap(event: MouseEvent) {
 
 function onAddressInput(value: string | number | null | undefined) {
   const next = value == null ? '' : String(value)
+  if (formMode.value === 'edit' && editingId.value !== null) {
+    const location = locations.value.find(item => item.id === editingId.value)
+    // Stay hidden after the first difference. Restoring the text does not
+    // restore the place the next save would send.
+    if (next !== (location?.address ?? ''))
+      addressUntouched.value = false
+  }
   const match = suggestions.value.find(suggestion => suggestion.text === next)
   // A pick is the suggested text. Anything else, including Enter, keeps the typed address.
   if (match) {
