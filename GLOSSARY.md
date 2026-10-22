@@ -21,7 +21,7 @@ What the Client is charged for one Transfer, in EUR, VAT included. It is never w
 _Avoid_: cost, fare, rate
 
 **Main Transfer**:
-The Transfer that carries the Price of a group. It is invoiced once for the whole group. In Croatian it is Glavni transfer.
+The Transfer that carries the Price of a group and the group's ordered passenger count. It is invoiced once for the whole group, and cancelling it cancels the group. In Croatian it is Glavni transfer.
 _Avoid_: lead, parent, first Transfer
 
 **Extra vehicle**:
@@ -29,7 +29,7 @@ A Transfer linked to one main Transfer when one Vehicle cannot carry the whole b
 _Avoid_: second Ride, leg, split, duplicate
 
 **Group**:
-A main Transfer and its extra vehicles. Its passenger count is the sum of theirs, leaving out a cancelled Ride. In Croatian it is Grupa.
+A main Transfer and its extra vehicles. Its ordered passenger count is how many passengers the Client booked, and it is not the sum of the vehicles' counts. In Croatian it is Grupa.
 _Avoid_: group booking, Order
 
 **Transfer duration**:

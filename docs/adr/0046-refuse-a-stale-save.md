@@ -1,6 +1,6 @@
 # Refuse a stale save
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0054
 
 Damir accepted this on 18 October 2026, in #333.
 
