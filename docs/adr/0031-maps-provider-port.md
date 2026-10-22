@@ -1,6 +1,6 @@
 # Maps for Locations behind a port
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0052
 
 Damir accepted this on 13 October 2026. This does not supersede ADR-0012, ADR-0014, ADR-0018, or ADR-0026.
 

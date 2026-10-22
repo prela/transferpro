@@ -46,7 +46,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0028 | Live flight | accepted |
 | ADR-0029 | Ride occupation | accepted; partially superseded by ADR-0034 |
 | ADR-0030 | Landing alarm | accepted; partially superseded by ADR-0039 |
-| ADR-0031 | Maps for Locations behind a port | accepted |
+| ADR-0031 | Maps for Locations behind a port | accepted; partially superseded by ADR-0052 |
 | ADR-0032 | Board warnings are derived on read | accepted |
 | ADR-0033 | v1 scope: price list, invoices through a provider, Client card, and Partner record | accepted |
 | ADR-0034 | Capacity as a module | accepted |
@@ -67,3 +67,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0049 | Client card and Partner record | accepted |
 | ADR-0050 | Worker mail loaders check no role | accepted |
 | ADR-0051 | Invoices through the current tool in v1 | accepted |
+| ADR-0052 | Maps Embed from the stored place id | accepted |
