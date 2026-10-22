@@ -105,6 +105,8 @@ export async function loadLocation(
  * Insert one Location and append `location.created` on this transaction.
  * The entry names the fields that were set. It does not store the name,
  * the kind, the address, the code, or the place reference.
+ * A pick stamps `place_ref_checked_at` in this same insert. A typed
+ * address leaves that column null (ADR-0052).
  * The caller has already required a dispatcher or an admin.
  */
 export async function addLocation(
@@ -113,14 +115,18 @@ export async function addLocation(
   input: CreateLocation,
 ): Promise<Location> {
   const selected = locationRows.parse(await writeLocation(transaction, sql`
-    insert into app.locations (name, kind, address, iata, place_provider, place_ref)
+    insert into app.locations (
+      name, kind, address, iata, place_provider, place_ref, place_ref_checked_at
+    )
     values (
       ${input.name},
       ${input.kind},
       ${input.address},
       ${input.iata},
       ${input.place?.provider ?? null},
-      ${input.place?.placeRef ?? null}
+      ${input.place?.placeRef ?? null},
+      -- A null parameter has no type. The cast lets Postgres see text.
+      case when cast(${input.place?.placeRef ?? null} as text) is null then null else now() end
     )
     returning ${locationColumns}
   `))
@@ -141,6 +147,9 @@ export async function addLocation(
  * Correct the fields the patch names. One entry per field that changed,
  * and the entry stores the field name only.
  * A patch that matches the locked row does not update and does not append.
+ * A pick stamps `place_ref_checked_at`. A hand edit or a clear empties it
+ * with the reference. A save that leaves the reference alone keeps the time
+ * (ADR-0052). The column is not part of the Location the office reads.
  * A missing row is not found, including a row that belongs to another Tenant.
  * An archived Location is refused: the picker hides it, and a Transfer that
  * already points at it still loads it by id.
@@ -166,7 +175,12 @@ export async function correctLocation(
         address = ${next.address},
         iata = ${next.iata},
         place_provider = ${next.place?.provider ?? null},
-        place_ref = ${next.place?.placeRef ?? null}
+        place_ref = ${next.place?.placeRef ?? null},
+        place_ref_checked_at = case
+          when place_ref is not distinct from cast(${next.place?.placeRef ?? null} as text) then place_ref_checked_at
+          when cast(${next.place?.placeRef ?? null} as text) is null then null
+          else now()
+        end
     where id = ${next.id}
   `)
 

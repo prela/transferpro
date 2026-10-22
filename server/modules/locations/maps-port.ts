@@ -56,13 +56,27 @@ export interface SuggestAddressesQuery {
 }
 
 /**
+ * One free check of a stored place reference (ADR-0052).
+ * `same` is the id we asked about. `replaced` is a different id Google
+ * still finds. `gone` is `NOT_FOUND` only. Everything else, including an
+ * invalid id, is `unavailable` and must not be treated as a clear.
+ */
+export type PlaceReferenceCheck
+  = { readonly outcome: 'same' }
+    | { readonly outcome: 'replaced', readonly placeRef: string }
+    | { readonly outcome: 'gone' }
+    | { readonly outcome: 'unavailable' }
+
+/**
  * Suggest addresses, or say the provider is unavailable.
  * Build a navigation link for a Location. The link calls nothing.
  * Build an Embed URL for a Location and a language, or say there is none.
  * That URL calls nothing (ADR-0052).
+ * Check one stored reference. Nothing in the office calls this yet.
  */
 export interface MapsPort {
   suggestAddresses: (query: SuggestAddressesQuery) => Promise<SuggestAddressesResult>
   navigationLink: (target: NavigationTarget) => string
   embedUrl: (target: EmbedTarget, language: string) => string | null
+  checkPlaceRef: (placeRef: string) => Promise<PlaceReferenceCheck>
 }

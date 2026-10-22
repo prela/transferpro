@@ -1,12 +1,21 @@
-import type { EmbedTarget, MapsPort, SuggestAddressesResult } from '../maps-port'
+import type { EmbedTarget, MapsPort, PlaceReferenceCheck, SuggestAddressesResult } from '../maps-port'
 import { z } from 'zod'
 import { LOCATION_ADDRESS_MAX_LENGTH, PLACE_REF_MAX_LENGTH } from '../../../../shared'
 import { nodeEnv } from '../../../core/index'
 import { embeddable } from '../maps-port'
 import { navigationLink } from './navigation-link'
 
-/** Places API (New) autocomplete. No Place Details call (ADR-0031). */
+/** Places API (New) autocomplete. Suggestions do not call Place Details (ADR-0031). */
 const AUTOCOMPLETE_URL = 'https://places.googleapis.com/v1/places:autocomplete'
+
+/**
+ * Place Details (New) for one stored id. The field mask is `id` and nothing
+ * else, so the call stays on the free IDs Only SKU (ADR-0052).
+ */
+const PLACE_DETAILS_URL = 'https://places.googleapis.com/v1/places'
+
+/** The only field this check may ask for. A wider mask would be billed. */
+const PLACE_ID_FIELD_MASK = 'id'
 
 /**
  * Maps Embed place mode. The query is `place_id:` and the stored reference.
@@ -28,13 +37,24 @@ export interface PlacesHttpResponse {
 export type PlacesHttp = (
   url: string,
   init: {
-    readonly body: string
+    readonly method?: 'GET' | 'POST'
+    readonly body?: string
     readonly headers: Record<string, string>
     readonly signal: AbortSignal
   },
 ) => Promise<PlacesHttpResponse>
 
 const unavailable: SuggestAddressesResult = { available: false }
+
+const placeDetailsSchema = z.object({
+  id: z.string(),
+})
+
+const placeErrorSchema = z.object({
+  error: z.object({
+    status: z.string(),
+  }).optional(),
+})
 
 const autocompleteSchema = z.object({
   suggestions: z.array(z.object({
@@ -68,6 +88,7 @@ export function createGoogleMaps(
             sessionToken: query.sessionToken,
             languageCode: query.language,
           }),
+          method: 'POST',
           headers: {
             'content-type': 'application/json',
             'X-Goog-Api-Key': apiKey,
@@ -86,6 +107,24 @@ export function createGoogleMaps(
     embedUrl(target, language) {
       return googleEmbedUrl(embedKey, target, language)
     },
+    async checkPlaceRef(placeRef) {
+      // A hang, a bad key, or a body we cannot read is unavailable.
+      // That outcome never clears a stored reference (ADR-0052).
+      try {
+        const response = await http(`${PLACE_DETAILS_URL}/${encodeURIComponent(placeRef)}`, {
+          method: 'GET',
+          headers: {
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': PLACE_ID_FIELD_MASK,
+          },
+          signal: AbortSignal.timeout(SUGGEST_TIMEOUT_MS),
+        })
+        return mapPlaceCheck(placeRef, response.status, response.body)
+      }
+      catch {
+        return { outcome: 'unavailable' }
+      }
+    },
   }
 }
 
@@ -102,6 +141,59 @@ function googleEmbedUrl(embedKey: string | undefined, target: EmbedTarget, langu
     language,
   })
   return `${EMBED_URL}?${params.toString()}`
+}
+
+/**
+ * `NOT_FOUND` is the only answer that means the id is gone. An invalid id
+ * (`INVALID_REQUEST` or anything else) is unavailable: that more often means
+ * our request is wrong than that the place was removed (ADR-0052).
+ * A returned id is kept only when it would pass the stored-reference check.
+ */
+function mapPlaceCheck(requested: string, status: number, body: string): PlaceReferenceCheck {
+  if (status === 200) {
+    const id = readPlaceId(body)
+    if (id === null)
+      return { outcome: 'unavailable' }
+    if (id === requested)
+      return { outcome: 'same' }
+    if (isStoredPlaceRef(id))
+      return { outcome: 'replaced', placeRef: id }
+    return { outcome: 'unavailable' }
+  }
+  if (readErrorStatus(body) === 'NOT_FOUND')
+    return { outcome: 'gone' }
+  return { outcome: 'unavailable' }
+}
+
+function readPlaceId(body: string): string | null {
+  let json: unknown
+  try {
+    json = JSON.parse(body)
+  }
+  catch {
+    return null
+  }
+  const parsed = placeDetailsSchema.safeParse(json)
+  return parsed.success ? parsed.data.id : null
+}
+
+function readErrorStatus(body: string): string | null {
+  let json: unknown
+  try {
+    json = JSON.parse(body)
+  }
+  catch {
+    return null
+  }
+  const parsed = placeErrorSchema.safeParse(json)
+  return parsed.success ? parsed.data.error?.status ?? null : null
+}
+
+/** The same bounds the locations row check enforces. A padded id is refused. */
+function isStoredPlaceRef(value: string): boolean {
+  return value.length > 0
+    && value.length <= PLACE_REF_MAX_LENGTH
+    && value === value.trim()
 }
 
 function mapSuggestions(body: string): SuggestAddressesResult {
@@ -136,17 +228,19 @@ function mapSuggestions(body: string): SuggestAddressesResult {
 }
 
 async function fetchPlaces(url: string, init: {
-  readonly body: string
+  readonly method?: 'GET' | 'POST'
+  readonly body?: string
   readonly headers: Record<string, string>
   readonly signal: AbortSignal
 }): Promise<PlacesHttpResponse> {
   // Tests use the fake adapter. A stubbed client is passed in unit tests.
   if (nodeEnv() === 'test')
     throw new Error('Maps tests must not call Google.')
+  const method = init.method ?? 'POST'
   const response = await fetch(url, {
-    method: 'POST',
+    method,
     headers: init.headers,
-    body: init.body,
+    body: method === 'GET' ? undefined : init.body,
     signal: init.signal,
   })
   return { status: response.status, body: await response.text() }
