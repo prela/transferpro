@@ -6,10 +6,6 @@ import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, openAudit, signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'
 
-// The fake adapter's suggestion and Embed switches are one flag for the
-// whole server. Tests in this file share it, so they must not overlap.
-test.describe.configure({ mode: 'serial' })
-
 const place = 'Zračna luka Dubrovnik'
 const address = 'Dobrota bb, Čilipi'
 const nextPlace = 'Hotel Excelsior'
@@ -346,22 +342,8 @@ async function openLocations(page: Page) {
 
 /**
  * The frame is the panel's width and 240px high. The fake src carries the
- * reference and the language, and not the address or the Embed key.
+ * reference and the language, and not the address, the name, or a key.
  */
-/**
- * The Embed switch is process-wide. Wait until this Location's URL is
- * present, then reload so the panel reads that list.
- */
-async function waitForEmbed(page: Page, name: string) {
-  await expect.poll(async () => {
-    const body = await (await page.request.get('/api/locations')).json() as {
-      locations: { name: string, embedUrl: string | null }[]
-    }
-    return body.locations.find(location => location.name === name)?.embedUrl ?? ''
-  }).toContain(`placeRef=${placeRef}`)
-  await page.reload()
-}
-
 async function expectMapFrame(dialog: Locator, name: string, language: 'hr' | 'en') {
   const title = language === 'hr' ? `Karta: ${name}` : `Map: ${name}`
   const frame = dialog.getByTitle(title)
@@ -371,7 +353,10 @@ async function expectMapFrame(dialog: Locator, name: string, language: 'hr' | 'e
   expect(src).toContain(`placeRef=${placeRef}`)
   expect(src).toContain(`language=${language}`)
   expect(src).not.toContain(name)
-  expect(src).not.toContain('e2e-embed-key')
+  expect(src).not.toContain('key=')
+  expect(src).not.toContain('google.com')
+  const params = new URLSearchParams((src ?? '').split('#')[1] ?? '')
+  expect([...params.keys()].sort()).toEqual(['language', 'placeRef'])
   await expect(frame).toHaveAttribute('referrerpolicy', 'strict-origin-when-cross-origin')
   await expect(frame).toHaveAttribute('allow', '')
   expect(await frame.getAttribute('sandbox')).toBeNull()
@@ -414,10 +399,12 @@ test('the location panel shows the map only after the press, in both languages a
     await expect(dialog).toBeHidden()
 
     const saved = await (await page.request.get('/api/locations')).json() as {
-      locations: { name: string, place: { placeRef: string } | null }[]
+      locations: { name: string, place: { placeRef: string } | null, embedUrl: string | null }[]
     }
-    expect(saved.locations.find(location => location.name === 'Nespremljeno')?.place?.placeRef).toBe(placeRef)
-    await waitForEmbed(page, 'Nespremljeno')
+    const savedRow = saved.locations.find(location => location.name === 'Nespremljeno')
+    expect(savedRow?.place?.placeRef).toBe(placeRef)
+    expect(savedRow?.embedUrl).toContain(`placeRef=${placeRef}`)
+    expect(savedRow?.embedUrl).toContain('language=')
     await page.getByRole('button', { name: 'Nespremljeno', exact: true }).click()
     dialog = page.getByRole('dialog')
     const show = dialog.getByRole('button', { name: /^(Prikaži na karti|Sakrij kartu)$/ })
@@ -496,62 +483,41 @@ test('the location panel shows the map only after the press, in both languages a
   }
 })
 
-test('a typed location, an archived location, and a switched-off embed have no map button', async ({ page }) => {
+test('a typed location and an archived location have no map button', async ({ page }) => {
   const tenant = await seedTenant('locations-map-off')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
-  try {
-    const placed = await createdId(await page.request.post('/api/locations', {
-      data: {
-        name: 'Hotel Karta',
-        kind: 'hotel',
-        address: 'Put 1',
-        place: { provider: 'google', placeRef },
-      },
-    }))
-    await createdId(await page.request.post('/api/locations', {
-      data: { name: 'Tipkano', kind: 'address', address: 'Ulica 3' },
-    }))
-    // Home refreshes while these creates are in flight. A click on Lokacije
-    // can land on the link that refresh just replaced, so open the address.
-    await page.goto('/locations')
-    await waitForEmbed(page, 'Hotel Karta')
+  const placed = await createdId(await page.request.post('/api/locations', {
+    data: {
+      name: 'Hotel Karta',
+      kind: 'hotel',
+      address: 'Put 1',
+      place: { provider: 'google', placeRef },
+    },
+  }))
+  await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Tipkano', kind: 'address', address: 'Ulica 3' },
+  }))
+  // Home refreshes while these creates are in flight. A click on Lokacije
+  // can land on the link that refresh just replaced, so open the address.
+  await page.goto('/locations')
 
-    await page.getByRole('button', { name: 'Tipkano', exact: true }).click()
-    let dialog = page.getByRole('dialog')
-    await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toHaveCount(0)
-    await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await page.getByRole('button', { name: 'Tipkano', exact: true }).click()
+  let dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
 
-    await page.getByRole('button', { name: 'Hotel Karta', exact: true }).click()
-    dialog = page.getByRole('dialog')
-    await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toBeVisible()
-    await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await page.getByRole('button', { name: 'Hotel Karta', exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
 
-    expect((await page.request.post(`/api/locations/${placed}/archive`)).ok()).toBeTruthy()
-    await page.getByLabel('Prikaži arhivirano').check()
-    await page.getByRole('button', { name: 'Hotel Karta', exact: true }).click()
-    dialog = page.getByRole('dialog')
-    await expect(dialog.getByText('Arhivirano', { exact: true })).toBeVisible()
-    await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toHaveCount(0)
-    await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
-
-    await createdId(await page.request.post('/api/locations', {
-      data: {
-        name: 'Hotel Još',
-        kind: 'hotel',
-        address: 'Put 2',
-        place: { provider: 'google', placeRef },
-      },
-    }))
-    expect((await page.request.post('/api/locations/embed-mode', { data: { off: true } })).ok()).toBeTruthy()
-    await page.reload()
-    await page.getByRole('button', { name: 'Hotel Još', exact: true }).click()
-    dialog = page.getByRole('dialog')
-    await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toHaveCount(0)
-    await expect(dialog.locator('iframe')).toHaveCount(0)
-  }
-  finally {
-    await page.request.post('/api/locations/embed-mode', { data: { off: false } })
-  }
+  expect((await page.request.post(`/api/locations/${placed}/archive`)).ok()).toBeTruthy()
+  await page.getByLabel('Prikaži arhivirano').check()
+  await page.getByRole('button', { name: 'Hotel Karta', exact: true }).click()
+  dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('Arhivirano', { exact: true })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
 })
 
 test('the driver card has no map button', async ({ page }) => {
@@ -652,7 +618,6 @@ test.describe('@phone', () => {
       await openLocations(page)
       if (locale === 'en')
         await switchLocale(page, 'en')
-      await waitForEmbed(page, 'Hotel Telefon')
 
       await page.getByRole('button', { name: 'Hotel Telefon', exact: true }).click()
       const dialog = page.getByRole('dialog')
