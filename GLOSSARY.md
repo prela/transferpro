@@ -9,12 +9,16 @@ A transfer company using Transferpro. The company and its Better Auth organizati
 _Avoid_: organization, firm
 
 **Transfer**:
-The booking. It names the Client, the pickup time, the start and end Locations, the passenger count, the guest name, an optional flight number, a price in EUR, the payment (`cash`, `card`, or `invoice_to_agency`), whether the pickup is an airport, the luggage count, the child-seat count, an optional note, and an optional tabla. The tabla is the words on the meet sign for this pickup. It is text on the Transfer, not on the Client. A blank is stored as empty text. There is no image. Creating a Transfer creates one Ride in `unassigned`. The airport mark is stored as entered and is not inferred from the flight number. `invoice_to_agency` is a recorded choice. The Driver sees the price and the payment method only for cash; card and invoice to agency hide both (ADR-0009, extended by ADR-0020). That phone rule is not on the office screen. The Transfer is the order: there is no separate Order above it. It has a Channel and an ExternalRef, and may carry a Client reference.
-_Avoid_: Ride, job, order
+The booking. It names the Client, the pickup time, the start and end Locations, the passenger count, the guest name, an optional flight number, a price in EUR, the payment (`cash`, `card`, or `invoice_to_agency`), whether the pickup is an airport, the luggage count, the child-seat count, an optional note, and an optional tabla. The tabla is the words on the meet sign for this pickup. It is text on the Transfer, not on the Client. A blank is stored as empty text. There is no image. Creating a Transfer creates one Ride in `unassigned`. The airport mark is stored as entered and is not inferred from the flight number. `invoice_to_agency` is a recorded choice. The Driver sees the price and the payment method only for cash; card and invoice to agency hide both (ADR-0009, extended by ADR-0020). That phone rule is not on the office screen. The Transfer is the order: there is no separate Order above it. It has a Channel and an ExternalRef, and may carry a Client reference. In Croatian it is Transfer.
+_Avoid_: Ride, job, order, rezervacija, narudžba
 
 **Ride**:
-The execution of a Transfer. One Transfer may have several Rides when the same journey is split across several Vehicles. A return journey is its own Transfer, not a second Ride. In v1 it has exactly one, created with the Transfer. A Ride is not deleted.
+The execution of a Transfer. One Transfer may have several Rides when the same journey is split across several Vehicles. A return journey is its own Transfer, not a second Ride. In v1 it has exactly one, created with the Transfer. A Ride is not deleted. In Croatian it is Vožnja.
 _Avoid_: trip, job, leg
+
+**Price**:
+What the Client is charged for one Transfer, in EUR, VAT included. It is never what a Partner is paid; that cost is not in v1. In Croatian it is Cijena.
+_Avoid_: cost, fare, rate
 
 **Transfer duration**:
 The minutes a Ride occupies after its pickup, or after its landing when a landing is stored. The Tenant's default is 60. It is not a No-show wait.
@@ -212,7 +216,7 @@ What an invoice needs to know about its Client: the legal name, the country, the
 _Avoid_: address (alone), company data
 
 **Invoice**:
-The Tenant's invoice to a Client for one done Transfer whose payment is invoice to agency, created in the current tool, which gives it its number and date. It is never changed or deleted; a Storno cancels it. A Transfer has at most one invoice that is not cancelled or withdrawn. In v1 an individual Client gets none, and neither does a No-show or a cancelled Ride. In Croatian it is Račun.
+The Tenant's invoice to a Client for one done Transfer whose payment is invoice to agency, created in the current tool, which gives it its number and date. It is never changed or deleted; a Storno cancels it. A Transfer has at most one invoice that is not cancelled or withdrawn. In v1 an individual Client gets none, and neither does a No-show, a cancelled Ride, or a Transfer whose Price is 0. In Croatian it is Račun.
 _Avoid_: bill, receipt, eRačun (one form of an invoice)
 
 **Unsent invoice**:
