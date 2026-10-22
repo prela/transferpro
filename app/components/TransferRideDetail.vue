@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
-import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, Location, Partner, PartnerOfficeContact, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, OfficeLocation, Partner, PartnerOfficeContact, TransferDayRide, Vehicle } from '../../shared'
 import type { RideDetailCommand } from '../ride-detail'
-import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel } from '../../shared'
+import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel, rideDetailEmbedUrls, rideDetailMapOpen } from '../../shared'
 import { useKeptWorkOrders } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, rideFormStamp } from '../ride-detail'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -53,7 +53,9 @@ const emit = defineEmits<{
 const day = defineModel<string>('day', { required: true })
 const saved = defineModel<boolean>('saved', { required: true })
 const corrected = defineModel<boolean>('corrected', { required: true })
-const locations = defineModel<Location[]>('locations', { required: true })
+const locations = defineModel<OfficeLocation[]>('locations', { required: true })
+const startMapOpen = ref(false)
+const endMapOpen = ref(false)
 const clients = defineModel<Client[]>('clients', { required: true })
 
 const { t } = useI18n()
@@ -174,10 +176,56 @@ const partnerContact = computed(() => {
   return props.partnerBriefs.find(brief => brief.partnerId === props.ride.partnerId) ?? null
 })
 
-function place(id: string): string {
-  const found = locations.value.find(location => location.id === id)
-  return found ? locationLabel(found) : t('transfers.unknownPlace')
+const startLocation = computed(() =>
+  locations.value.find(location => location.id === props.ride.startLocationId) ?? null,
+)
+const endLocation = computed(() =>
+  locations.value.find(location => location.id === props.ride.endLocationId) ?? null,
+)
+
+function placeLabel(location: OfficeLocation | null): string {
+  return location ? locationLabel(location) : t('transfers.unknownPlace')
 }
+
+/**
+ * The start and the end, each only when that Location has an Embed URL.
+ * The same Location keeps the end quiet (ADR-0052).
+ */
+const mapUrls = computed(() => rideDetailEmbedUrls({
+  startLocationId: props.ride.startLocationId,
+  endLocationId: props.ride.endLocationId,
+  startEmbedUrl: startLocation.value?.embedUrl ?? null,
+  endEmbedUrl: endLocation.value?.embedUrl ?? null,
+}))
+
+function applyMaps(press: { slot: 'start' | 'end', open: boolean } | null, rideChanged: boolean) {
+  const next = rideDetailMapOpen(
+    { start: startMapOpen.value, end: endMapOpen.value },
+    {
+      rideChanged,
+      startUrl: mapUrls.value.start,
+      endUrl: mapUrls.value.end,
+      // pinActions is the phone layout. Opening one map then closes the other.
+      phone: props.pinActions,
+      press,
+    },
+  )
+  startMapOpen.value = next.start
+  endMapOpen.value = next.end
+}
+
+function pressMap(slot: 'start' | 'end', open: boolean) {
+  applyMaps({ slot, open }, false)
+}
+
+// A refresh that keeps the URL leaves the open flags alone, so the frame
+// stays mounted. A new Ride, or a URL that is gone, closes that map.
+watch(
+  () => [props.ride.rideId, mapUrls.value.start, mapUrls.value.end] as const,
+  (next, previous) => {
+    applyMaps(null, previous !== undefined && next[0] !== previous[0])
+  },
+)
 
 function partnerLabel(id: string | null): string {
   if (id === null)
@@ -409,8 +457,12 @@ const primaryLabel = computed(() => {
       </template>
     </UCollapsible>
 
+    <!--
+      Hidden, not removed, while a command is open. An open map stays
+      mounted, so cancel does not load it again (ADR-0052).
+    -->
     <dl
-      v-if="!command"
+      v-show="!command"
       class="mb-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm"
       :aria-label="t('ride.detailFacts')"
     >
@@ -450,9 +502,34 @@ const primaryLabel = computed(() => {
         {{ ride.passengerCount }}
       </dd>
       <dt>{{ t('transfers.start') }}</dt>
-      <dd>{{ place(ride.startLocationId) }}</dd>
+      <dd>{{ placeLabel(startLocation) }}</dd>
+      <!-- The map spans the panel. The name stays in the column beside the label. -->
+      <dd
+        v-if="mapUrls.start"
+        class="col-span-2"
+      >
+        <LocationMapToggle
+          :open="startMapOpen"
+          :embed-url="mapUrls.start"
+          :name="startLocation?.name ?? ''"
+          :phone="pinActions"
+          @update:open="pressMap('start', $event)"
+        />
+      </dd>
       <dt>{{ t('transfers.end') }}</dt>
-      <dd>{{ place(ride.endLocationId) }}</dd>
+      <dd>{{ placeLabel(endLocation) }}</dd>
+      <dd
+        v-if="mapUrls.end"
+        class="col-span-2"
+      >
+        <LocationMapToggle
+          :open="endMapOpen"
+          :embed-url="mapUrls.end"
+          :name="endLocation?.name ?? ''"
+          :phone="pinActions"
+          @update:open="pressMap('end', $event)"
+        />
+      </dd>
       <dt>{{ t('transfers.columns.client') }}</dt>
       <dd>{{ clients.find(client => client.id === ride.clientId)?.name ?? '' }}</dd>
       <!-- A handed-off Ride has no Driver and no Vehicle. "Nedodijeljeno" is

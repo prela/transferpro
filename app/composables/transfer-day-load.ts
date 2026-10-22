@@ -1,5 +1,5 @@
-import type { Client, ClientOfficeBrief, DeclineAlert, Driver, LiveRefreshOutcome, Location, Partner, PartnerOfficeContact, TransferDayRide, Vehicle } from '../../shared'
-import { claimDayLoad, claimFullLoad, clientListSchema, driverListSchema, isCalendarDate, locationListSchema, operationalDateInTimeZone, partnerListSchema, transferDaySchema, vehicleListSchema } from '../../shared'
+import type { Client, ClientOfficeBrief, DeclineAlert, Driver, LiveRefreshOutcome, OfficeLocation, Partner, PartnerOfficeContact, TransferDayRide, Vehicle } from '../../shared'
+import { claimDayLoad, claimFullLoad, clientListSchema, driverListSchema, isCalendarDate, officeLocationListSchema, operationalDateInTimeZone, partnerListSchema, transferDaySchema, vehicleListSchema } from '../../shared'
 import { useOfficeHomeFeed } from './office-home-feed'
 
 /**
@@ -17,7 +17,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
   // The Driver's read does not carry this list (ADR-0049).
   const partnerBriefs = ref<PartnerOfficeContact[]>([])
   const clients = ref<Client[]>([])
-  const locations = ref<Location[]>([])
+  const locations = ref<OfficeLocation[]>([])
   const drivers = ref<Driver[]>([])
   const vehicles = ref<Vehicle[]>([])
   // Archived Partners stay so a Ride already handed to one keeps the name.
@@ -38,13 +38,22 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
   // The first successful read may show a skeleton. A later one keeps the rows.
   let opened = false
 
+  async function fetchOfficeLocations() {
+    // Archived rows stay in the catalog so a Ride keeps its place name.
+    // The record form still offers only places that are not archived.
+    // The office list carries embedUrl (ADR-0052). A live refresh must not
+    // reuse a cached list, or an open map would keep a reference that is gone.
+    return officeLocationListSchema.parse(await $fetch('/api/locations', {
+      query: { includeArchived: 'true' },
+      cache: 'no-store',
+    }))
+  }
+
   async function fetchCatalogs() {
     // Each $fetch is a Promise.all item. Awaiting inside the array would run them one after another.
     const [clientList, locationList, driverList, vehicleList, partnerList] = await Promise.all([
       $fetch('/api/clients').then(data => clientListSchema.parse(data)),
-      // Archived rows stay in the catalog so a Ride keeps its place name.
-      // The record form still offers only places that are not archived.
-      $fetch('/api/locations', { query: { includeArchived: 'true' } }).then(data => locationListSchema.parse(data)),
+      fetchOfficeLocations(),
       // Archived Drivers stay in the catalog so a Ride and a decline keep the name.
       // The assign picker still offers only Drivers that are not archived.
       $fetch('/api/drivers', { query: { includeArchived: 'true' } }).then(data => driverListSchema.parse(data)),
@@ -92,13 +101,25 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
     if (!opened)
       loading.value = true
     try {
-      const listed = await fetchTransferDay(day.value)
+      // Locations travel with the day so a refresh can replace or clear an
+      // Embed URL under an open map (ADR-0052). A failed location read keeps
+      // the list already on screen. The day still updates. The other catalogs
+      // stay as they were until the next full load.
+      const [dayResult, locationResult] = await Promise.allSettled([
+        fetchTransferDay(day.value),
+        fetchOfficeLocations(),
+      ])
+      if (dayResult.status === 'rejected')
+        throw dayResult.reason
       if (ticket !== loadCounter)
         return 'stale'
+      const listed = dayResult.value
       rides.value = listed.rides
       declineAlerts.value = listed.declineAlerts
       clientBriefs.value = listed.clientBriefs
       partnerBriefs.value = listed.partnerBriefs
+      if (locationResult.status === 'fulfilled')
+        locations.value = locationResult.value.locations
       loadError.value = false
       opened = true
       return 'ok'
