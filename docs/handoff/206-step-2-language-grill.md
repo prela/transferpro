@@ -1,6 +1,6 @@
 # 206 Step 2 language grill
 
-Out of scope: code and migrations. The grill stays open until the owner answers Q6a–Q6e and ADR-0054 is accepted.
+Out of scope: code and migrations. The grill closed on 22.10: the owner accepted Q6a–Q6e as recommended, and ADR-0054 is accepted. Tickets T1–T4 are filed by the owner.
 
 ## Decisions
 
@@ -14,7 +14,7 @@ Out of scope: code and migrations. The grill stays open until the owner answers 
 
 ## Q6, a group in several vehicles
 
-The reference operator answered: one booking with the group's total price, plus a linked extra vehicle with no sales price, billed once; both vehicles on the schedule, a work order per Driver, and a shared booking reference. How often groups split, and whether one group's vehicles can differ in time or place, stay unknown. The owner chose a Price-0 extra vehicle with an explicit link. ADR-0054 is **proposed** with the agent's recommendations below. The status lines of ADR-0009, ADR-0020, ADR-0026, and ADR-0051 change only when it is accepted.
+The reference operator answered: one booking with the group's total price, plus a linked extra vehicle with no sales price, billed once; both vehicles on the schedule, a work order per Driver, and a shared booking reference. How often groups split, and whether one group's vehicles can differ in time or place, stay unknown. The owner chose a Price-0 extra vehicle with an explicit link. ADR-0054 is accepted and partially supersedes ADR-0009, ADR-0020, ADR-0026, and ADR-0051. `GLOSSARY.md` gains Main Transfer, Extra vehicle, and Group, and the Transfer, Work order, and Client reference entries follow ADR-0054.
 
 Settled from the docs and the code, not asked:
 
@@ -24,9 +24,9 @@ Settled from the docs and the code, not asked:
 - **Billing.** ADR-0053 keeps every extra vehicle uninvoiced; the main Transfer is invoiced when its own Ride is done. No Vehicle count on the invoice (the owner's rule).
 - **No unlinked Price 0 by copy.** Duplicate and return journey are not offered on an extra vehicle.
 
-Open for the owner, with the recommendation written into ADR-0054:
+Decided by the owner, as recommended:
 
-- **Q6a, names.** Main Transfer / Glavni transfer, extra vehicle / Dodatno vozilo, group / Grupa. Glossary entries wait for acceptance.
+- **Q6a, names.** Main Transfer / Glavni transfer, extra vehicle / Dodatno vozilo, group / Grupa.
 - **Q6b, the shared booking reference on the Driver's side.** The Client reference, copied at create, stated on every work order and Driver card when set, with a group mark; a Client reference change becomes a changed fact (supersedes two ADR-0026 sentences).
 - **Q6c, changing the main Transfer.** No propagation to extra vehicles; a notice on save when the pickup, a place, or the flight changes; the Ride detail lists the whole group. Fits the unknown "can they differ".
 - **Q6d, cancelling the main Transfer.** Refused with 409 while an extra vehicle is unfinished; extra vehicles are cancelled first.

@@ -24,7 +24,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0006 | Driver acceptance | accepted; partially superseded by ADR-0008 |
 | ADR-0007 | No-show | accepted |
 | ADR-0008 | Office acceptance, confirmed by phone | accepted |
-| ADR-0009 | Driver sees the price when payment is cash | accepted |
+| ADR-0009 | Driver sees the price when payment is cash | accepted; partially superseded by ADR-0054 |
 | ADR-0010 | Re-acceptance after the pickup, the places, or the flight change | accepted |
 | ADR-0011 | Tenant session, grant-walled roles, and the member read | accepted; partially superseded by ADR-0014 |
 | ADR-0012 | Logging, redaction, and error responses | accepted |
@@ -35,13 +35,13 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0017 | A Client keeps its name off the audit log | accepted |
 | ADR-0018 | Module boundaries | accepted; partially superseded by ADR-0033 |
 | ADR-0019 | Superadmin | accepted |
-| ADR-0020 | Invoice to agency is a recorded payment | accepted; partially superseded by ADR-0033 |
+| ADR-0020 | Invoice to agency is a recorded payment | accepted; partially superseded by ADR-0033 and ADR-0054 |
 | ADR-0021 | Operational day | accepted; partially superseded by ADR-0025 |
 | ADR-0022 | In progress is not a Ride state | accepted |
 | ADR-0023 | Unassigned alarm | accepted; partially superseded by ADR-0039 |
 | ADR-0024 | One office home read | accepted; partially superseded by ADR-0039 |
 | ADR-0025 | Operational-day start | accepted |
-| ADR-0026 | Driver work-order email | accepted; partially superseded by ADR-0045 |
+| ADR-0026 | Driver work-order email | accepted; partially superseded by ADR-0045 and ADR-0054 |
 | ADR-0027 | Unclosed mark | accepted; partially superseded by ADR-0039 |
 | ADR-0028 | Live flight | accepted |
 | ADR-0029 | Ride occupation | accepted; partially superseded by ADR-0034 |
@@ -66,7 +66,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0048 | A Ride handed off to a Partner | accepted |
 | ADR-0049 | Client card and Partner record | accepted |
 | ADR-0050 | Worker mail loaders check no role | accepted |
-| ADR-0051 | Invoices through the current tool in v1 | accepted; partially superseded by ADR-0053 |
+| ADR-0051 | Invoices through the current tool in v1 | accepted; partially superseded by ADR-0053 and ADR-0054 |
 | ADR-0052 | Maps Embed from the stored place id | accepted |
 | ADR-0053 | A Transfer whose Price is 0 is never invoiced | accepted |
-| ADR-0054 | An extra vehicle linked to its main Transfer | proposed |
+| ADR-0054 | An extra vehicle linked to its main Transfer | accepted |

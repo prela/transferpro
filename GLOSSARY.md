@@ -9,7 +9,7 @@ A transfer company using Transferpro. The company and its Better Auth organizati
 _Avoid_: organization, firm
 
 **Transfer**:
-The booking. It names the Client, the pickup time, the start and end Locations, the passenger count, the guest name, an optional flight number, a price in EUR, the payment (`cash`, `card`, or `invoice_to_agency`), whether the pickup is an airport, the luggage count, the child-seat count, an optional note, and an optional tabla. The tabla is the words on the meet sign for this pickup. It is text on the Transfer, not on the Client. A blank is stored as empty text. There is no image. Creating a Transfer creates one Ride in `unassigned`. The airport mark is stored as entered and is not inferred from the flight number. `invoice_to_agency` is a recorded choice. The Driver sees the price and the payment method only for cash; card and invoice to agency hide both (ADR-0009, extended by ADR-0020). That phone rule is not on the office screen. The Transfer is the order: there is no separate Order above it. It has a Channel and an ExternalRef, and may carry a Client reference. In Croatian it is Transfer.
+The booking. It names the Client, the pickup time, the start and end Locations, the passenger count, the guest name, an optional flight number, a price in EUR, the payment (`cash`, `card`, or `invoice_to_agency`), whether the pickup is an airport, the luggage count, the child-seat count, an optional note, and an optional tabla. The tabla is the words on the meet sign for this pickup. It is text on the Transfer, not on the Client. A blank is stored as empty text. There is no image. Creating a Transfer creates one Ride in `unassigned`. The airport mark is stored as entered and is not inferred from the flight number. `invoice_to_agency` is a recorded choice. The Driver sees the price and the payment method only for cash; card and invoice to agency hide both (ADR-0009, extended by ADR-0020), and so does an extra vehicle (ADR-0054). That phone rule is not on the office screen. The Transfer is the order: there is no separate Order above it. It has a Channel and an ExternalRef, and may carry a Client reference. In Croatian it is Transfer.
 _Avoid_: Ride, job, order, rezervacija, narudžba
 
 **Ride**:
@@ -19,6 +19,18 @@ _Avoid_: trip, job, leg
 **Price**:
 What the Client is charged for one Transfer, in EUR, VAT included. It is never what a Partner is paid; that cost is not in v1. In Croatian it is Cijena.
 _Avoid_: cost, fare, rate
+
+**Main Transfer**:
+The Transfer that carries the Price of a group. It is invoiced once for the whole group. In Croatian it is Glavni transfer.
+_Avoid_: lead, parent, first Transfer
+
+**Extra vehicle**:
+A Transfer linked to one main Transfer when one Vehicle cannot carry the whole booking. Its Price is 0, it is never invoiced, and it keeps its own Ride, Driver, and passenger count. In Croatian it is Dodatno vozilo.
+_Avoid_: second Ride, leg, split, duplicate
+
+**Group**:
+A main Transfer and its extra vehicles. Its passenger count is the sum of theirs, leaving out a cancelled Ride. In Croatian it is Grupa.
+_Avoid_: group booking, Order
 
 **Transfer duration**:
 The minutes a Ride occupies after its pickup, or after its landing when a landing is stored. The Tenant's default is 60. It is not a No-show wait.
@@ -126,7 +138,7 @@ The language a user works in, Croatian or English. Each Tenant has a default loc
 _Avoid_: language
 
 **Work order**:
-The email sent when a Ride is assigned, when the office changes its Vehicle, when a Transfer correction changes a fact the Driver needs, when it is cleared, when it is handed to a Partner, when it is reassigned, or when it is cancelled. It uses the Tenant's default locale and time zone. A Vehicle change uses changed and still states the cash price. A Transfer correction uses changed for pickup time, a place, the flight number, the guest, a count, the airport mark, the tabla, the note, the client, or the payment method, and for the price while payment is cash. A save that changes none of those sends nothing. A landing-time change sends nothing. Assign, and the new Driver on a reassign, use assigned. Clear, a handoff, and the previous Driver on a reassign, use no longer yours and state no price. Cancel uses cancelled and states no price. A Ride with no Driver sends nothing. The office sees one result per Driver on the action: sent, no email, not sent yet and retried, or not sent because it is no longer current. The result names the Driver and not the address. The Ride stays saved when a send fails. The send is recorded in the mail outbox and tried again. The mail does not ask the Driver to accept and has no link. A cash Ride states the price on assigned and changed; card and invoice to agency do not. The audit entry stays the Ride change. It does not gain an "email sent" row.
+The email sent when a Ride is assigned, when the office changes its Vehicle, when a Transfer correction changes a fact the Driver needs, when it is cleared, when it is handed to a Partner, when it is reassigned, or when it is cancelled. It uses the Tenant's default locale and time zone. A Vehicle change uses changed and still states the cash price. A Transfer correction uses changed for pickup time, a place, the flight number, the guest, a count, the airport mark, the tabla, the note, the client, the Client reference, or the payment method, and for the price while payment is cash. A save that changes none of those sends nothing. A landing-time change sends nothing. Assign, and the new Driver on a reassign, use assigned. Clear, a handoff, and the previous Driver on a reassign, use no longer yours and state no price. Cancel uses cancelled and states no price. A Ride with no Driver sends nothing. The office sees one result per Driver on the action: sent, no email, not sent yet and retried, or not sent because it is no longer current. The result names the Driver and not the address. The Ride stays saved when a send fails. The send is recorded in the mail outbox and tried again. The mail does not ask the Driver to accept and has no link. A cash Ride states the price on assigned and changed; card, invoice to agency, and an extra vehicle do not. It states the Client reference when one is set, and marks a Ride of a group. The audit entry stays the Ride change. It does not gain an "email sent" row.
 _Avoid_: SMS, push
 
 **Failed mail**:
@@ -272,7 +284,7 @@ The way a Transfer reached the Tenant. Manual entry by the office is a channel. 
 _Avoid_: source, booking source
 
 **Client reference**:
-The number under which the Client keeps a booking, such as a voucher number. It is optional and not unique: an arrival and its return journey may share it, and two Clients may use the same number. It is how the office ties a return journey to its arrival. It is not an ExternalRef.
+The number under which the Client keeps a booking, such as a voucher number. It is optional and not unique: an arrival and its return journey may share it, and two Clients may use the same number. It is how the office ties a return journey to its arrival. An extra vehicle starts with its main Transfer's, and the Driver sees it. It is not an ExternalRef.
 _Avoid_: voucher id, external id
 
 **ExternalRef**:

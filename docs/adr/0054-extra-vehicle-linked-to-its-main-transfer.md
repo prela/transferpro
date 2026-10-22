@@ -1,8 +1,8 @@
 # An extra vehicle linked to its main Transfer
 
-Status: proposed
+Status: accepted
 
-Proposed on 22 October 2026, in the step 2 re-grill of #206 (Q6), after the reference operator's answer. Once accepted, it partially supersedes ADR-0009, ADR-0020, ADR-0026, and ADR-0051; the sentences are named below. ADR-0005 stands: every Transfer still has exactly one Ride. ADR-0053 stands and carries the billing.
+Damir accepted this on 22 October 2026, in the step 2 re-grill of #206 (Q6), after the reference operator's answer. It partially supersedes ADR-0009, ADR-0020, ADR-0026, and ADR-0051; the sentences are named below. ADR-0005 stands: every Transfer still has exactly one Ride. ADR-0053 stands and carries the billing.
 
 ## Context
 
