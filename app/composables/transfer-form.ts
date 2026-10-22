@@ -1,7 +1,7 @@
 import type { InjectionKey } from 'vue'
 import type { CapacityRefusalReason, Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
 import { z } from 'zod'
-import { applyTransferDraftEvent, calendarDateInTimeZone, capacityDialogReason, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
+import { applyTransferDraftEvent, calendarDateInTimeZone, capacityRefusalReason, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -669,7 +669,7 @@ export function useTransferForm(options: {
       await options.loadDay()
     }
     catch (error) {
-      const reason = capacityDialogReason(errorCode(error))
+      const reason = capacityRefusalReason(errorCode(error))
       if (reason) {
         refusalReason.value = reason
         refusalOpen.value = true

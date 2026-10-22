@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import {
   capacityConfirmReason,
-  capacityDialogReason,
+  capacityRefusalReason,
   parseChangeUnavailability,
   parseRecordUnavailability,
   parseUnavailabilityResourceId,
@@ -133,9 +133,9 @@ it('names which capacity refusal the confirmation passes, and nothing for any ot
 })
 
 it('opens a fully booked refusal as a dialog that confirmation does not pass', () => {
-  expect(capacityDialogReason('fully_booked')).toBe('fullyBooked')
-  expect(capacityDialogReason('ride_overlap')).toBe('overlap')
-  expect(capacityDialogReason('ride_unavailable')).toBe('unavailable')
+  expect(capacityRefusalReason('fully_booked')).toBe('fullyBooked')
+  expect(capacityRefusalReason('ride_overlap')).toBe('overlap')
+  expect(capacityRefusalReason('ride_unavailable')).toBe('unavailable')
   for (const code of ['stale_save', 'ride_not_open', '', undefined])
-    expect(capacityDialogReason(code)).toBeNull()
+    expect(capacityRefusalReason(code)).toBeNull()
 })

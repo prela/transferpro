@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CapacityRefusalReason, Driver, Vehicle } from '../../shared'
-import { assignedRideSchema, capacityDialogReason } from '../../shared'
+import { assignedRideSchema, capacityRefusalReason } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
@@ -129,7 +129,7 @@ async function submit(confirm = false) {
     emit('saved')
   }
   catch (error) {
-    const reason = capacityDialogReason(errorCode(error))
+    const reason = capacityRefusalReason(errorCode(error))
     if (reason) {
       refusalReason.value = reason
       refusalOpen.value = true

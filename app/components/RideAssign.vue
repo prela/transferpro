@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { CapacityRefusalReason, Driver, TransferDayRide, Vehicle } from '../../shared'
-import { assignedRideSchema, capacityDialogReason, judgeSchedule, RELOCATION_GAP_DEFAULT_MINUTES, rosterVehicleSuggestionSchema, tenantSettingsGetSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../shared'
+import { assignedRideSchema, capacityRefusalReason, judgeSchedule, RELOCATION_GAP_DEFAULT_MINUTES, rosterVehicleSuggestionSchema, tenantSettingsGetSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
@@ -283,7 +283,7 @@ async function assign(confirm = false) {
     emit('assigned')
   }
   catch (error) {
-    const reason = capacityDialogReason(errorCode(error))
+    const reason = capacityRefusalReason(errorCode(error))
     if (reason) {
       refusalReason.value = reason
       refusalOpen.value = true
