@@ -118,3 +118,38 @@ it('a tight relocation gap does not take the Driver or the Vehicle', () => {
     }],
   })).toBe(false)
 })
+
+it('is fully booked when the only Driver is taken and a Vehicle is still free', () => {
+  expect(judge({
+    windows: [away({ driverId })],
+    activeVehicleIds: [vehicleId, otherVehicleId],
+  })).toBe(true)
+  expect(judge({
+    occupying: [occupying({ driverId, vehicleId: otherVehicleId })],
+    activeVehicleIds: [vehicleId, otherVehicleId],
+  })).toBe(true)
+})
+
+it('is fully booked when the only Vehicle is taken and a Driver is still free', () => {
+  expect(judge({
+    windows: [away({ vehicleId })],
+    activeDriverIds: [driverId, otherDriverId],
+  })).toBe(true)
+  expect(judge({
+    occupying: [occupying({ driverId: otherDriverId, vehicleId })],
+    activeDriverIds: [driverId, otherDriverId],
+  })).toBe(true)
+})
+
+it('tells a taken Driver from a taken Vehicle in the same window', () => {
+  expect(judge({
+    windows: [away({ driverId })],
+    occupying: [occupying({ driverId: otherDriverId, vehicleId })],
+    activeVehicleIds: [vehicleId, otherVehicleId],
+  })).toBe(true)
+  expect(judge({
+    windows: [away({ vehicleId })],
+    occupying: [occupying({ driverId, vehicleId: otherVehicleId })],
+    activeDriverIds: [driverId, otherDriverId],
+  })).toBe(true)
+})
