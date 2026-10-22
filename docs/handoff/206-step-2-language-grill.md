@@ -10,7 +10,7 @@ Out of scope: code, migrations, and the Q6 record. The grill stays open until Q6
 - Q3: a Price is always what the Client is charged. A subcontractor's cost is post-v1. Step 24 reads "a price per Client", and its ADR drops Partners from ADR-0036's `price-list` sentence. `GLOSSARY.md` gains **Price**.
 - Q4: Transfer is Transfer in Croatian, and Ride is Vožnja, in `GLOSSARY.md`.
 - Q5: step 5 leaves the route. There is no BookingSource port in v1 (ADR-0035). The owner closes #227 as not planned.
-- Q7: a Transfer whose Price is 0 is never invoiced and is not listed under "Za fakturiranje". It is in ADR-0053, which supersedes ADR-0051's invoiceable sentence, and in the glossary entry for **Invoice**. It goes into the #435 spec before #439 starts.
+- Q7: a Transfer whose Price is 0 is never invoiced and is not listed under "Za fakturiranje". It is in ADR-0053, which supersedes ADR-0051's sentences on what may be invoiced and on the "Za fakturiranje" filter, and in the glossary entry for **Invoice**. It goes into the #435 spec before #439 starts.
 
 ## Open: Q6, a group in several vehicles
 

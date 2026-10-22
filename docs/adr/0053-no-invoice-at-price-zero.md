@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Damir accepted this on 22 October 2026, in the step 2 re-grill of #206 (Q7). It partially supersedes ADR-0051; the sentence is named below. The rest of ADR-0051 stands. A group carried in several Vehicles, Q6 of that grill, is still open and gets its own record.
+Damir accepted this on 22 October 2026, in the step 2 re-grill of #206 (Q7). It partially supersedes ADR-0051; the sentences are named below. The rest of ADR-0051 stands. A group carried in several Vehicles, Q6 of that grill, is still open and gets its own record.
 
 ## Context
 
@@ -14,11 +14,13 @@ The alternatives were to invoice a Price of 0 like any other, and to refuse to r
 
 ## Decision
 
-We will never invoice a Transfer whose Price is 0. It is refused like any other Transfer that may not be invoiced, and the refusal writes and sends nothing. A Price of 0 can still be recorded and corrected; correcting it above 0 before an invoice is issued makes the Transfer invoiceable.
+We will never invoice a Transfer whose Price is 0. It is refused like any other Transfer that may not be invoiced, and the refusal writes and sends nothing. It is not listed under "Za fakturiranje". A Price of 0 can still be recorded and corrected; correcting it above 0 before an invoice is issued makes the Transfer invoiceable.
 
 ### Superseded
 
 ADR-0051: "A Transfer may be invoiced when its payment is `invoice_to_agency` and its Ride is done, including a handed-off Ride the office closed as done." A Transfer may be invoiced when its payment is `invoice_to_agency`, its Ride is done, including a handed-off Ride the office closed as done, and its Price is above 0.
+
+ADR-0051: "Transfers has a quick filter "Za fakturiranje" for done Rides with `invoice_to_agency` and no invoice." The filter lists done Rides with `invoice_to_agency`, a Price above 0, and no invoice.
 
 ## Consequences
 
