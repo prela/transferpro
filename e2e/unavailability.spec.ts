@@ -94,6 +94,8 @@ test('the office marks a Driver away for whole days, sees it on the board and th
   const awayId = await driver(page, 'Ana Odsutna', '+385911110355')
   const carId = await vehicle(page, 'DU355AA')
   await vehicle(page, 'DU355BB')
+  // A free Driver keeps the confirmed assignment an unavailability. With only Ana, the window is fully booked.
+  await driver(page, 'Leo Slobodni', '+385911110356')
   const coveredRide = await recordRide(page, 'Iva Pokrivena', '12:00')
   expect((await page.request.post(`/api/rides/${coveredRide}/assign`, { data: { version: 0, driverId: awayId, vehicleId: carId } })).ok()).toBeTruthy()
   await recordRide(page, 'Nika Kasnija', '17:00')

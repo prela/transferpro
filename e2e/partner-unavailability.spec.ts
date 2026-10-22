@@ -78,6 +78,8 @@ test('the office records a Partner window, sees Nedostupan on the warning tier, 
   await useTheme(page, 'light')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
   await createdId(page, '/api/partners', { name: partnerName })
+  // A free Partner keeps the confirmed handoff an unavailability, not a full book.
+  await createdId(page, '/api/partners', { name: 'Drugi Prijevoz' })
   const covered = await recordTodayRide(page, coveredGuest, '12:00')
   const later = await recordTodayRide(page, laterGuest, '15:00')
 

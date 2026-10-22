@@ -91,6 +91,16 @@ test('a true overlap asks before it saves, and a tight gap warns without asking'
       insuranceExpiresOn: licence,
     },
   }))
+  // A free Driver keeps the confirmed overlap an overlap. With only Ana, the window is fully booked.
+  await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Leo Slobodni',
+      kind: 'own',
+      phone: '+385911110186',
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+    },
+  }))
 
   const occupied = await recordRide(page, 'Iva Zauzeto', '12:00')
   const assigned = await page.request.post(`/api/rides/${occupied}/assign`, {
@@ -159,6 +169,16 @@ test('the overlap question is in English in the dark theme', async ({ page }) =>
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
+    },
+  }))
+  // A free Driver keeps the confirmed overlap an overlap. With only Ann, the window is fully booked.
+  await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Lee Free',
+      kind: 'own',
+      phone: '+385911110186',
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
     },
   }))
   const occupied = await recordRide(page, 'Iva Clash', '12:00')
