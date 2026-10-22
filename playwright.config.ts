@@ -34,6 +34,14 @@ function e2eServerEnv(): Record<string, string> {
     env[name] = value
   }
   env.NODE_ENV = 'test'
+  // The test server always uses the fake maps adapter. The Embed URL is
+  // still omitted unless MAPS is google and an Embed key is set (ADR-0052).
+  // These are not Google keys. The fake never calls Google, and the URL it
+  // returns does not contain the key. A key from the developer env is
+  // replaced so it cannot sit in this process.
+  env.MAPS = 'google'
+  env.MAPS_API_KEY = 'e2e-places-key'
+  env.MAPS_EMBED_KEY = 'e2e-embed-key'
   env.HOST = '127.0.0.1'
   env.PORT = port
   env.BETTER_AUTH_URL = baseURL

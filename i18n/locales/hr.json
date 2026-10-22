@@ -426,6 +426,9 @@
     "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
     "saveFailed": "Lokacija nije spremljena. Pokušajte ponovno.",
     "suggestionsUnavailable": "Prijedlozi adresa nisu dostupni. Adresu i dalje možete upisati.",
+    "showMap": "Prikaži na karti",
+    "hideMap": "Sakrij kartu",
+    "mapTitle": "Karta: {name}",
     "kinds": {
       "airport": "Aerodrom",
       "hotel": "Hotel",
