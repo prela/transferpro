@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { CapacityRefusalReason, Driver, TransferDayRide, Vehicle } from '../../shared'
-import { assignedRideSchema, capacityRefusalReason, judgeSchedule, RELOCATION_GAP_DEFAULT_MINUTES, rosterVehicleSuggestionSchema, tenantSettingsGetSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../shared'
+import type { Driver, TransferDayRide, Vehicle } from '../../shared'
+import { assignedRideSchema, judgeSchedule, RELOCATION_GAP_DEFAULT_MINUTES, rosterVehicleSuggestionSchema, tenantSettingsGetSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../shared'
+import { useCapacityRefusal } from '../composables/capacity-refusal'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
@@ -46,8 +47,9 @@ const titleId = useId()
 const driverId = ref<string | undefined>()
 const vehicleId = ref<string | undefined>()
 const pending = ref(false)
-const refusalOpen = ref(false)
-const refusalReason = ref<CapacityRefusalReason>('overlap')
+const { refusalOpen, refusalReason, handleCapacityRefusal } = useCapacityRefusal({
+  onStale: () => props.onStale(),
+})
 const formErrorKey = ref<RideFailure | null>(null)
 const rosterVehicleId = ref<string | null>(null)
 
@@ -283,18 +285,9 @@ async function assign(confirm = false) {
     emit('assigned')
   }
   catch (error) {
-    const reason = capacityRefusalReason(errorCode(error))
-    if (reason) {
-      refusalReason.value = reason
-      refusalOpen.value = true
-      return
-    }
-    refusalOpen.value = false
-    if (errorCode(error) === 'stale_save') {
-      await props.onStale()
-      return
-    }
-    formErrorKey.value = failureKey(error)
+    await handleCapacityRefusal(error, () => {
+      formErrorKey.value = failureKey(error)
+    })
   }
   finally {
     pending.value = false

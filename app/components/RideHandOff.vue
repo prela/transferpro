@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { CapacityRefusalReason, Driver, Partner } from '../../shared'
-import { capacityRefusalReason, handedOffRideResultSchema } from '../../shared'
+import type { Driver, Partner } from '../../shared'
+import { handedOffRideResultSchema } from '../../shared'
+import { useCapacityRefusal } from '../composables/capacity-refusal'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 import { errorCode, httpStatus } from '../transfer-day-http'
@@ -47,8 +48,10 @@ const titleId = useId()
 const partnerId = ref<string | undefined>()
 const pending = ref(false)
 const formErrorKey = ref<HandOffFailure | null>(null)
-const refusalOpen = ref(false)
-const refusalReason = ref<CapacityRefusalReason>('unavailable')
+const { refusalOpen, refusalReason, handleCapacityRefusal } = useCapacityRefusal({
+  onStale: () => props.onStale(),
+  initialReason: 'unavailable',
+})
 
 type HandOffFailure
   = 'ride.partnerArchived'
@@ -141,18 +144,9 @@ async function save(confirm = false) {
     emit('saved')
   }
   catch (error) {
-    const reason = capacityRefusalReason(errorCode(error))
-    if (reason) {
-      refusalReason.value = reason
-      refusalOpen.value = true
-      return
-    }
-    refusalOpen.value = false
-    if (errorCode(error) === 'stale_save') {
-      await props.onStale()
-      return
-    }
-    formErrorKey.value = failureKey(error)
+    await handleCapacityRefusal(error, () => {
+      formErrorKey.value = failureKey(error)
+    })
   }
   finally {
     pending.value = false
