@@ -69,3 +69,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0051 | Invoices through the current tool in v1 | accepted; partially superseded by ADR-0053 |
 | ADR-0052 | Maps Embed from the stored place id | accepted |
 | ADR-0053 | A Transfer whose Price is 0 is never invoiced | accepted |
+| ADR-0054 | An extra vehicle linked to its main Transfer | proposed |
