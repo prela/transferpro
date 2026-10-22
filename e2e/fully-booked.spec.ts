@@ -140,7 +140,10 @@ test('the slideover warns Popunjeno and still saves, the board shows it, and the
   const correcting = page.getByRole('dialog', { name: 'Ispravi ovaj transfer' })
   await correcting.getByLabel('Ime gosta').fill(correctedGuest)
   await correcting.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
-  await expect(notices.getByText('Popunjeno')).toBeVisible()
+  // Create already left a Popunjeno toast. The correction adds the newest one.
+  const bookedTitles = notices.getByText('Popunjeno', { exact: true })
+  await expect(bookedTitles).toHaveCount(2)
+  await expect(bookedTitles.last()).toBeVisible()
   const correctedRow = page.getByRole('row').filter({ hasText: correctedGuest })
   await expect(correctedRow).toContainText('Popunjeno')
   await expect(page.getByRole('row').filter({ hasText: bookedGuest })).toHaveCount(0)

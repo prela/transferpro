@@ -225,15 +225,6 @@ function queryMatches(routeQuery: Record<string, string | string[]>): boolean {
 let syncing = false
 let syncAgain = false
 
-/**
- * Ride on the router.push that is still waiting on the office middleware.
- * Null is a waiting push with no Ride. Undefined means nothing is waiting.
- * The middleware awaits GET /api/session before the push changes the address.
- * Closing the Ride in that gap has to drop the push, or it writes `?ride=`
- * after the panel is gone (issue #348).
- */
-let inFlightRide: string | null | undefined
-
 async function syncQuery() {
   if (syncing) {
     syncAgain = true
@@ -243,18 +234,15 @@ async function syncQuery() {
   try {
     do {
       syncAgain = false
-      inFlightRide = undefined
       const query = buildQuery()
       if (queryMatches(routeQueryRecord()))
         continue
-      inFlightRide = queryText(query.ride) || null
       // Push, so Back returns the previous filters. Replace would drop them.
       await router.push({ query })
     } while (syncAgain)
   }
   finally {
     syncing = false
-    inFlightRide = undefined
   }
 }
 
@@ -340,15 +328,11 @@ onBeforeRouteUpdate((to) => {
     routeFromHistory = false
     return
   }
-  if (inFlightRide === undefined)
-    return
-  const pushedRide = inFlightRide
-  // Another navigation, not the push that is still waiting.
-  if ((queryText(to.query.ride) || null) !== pushedRide)
-    return
-  // The last intent wins. A close, or a different Ride, drops this push
-  // before it can write the address.
-  if (pushedRide !== openRideId.value)
+  const nextRide = queryText(to.query.ride) || null
+  // The middleware awaits GET /api/session before a push writes the address.
+  // Close has to drop that push, or it puts `?ride=` back and a reload opens
+  // the panel over the row actions (issue #348).
+  if (rideOwnedLocally && nextRide !== openRideId.value)
     return false
 })
 
@@ -587,8 +571,13 @@ watch(openRideId, (id, previous) => {
   const url = new URL(window.location.href)
   url.searchParams.delete('ride')
   const next = `${url.pathname}${url.search}${url.hash}`
-  if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== next)
-    history.replaceState(history.state, '', next)
+  if (`${window.location.pathname}${window.location.search}${window.location.hash}` === next)
+    return
+  // A later push writes history.state.current before its own address.
+  // Leaving the closed Ride there puts `?ride=` back under the list.
+  const state = history.state
+  const carried = state && typeof state === 'object' ? { ...state, current: next } : state
+  history.replaceState(carried, '', next)
 })
 
 onMounted(() => {

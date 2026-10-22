@@ -136,10 +136,15 @@ test('a typed Client reference survives save, correction, and reload', async ({ 
   await expect(page).toHaveURL(/[?&]ride=/)
   await expect(page.getByRole('article').getByRole('heading', { name: 'Ana Referenca' })).toBeVisible()
   await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
+  // The row action sits under this panel. Reload only once the panel is gone,
+  // or a late `?ride=` opens it again and the click never lands.
+  const detail = page.locator('#ride-detail')
+  await expect(detail).toBeHidden()
   await expect(page).not.toHaveURL(/[?&]ride=/)
 
   await page.reload()
   await hydrated(page)
+  await expect(detail).toBeHidden()
   await page.getByRole('button', { name: 'Radnje: Ana Referenca' }).click()
   await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()
   const correcting = page.getByRole('dialog')
@@ -147,11 +152,13 @@ test('a typed Client reference survives save, correction, and reload', async ({ 
   await correcting.getByLabel('Referenca naručitelja').fill('V-20')
   await correcting.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
   await expect(correcting).toBeHidden()
-  // The correction closes the panel. Reload only once that address has settled.
+  // The correction closes the panel. The row action is under it until it is gone.
+  await expect(detail).toBeHidden()
   await expect(page).not.toHaveURL(/[?&]ride=/)
 
   await page.reload()
   await hydrated(page)
+  await expect(detail).toBeHidden()
   await page.getByRole('button', { name: 'Radnje: Ana Referenca' }).click()
   await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()
   await expect(page.getByRole('dialog').getByLabel('Referenca naručitelja')).toHaveValue('V-20')
