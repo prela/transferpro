@@ -208,13 +208,14 @@ export function capacityConfirmReason(code: string | undefined): CapacityConfirm
 }
 
 /**
- * Which capacity refusal the dialog names. `fullyBooked` is not in
+ * Which capacity refusal the dialog names, including Popunjeno, which
+ * cannot be confirmed. `fullyBooked` is not in
  * {@link CapacityConfirmReason}: the dialog offers no confirmation, and
  * `confirm` does not pass 409 `fully_booked` (ADR-0034).
  */
-export type CapacityDialogReason = CapacityConfirmReason | 'fullyBooked'
+export type CapacityRefusalReason = CapacityConfirmReason | 'fullyBooked'
 
-export function capacityDialogReason(code: string | undefined): CapacityDialogReason | null {
+export function capacityDialogReason(code: string | undefined): CapacityRefusalReason | null {
   const confirmable = capacityConfirmReason(code)
   if (confirmable)
     return confirmable

@@ -33,33 +33,33 @@ export interface FullyBookedFacts {
 export function windowIsFullyBooked(facts: FullyBookedFacts): boolean {
   if (facts.chosen && pairFree(facts.chosen.driverId, facts.chosen.vehicleId, facts))
     return false
-  const driverFree = facts.activeDriverIds.some(driverId => !driverTaken(driverId, facts))
-  const vehicleFree = facts.activeVehicleIds.some(vehicleId => !vehicleTaken(vehicleId, facts))
+  const driverFree = facts.activeDriverIds.some(driverId => !taken(driverId, 'driverId', facts))
+  const vehicleFree = facts.activeVehicleIds.some(vehicleId => !taken(vehicleId, 'vehicleId', facts))
   if (driverFree && vehicleFree)
     return false
   return !facts.activePartnerIds.some(partnerId => !partnerCovered(partnerId, facts))
 }
 
 function pairFree(driverId: string, vehicleId: string, facts: FullyBookedFacts): boolean {
-  return !driverTaken(driverId, facts) && !vehicleTaken(vehicleId, facts)
+  return !taken(driverId, 'driverId', facts) && !taken(vehicleId, 'vehicleId', facts)
 }
 
-function driverTaken(driverId: string, facts: FullyBookedFacts): boolean {
-  if (facts.windows.some(window => window.driverId === driverId && coversSpan(window, facts.from, facts.to)))
+/**
+ * Whether this Driver or this Vehicle is taken for the window. The id
+ * field chooses which one. A window that covers the span takes them, and
+ * so does an occupying Ride that truly overlaps. The Ride being changed
+ * occupies nothing. A tight relocation gap does not take them.
+ */
+function taken(
+  id: string,
+  field: 'driverId' | 'vehicleId',
+  facts: FullyBookedFacts,
+): boolean {
+  if (facts.windows.some(window => window[field] === id && coversSpan(window, facts.from, facts.to)))
     return true
   return facts.occupying.some(ride =>
     ride.rideId !== facts.leaveOutRideId
-    && ride.driverId === driverId
-    && windowsOverlap(facts.from, facts.to, ride, facts.durationMinutes),
-  )
-}
-
-function vehicleTaken(vehicleId: string, facts: FullyBookedFacts): boolean {
-  if (facts.windows.some(window => window.vehicleId === vehicleId && coversSpan(window, facts.from, facts.to)))
-    return true
-  return facts.occupying.some(ride =>
-    ride.rideId !== facts.leaveOutRideId
-    && ride.vehicleId === vehicleId
+    && ride[field] === id
     && windowsOverlap(facts.from, facts.to, ride, facts.durationMinutes),
   )
 }

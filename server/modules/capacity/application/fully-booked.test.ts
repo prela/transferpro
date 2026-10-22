@@ -140,6 +140,71 @@ it('names an unassigned Ride on the board when nothing is free, and drops it whe
   })).resolves.toEqual(new Set())
 })
 
+it('reads the fleet, the occupation, and the windows once across the board', async () => {
+  const laterId = 'e3e3e3e3-4444-4444-8444-444444444444'
+  const { ports, asked } = fakeCapacityPorts()
+  const active = fleet({
+    driverIds: [driverId],
+    vehicleIds: [vehicleId],
+    partnerIds: [partnerId],
+  })
+  await readBoardFullyBooked(ports, active, 'dispatcher', {
+    rides: [
+      { rideId: laterId, pickupAt: at(14), landingAt: null },
+      { rideId, pickupAt: at(10), landingAt: null },
+    ],
+    durationMinutes: 60,
+  })
+  expect(active.calls).toBe(3)
+  expect(asked.ridesDuring).toEqual([{
+    of: 'tenant',
+    from: at(9),
+    to: at(15),
+  }])
+  expect(asked.windows).toEqual([{
+    driverIds: [driverId],
+    vehicleIds: [vehicleId],
+    partnerIds: [partnerId],
+    from: at(10),
+    to: at(15),
+  }])
+})
+
+it('does not read occupation when no pair is possible', async () => {
+  const window = {
+    id: 'd1d1d1d1-1111-4111-8111-111111111111',
+    driverId: null,
+    vehicleId: null,
+    partnerId,
+    startsAt: at(8),
+    endsAt: at(12),
+  }
+  const { ports, asked } = fakeCapacityPorts([], undefined, [window])
+  await expect(judgePartnerCapacity(ports, {
+    rideId,
+    partnerId,
+    pickupAt: at(10),
+    landingAt: null,
+  }, fleet({ partnerIds: [partnerId] }))).resolves.toMatchObject({ fullyBooked: true })
+  expect(asked.ridesDuring).toEqual([])
+  expect(asked.windows).toEqual([
+    {
+      driverIds: [],
+      vehicleIds: [],
+      partnerIds: [partnerId],
+      from: at(10),
+      to: at(11),
+    },
+    {
+      driverIds: [],
+      vehicleIds: [],
+      partnerIds: [partnerId],
+      from: at(10),
+      to: at(11),
+    },
+  ])
+})
+
 it('refuses the board read to a driver before any fleet read', async () => {
   const active = fleet({ driverIds: [driverId], vehicleIds: [vehicleId] })
   await expect(readBoardFullyBooked(fakeCapacityPorts().ports, active, 'driver', {

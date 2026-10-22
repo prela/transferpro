@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CapacityDialogReason } from '../../shared'
+import type { CapacityRefusalReason } from '../../shared'
 
 /**
  * One dialog for the capacity refusals (ADR-0034). Overlap and
@@ -10,7 +10,7 @@ import type { CapacityDialogReason } from '../../shared'
  */
 const props = withDefaults(defineProps<{
   pending: boolean
-  reason?: CapacityDialogReason
+  reason?: CapacityRefusalReason
 }>(), { reason: 'overlap' })
 
 const emit = defineEmits<{
