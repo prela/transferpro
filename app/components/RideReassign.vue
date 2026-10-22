@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CapacityDialogReason, Driver, Vehicle } from '../../shared'
+import type { CapacityRefusalReason, Driver, Vehicle } from '../../shared'
 import { assignedRideSchema, capacityDialogReason, rosterVehicleSuggestionSchema } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
@@ -35,8 +35,8 @@ const titleId = useId()
 const nextDriverId = ref<string | undefined>()
 const vehicleId = ref<string | undefined>()
 const pending = ref(false)
-const overlapOpen = ref(false)
-const confirmReason = ref<CapacityDialogReason>('overlap')
+const refusalOpen = ref(false)
+const refusalReason = ref<CapacityRefusalReason>('overlap')
 const formErrorKey = ref<RideFailure | null>(null)
 const rosterVehicleId = ref<string | null>(null)
 
@@ -180,7 +180,7 @@ async function submit(confirm = false) {
         ...(confirm ? { confirm: true } : {}),
       },
     }))
-    overlapOpen.value = false
+    refusalOpen.value = false
     notifyAuditChanged()
     if (saved.relocationWarnings.length > 0) {
       toast.add({
@@ -199,11 +199,11 @@ async function submit(confirm = false) {
   catch (error) {
     const reason = capacityDialogReason(errorCode(error))
     if (reason) {
-      confirmReason.value = reason
-      overlapOpen.value = true
+      refusalReason.value = reason
+      refusalOpen.value = true
       return
     }
-    overlapOpen.value = false
+    refusalOpen.value = false
     if (errorCode(error) === 'stale_save') {
       await props.onStale()
       return
@@ -304,9 +304,9 @@ async function submit(confirm = false) {
     </div>
   </form>
   <RideOverlapDialog
-    v-model:open="overlapOpen"
+    v-model:open="refusalOpen"
     :pending="pending"
-    :reason="confirmReason"
+    :reason="refusalReason"
     @confirm="submit(true)"
   />
 </template>

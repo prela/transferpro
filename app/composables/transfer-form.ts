@@ -1,5 +1,5 @@
 import type { InjectionKey } from 'vue'
-import type { CapacityDialogReason, Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
+import type { CapacityRefusalReason, Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
 import { z } from 'zod'
 import { applyTransferDraftEvent, calendarDateInTimeZone, capacityDialogReason, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
@@ -97,9 +97,9 @@ export function useTransferForm(options: {
 
   const pending = ref(false)
   const placePending = ref(false)
-  // A true overlap or an unavailability window keeps the slideover. Confirm re-sends the same booking.
-  const overlapOpen = ref(false)
-  const confirmReason = ref<CapacityDialogReason>('overlap')
+  // A capacity refusal keeps the slideover. Confirm re-sends an overlap or an unavailability. Popunjeno does not.
+  const refusalOpen = ref(false)
+  const refusalReason = ref<CapacityRefusalReason>('overlap')
   /**
    * Add and correct share one slideover. Null is closed.
    * `edit` patches the Transfer in `editingTransferId`.
@@ -459,7 +459,7 @@ export function useTransferForm(options: {
     placeTarget.value = null
     clientTarget.value = false
     formErrorKey.value = null
-    overlapOpen.value = false
+    refusalOpen.value = false
     restored.value = false
     alreadySaved.value = false
     heldCreate = null
@@ -530,7 +530,7 @@ export function useTransferForm(options: {
   function openPrefill(fields: TransferPrefill, opening: 'duplicate' | 'return') {
     clearFieldErrors()
     formErrorKey.value = null
-    overlapOpen.value = false
+    refusalOpen.value = false
     alreadySaved.value = false
     heldCreate = null
     ignoreDraft = true
@@ -582,7 +582,7 @@ export function useTransferForm(options: {
   function openCorrect(ride: TransferDayRide) {
     clearFieldErrors()
     formErrorKey.value = null
-    overlapOpen.value = false
+    refusalOpen.value = false
     editingTransferId.value = ride.transferId
     editingRideId.value = ride.rideId
     editingVersion.value = ride.version
@@ -650,7 +650,7 @@ export function useTransferForm(options: {
           ...(confirm ? { confirm: true } : {}),
         },
       }))
-      overlapOpen.value = false
+      refusalOpen.value = false
       options.corrected.value = true
       notifyAuditChanged()
       warnIfFullyBooked(correction.fullyBooked)
@@ -671,11 +671,11 @@ export function useTransferForm(options: {
     catch (error) {
       const reason = capacityDialogReason(errorCode(error))
       if (reason) {
-        confirmReason.value = reason
-        overlapOpen.value = true
+        refusalReason.value = reason
+        refusalOpen.value = true
         return
       }
-      overlapOpen.value = false
+      refusalOpen.value = false
       // A correction hands the refusal to the detail. Without that handler the form shows the error.
       if (errorCode(error) === 'stale_save' && options.onStale) {
         await options.onStale()
@@ -821,8 +821,8 @@ export function useTransferForm(options: {
     pending,
     placePending,
     alreadySaved,
-    overlapOpen,
-    confirmReason,
+    refusalOpen,
+    refusalReason,
     formMode,
     formErrorKey,
     guestErrorKey,

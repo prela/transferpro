@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CapacityDialogReason, Driver, Partner } from '../../shared'
+import type { CapacityRefusalReason, Driver, Partner } from '../../shared'
 import { capacityDialogReason, handedOffRideResultSchema } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
@@ -47,8 +47,8 @@ const titleId = useId()
 const partnerId = ref<string | undefined>()
 const pending = ref(false)
 const formErrorKey = ref<HandOffFailure | null>(null)
-const confirmOpen = ref(false)
-const confirmReason = ref<CapacityDialogReason>('unavailable')
+const refusalOpen = ref(false)
+const refusalReason = ref<CapacityRefusalReason>('unavailable')
 
 type HandOffFailure
   = 'ride.partnerArchived'
@@ -126,7 +126,7 @@ async function save(confirm = false) {
         ...(confirm ? { confirm: true } : {}),
       },
     }))
-    confirmOpen.value = false
+    refusalOpen.value = false
     notifyAuditChanged()
     const title = t(props.mode === 'handOff' ? 'ride.handedOff' : 'ride.partnerChanged')
     const notice = saved.workOrders[0]
@@ -143,11 +143,11 @@ async function save(confirm = false) {
   catch (error) {
     const reason = capacityDialogReason(errorCode(error))
     if (reason) {
-      confirmReason.value = reason
-      confirmOpen.value = true
+      refusalReason.value = reason
+      refusalOpen.value = true
       return
     }
-    confirmOpen.value = false
+    refusalOpen.value = false
     if (errorCode(error) === 'stale_save') {
       await props.onStale()
       return
@@ -261,9 +261,9 @@ async function save(confirm = false) {
     </div>
   </form>
   <RideOverlapDialog
-    v-model:open="confirmOpen"
+    v-model:open="refusalOpen"
     :pending="pending"
-    :reason="confirmReason"
+    :reason="refusalReason"
     @confirm="save(true)"
   />
 </template>
