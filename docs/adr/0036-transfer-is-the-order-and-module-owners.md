@@ -1,6 +1,6 @@
 # The Transfer is the order, and who owns the v1 modules
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0051
 
 Damir accepted this on 14 October 2026. It extends ADR-0018 and supersedes none of its sentences. It does not reopen the decisions that #206 lists as locked.
 

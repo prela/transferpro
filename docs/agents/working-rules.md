@@ -27,7 +27,7 @@ Rationale is ADR-0014. Working rules:
 
 - Append with `appendAuditEntry` from `server/modules/audit` on the action's own transaction, after its writes and before commit. That transaction needs a tenant session; on the auth pool, open `openTenantSession` on the same client, as `member-management.ts` does.
 - A new action needs four things: a value in `auditActions` with a strict data shape (`shared/audit-entry.ts`), a matching branch in the `audit_entry_shape` check (`db/audit-entry.ts`), a migration that adds the enum value and replaces the check, and `audit.actions.*` copy in both locales. Without the branch, the table refuses the action's rows.
-- Entry data holds ids, roles, and, for a settings change, the from/to values (ADR-0015). It does not hold invitation ids. Display names come from `app.tenant_member` when the log is read.
+- Entry data holds ids, roles, and, for a Tenant settings change, the from/to values (ADR-0015). An invoicing settings change holds the field names only (ADR-0051). It does not hold invitation ids. Display names come from `app.tenant_member` when the log is read.
 - The invite entry comes from the `auth.invitation` insert trigger, so invite code appends nothing.
 - ADR-0014 amends ADR-0011: besides Better Auth's tables, the auth role may use schema `audit` and execute `audit.append_entry`, and nothing else outside `auth`.
 
