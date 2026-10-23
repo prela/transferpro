@@ -3349,6 +3349,78 @@ it('a failure while cancelling one member leaves the group, the audit log, and t
   }
 })
 
+it('an extra vehicle whose cancel writes nothing rolls the whole group back', async () => {
+  const world = await office('hasg-cancel-group-miss')
+  const pickup = new Date(Date.now() + 43 * 60 * 60 * 1000).toISOString()
+  const main = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    guestName: 'Gost Propust',
+    price: 42.5,
+  })
+  const extra = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    price: 0,
+    guestName: 'Gost Prazan',
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 12,
+    mainVersion: 0,
+  })
+  const rideIds = [main.ride.id, extra.ride.id]
+  const transferIds = [main.transfer.id, extra.transfer.id]
+  const beforeRides = await ownerPool.query(
+    `select id, state, driver_id, vehicle_id, must_accept, partner_id
+     from app.rides where id = any($1::uuid[]) order by id`,
+    [rideIds],
+  )
+  const beforeTransfers = await transferRows(transferIds)
+  const beforeAudits = await cancelAudits(world.tenantId)
+  const beforeMail = await outboxRows(world.tenantId)
+  // The main Ride's cancel closes the extra vehicle first, so the extra's
+  // own update matches nothing. Committing would leave the main cancelled.
+  const trigger = 'rides_group_cancel_extra_miss'
+  const fn = 'group_cancel_extra_already_closed'
+  await ownerPool.query(`drop trigger if exists ${trigger} on app.rides`)
+  await ownerPool.query(`drop function if exists app.${fn}()`)
+  await ownerPool.query(`
+    create function app.${fn}()
+    returns trigger
+    language plpgsql
+    as $fn$
+    begin
+      if new.id = '${main.ride.id}'::uuid
+         and new.state = 'cancelled'
+         and old.state is distinct from 'cancelled' then
+        update app.rides
+        set state = 'cancelled', partner_id = null
+        where id = '${extra.ride.id}'::uuid;
+      end if;
+      return new;
+    end;
+    $fn$
+  `)
+  await ownerPool.query(`create trigger ${trigger} before update on app.rides
+    for each row execute function app.${fn}()`)
+  try {
+    const response = await call('POST', `/api/rides/${main.ride.id}/cancel`, world.dispatcher, {})
+    const text = await response.text()
+    expect(response.status).toBe(409)
+    expect(text).not.toContain('Gost Propust')
+    expect(text).not.toContain('Gost Prazan')
+    expect(await ownerPool.query(
+      `select id, state, driver_id, vehicle_id, must_accept, partner_id
+       from app.rides where id = any($1::uuid[]) order by id`,
+      [rideIds],
+    )).toMatchObject({ rows: beforeRides.rows })
+    expect(await transferRows(transferIds)).toEqual(beforeTransfers)
+    expect(await cancelAudits(world.tenantId)).toEqual(beforeAudits)
+    expect(await outboxRows(world.tenantId)).toEqual(beforeMail)
+  }
+  finally {
+    await ownerPool.query(`drop trigger if exists ${trigger} on app.rides`)
+    await ownerPool.query(`drop function if exists app.${fn}()`)
+  }
+})
+
 it('cancelling an extra vehicle leaves the main Transfer, its group count, and its price', async () => {
   const world = await office('hasg-cancel-extra')
   const pickup = new Date(Date.now() + 44 * 60 * 60 * 1000).toISOString()

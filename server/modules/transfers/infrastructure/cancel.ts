@@ -94,8 +94,9 @@ function parseCancel(rideId: unknown, body: unknown): string {
  * Transfer id, and cancelled in the same transaction. A finished extra
  * vehicle is not locked. An extra vehicle cancelled on its own does not
  * lock or change the main Transfer. A refusal of the named Ride happens
- * before any extra vehicle is locked. An extra vehicle is not a reason
- * to refuse. No version changes (ADR-0046, ADR-0054).
+ * before any extra vehicle is locked. An extra vehicle that cannot be
+ * written fails the command, so a half-cancelled group is never committed.
+ * No version changes (ADR-0046, ADR-0054).
  */
 export async function cancelRideForOffice(
   transaction: TenantTransaction,
@@ -119,13 +120,13 @@ export async function cancelRideForOffice(
 
   const cancelled = [named]
   for (const extra of extras) {
-    // Finished between the lock and the write, or already inconsistent.
-    // The group cancel does not refuse for an extra vehicle.
+    // A skip would commit the main Transfer and leave the group half cancelled.
     if (!canCancelRide(extra.state) || (extra.state === 'handed_off' && extra.partnerId === null))
-      continue
+      throw new RideNotCancellableError()
     const written = await cancelLocked(transaction, actorUserId, extra)
-    if (written)
-      cancelled.push(written)
+    if (!written)
+      throw new RideNotCancellableError()
+    cancelled.push(written)
   }
   return cancelled
 }

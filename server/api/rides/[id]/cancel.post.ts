@@ -10,7 +10,8 @@ import { rideHttpError } from '../http'
  * session opens. No session is 401. A driver, or any other role, is 403 and
  * the Ride is unchanged. A missing Ride, including another Tenant's, is 404.
  * `done`, `no-show`, and a second cancel are 409 `ride_not_cancellable`.
- * Nothing is written on a refusal. The audit entry names the member who
+ * An extra vehicle that cannot be written is the same 409, and the group
+ * is unchanged. Nothing is written on a refusal. The audit entry names the member who
  * cancelled and the field name state. An unassigned Ride stores a null
  * Driver id. A name, a plate, a phone, or a guest is not stored.
  * The current Driver is mailed cancelled after the Ride is saved. A Ride

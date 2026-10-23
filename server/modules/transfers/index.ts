@@ -14,7 +14,8 @@
  * The office may cancel from `unassigned`, `assigned`, `accepted`, or
  * `handed_off`. Cancelling a main Transfer also cancels every unfinished
  * extra vehicle in that same transaction, each with its own audit entry
- * and its own Driver's cancelled work order. A handed-off Ride has no
+ * and its own Driver's cancelled work order. An extra vehicle that
+ * cannot be written fails the command. A handed-off Ride has no
  * Driver and sends nothing. An extra vehicle cancelled on its own leaves
  * the main Transfer. No member's version changes. A Ride with no Driver
  * sends nothing.
