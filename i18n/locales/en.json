@@ -528,6 +528,8 @@
     "add": "Record a transfer",
     "duplicate": "Duplicate",
     "returnJourney": "Return journey",
+    "extraVehicle": "Extra vehicle",
+    "groupPassengers": "Passengers ordered (group)",
     "printDay": "Print the day",
     "exportCsv": "Export CSV",
     "exportTitle": "Export CSV",

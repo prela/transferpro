@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DisplayLocale, LiveRefreshOutcome, TransferBoardFilter, TransferDayRide, TransferPrefill } from '../../shared'
 import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
-import { classifyRideAttention, clockLabel, duplicateTransferPrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
+import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
 import { rideDetailLayout } from '../ride-detail'
@@ -75,11 +75,16 @@ const commands = ref<{
 const form = ref<{
   openAdd: () => void
   openCorrect: (ride: TransferDayRide) => void
-  openPrefill: (fields: TransferPrefill, opening: 'duplicate' | 'return') => void
+  openPrefill: (
+    fields: TransferPrefill,
+    opening: 'duplicate' | 'return' | 'extra',
+    link?: { mainTransferId: string, mainVersion: number, groupPassengers: string | null },
+  ) => void
   formMode: 'add' | 'edit' | null
   formOpen: boolean
   formTitle: string
   pending: boolean
+  mainTransferId: string | null
 } | null>(null)
 
 let catalogsReady = false
@@ -389,6 +394,62 @@ function startPrefill(ride: TransferDayRide, kind: 'duplicate' | 'return') {
   adding.value = true
   void nextTick(() => {
     form.value?.openPrefill(fields, kind)
+  })
+}
+
+/**
+ * The main Transfer this extra vehicle would copy, after the day reloads.
+ * Same-day mains are the row. A main on another day is the join on the
+ * extra vehicle that is still on this day.
+ */
+function lookupExtraMain() {
+  const id = form.value?.mainTransferId
+  if (!id)
+    return null
+  const own = rides.value.find(ride => ride.transferId === id && ride.mainTransferId === null)
+  if (own) {
+    return {
+      version: own.version,
+      groupPassengerCountStored: own.groupPassengerCountStored,
+      changedByName: own.changedByName,
+      changedAt: own.changedAt,
+    }
+  }
+  for (const ride of rides.value) {
+    const main = ride.linkedMain
+    if (main?.transferId === id) {
+      return {
+        version: main.version,
+        groupPassengerCountStored: main.groupPassengerCountStored,
+        changedByName: main.changedByName,
+        changedAt: main.changedAt,
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * An extra vehicle starts from the main Transfer. From an extra vehicle
+ * the main may be on another day, so the row carries that booking.
+ */
+function startExtra(ride: TransferDayRide) {
+  const main = ride.mainTransferId === null ? ride : ride.linkedMain
+  if (!main)
+    return
+  const stored = ride.mainTransferId === null ? ride.groupPassengerCountStored : main.groupPassengerCountStored
+  const version = ride.mainTransferId === null ? ride.version : main.version
+  const passengers = ride.mainTransferId === null ? ride.passengerCount : main.passengerCount
+  const mainTransferId = ride.mainTransferId === null ? ride.transferId : main.transferId
+  openRideId.value = null
+  command.value = null
+  adding.value = true
+  void nextTick(() => {
+    form.value?.openPrefill(extraVehiclePrefill(main, props.timeZone), 'extra', {
+      mainTransferId,
+      mainVersion: version,
+      groupPassengers: extraVehicleGroupPassengers(stored, passengers),
+    })
   })
 }
 
@@ -769,6 +830,7 @@ onUnmounted(() => {
           @correct="showRide($event, 'correct')"
           @duplicate="startPrefill($event, 'duplicate')"
           @return-journey="startPrefill($event, 'return')"
+          @extra-vehicle="startExtra($event)"
           @add="startAdd()"
         />
       </div>
@@ -797,6 +859,7 @@ onUnmounted(() => {
               :user-id="userId"
               :drivers="drivers"
               :load-day="async () => { await loadDay() }"
+              :lookup-main="lookupExtraMain"
               @recorded="onRecorded"
               @close="adding = false"
             />
@@ -835,6 +898,7 @@ onUnmounted(() => {
               @take-back="commands?.openTakeBack(openRide)"
               @duplicate="openRide && startPrefill(openRide, 'duplicate')"
               @return-journey="openRide && startPrefill(openRide, 'return')"
+              @extra-vehicle="openRide && startExtra(openRide)"
               @saved="onCommandSaved"
             />
           </div>
@@ -845,7 +909,7 @@ onUnmounted(() => {
     <USlideover
       v-if="layoutReady && layout !== 'beside' && (openRide || adding)"
       :open="true"
-      :title="adding ? t('transfers.add') : (command === 'correct' ? t('transfers.correctTitle') : openRide?.guestName)"
+      :title="adding ? (form?.formTitle || t('transfers.add')) : (command === 'correct' ? t('transfers.correctTitle') : openRide?.guestName)"
       :dismissible="adding && !form?.pending"
       :overlay="false"
       :modal="layout === 'phone'"
@@ -874,6 +938,7 @@ onUnmounted(() => {
           :user-id="userId"
           :drivers="drivers"
           :load-day="async () => { await loadDay() }"
+          :lookup-main="lookupExtraMain"
           @recorded="onRecorded"
           @close="adding = false"
         />
@@ -912,6 +977,7 @@ onUnmounted(() => {
           @cancel-ride="commands?.openCancelRide(openRide)"
           @duplicate="openRide && startPrefill(openRide, 'duplicate')"
           @return-journey="openRide && startPrefill(openRide, 'return')"
+          @extra-vehicle="openRide && startExtra(openRide)"
           @saved="onCommandSaved"
         />
       </template>

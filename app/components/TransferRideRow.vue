@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, DisplayLocale, Driver, Location, Partner, RideAttentionItem, TransferDayRide, Vehicle } from '../../shared'
-import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, clockLabel, formatInstant, locationLabel, pickupNeedsCalendarDate, rideStateMark } from '../../shared'
+import { canAddExtraVehicle, canCorrectTransfer, canRecordLandingTime, classifyRideAttention, clockLabel, formatInstant, locationLabel, pickupNeedsCalendarDate, rideStateMark } from '../../shared'
 import { driverDisplayName } from '../transfer-day-labels'
 import { canCallOff, canChangeAssignment, canChangePartner, canHandOff, canNoShow, canTakeBack } from '../transfer-ride-guards'
 
@@ -36,6 +36,7 @@ const emit = defineEmits<{
   correct: [ride: TransferDayRide]
   duplicate: [ride: TransferDayRide]
   returnJourney: [ride: TransferDayRide]
+  extraVehicle: [ride: TransferDayRide]
   open: [ride: TransferDayRide]
 }>()
 
@@ -164,9 +165,16 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     items.push({ label: t('ride.changePartner'), icon: 'i-lucide-handshake', onSelect: () => emit('changePartner', ride) })
   if (canTakeBack(ride))
     items.push({ label: t('ride.takeBack'), icon: 'i-lucide-corner-up-left', onSelect: () => emit('takeBack', ride) })
+  // Adds a linked Transfer. The main Ride has to still be correctable.
+  // On an extra vehicle this names that vehicle's main Transfer.
+  if (canAddExtraVehicle(ride))
+    items.push({ label: t('transfers.extraVehicle'), icon: 'i-lucide-car-front', onSelect: () => emit('extraVehicle', ride) })
   // Both only open a new form. They stay available after the Ride is closed.
-  items.push({ label: t('transfers.duplicate'), icon: 'i-lucide-copy', onSelect: () => emit('duplicate', ride) })
-  items.push({ label: t('transfers.returnJourney'), icon: 'i-lucide-undo-2', onSelect: () => emit('returnJourney', ride) })
+  // An extra vehicle does not offer them: a Price of 0 must keep its link.
+  if (ride.mainTransferId === null) {
+    items.push({ label: t('transfers.duplicate'), icon: 'i-lucide-copy', onSelect: () => emit('duplicate', ride) })
+    items.push({ label: t('transfers.returnJourney'), icon: 'i-lucide-undo-2', onSelect: () => emit('returnJourney', ride) })
+  }
   return [items]
 })
 </script>

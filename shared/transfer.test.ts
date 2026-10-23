@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, officeGroupPassengerCount, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
+import { canAddExtraVehicle, canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, officeGroupPassengerCount, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -110,6 +110,26 @@ it('accepts an extra vehicle at price 0 and refuses a group count on an ordinary
   expect(() => parseCorrectTransfer({ ...body, version: 0, mainTransferId }, now)).toThrow(TransferInputError)
   expect(() => parseCorrectTransfer({ ...body, version: 0, groupPassengerCount: 0 }, now)).toThrow(TransferInputError)
   expect(() => parseCorrectTransfer({ ...body, version: 0, groupPassengerCount: null }, now)).toThrow(TransferInputError)
+})
+
+it('offers an extra vehicle only while the main Transfer is still correctable', () => {
+  expect(canAddExtraVehicle({ state: 'unassigned', mainTransferId: null, linkedMain: null })).toBe(true)
+  expect(canAddExtraVehicle({ state: 'handed_off', mainTransferId: null, linkedMain: null })).toBe(true)
+  expect(canAddExtraVehicle({ state: 'done', mainTransferId: null, linkedMain: null })).toBe(false)
+  expect(canAddExtraVehicle({ state: 'cancelled', mainTransferId: null, linkedMain: null })).toBe(false)
+  // The extra vehicle's own state does not decide. A finished extra still
+  // adds to a main Transfer that is open. A closed main does not.
+  expect(canAddExtraVehicle({
+    state: 'done',
+    mainTransferId,
+    linkedMain: { state: 'assigned' },
+  })).toBe(true)
+  expect(canAddExtraVehicle({
+    state: 'unassigned',
+    mainTransferId,
+    linkedMain: { state: 'cancelled' },
+  })).toBe(false)
+  expect(canAddExtraVehicle({ state: 'unassigned', mainTransferId, linkedMain: null })).toBe(false)
 })
 
 it('reads the stored group count for a main Transfer and none for an extra vehicle', () => {

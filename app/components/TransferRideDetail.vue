@@ -2,7 +2,7 @@
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, OfficeLocation, Partner, PartnerOfficeContact, TransferDayRide, Vehicle } from '../../shared'
 import type { RideDetailCommand } from '../ride-detail'
-import { canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel, rideDetailEmbedUrls, rideDetailMapOpen } from '../../shared'
+import { canAddExtraVehicle, canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel, rideDetailEmbedUrls, rideDetailMapOpen } from '../../shared'
 import { useKeptWorkOrders } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, rideFormStamp } from '../ride-detail'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -48,6 +48,7 @@ const emit = defineEmits<{
   takeBack: []
   duplicate: []
   returnJourney: []
+  extraVehicle: []
   saved: []
 }>()
 const day = defineModel<string>('day', { required: true })
@@ -287,9 +288,15 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     items.push({ label: t('ride.takeBack'), icon: 'i-lucide-corner-up-left', onSelect: () => emit('takeBack') })
   if (primary.value === null && canFinish(ride))
     items.push({ label: t('ride.markDone'), onSelect: () => emit('done') })
+  // Adds a linked Transfer. On an extra vehicle this names its main Transfer.
+  if (canAddExtraVehicle(ride))
+    items.push({ label: t('transfers.extraVehicle'), icon: 'i-lucide-car-front', onSelect: () => emit('extraVehicle') })
   // Both only open a new form. They stay available after the Ride is closed.
-  items.push({ label: t('transfers.duplicate'), icon: 'i-lucide-copy', onSelect: () => emit('duplicate') })
-  items.push({ label: t('transfers.returnJourney'), icon: 'i-lucide-undo-2', onSelect: () => emit('returnJourney') })
+  // An extra vehicle does not offer them: a Price of 0 must keep its link.
+  if (ride.mainTransferId === null) {
+    items.push({ label: t('transfers.duplicate'), icon: 'i-lucide-copy', onSelect: () => emit('duplicate') })
+    items.push({ label: t('transfers.returnJourney'), icon: 'i-lucide-undo-2', onSelect: () => emit('returnJourney') })
+  }
   return [items]
 })
 

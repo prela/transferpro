@@ -116,21 +116,48 @@ it('stores the booking the form shows and nothing that would identify an email',
 
 const ENTRY_KEY = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
-it('creates an entry key for a blank form, a duplicate, and a return journey, and none for a correction', () => {
+it('creates an entry key for a blank form, a duplicate, a return journey, and an extra vehicle, and none for a correction', () => {
   const issued = [
     '11111111-1111-4111-8111-111111111111',
     '22222222-2222-4222-8222-222222222222',
     '33333333-3333-4333-8333-333333333333',
+    '44444444-4444-4444-8444-444444444444',
   ]
   let next = 0
   const random = () => issued[next++]!
 
   // ADR-0035: each new entry gets its own key. A correction refuses one.
+  // An extra vehicle is a new Transfer, so it gets a key of its own.
   expect(transferEntryKey('blank', random)).toBe(issued[0])
   expect(transferEntryKey('duplicate', random)).toBe(issued[1])
   expect(transferEntryKey('return', random)).toBe(issued[2])
+  expect(transferEntryKey('extra', random)).toBe(issued[3])
   expect(transferEntryKey('correction', random)).toBeNull()
-  expect(next).toBe(3)
+  expect(next).toBe(4)
+})
+
+it('keeps an extra vehicle linked to its main Transfer across a reload', () => {
+  const store = memory()
+  const mainTransferId = 'd4d4d4d4-4444-4444-8444-444444444444'
+  rememberTransferDraft(store, USER, TENANT, fields({
+    price: '0',
+    passengers: '',
+    luggage: '',
+    childSeats: '',
+    note: '',
+    mainTransferId,
+    mainVersion: 0,
+    groupPassengers: '8',
+  }), NOW)
+
+  // A reload must not become an ordinary Transfer: the Price is 0 only
+  // because the link is still here.
+  expect(recallTransferDraft(store, USER, TENANT, NOW)).toMatchObject({
+    price: '0',
+    mainTransferId,
+    mainVersion: 0,
+    groupPassengers: '8',
+  })
 })
 
 it('keeps the entry key across a reload, and keeps the draft after already recorded until the notice is confirmed', () => {

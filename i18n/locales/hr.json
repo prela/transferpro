@@ -528,6 +528,8 @@
     "add": "Zabilježi transfer",
     "duplicate": "Dupliciraj",
     "returnJourney": "Povratni transfer",
+    "extraVehicle": "Dodatno vozilo",
+    "groupPassengers": "Naručeno putnika (grupa)",
     "printDay": "Ispiši dan",
     "exportCsv": "Izvoz CSV",
     "exportTitle": "Izvoz CSV",

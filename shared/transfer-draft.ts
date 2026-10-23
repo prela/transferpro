@@ -10,8 +10,8 @@ import { paymentMethodSchema } from './transfer'
  */
 export const TRANSFER_DRAFT_TTL_MS = 24 * 60 * 60 * 1000
 
-/** How a Transfer form was opened. A correction has no entry key. */
-export type TransferEntryOpening = 'blank' | 'duplicate' | 'return' | 'correction'
+/** How a Transfer form was opened. A correction has no entry key. An extra vehicle is a new entry. */
+export type TransferEntryOpening = 'blank' | 'duplicate' | 'return' | 'extra' | 'correction'
 
 /**
  * A blank form, a duplicate, and a return journey each start a new entry,
@@ -50,6 +50,13 @@ const transferDraftFieldsSchema = z.object({
   luggage: z.string(),
   childSeats: z.string(),
   note: z.string(),
+  // An extra vehicle keeps its main Transfer on the draft, so a reload
+  // does not record a Price of 0 with no link (ADR-0054). Absent on an
+  // ordinary Transfer. `groupPassengers` is present only while the form
+  // still asks for the group's ordered count.
+  mainTransferId: z.uuid().optional(),
+  mainVersion: z.number().int().nonnegative().optional(),
+  groupPassengers: z.string().optional(),
   // The manual channel's external id (ADR-0035). Absent on a draft written
   // before the form started keeping one. A blank form is still blank: the
   // id alone is not unfinished work, so a reload of an empty form mints another.

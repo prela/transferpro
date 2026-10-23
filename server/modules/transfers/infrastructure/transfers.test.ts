@@ -122,6 +122,23 @@ function fakeTransaction(options: {
             mainTransferId: null,
             groupPassengerCount: null,
             unfinishedExtraVehicleCount: 0,
+            linkedMainId: null,
+            linkedMainState: null,
+            linkedMainVersion: null,
+            linkedMainPassengerCount: null,
+            linkedMainGroupPassengerCount: null,
+            linkedMainClientId: null,
+            linkedMainPickupAt: null,
+            linkedMainStartLocationId: null,
+            linkedMainEndLocationId: null,
+            linkedMainGuestName: null,
+            linkedMainFlightNumber: null,
+            linkedMainPayment: null,
+            linkedMainAirportMark: null,
+            linkedMainTabla: null,
+            linkedMainClientReference: null,
+            linkedMainChangedAt: null,
+            linkedMainChangedByName: null,
             ...(typeof row === 'object' && row !== null ? row : {}),
           })),
         }
@@ -429,6 +446,112 @@ it('keeps the Partner id on a handed-off Ride in the day list', async () => {
     { rideId, state: 'handed_off', partnerId, driverId: null, vehicleId: null },
   ])
   expect(queries[0]?.sql).toContain('partner_id')
+})
+
+it('tells the form whether the group count is stored, and joins the main Transfer onto an extra vehicle', async () => {
+  // The office count substitutes the passenger count while the column is
+  // empty. The flag is the column itself, so the form knows when to ask.
+  const mainId = 'd4d4d4d4-1111-4111-8111-111111111111'
+  const pickup = new Date('2026-10-07T10:30:00.000Z')
+  const mainPickup = new Date('2026-10-08T08:00:00.000Z')
+  const booking = {
+    state: 'unassigned' as const,
+    driverId: null,
+    vehicleId: null,
+    mustAccept: null,
+    clientId,
+    startLocationId,
+    endLocationId,
+    passengerCount: 4,
+    flightNumber: 'OU384',
+    price: '42.00',
+    payment: 'card' as const,
+    airportMark: true,
+    luggageCount: 1,
+    childSeatCount: 0,
+    note: 'Nazovi',
+    tabla: 'ANA',
+    clientReference: 'V-19',
+  }
+  const { transaction, queries } = fakeTransaction({
+    dayRows: [
+      {
+        ...booking,
+        rideId,
+        transferId,
+        guestName: guest,
+        pickupAt: pickup,
+        groupPassengerCount: null,
+      },
+      {
+        ...booking,
+        rideId: 'e3e3e3e3-2222-4222-8222-222222222222',
+        transferId: 'd3d3d3d3-1111-4111-8111-111111111111',
+        guestName: 'Vec spremljeno',
+        pickupAt: pickup,
+        passengerCount: 4,
+        groupPassengerCount: 12,
+      },
+      {
+        ...booking,
+        rideId: 'e2e2e2e2-2222-4222-8222-222222222222',
+        transferId: 'd2d2d2d2-1111-4111-8111-111111111111',
+        guestName: 'Drugo vozilo',
+        pickupAt: pickup,
+        mainTransferId: mainId,
+        groupPassengerCount: null,
+        price: '0.00',
+        linkedMainId: mainId,
+        linkedMainState: 'assigned',
+        linkedMainVersion: 2,
+        linkedMainPassengerCount: 9,
+        linkedMainGroupPassengerCount: 12,
+        linkedMainClientId: clientId,
+        linkedMainPickupAt: mainPickup,
+        linkedMainStartLocationId: startLocationId,
+        linkedMainEndLocationId: endLocationId,
+        linkedMainGuestName: guest,
+        linkedMainFlightNumber: 'OU384',
+        linkedMainPayment: 'card',
+        linkedMainAirportMark: true,
+        linkedMainTabla: 'ANA',
+        linkedMainClientReference: 'V-19',
+        linkedMainChangedAt: pickup,
+        linkedMainChangedByName: 'Dino Dispatcher',
+      },
+    ],
+  })
+  const rides = await loadRidesForDay(transaction, '2026-10-07', 'Europe/Zagreb')
+  expect(rides[0]).toMatchObject({
+    guestName: guest,
+    groupPassengerCount: 4,
+    groupPassengerCountStored: false,
+    linkedMain: null,
+  })
+  expect(rides[1]).toMatchObject({
+    guestName: 'Vec spremljeno',
+    groupPassengerCount: 12,
+    groupPassengerCountStored: true,
+    linkedMain: null,
+  })
+  expect(rides[2]).toMatchObject({
+    mainTransferId: mainId,
+    groupPassengerCount: null,
+    groupPassengerCountStored: false,
+    linkedMain: {
+      transferId: mainId,
+      state: 'assigned',
+      version: 2,
+      passengerCount: 9,
+      groupPassengerCountStored: true,
+      pickupAt: '2026-10-08T08:00:00.000Z',
+      guestName: guest,
+      clientReference: 'V-19',
+      changedByName: 'Dino Dispatcher',
+    },
+  })
+  expect(queries[0]?.sql).toContain('main_transfer')
+  expect(queries[0]?.sql).toContain('main_changed.tenant_id')
 })
 
 const markDriverId = 'c1c1c1c1-3333-4333-8333-333333333333'
