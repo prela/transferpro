@@ -64,7 +64,7 @@ function sample(name: string): unknown {
     return { token: 'kept' }
   if (name === 'foundation_session')
     return { tenantId }
-  if (name.endsWith('-tenant') || name.endsWith('-ask'))
+  if (name.endsWith('-tenant') || name.endsWith('-ask') || name === 'place-refresh-check')
     return { askedAt }
   return {}
 }

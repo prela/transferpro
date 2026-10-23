@@ -23,6 +23,8 @@ export const jobPayloads: Record<string, z.ZodType> = {
   'unavailability-retention-tenant': askedAtPayload,
   'flight-landing': emptyPayload,
   'flight-landing-ask': askedAtPayload,
+  'place-refresh': emptyPayload,
+  'place-refresh-check': askedAtPayload,
   'contact-person-retention': emptyPayload,
   'contact-person-retention-tenant': askedAtPayload,
   'foundation_rollback': z.strictObject({ token: z.enum(['kept', 'dropped']) }),
