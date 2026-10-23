@@ -122,7 +122,7 @@ These are labels; the terms in `GLOSSARY.md` and in code do not change (ADR-0036
 
 Actions: accept by phone is "Potvrdi telefonom" (en "Confirm by phone"). In a row, done is "Obavljeno" and no-show is "Nedolazak" (en "Done", "No-show"); the confirmation keeps the full wording, such as "Označi obavljenom". Clear is "Ukloni dodjelu" (en "Unassign").
 
-Short texts in a row: "Nedodijeljeno < 4 h", "Prošlo preuzimanje", "Odbio: {vozač}", "Alarm slijetanja", "Nije zatvoreno", "Preklapanje", "Nesklad rasporeda", "Istekao dokument". The detail shows the full text.
+Short texts in a row: "Nedodijeljeno < 4 h", "Prošlo preuzimanje", "Odbio: {vozač}", "Nije zatvoreno", "Preklapanje", "Nesklad rasporeda", "Istekao dokument". The detail shows the full text.
 
 ### Nuxt UI and the dashboard template
 
