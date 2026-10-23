@@ -50,7 +50,7 @@ An unfinished unassigned Ride once its pickup is in the past. It is urgent and s
 _Avoid_: missed pickup, no-show, overdue
 
 **Urgent**:
-The tier of what asks the office to act now: an unassigned past pickup, an unassigned alarm, a decline alert, a landing alarm, or an unclosed mark. It cannot be acknowledged or snoozed; it ends when its cause ends. In Croatian it is Hitno.
+The tier of what asks the office to act now: an unassigned past pickup, an unassigned alarm, a decline alert, or an unclosed mark. It cannot be acknowledged or snoozed; it ends when its cause ends. In Croatian it is Hitno.
 _Avoid_: notification, critical
 
 **Warning**:
@@ -102,12 +102,8 @@ A Ride that has a Driver, is not finished, and is not waiting on acceptance, onc
 _Avoid_: started, a Ride state
 
 **Unclosed mark**:
-An in-progress Ride, or a handed-off Ride, once 60 minutes have passed since its scheduled pickup. Both use the same minutes. A recorded landing does not move that instant.
-_Avoid_: warning, unassigned alarm, overdue
-
-**Landing alarm**:
-An in-progress Ride with a stored landing time, once 60 minutes have passed after that landing plus the transfer duration. A Ride with no landing time does not take it. It sends nothing.
-_Avoid_: unclosed mark, unassigned alarm, warning
+An in-progress Ride, or a handed-off Ride, once 60 minutes have passed after the end of the time it occupies: its stored landing plus the transfer duration, or its scheduled pickup plus that duration when no landing is stored. Each Ride of a group takes it from its own end, an expected arrival does not move it, and it sends nothing.
+_Avoid_: warning, landing alarm, unassigned alarm, overdue
 
 **Operational-day start**:
 The hour in the Tenant's time zone at which an operational day begins. A new Tenant starts at 05:00. An admin can change it.
