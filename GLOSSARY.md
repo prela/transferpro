@@ -102,7 +102,7 @@ A Ride that has a Driver, is not finished, and is not waiting on acceptance, onc
 _Avoid_: started, a Ride state
 
 **Unclosed mark**:
-An in-progress Ride, or a handed-off Ride, once 60 minutes have passed since its scheduled pickup. Both use the same minutes. A recorded landing does not move that instant.
+An in-progress Ride, or a handed-off Ride, once 60 minutes have passed after the end of the time it occupies: its stored landing plus the transfer duration, or its scheduled pickup plus that duration when no landing is stored. Each Ride of a group takes it from its own end, an expected arrival does not move it, and it sends nothing.
 _Avoid_: warning, unassigned alarm, overdue
 
 **Landing alarm**:
