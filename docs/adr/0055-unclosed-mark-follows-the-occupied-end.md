@@ -24,13 +24,15 @@ A main Transfer and each extra vehicle take the mark from that Ride's own occupi
 
 The mark stays display only. It does not allow or refuse done, no-show, cancel, or assignment. It sends nothing. It stays urgent. An unassigned Ride and a Ride waiting on acceptance do not take it.
 
+Where the Ride sits does not change. Only the instant does. On Home, an in-progress Ride stays on the in-progress list with the mark off until that instant, then shows in Pozornost and is not repeated on the list. A handed-off Ride is a count and not a row until that instant, then shows in Pozornost. The day board still lists the Ride on its day, with the mark on the row once the instant has passed.
+
 We will not show a landing alarm. The unclosed mark is the sign that an in-progress or handed-off Ride was not closed, whether or not a landing is stored. There is no second urgent kind, no Pozornost group, no live-refresh key, and no mail for a landing. The short text stays "Nije zatvoreno" / "Not closed". The full text is "Prošlo je sat vremena od planiranog kraja, a vožnja nije zatvorena." / "An hour has passed since the planned end and the ride is not closed."
 
 ### Superseded
 
 In ADR-0027, "We will mark an in-progress Ride once 60 minutes have passed since its scheduled pickup." The sentences that the 60 minutes are fixed, not a setting, not stored, and not written to the audit, stand. "A recorded landing does not move that instant. A Ride that becomes in progress after the pickup still uses the scheduled pickup, so a late assignment is marked at pickup+60."
 
-In ADR-0027's consequences, "For the first 60 minutes the Ride is on the in-progress list with the mark off. At the instant of pickup+60 the mark is on." And "Changing the scheduled pickup moves the instant. Changing the airport mark or the landing time does not." An unassigned Ride and a Ride waiting on acceptance still do not take it. A return to waiting on acceptance still drops it.
+In ADR-0027's consequences, "For the first 60 minutes the Ride is on the in-progress list with the mark off. At the instant of pickup+60 the mark is on." The Ride still sits on that list with the mark off until the new instant. And "Changing the scheduled pickup moves the instant. Changing the airport mark or the landing time does not." An unassigned Ride and a Ride waiting on acceptance still do not take it. A return to waiting on acceptance still drops it.
 
 In ADR-0028, "ADR-0027 is unchanged: the unclosed mark stays on the scheduled pickup." The expected arrival still does not move the mark, and a Ride with no landing can still be marked while the flight is in the air.
 
@@ -46,6 +48,6 @@ In ADR-0048, "It takes the unclosed mark once the same minutes have passed since
 
 A city Ride with the default transfer duration of 60 is marked at pickup plus 120 minutes. A landed Ride is marked at the landing plus the duration plus 60, and that is its only urgent mark for being unfinished. A late landing can turn a mark off until the new instant, and clearing that landing can turn it on again. Changing the duration moves marks that are already showing.
 
-Home files that Ride under the unclosed mark. A refresh announces the unclosed key and not a landing key. The Hitno filter and the urgent count still count the Ride once. No mail is sent.
+Home files that Ride under the unclosed mark. With the default duration of 60, a city Ride leaves the in-progress list for Pozornost at pickup plus 120 minutes, and a handed-off Ride stays a count until then. A refresh announces the unclosed key and not a landing key. The Hitno filter and the urgent count still count the Ride once. No mail is sent.
 
 Each member of a group is judged from its own pickup and its own landing. A correction that is not applied to the extra vehicles can mark one member and not another. A correction that is applied, and that changes the flight designator, clears each extra vehicle's landing and moves that member's end on its own.
