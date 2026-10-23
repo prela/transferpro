@@ -26,7 +26,6 @@ function source(overrides: Partial<Parameters<typeof classifyRideAttention>[0]> 
     pickupAt: new Date(NOW + 5 * HOUR).toISOString(),
     driverId: null,
     mustAccept: null,
-    landingAlarm: false,
     unclosedMark: false,
     warnings: {
       expiredDocuments: [],
@@ -67,29 +66,6 @@ it('names each decline and keeps a past pickup beside it', () => {
     { tier: 'urgent', kind: 'decline-alert', driverName: 'Ana Vozač' },
     { tier: 'urgent', kind: 'decline-alert', driverName: 'Marko Vozač' },
   ])
-})
-
-it('shows a landing alarm and the unclosed mark together when the day read set both', () => {
-  const open = source({
-    state: 'accepted',
-    driverId: '00000000-0000-4000-8000-000000000010',
-    mustAccept: false,
-    pickupAt: new Date(NOW - HOUR).toISOString(),
-    landingAlarm: true,
-    unclosedMark: true,
-  })
-  expect(classifyRideAttention(open, [], NOW)).toEqual([
-    { tier: 'urgent', kind: 'landing-alarm' },
-    { tier: 'urgent', kind: 'unclosed-mark' },
-  ])
-  const fresh = source({
-    state: 'accepted',
-    driverId: '00000000-0000-4000-8000-000000000010',
-    mustAccept: false,
-    pickupAt: new Date(NOW - HOUR + 1).toISOString(),
-    landingAlarm: false,
-  })
-  expect(classifyRideAttention(fresh, [], NOW)).toEqual([])
 })
 
 it('shows the unclosed mark the day read returned, without a second pickup clock', () => {

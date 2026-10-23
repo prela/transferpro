@@ -3,7 +3,7 @@ import type { CreateTransfer, DeclineAlert, RecordedCreate, Ride, Transfer, Tran
 import type { Logger, TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { canCorrectTransfer, emptyBoardWarnings, landingAlarmOn, localDayBounds, officeGroupPassengerCount, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, StaleSaveError, TRANSFER_CORRECTION_FIELDS, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, TransferInputError, transferPriceSchema, unclosedMarkOn } from '../../../../shared'
+import { canCorrectTransfer, emptyBoardWarnings, localDayBounds, officeGroupPassengerCount, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, StaleSaveError, TRANSFER_CORRECTION_FIELDS, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, TransferInputError, transferPriceSchema, unclosedMarkOn } from '../../../../shared'
 import { getLogger } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
@@ -360,11 +360,9 @@ function logAlreadyRecorded(log: Logger | undefined, transferId: string): void {
  * missing hour of a daylight-saving night. A pickup before the start hour is
  * not in this interval; it belongs to the previous operational day.
  * Omitting the hour uses 05:00. The day list passes the stored hour.
- * The landing alarm uses `now` and the Tenant transfer duration. The
- * unclosed mark is the same read: pickup, stored landing, and that
- * duration. Temporarily it is pickup plus 60 minutes. ADR-0055's
- * occupied end comes in #476. The day only chooses which Rides are
- * listed (ADR-0030).
+ * The unclosed mark uses `now`, the stored landing, and the Tenant
+ * transfer duration. It is on 60 minutes after the occupied end
+ * (ADR-0055). The day only chooses which Rides are listed.
  */
 export async function loadRidesForDay(
   transaction: TenantTransaction,
@@ -546,12 +544,6 @@ function toDayRide(
     version: row.version,
     changedAt: row.changedAt == null ? null : toInstant(row.changedAt),
     changedByName: row.changedByName,
-    landingAlarm: landingAlarmOn(
-      landingAt,
-      nowMs,
-      transferDurationMinutes,
-      inProgress,
-    ),
     unclosedMark: openForMark && unclosedMarkOn({
       pickupAt,
       landingAt,

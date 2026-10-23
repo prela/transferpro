@@ -159,7 +159,8 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
     data: { version: 0, driverId, vehicleId },
   })
   expect(assigned.ok()).toBeTruthy()
-  const openRide = await record(page, 'Open Lara', new Date(now.getTime() - 90 * 60 * 1000), places, {
+  // Default duration 60. The mark is pickup plus 120 minutes, so 130 is past it.
+  const openRide = await record(page, 'Open Lara', new Date(now.getTime() - 130 * 60 * 1000), places, {
     price: 10,
     payment: 'cash',
   })

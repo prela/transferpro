@@ -314,10 +314,6 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
     'Progress Lara': true,
     'Progress Today': true,
   })
-  expect(Object.fromEntries(snapshot.inProgress.map(row => [row.guestName, row.landingAlarm]))).toEqual({
-    'Progress Lara': false,
-    'Progress Today': false,
-  })
   expect(snapshot.inProgress.every(row => !('unassignedAlarm' in row))).toBe(true)
   expect(snapshot.waitingOnAcceptance.every(row => !('unclosedMark' in row))).toBe(true)
   expect(snapshot.inProgress[0]).toMatchObject({
@@ -424,7 +420,7 @@ it('counts the stored hour, and a pickup before that hour stays on the unassigne
   })
 })
 
-it('turns the landing alarm on from the stored landing plus the Tenant transfer duration, and leaves the unclosed mark on the pickup', async () => {
+it('turns the unclosed mark on from the stored landing plus the Tenant transfer duration', async () => {
   const created = await tenant('ohm-land', 'Hana Admin')
   await addMember(created.tenantId, 'ohm-land-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
   const admin = await signIn('ohm-land-admin@example.test')
@@ -463,7 +459,8 @@ it('turns the landing alarm on from the stored landing plus the Tenant transfer 
     childSeatCount: 0,
   })
   await assignRide(admin, { rideId: recorded.ride.id, driverId: driver.id, vehicleId: vehicle.id, version: 0 })
-  // 150 minutes before noon: duration 60 alarms (end + 60 is 30 minutes ago); duration 120 does not.
+  // 150 minutes before noon. Duration 60 marks: landing plus 120 is 30 minutes ago.
+  // Duration 120 does not: landing plus 180 is 30 minutes ahead.
   const landing = new Date(now.getTime() - 150 * 60 * 1000)
   await ownerPool.query(
     `update app.transfers set landing_at = $1 where id = $2`,
@@ -474,7 +471,7 @@ it('turns the landing alarm on from the stored landing plus the Tenant transfer 
   const marked = officeHomeSchema.parse(await readOfficeHome(admin, now))
   expect(officeHomeSchema.parse(await readOfficeHome(dispatcher, now))).toEqual(marked)
   expect(marked.inProgress.map(row => row.guestName)).toEqual(['Landed Lana'])
-  expect(marked.inProgress[0]).toMatchObject({ landingAlarm: true, unclosedMark: true })
+  expect(marked.inProgress[0]).toMatchObject({ unclosedMark: true })
   expect(await auditCount(created.tenantId)).toBe(audits)
 
   await ownerPool.query(
@@ -482,7 +479,7 @@ it('turns the landing alarm on from the stored landing plus the Tenant transfer 
     [created.tenantId],
   )
   const longer = officeHomeSchema.parse(await readOfficeHome(admin, now))
-  expect(longer.inProgress[0]).toMatchObject({ landingAlarm: false, unclosedMark: true })
+  expect(longer.inProgress[0]).toMatchObject({ unclosedMark: false })
   expect(await auditCount(created.tenantId)).toBe(audits)
 })
 

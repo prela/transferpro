@@ -184,7 +184,7 @@ it('keeps the urgent baseline when a refresh fails', async () => {
   await page.controller.settle()
 
   page.outcome = 'fail'
-  page.keys = ['unassigned-alarm:a', 'landing-alarm:c']
+  page.keys = ['unassigned-alarm:a', 'unclosed-mark:c']
   await page.controller.refresh()
   expect(page.announcements).toEqual([])
 
@@ -202,7 +202,7 @@ it('ignores a stale reload when deciding the announcement', async () => {
   page.keys = ['unassigned-alarm:a']
   await page.controller.settle()
   page.outcome = 'stale'
-  page.keys = ['landing-alarm:c']
+  page.keys = ['unclosed-mark:c']
   await page.controller.refresh()
   expect(page.announcements).toEqual([])
 

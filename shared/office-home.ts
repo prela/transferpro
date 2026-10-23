@@ -1,7 +1,7 @@
 import type { PaymentMethod, RideState } from './transfer'
 import { z } from 'zod'
 import { isCalendarDate, localDayBounds, operationalDateInTimeZone } from './date'
-import { landingAlarmOn, rideIsInProgress } from './landing-alarm'
+import { rideIsInProgress } from './ride-attention'
 import { tenantRoleSchema } from './tenant-role'
 import { OPERATIONAL_DAY_START_DEFAULT, operationalDayStartHourSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from './tenant-settings'
 import { PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema, TABLA_MAX_LENGTH, transferPriceSchema } from './transfer'
@@ -81,7 +81,6 @@ const officeHomeUnassignedSchema = officeHomeRowSchema.extend({
 
 const officeHomeInProgressSchema = officeHomeRowSchema.extend({
   unclosedMark: z.boolean(),
-  landingAlarm: z.boolean(),
 }).strict()
 
 const officeHomeHandedOffSchema = officeHomeRowSchema.extend({
@@ -108,9 +107,8 @@ const officeHomeCountsSchema = z.strictObject({
  * is not a fourth list: a row appears only in Pozornost, once the unclosed
  * mark is on (ADR-0048). An unassigned row also carries decline
  * alerts for any pickup day and the past-pickup flag. Waiting has no mark.
- * In progress carries the unclosed mark and the landing alarm (ADR-0030).
- * Temporarily the unclosed mark is pickup plus 60 minutes. ADR-0055's
- * occupied end comes in #476. The lists still include a Ride that Home
+ * In progress carries the unclosed mark. It is on 60 minutes after the
+ * occupied end (ADR-0055). The lists still include a Ride that Home
  * shows only in Pozornost; the blocks below are what the screen renders.
  * There is no week, month, or euro total.
  * `failedMails` sits below Pozornost and outside both attention tiers
@@ -179,8 +177,6 @@ export function officeHomeUrgentKeys(home: OfficeHome): string[] {
       keys.push(`decline-alert:${ride.rideId}:${alert.driverName}`)
   }
   for (const ride of home.inProgress) {
-    if (ride.landingAlarm)
-      keys.push(`landing-alarm:${ride.rideId}`)
     if (ride.unclosedMark)
       keys.push(`unclosed-mark:${ride.rideId}`)
   }
@@ -266,8 +262,8 @@ export function buildOfficeHome(
     cancelled: 0,
   }
 
-  // In progress and handed off ask the one rule. Temporarily the answer
-  // is pickup plus 60 minutes. ADR-0055's occupied end comes in #476.
+  // In progress and handed off ask the one rule: 60 minutes after the
+  // occupied end, and that instant is included (ADR-0055).
   const unclosedMark = (ride: OfficeHomeRide) => unclosedMarkOn({
     pickupAt: ride.pickupAt,
     landingAt: ride.landingAt,
@@ -334,7 +330,6 @@ export function buildOfficeHome(
       inProgress.push({
         ...shown,
         unclosedMark: unclosedMark(ride),
-        landingAlarm: landingAlarmOn(ride.landingAt, nowMs, transferDurationMinutes, true),
       })
     }
     else if (ride.state === 'handed_off') {
@@ -384,7 +379,6 @@ export const HOME_ATTENTION_KINDS = [
   'unassigned-past-pickup',
   'unassigned-alarm',
   'decline-alert',
-  'landing-alarm',
   'unclosed-mark',
 ] as const
 
@@ -552,11 +546,8 @@ function unassignedMarks(row: { pastPickup: boolean, unassignedAlarm: boolean, d
   return marks
 }
 
-function progressMarks(row: { landingAlarm: boolean, unclosedMark: boolean }): OfficeHomeMark[] {
-  const marks: OfficeHomeMark[] = []
-  if (row.landingAlarm)
-    marks.push({ kind: 'landing-alarm' })
-  if (row.unclosedMark)
-    marks.push({ kind: 'unclosed-mark' })
-  return marks
+function progressMarks(row: { unclosedMark: boolean }): OfficeHomeMark[] {
+  if (!row.unclosedMark)
+    return []
+  return [{ kind: 'unclosed-mark' }]
 }

@@ -57,7 +57,6 @@ it('counts quick filters on the rows the search and the party filters already ke
     pickupAt: '2026-06-16T10:00:00.000Z',
     driverId: null,
     mustAccept: null,
-    landingAlarm: false,
     unclosedMark: false,
     warnings: { expiredDocuments: [], rosterMismatch: false, overlappingRideIds: [] },
   }

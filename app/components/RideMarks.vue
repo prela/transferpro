@@ -15,7 +15,6 @@ const iconFor: Record<RideAttentionItem['kind'], string> = {
   'unassigned-past-pickup': 'i-lucide-clock-alert',
   'unassigned-alarm': 'i-lucide-alarm-clock',
   'decline-alert': 'i-lucide-user-x',
-  'landing-alarm': 'i-lucide-plane-landing',
   'unclosed-mark': 'i-lucide-circle-alert',
   'overlap': 'i-lucide-triangle-alert',
   'unavailable': 'i-lucide-calendar-off',
@@ -33,7 +32,6 @@ function label(item: RideAttentionItem): string {
   const key = {
     'unassigned-past-pickup': `${group}.pastPickup`,
     'unassigned-alarm': `${group}.unassignedAlarm`,
-    'landing-alarm': `${group}.landingAlarm`,
     'unclosed-mark': `${group}.unclosed`,
     'overlap': `${group}.overlap`,
     'unavailable': `${group}.unavailable`,
