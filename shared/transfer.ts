@@ -500,7 +500,7 @@ export const createTransferSchema = transferBookingSchema.extend({
       message: 'A group count belongs on an extra vehicle.',
     })
   }
-  // The Price of an extra vehicle is 0. A fare here is not a booking.
+  // The Price of an extra vehicle is 0. Any other Price is refused before a session.
   if (linked && value.price !== 0) {
     ctx.addIssue({
       code: 'custom',
