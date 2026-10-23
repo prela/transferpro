@@ -50,6 +50,7 @@ function jobNamesInSource(): string[] {
         || constant.endsWith('_TICK')
         || constant.endsWith('_DELETE')
         || constant.endsWith('_ASK')
+        || constant.endsWith('_CHECK')
       if (isJob && value !== undefined)
         names.push(value)
     }
@@ -64,7 +65,7 @@ function sample(name: string): unknown {
     return { token: 'kept' }
   if (name === 'foundation_session')
     return { tenantId }
-  if (name.endsWith('-tenant') || name.endsWith('-ask') || name === 'place-refresh-check')
+  if (name.endsWith('-tenant') || name.endsWith('-ask') || name.endsWith('-check'))
     return { askedAt }
   return {}
 }

@@ -135,6 +135,27 @@ it('clears the provider, the reference, and the time on NOT_FOUND, and keeps the
   expect(written[0]?.params).toContain(row.placeRef)
 })
 
+it('changes nothing when the place check throws, and the log keeps the message out', async () => {
+  const row = due(1, 'hotel', 'ChIJthrows')
+  const { transaction, queries } = fakeTransaction([row])
+  const logs = captureLogs()
+  await refreshPlaceReferences({
+    now: askedAt,
+    transaction,
+    places: {
+      async checkPlaceRef() {
+        throw new Error(`place check failed ${row.placeRef}`)
+      },
+    },
+    log: logs.logger,
+  })
+  expect(updates(queries)).toEqual([])
+  expect(logs.lines()[0]).toMatchObject({ unavailable: 1, invalid: 0, same: 0, replaced: 0, gone: 0 })
+  const text = JSON.stringify(logs.lines())
+  expect(text).not.toContain(row.placeRef)
+  expect(text).not.toContain('place check failed')
+})
+
 it('changes nothing on an unavailable answer, including an invalid id', async () => {
   const row = due(1, 'hotel')
   const { queries, lines } = await refresh([row], () => ({ outcome: 'unavailable' }))

@@ -2,7 +2,7 @@ import type { JobQueue, QueuedJob, ScheduledJob, TenantTransaction } from '../..
 import { describe, expect, it } from 'vitest'
 import { parseAppEnv } from '../../../core/index'
 import { captureLogs } from '../../../core/testing'
-import { PLACE_REFRESH_ASK, PLACE_REFRESH_CRON, PLACE_REFRESH_TICK, registerPlaceRefresh, startPlaceRefreshWorker } from './place-refresh-worker'
+import { PLACE_REFRESH_CHECK, PLACE_REFRESH_CRON, PLACE_REFRESH_TICK, registerPlaceRefresh, startPlaceRefreshWorker } from './place-refresh-worker'
 
 const tenantId = '11111111-1111-4111-8111-111111111111'
 const askedAt = new Date('2026-10-23T03:00:00.000Z')
@@ -60,7 +60,7 @@ function fakeQueue() {
     await handle(
       {
         id: 'check-1',
-        name: PLACE_REFRESH_ASK,
+        name: PLACE_REFRESH_CHECK,
         tenantId,
         data: { askedAt: askedAt.toISOString() },
       },
@@ -102,7 +102,7 @@ describe('place refresh schedule', () => {
     await tick()
     expect(published).toEqual([{
       tenantId,
-      name: PLACE_REFRESH_ASK,
+      name: PLACE_REFRESH_CHECK,
       data: { askedAt: askedAt.toISOString() },
     }])
     expect(JSON.stringify(published)).not.toMatch(/ChIJ|Put 1/)

@@ -7,7 +7,7 @@ import { afterAll, expect, it } from 'vitest'
 import { PLACE_REF_MAX_LENGTH } from '../../../../shared'
 import { openTenantSession } from '../../../core/index'
 import { captureLogs } from '../../../core/testing'
-import { PLACE_REFRESH_ASK, registerPlaceRefresh } from './place-refresh-worker'
+import { PLACE_REFRESH_CHECK, registerPlaceRefresh } from './place-refresh-worker'
 
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
@@ -192,7 +192,7 @@ it('refreshes Tenant A and does not read or write Tenant B', async () => {
   await appDb.transaction(async (transaction) => {
     await openTenantSession(transaction, { tenantId: tenantA }, async () => {
       await check(
-        { id: 'job-a', name: PLACE_REFRESH_ASK, tenantId: tenantA, data: { askedAt: askedAt.toISOString() } },
+        { id: 'job-a', name: PLACE_REFRESH_CHECK, tenantId: tenantA, data: { askedAt: askedAt.toISOString() } },
         { transaction },
       )
     })

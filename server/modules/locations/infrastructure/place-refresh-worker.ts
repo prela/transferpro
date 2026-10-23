@@ -13,12 +13,8 @@ import { refreshPlaceReferences } from './place-refresh'
  */
 export const PLACE_REFRESH_TICK = 'place-refresh'
 
-/**
- * One Tenant, stamped on the envelope at enqueue. The handler does not
- * choose the id. The name is `place-refresh-check`; the constant ends in
- * `_ASK` so the payload registry sees it beside the other per-Tenant jobs.
- */
-export const PLACE_REFRESH_ASK = 'place-refresh-check'
+/** One Tenant, stamped on the envelope at enqueue. The handler does not choose the id. */
+export const PLACE_REFRESH_CHECK = 'place-refresh-check'
 
 /** Once a night at 03:00 UTC, before the other daily ticks. */
 export const PLACE_REFRESH_CRON = '0 3 * * *'
@@ -54,14 +50,12 @@ export async function registerPlaceRefresh(
   await queue.workScheduled(PLACE_REFRESH_TICK, async (_job, publish) => {
     const askedAt = now()
     for (const tenantId of await options.listTenantIds(askedAt))
-      await publish(tenantId, PLACE_REFRESH_ASK, { askedAt: askedAt.toISOString() })
+      await publish(tenantId, PLACE_REFRESH_CHECK, { askedAt: askedAt.toISOString() })
   })
-  await queue.work(PLACE_REFRESH_ASK, async (job, scope) => {
-    const asked = new Date(askedAtSchema.parse(job.data).askedAt)
-    // The earlier instant wins, so a payload from the future cannot stamp a reference that is not due yet.
-    const asOf = new Date(Math.min(asked.getTime(), now().getTime()))
+  await queue.work(PLACE_REFRESH_CHECK, async (job, scope) => {
+    const askedAt = new Date(askedAtSchema.parse(job.data).askedAt)
     await refreshPlaceReferences({
-      now: asOf,
+      now: askedAt,
       transaction: scope.transaction,
       places: options.places,
       log: options.log,
