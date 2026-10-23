@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { UNCLOSED_MARK_MS, unclosedMarkOn } from './unclosed-mark'
 
-/** Changing the threshold must be a deliberate, reviewed edit to this pin (ADR-0027). */
+/** The 60 minutes stay fixed. Changing the threshold is a deliberate, reviewed edit. */
 it('pins the shared unclosed threshold at 60 minutes', () => {
   expect(UNCLOSED_MARK_MS).toBe(60 * 60_000)
 })
@@ -11,7 +11,7 @@ const pickupAt = '2026-06-15T08:00:00.000Z'
 const atMark = Date.parse('2026-06-15T09:00:00.000Z')
 const beforeMark = Date.parse('2026-06-15T08:59:59.999Z')
 
-it('is on at the scheduled pickup plus 60 minutes, including that instant', () => {
+it('temporarily is on at pickup plus 60 minutes, including that instant (#476)', () => {
   expect(unclosedMarkOn({
     pickupAt,
     landingAt: null,
@@ -35,7 +35,7 @@ it('refuses a pickup that is not a time', () => {
   })).toThrow(new RangeError('Pickup is not a valid time.'))
 })
 
-it('receives a stored landing and the transfer duration, and neither moves the mark', () => {
+it('temporarily, a stored landing and the transfer duration do not move the mark (#476)', () => {
   const landed = {
     pickupAt,
     landingAt: '2026-06-15T12:00:00.000Z',

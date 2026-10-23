@@ -470,8 +470,9 @@ it('marks a landing alarm on an in-progress Ride 60 minutes after landing plus t
     'Waiting': false,
     'Unassigned': false,
   })
-  // Pickup was 08:00 and now is 10:00, so the unclosed mark is already on.
-  // A stored landing and a longer duration move the alarm and leave the mark.
+  // Temporary (#476): pickup was 08:00 and now is 10:00, so the unclosed
+  // mark is already on. A stored landing and a longer duration move the
+  // alarm and leave the mark.
   expect(Object.fromEntries(rides.map(row => [row.guestName, row.unclosedMark]))).toEqual({
     'Landed': true,
     'Just short': true,
@@ -486,7 +487,7 @@ it('marks a landing alarm on an in-progress Ride 60 minutes after landing plus t
   expect(longer.find(row => row.guestName === 'Landed')?.unclosedMark).toBe(true)
 })
 
-it('marks an in-progress Ride and a handed-off Ride at pickup plus 60 minutes, and a stored landing does not move it', async () => {
+it('temporarily marks an in-progress Ride and a handed-off Ride at pickup plus 60 minutes (#476)', async () => {
   // 10:00 is exactly 60 minutes after 09:00. One millisecond later on the pickup is still quiet.
   const now = new Date('2026-06-15T10:00:00.000Z')
   const atPickup = new Date('2026-06-15T09:00:00.000Z')

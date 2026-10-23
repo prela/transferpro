@@ -1,16 +1,17 @@
 /**
  * Sixty minutes, in milliseconds. The unclosed mark includes this instant.
- * It starts at the scheduled pickup, including an earlier day. A recorded
- * landing does not move it. It is not the no-show wait and it sends
- * nothing (ADR-0027). Every unclosed mark reads this value; do not define
- * a second copy.
+ * It is not the no-show wait and it sends nothing. Every unclosed mark
+ * reads this value; do not define a second copy.
+ * Temporarily the mark is this long after the scheduled pickup, including
+ * an earlier day. ADR-0055's occupied end comes in #476.
  */
 export const UNCLOSED_MARK_MS = 60 * 60 * 1000
 
 /**
  * What the office home read and the day read pass. The landing and the
- * transfer duration are part of the question. They do not change the
- * answer: the mark stays at the scheduled pickup (ADR-0027).
+ * transfer duration are part of the question. Temporarily they do not
+ * change the answer: the mark is pickup plus 60 minutes. ADR-0055's
+ * occupied end comes in #476.
  */
 export interface UnclosedMarkInput {
   readonly pickupAt: string
@@ -21,9 +22,9 @@ export interface UnclosedMarkInput {
 
 /**
  * Whether the unclosed mark is on for a Ride that already qualifies:
- * in progress, or handed off. The instant is the scheduled pickup plus
- * 60 minutes, and that instant is included. A stored landing does not
- * move it, and neither does the transfer duration.
+ * in progress, or handed off. Temporarily the instant is the scheduled
+ * pickup plus 60 minutes, and that instant is included. ADR-0055's
+ * occupied end comes in #476.
  */
 export function unclosedMarkOn(input: UnclosedMarkInput): boolean {
   const pickup = new Date(input.pickupAt).getTime()

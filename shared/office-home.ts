@@ -108,10 +108,11 @@ const officeHomeCountsSchema = z.strictObject({
  * is not a fourth list: a row appears only in Pozornost, once the unclosed
  * mark is on (ADR-0048). An unassigned row also carries decline
  * alerts for any pickup day and the past-pickup flag. Waiting has no mark.
- * In progress carries the unclosed mark (ADR-0027) and the landing alarm
- * (ADR-0030). The lists still include a Ride that Home shows only in
- * Pozornost; the blocks below are what the screen renders. There is no
- * week, month, or euro total.
+ * In progress carries the unclosed mark and the landing alarm (ADR-0030).
+ * Temporarily the unclosed mark is pickup plus 60 minutes. ADR-0055's
+ * occupied end comes in #476. The lists still include a Ride that Home
+ * shows only in Pozornost; the blocks below are what the screen renders.
+ * There is no week, month, or euro total.
  * `failedMails` sits below Pozornost and outside both attention tiers
  * (ADR-0045). It does not change the urgent count. The Driver's name is
  * derived on read. The Driver's address is not a field.
@@ -265,8 +266,8 @@ export function buildOfficeHome(
     cancelled: 0,
   }
 
-  // In progress and handed off ask the one rule. The landing and the
-  // duration are passed through; the answer is still the pickup (ADR-0027).
+  // In progress and handed off ask the one rule. Temporarily the answer
+  // is pickup plus 60 minutes. ADR-0055's occupied end comes in #476.
   const unclosedMark = (ride: OfficeHomeRide) => unclosedMarkOn({
     pickupAt: ride.pickupAt,
     landingAt: ride.landingAt,

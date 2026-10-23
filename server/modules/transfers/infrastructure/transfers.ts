@@ -237,8 +237,9 @@ function logAlreadyRecorded(log: Logger | undefined, transferId: string): void {
  * Omitting the hour uses 05:00. The day list passes the stored hour.
  * The landing alarm uses `now` and the Tenant transfer duration. The
  * unclosed mark is the same read: pickup, stored landing, and that
- * duration, still decided from the pickup (ADR-0027). The day only
- * chooses which Rides are listed (ADR-0030).
+ * duration. Temporarily it is pickup plus 60 minutes. ADR-0055's
+ * occupied end comes in #476. The day only chooses which Rides are
+ * listed (ADR-0030).
  */
 export async function loadRidesForDay(
   transaction: TenantTransaction,
