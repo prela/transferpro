@@ -34,7 +34,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0016 | UI: Nuxt UI + Tailwind v4 | accepted; partially superseded by ADR-0038 and ADR-0040 |
 | ADR-0017 | A Client keeps its name off the audit log | accepted |
 | ADR-0018 | Module boundaries | accepted; partially superseded by ADR-0033 |
-| ADR-0019 | Superadmin | accepted |
+| ADR-0019 | Superadmin | accepted; partially superseded by ADR-0057 |
 | ADR-0020 | Invoice to agency is a recorded payment | accepted; partially superseded by ADR-0033 and ADR-0054 |
 | ADR-0021 | Operational day | accepted; partially superseded by ADR-0025 |
 | ADR-0022 | In progress is not a Ride state | accepted |
@@ -53,7 +53,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0035 | Idempotent manual entry, and reactions to a change without an event log | accepted |
 | ADR-0036 | The Transfer is the order, and who owns the v1 modules | accepted; partially superseded by ADR-0051 |
 | ADR-0037 | Console mailer on preview | accepted; partially superseded by ADR-0042 |
-| ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted; partially superseded by ADR-0041, ADR-0042, and ADR-0055 |
+| ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted; partially superseded by ADR-0041, ADR-0042, ADR-0055, and ADR-0056 |
 | ADR-0039 | Urgent and warning tiers, and live refresh | accepted; partially superseded by ADR-0045, ADR-0046, ADR-0051, and ADR-0055 |
 | ADR-0040 | Theme tokens and contrast rules | accepted |
 | ADR-0041 | Revoke a pending invitation | accepted |
@@ -71,3 +71,5 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0053 | A Transfer whose Price is 0 is never invoiced | accepted |
 | ADR-0054 | An extra vehicle linked to its main Transfer | accepted |
 | ADR-0055 | Unclosed mark follows the occupied end | accepted |
+| ADR-0056 | Tenant gate, switch, and the per-Tenant draft | accepted |
+| ADR-0057 | Office and driver session lengths | accepted |

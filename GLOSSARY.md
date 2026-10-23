@@ -114,7 +114,7 @@ The day a Ride is listed and counted on, from the Tenant's operational-day start
 _Avoid_: calendar day, midnight
 
 **Member**:
-A person in one Tenant, with one role: admin, dispatcher, or driver.
+One person in one Tenant, with one role: admin, dispatcher, or driver. A person may hold several memberships, each in its own Tenant.
 _Avoid_: user
 
 **Invitation**:
