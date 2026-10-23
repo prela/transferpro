@@ -1,7 +1,7 @@
 import type { InjectionKey } from 'vue'
 import type { Client, ClientKind, DisplayLocale, Driver, LocationKind, LocationPlace, OfficeLocation, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
 import { z } from 'zod'
-import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, luggageCountError, noteError, officeLocationSchema, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
+import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, groupPassengerCountError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, luggageCountError, noteError, officeLocationSchema, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -55,6 +55,17 @@ export function useTransferForm(options: {
   onClose?: () => void
   /** 409 stale_save. The form keeps what was typed. The caller reloads who and when. */
   onStale?: () => Promise<void>
+  /**
+   * The main Transfer after the day list reloads. An extra-vehicle save
+   * sends that Transfer's opened version. Absent on a correction, which
+   * uses `onStale` instead.
+   */
+  lookupMain?: () => {
+    readonly version: number
+    readonly groupPassengerCountStored: boolean
+    readonly changedByName: string | null
+    readonly changedAt: string | null
+  } | null
 }) {
   const { t } = useI18n()
   const toast = useToast()
@@ -79,6 +90,15 @@ export function useTransferForm(options: {
   const luggage = ref('0')
   const childSeats = ref('0')
   const note = ref('')
+  // Set for an extra vehicle. The Price stays 0 and is not shown. The
+  // group count is asked only while the main Transfer has not stored one.
+  const mainTransferId = ref<string | null>(null)
+  const mainVersion = ref<number | null>(null)
+  const asksGroupCount = ref(false)
+  const groupPassengers = ref('')
+  const staleNotice = ref(false)
+  const staleChangedByName = ref<string | null>(null)
+  const staleChangedAt = ref<string | null>(null)
   // The manual entry key. Null on a correction. A new form keeps one id for
   // the whole entry, including a reload and a retry after a lost answer.
   const entryKey = ref<string | null>(null)
@@ -122,6 +142,7 @@ export function useTransferForm(options: {
   const passengerErrorKey = ref<'transfers.countInvalid' | null>(null)
   const luggageErrorKey = ref<'transfers.countInvalid' | null>(null)
   const seatErrorKey = ref<'transfers.countInvalid' | null>(null)
+  const groupErrorKey = ref<'transfers.countInvalid' | null>(null)
   const pickupErrorKey = ref<'transfers.pickupInvalid' | 'transfers.pickupTooEarly' | 'transfers.pickupTooLate' | null>(null)
   const endErrorKey = ref<'transfers.samePlace' | 'transfers.endMissing' | null>(null)
   const clientErrorKey = ref<'transfers.clientMissing' | null>(null)
@@ -300,6 +321,9 @@ export function useTransferForm(options: {
     passengerErrorKey.value = passengerCountError(passengers.value) ? 'transfers.countInvalid' : null
     luggageErrorKey.value = luggageCountError(luggage.value) ? 'transfers.countInvalid' : null
     seatErrorKey.value = childSeatCountError(childSeats.value) ? 'transfers.countInvalid' : null
+    groupErrorKey.value = asksGroupCount.value && groupPassengerCountError(groupPassengers.value)
+      ? 'transfers.countInvalid'
+      : null
     pickupErrorKey.value = pickupFieldError()
     clientErrorKey.value = clientId.value ? null : 'transfers.clientMissing'
     startErrorKey.value = startLocationId.value ? null : 'transfers.startMissing'
@@ -318,6 +342,7 @@ export function useTransferForm(options: {
       && !passengerErrorKey.value
       && !luggageErrorKey.value
       && !seatErrorKey.value
+      && !groupErrorKey.value
       && !pickupErrorKey.value
       && !endErrorKey.value
       && !clientErrorKey.value
@@ -376,6 +401,15 @@ export function useTransferForm(options: {
       note: note.value,
       // Omit a missing key. An explicit undefined fails the draft schema's optional uuid.
       ...(entryKey.value ? { externalId: entryKey.value } : {}),
+      // The link travels with the draft. A reload of an extra vehicle must
+      // not become an ordinary Transfer with a Price of 0.
+      ...(mainTransferId.value
+        ? {
+            mainTransferId: mainTransferId.value,
+            ...(mainVersion.value !== null ? { mainVersion: mainVersion.value } : {}),
+            ...(asksGroupCount.value ? { groupPassengers: groupPassengers.value } : {}),
+          }
+        : {}),
     }
   }
 
@@ -395,6 +429,10 @@ export function useTransferForm(options: {
     luggage.value = draft.luggage
     childSeats.value = draft.childSeats
     note.value = draft.note
+    mainTransferId.value = draft.mainTransferId ?? null
+    mainVersion.value = draft.mainVersion ?? null
+    asksGroupCount.value = draft.groupPassengers !== undefined
+    groupPassengers.value = draft.groupPassengers ?? ''
     if (draft.externalId)
       entryKey.value = draft.externalId
     formMode.value = 'add'
@@ -424,7 +462,15 @@ export function useTransferForm(options: {
     },
   })
 
-  const formTitle = computed(() => formMode.value === 'edit' ? t('transfers.correctTitle') : t('transfers.add'))
+  const extraVehicle = computed(() => mainTransferId.value !== null)
+
+  const formTitle = computed(() => {
+    if (formMode.value === 'edit')
+      return t('transfers.correctTitle')
+    if (extraVehicle.value)
+      return t('transfers.extraVehicle')
+    return t('transfers.add')
+  })
 
   function clearFieldErrors() {
     guestErrorKey.value = null
@@ -436,6 +482,7 @@ export function useTransferForm(options: {
     passengerErrorKey.value = null
     luggageErrorKey.value = null
     seatErrorKey.value = null
+    groupErrorKey.value = null
     pickupErrorKey.value = null
     endErrorKey.value = null
     clientErrorKey.value = null
@@ -459,6 +506,13 @@ export function useTransferForm(options: {
     editingTransferId.value = null
     editingRideId.value = null
     editingVersion.value = null
+    mainTransferId.value = null
+    mainVersion.value = null
+    asksGroupCount.value = false
+    groupPassengers.value = ''
+    staleNotice.value = false
+    staleChangedByName.value = null
+    staleChangedAt.value = null
     placeTarget.value = null
     clientTarget.value = false
     formErrorKey.value = null
@@ -512,6 +566,11 @@ export function useTransferForm(options: {
     luggage.value = '0'
     childSeats.value = '0'
     note.value = ''
+    mainTransferId.value = null
+    mainVersion.value = null
+    asksGroupCount.value = false
+    groupPassengers.value = ''
+    staleNotice.value = false
     placeTarget.value = null
     placeName.value = ''
     placeAddress.value = ''
@@ -530,7 +589,11 @@ export function useTransferForm(options: {
    * only shows them. No Transfer is written. A draft of the new form is
    * the same browser draft as any other unfinished entry.
    */
-  function openPrefill(fields: TransferPrefill, opening: 'duplicate' | 'return') {
+  function openPrefill(
+    fields: TransferPrefill,
+    opening: 'duplicate' | 'return' | 'extra',
+    link?: { mainTransferId: string, mainVersion: number, groupPassengers: string | null },
+  ) {
     clearFieldErrors()
     formErrorKey.value = null
     refusalOpen.value = false
@@ -558,7 +621,15 @@ export function useTransferForm(options: {
       note: fields.note,
     })
     // A copy is a new entry. It does not reuse the source Transfer's id.
+    // An extra vehicle is a new entry too, and it keeps the main Transfer.
     entryKey.value = transferEntryKey(opening)
+    if (opening === 'extra' && link) {
+      mainTransferId.value = link.mainTransferId
+      mainVersion.value = link.mainVersion
+      asksGroupCount.value = link.groupPassengers !== null
+      groupPassengers.value = link.groupPassengers ?? ''
+    }
+    staleNotice.value = false
     placeTarget.value = null
     clientTarget.value = false
     restored.value = false
@@ -589,6 +660,10 @@ export function useTransferForm(options: {
     editingTransferId.value = ride.transferId
     editingRideId.value = ride.rideId
     editingVersion.value = ride.version
+    mainTransferId.value = null
+    mainVersion.value = null
+    asksGroupCount.value = false
+    groupPassengers.value = ''
     clientId.value = ride.clientId
     pickupWall.value = wallClockInTimeZone(options.timeZone(), new Date(ride.pickupAt))
     startLocationId.value = ride.startLocationId
@@ -624,7 +699,8 @@ export function useTransferForm(options: {
       tabla: tabla.value,
       clientReference: clientReference.value,
       flightNumber: flight.value,
-      price: priceFromInput(price.value),
+      // An extra vehicle has no price of its own. The field is hidden.
+      price: mainTransferId.value !== null ? 0 : priceFromInput(price.value),
       payment: payment.value,
       airportMark: airportMark.value,
       luggageCount: Number(luggage.value),
@@ -700,6 +776,19 @@ export function useTransferForm(options: {
           ...bookingBody(),
           // Absent on a correction. A new entry always has one by the time it is sent.
           ...(entryKey.value ? { externalId: entryKey.value } : {}),
+          // The first extra vehicle also stores the group's ordered count
+          // on the main Transfer, with the version this form was opened with.
+          ...(mainTransferId.value
+            ? {
+                mainTransferId: mainTransferId.value,
+                ...(asksGroupCount.value && mainVersion.value !== null
+                  ? {
+                      groupPassengerCount: Number(groupPassengers.value),
+                      mainVersion: mainVersion.value,
+                    }
+                  : {}),
+              }
+            : {}),
         },
       }))
       // The values on screen were not written. Keep them, and the key, until confirmed.
@@ -726,8 +815,38 @@ export function useTransferForm(options: {
       options.onClose?.()
     }
     catch (error) {
+      // The 409 carries no name. The day read does, and the opened version
+      // stays until Osvježi, the same as a correction (ADR-0046).
+      if (errorCode(error) === 'stale_save' && mainTransferId.value !== null && options.lookupMain) {
+        await options.loadDay()
+        const fresh = options.lookupMain()
+        staleChangedByName.value = fresh?.changedByName ?? null
+        staleChangedAt.value = fresh?.changedAt ?? null
+        staleNotice.value = true
+        return
+      }
       formErrorKey.value = failureKey(error)
       markInvalid()
+    }
+    finally {
+      pending.value = false
+    }
+  }
+
+  /** Takes the main Transfer's version from the reloaded day and closes the notice. */
+  async function refreshExtraStale() {
+    if (!options.lookupMain || pending.value)
+      return
+    pending.value = true
+    try {
+      await options.loadDay()
+      const fresh = options.lookupMain()
+      if (!fresh)
+        return
+      mainVersion.value = fresh.version
+      if (fresh.groupPassengerCountStored)
+        asksGroupCount.value = false
+      staleNotice.value = false
     }
     finally {
       pending.value = false
@@ -799,6 +918,14 @@ export function useTransferForm(options: {
     flight,
     price,
     payment,
+    extraVehicle,
+    asksGroupCount,
+    groupPassengers,
+    mainTransferId,
+    staleNotice,
+    staleChangedByName,
+    staleChangedAt,
+    refreshExtraStale,
     airportMark,
     luggage,
     childSeats,
@@ -827,6 +954,7 @@ export function useTransferForm(options: {
     passengerErrorKey,
     luggageErrorKey,
     seatErrorKey,
+    groupErrorKey,
     pickupErrorKey,
     endErrorKey,
     clientErrorKey,

@@ -3,7 +3,7 @@ import type { CreateTransfer, DeclineAlert, RecordedCreate, Ride, Transfer, Tran
 import type { Logger, TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { canCorrectTransfer, emptyBoardWarnings, localDayBounds, officeGroupPassengerCount, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, StaleSaveError, TRANSFER_CORRECTION_FIELDS, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, TransferInputError, transferPriceSchema, unclosedMarkOn } from '../../../../shared'
+import { canCorrectTransfer, emptyBoardWarnings, linkedMainSchema, localDayBounds, officeGroupPassengerCount, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, StaleSaveError, TRANSFER_CORRECTION_FIELDS, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, TransferInputError, transferPriceSchema, unclosedMarkOn } from '../../../../shared'
 import { getLogger } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
@@ -54,6 +54,24 @@ const dayRowSchema = transferRowSchema.omit({ id: true }).extend({
   version: z.number().int(),
   changedAt: z.unknown().nullable(),
   changedByName: z.string().min(1).nullable(),
+  // The main Transfer joined for an extra vehicle. Null on a main Transfer.
+  linkedMainId: z.uuid().nullable(),
+  linkedMainState: rideStateSchema.nullable(),
+  linkedMainVersion: z.number().int().nullable(),
+  linkedMainPassengerCount: z.number().int().nullable(),
+  linkedMainGroupPassengerCount: z.number().int().nullable(),
+  linkedMainClientId: z.uuid().nullable(),
+  linkedMainPickupAt: z.unknown().nullable(),
+  linkedMainStartLocationId: z.uuid().nullable(),
+  linkedMainEndLocationId: z.uuid().nullable(),
+  linkedMainGuestName: z.string().nullable(),
+  linkedMainFlightNumber: z.string().nullable(),
+  linkedMainPayment: paymentMethodSchema.nullable(),
+  linkedMainAirportMark: z.boolean().nullable(),
+  linkedMainTabla: z.string().nullable(),
+  linkedMainClientReference: z.string().nullable(),
+  linkedMainChangedAt: z.unknown().nullable(),
+  linkedMainChangedByName: z.string().min(1).nullable(),
 })
 
 const transferColumns = sql`
@@ -420,14 +438,42 @@ export async function loadRidesForDay(
       t.expected_arrival_at as "expectedArrival",
       t.version,
       t.data_changed_at as "changedAt",
-      changed_by.name as "changedByName"
+      changed_by.name as "changedByName",
+      -- The main Transfer, including when its pickup is another day. A
+      -- main Transfer's link is null, so these columns stay null.
+      main_transfer.id as "linkedMainId",
+      main_ride.state as "linkedMainState",
+      main_transfer.version as "linkedMainVersion",
+      main_transfer.passenger_count as "linkedMainPassengerCount",
+      main_transfer.group_passenger_count as "linkedMainGroupPassengerCount",
+      main_transfer.client_id as "linkedMainClientId",
+      main_transfer.pickup_at as "linkedMainPickupAt",
+      main_transfer.start_location_id as "linkedMainStartLocationId",
+      main_transfer.end_location_id as "linkedMainEndLocationId",
+      main_transfer.guest_name as "linkedMainGuestName",
+      main_transfer.flight_number as "linkedMainFlightNumber",
+      main_transfer.payment as "linkedMainPayment",
+      main_transfer.airport_mark as "linkedMainAirportMark",
+      main_transfer.tabla as "linkedMainTabla",
+      main_transfer.client_reference as "linkedMainClientReference",
+      main_transfer.data_changed_at as "linkedMainChangedAt",
+      main_changed.name as "linkedMainChangedByName"
     from app.rides as r
     join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
+    left join app.transfers as main_transfer
+      on main_transfer.id = t.link
+     and main_transfer.tenant_id = t.tenant_id
+    left join app.rides as main_ride
+      on main_ride.transfer_id = main_transfer.id
+     and main_ride.tenant_id = main_transfer.tenant_id
     -- The view is already this session's tenant. The tenant predicate keeps
     -- another tenant's name off the row if that filter is ever wider.
     left join app.tenant_member as changed_by
       on changed_by.user_id = t.data_changed_by
      and changed_by.tenant_id = t.tenant_id
+    left join app.tenant_member as main_changed
+      on main_changed.user_id = main_transfer.data_changed_by
+     and main_changed.tenant_id = main_transfer.tenant_id
     where t.pickup_at >= ${bounds.start.toISOString()} and t.pickup_at < ${bounds.end.toISOString()}
     order by t.pickup_at, r.id
   `))
@@ -516,6 +562,37 @@ function toTransfer(row: z.infer<typeof transferRowSchema>): Transfer {
   }
 }
 
+/**
+ * The joined main Transfer, or null when this row is not an extra vehicle.
+ * A link with no main row is a data error: the foreign key should have
+ * kept it, and the day read fails closed instead of offering a form
+ * that cannot name the main Transfer.
+ */
+function linkedMainFrom(row: z.infer<typeof dayRowSchema>) {
+  if (row.linkedMainId === null)
+    return null
+  const changedAt = row.linkedMainChangedAt == null ? null : toInstant(row.linkedMainChangedAt)
+  return linkedMainSchema.parse({
+    transferId: row.linkedMainId,
+    state: row.linkedMainState,
+    version: row.linkedMainVersion,
+    passengerCount: row.linkedMainPassengerCount,
+    groupPassengerCountStored: row.linkedMainGroupPassengerCount !== null,
+    clientId: row.linkedMainClientId,
+    pickupAt: row.linkedMainPickupAt == null ? null : toInstant(row.linkedMainPickupAt),
+    startLocationId: row.linkedMainStartLocationId,
+    endLocationId: row.linkedMainEndLocationId,
+    guestName: row.linkedMainGuestName,
+    flightNumber: row.linkedMainFlightNumber,
+    payment: row.linkedMainPayment,
+    airportMark: row.linkedMainAirportMark,
+    tabla: row.linkedMainTabla,
+    clientReference: row.linkedMainClientReference,
+    changedAt,
+    changedByName: row.linkedMainChangedByName,
+  })
+}
+
 function toDayRide(
   row: z.infer<typeof dayRowSchema>,
   nowMs: number,
@@ -553,6 +630,11 @@ function toDayRide(
     clientReference: row.clientReference,
     mainTransferId: row.mainTransferId,
     groupPassengerCount: officeGroupPassengerCount(row.mainTransferId, row.groupPassengerCount, row.passengerCount),
+    // The column, not the substituted office count. An extra vehicle's
+    // own column is empty, so this is false there. The form reads the
+    // main Transfer's flag from linkedMain.
+    groupPassengerCountStored: row.mainTransferId === null && row.groupPassengerCount !== null,
+    linkedMain: linkedMainFrom(row),
     unfinishedExtraVehicleCount: row.unfinishedExtraVehicleCount,
     landingAt,
     expectedArrival,

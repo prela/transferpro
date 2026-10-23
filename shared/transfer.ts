@@ -143,6 +143,21 @@ export function canCorrectTransfer(state: RideState): boolean {
 }
 
 /**
+ * An extra vehicle is added from a main Transfer, or from an extra vehicle
+ * on behalf of its main Transfer, while that main Ride is still correctable
+ * (ADR-0054). The extra vehicle's own state does not decide. A missing main
+ * is not offered.
+ */
+export function canAddExtraVehicle(ride: {
+  readonly state: RideState
+  readonly mainTransferId: string | null
+  readonly linkedMain: { readonly state: RideState } | null
+}): boolean {
+  const state = ride.mainTransferId === null ? ride.state : ride.linkedMain?.state
+  return state !== undefined && canCorrectTransfer(state)
+}
+
+/**
  * Field names a correction may store. The Client and the two Locations are
  * ids on the row as well, and a change of either is still a field name.
  * A guest name, a flight number, a note, a tabla, a Client reference, or a
@@ -349,6 +364,34 @@ export const recordedCreateSchema = recordedTransferSchema.extend({
 
 export type RecordedCreate = z.infer<typeof recordedCreateSchema>
 
+/**
+ * The main Transfer an extra-vehicle row copies. Null on a main Transfer.
+ * The day read joins it even when that pickup is another day, so the form
+ * starts from the main Transfer (ADR-0054).
+ */
+export const linkedMainSchema = z.object({
+  transferId: z.uuid(),
+  state: rideStateSchema,
+  version: z.number().int().nonnegative(),
+  passengerCount: z.number().int().min(PASSENGER_COUNT_MIN).max(PASSENGER_COUNT_MAX),
+  // False while the column is empty. The form asks only then.
+  groupPassengerCountStored: z.boolean(),
+  clientId: z.uuid(),
+  pickupAt: z.iso.datetime(),
+  startLocationId: z.uuid(),
+  endLocationId: z.uuid(),
+  guestName: z.string().min(1),
+  flightNumber: z.string().nullable(),
+  payment: paymentMethodSchema,
+  airportMark: z.boolean(),
+  tabla: z.string(),
+  clientReference: z.string().nullable(),
+  changedAt: z.iso.datetime().nullable(),
+  changedByName: z.string().min(1).nullable(),
+})
+
+export type LinkedMain = z.infer<typeof linkedMainSchema>
+
 /** One row of the day list: the Ride and the Transfer it executes. */
 export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   rideId: z.uuid(),
@@ -376,6 +419,12 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   // The cancel dialog reads it. Nothing is sent until the office confirms
   // (ADR-0054).
   unfinishedExtraVehicleCount: z.number().int().nonnegative(),
+  // True when the column is stored. The office count above still substitutes
+  // this Transfer's own passenger count while the column is empty, so the
+  // form cannot tell those apart from the number alone.
+  groupPassengerCountStored: z.boolean(),
+  // The main Transfer, when this row is an extra vehicle. Null on a main Transfer.
+  linkedMain: linkedMainSchema.nullable(),
   // The Transfer version the form was opened with (ADR-0046). One version covers the Ride.
   version: z.number().int().nonnegative(),
   // Null until an office data save. A member who has left leaves the name null.
@@ -724,6 +773,11 @@ function countError(value: string, min: number, max: number): CountError | null 
 
 export function passengerCountError(value: string): CountError | null {
   return countError(value, PASSENGER_COUNT_MIN, PASSENGER_COUNT_MAX)
+}
+
+/** The group's ordered count. One vehicle's maximum is not the group's. */
+export function groupPassengerCountError(value: string): CountError | null {
+  return countError(value, GROUP_PASSENGER_COUNT_MIN, GROUP_PASSENGER_COUNT_MAX)
 }
 
 export function luggageCountError(value: string): CountError | null {

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { duplicateTransferPrefill, returnTransferPrefill } from './transfer-prefill'
+import { duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, returnTransferPrefill } from './transfer-prefill'
 
 /**
  * Duplicate and return journey (issue #260, ADR-0038). Expected values are
@@ -106,4 +106,50 @@ it('treats a missing flight, tabla, reference, and note as empty text', () => {
     note: '',
   })
   expect(returnTransferPrefill(source, 'en').clientReference).toBe('')
+})
+
+/**
+ * An extra vehicle copies the booking the Client already ordered and
+ * leaves the vehicle's own counts empty (issue #466, ADR-0054). The
+ * Price is 0. Nothing here is a Transfer id: the form sends the main
+ * Transfer beside this prefill.
+ */
+it('copies the shared booking for an extra vehicle and empties the counts, the note, and the price', () => {
+  const prefill = extraVehiclePrefill(ride(), 'Europe/Zagreb')
+
+  expect(prefill).toEqual({
+    clientId: CLIENT,
+    pickupWall: '2026-10-16T10:15',
+    startLocationId: START,
+    endLocationId: END,
+    passengers: '',
+    guest: 'Ana Anić',
+    price: '0',
+    payment: 'invoice_to_agency',
+    flight: 'OU384',
+    airportMark: true,
+    tabla: 'ANA',
+    clientReference: 'V-19',
+    luggage: '',
+    childSeats: '',
+    note: '',
+  })
+  expect(prefill).not.toHaveProperty('transferId')
+  expect(prefill).not.toHaveProperty('rideId')
+  expect(extraVehiclePrefill({
+    ...ride(),
+    flightNumber: null,
+    clientReference: null,
+    tabla: '',
+  }, 'Europe/Zagreb')).toMatchObject({
+    flight: '',
+    tabla: '',
+    clientReference: '',
+    price: '0',
+  })
+})
+
+it('asks for the group count only while the main Transfer has not stored one', () => {
+  expect(extraVehicleGroupPassengers(false, 3)).toBe('3')
+  expect(extraVehicleGroupPassengers(true, 3)).toBeNull()
 })

@@ -35,6 +35,7 @@ const emit = defineEmits<{
   correct: [ride: TransferDayRide]
   duplicate: [ride: TransferDayRide]
   returnJourney: [ride: TransferDayRide]
+  extraVehicle: [ride: TransferDayRide]
   add: []
 }>()
 
@@ -230,6 +231,7 @@ const shared = computed(() => ({
           @correct="emit('correct', $event)"
           @duplicate="emit('duplicate', $event)"
           @return-journey="emit('returnJourney', $event)"
+          @extra-vehicle="emit('extraVehicle', $event)"
         />
       </template>
     </UTable>
@@ -262,6 +264,7 @@ const shared = computed(() => ({
           @correct="emit('correct', $event)"
           @duplicate="emit('duplicate', $event)"
           @return-journey="emit('returnJourney', $event)"
+          @extra-vehicle="emit('extraVehicle', $event)"
         />
       </li>
     </ul>

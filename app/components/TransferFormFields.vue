@@ -31,6 +31,9 @@ const {
   flight,
   price,
   payment,
+  extraVehicle,
+  asksGroupCount,
+  groupPassengers,
   airportMark,
   luggage,
   childSeats,
@@ -56,6 +59,7 @@ const {
   passengerErrorKey,
   luggageErrorKey,
   seatErrorKey,
+  groupErrorKey,
   pickupErrorKey,
   endErrorKey,
   clientErrorKey,
@@ -121,13 +125,16 @@ const summaryLines = computed(() => {
     clientReferenceErrorKey.value,
     luggageErrorKey.value,
     seatErrorKey.value,
+    groupErrorKey.value,
     noteErrorKey.value,
   ]
   return keys.filter(key => key !== null).map(key => t(key))
 })
 
 function syncMore() {
-  moreOpen.value = transferMoreHasValue({
+  // Luggage and child seats live under Više. An extra vehicle starts them
+  // empty, so Više stays open until the office can fill them.
+  moreOpen.value = extraVehicle.value || transferMoreHasValue({
     flight: flight.value,
     airportMark: airportMark.value,
     tabla: tabla.value,
@@ -157,6 +164,10 @@ watch(formMode, () => {
 // A prefill lands while the mode is already `add`, so the mode watch does
 // not run. Open Više when the copied booking has a value there.
 watch(moreOpenNonce, () => {
+  syncMore()
+})
+
+watch(extraVehicle, () => {
   syncMore()
 })
 
@@ -661,6 +672,27 @@ onUnmounted(() => {
         </template>
       </UFormField>
       <UFormField
+        v-if="asksGroupCount"
+        :label="t('transfers.groupPassengers')"
+        name="groupPassengers"
+        class="mb-4"
+        :size="controlSize"
+        :error="groupErrorKey ? t(groupErrorKey) : false"
+      >
+        <UInput
+          id="transfer-group-passengers"
+          v-model="groupPassengers"
+          name="groupPassengers"
+          type="text"
+          inputmode="numeric"
+          autocomplete="off"
+          class="w-full"
+        />
+        <template #error="{ error }">
+          <span role="alert">{{ error }}</span>
+        </template>
+      </UFormField>
+      <UFormField
         :label="t('transfers.clientReference')"
         name="clientReference"
         class="mb-4"
@@ -699,6 +731,7 @@ onUnmounted(() => {
         </template>
       </UFormField>
       <UFormField
+        v-if="!extraVehicle"
         :label="t('transfers.price')"
         name="price"
         class="mb-4"

@@ -23,6 +23,16 @@ const props = defineProps<{
   phone?: boolean
   /** 409 stale_save on a correction. Awaited so the notice is up before the button enables. */
   onStale?: () => Promise<void>
+  /**
+   * The main Transfer after the day reloads. An extra-vehicle save sends
+   * that version. A correction leaves this unset and uses `onStale`.
+   */
+  lookupMain?: () => {
+    readonly version: number
+    readonly groupPassengerCountStored: boolean
+    readonly changedByName: string | null
+    readonly changedAt: string | null
+  } | null
 }>()
 
 const emit = defineEmits<{
@@ -58,6 +68,7 @@ const api = useTransferForm({
   onRecorded: rideId => emit('recorded', rideId),
   onClose: () => emit('close'),
   onStale: onStale === undefined ? undefined : () => onStale(),
+  lookupMain: props.lookupMain,
 })
 provide(transferFormKey, api)
 
@@ -72,6 +83,11 @@ const {
   openPrefill,
   openCorrect,
   saveCorrection,
+  mainTransferId,
+  staleNotice,
+  staleChangedByName,
+  staleChangedAt,
+  refreshExtraStale,
 } = api
 
 defineExpose({
@@ -82,6 +98,7 @@ defineExpose({
   formMode,
   formOpen,
   pending,
+  mainTransferId,
 })
 
 watch(() => props.correctRide?.rideId, (rideId) => {
@@ -101,6 +118,16 @@ watch(() => props.correctRide?.rideId, (rideId) => {
     <h2 class="mb-4 text-lg font-semibold">
       {{ formTitle }}
     </h2>
+    <StaleSaveAlert
+      v-if="staleNotice"
+      :changed-by-name="staleChangedByName"
+      :changed-at="staleChangedAt"
+      :time-zone="timeZone"
+      :locale="locale"
+      :phone="phone"
+      :pending="pending"
+      @refresh="refreshExtraStale"
+    />
     <TransferFormFields
       :control-size="phone ? 'xl' : 'sm'"
       :client-briefs="clientBriefs"

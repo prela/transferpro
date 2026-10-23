@@ -79,6 +79,58 @@ export function duplicateTransferPrefill(source: TransferPrefillSource, timeZone
 }
 
 /**
+ * The booking an extra vehicle copies from its main Transfer (ADR-0054).
+ * Counts and the note are this vehicle's own, so they are not here. The
+ * Price is fixed at 0 and is not a copy of the main Transfer's price.
+ */
+export interface ExtraVehicleSource {
+  readonly clientId: string
+  readonly pickupAt: string
+  readonly startLocationId: string
+  readonly endLocationId: string
+  readonly guestName: string
+  readonly payment: PaymentMethod
+  readonly flightNumber: string | null
+  readonly airportMark: boolean
+  readonly tabla: string
+  readonly clientReference: string | null
+}
+
+/**
+ * A linked extra vehicle. The pickup is the wall clock in the Tenant zone.
+ * Passenger, luggage, and child-seat counts and the note start empty. The
+ * Price is 0 in either locale: the form does not show it.
+ */
+export function extraVehiclePrefill(source: ExtraVehicleSource, timeZone: string): TransferPrefill {
+  return {
+    clientId: source.clientId,
+    pickupWall: wallClockInTimeZone(timeZone, new Date(source.pickupAt)),
+    startLocationId: source.startLocationId,
+    endLocationId: source.endLocationId,
+    passengers: '',
+    guest: source.guestName,
+    price: '0',
+    payment: source.payment,
+    flight: source.flightNumber ?? '',
+    airportMark: source.airportMark,
+    tabla: source.tabla,
+    clientReference: source.clientReference ?? '',
+    luggage: '',
+    childSeats: '',
+    note: '',
+  }
+}
+
+/**
+ * The group count the form asks, starting from the main Transfer's own
+ * passenger count. Null once that count is already stored: a later extra
+ * vehicle does not ask again and does not send one (ADR-0054).
+ */
+export function extraVehicleGroupPassengers(stored: boolean, passengerCount: number): string | null {
+  return stored ? null : String(passengerCount)
+}
+
+/**
  * A return journey. From and to swap. Client, Client reference, guest,
  * passengers, luggage, child seats, and payment stay. Time, flight number,
  * and tabla are empty. Price, note, and the airport mark are not in that
