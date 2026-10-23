@@ -222,7 +222,8 @@ export function buildDemoPicture(now: Date): DemoPicture {
 
   const rides: DemoRide[] = [
     // In progress on the gap car, so this pickup does not share the valid car's
-    // roster day. Landed long enough for the landing alarm, and past the unclosed mark.
+    // roster day. Landed three hours ago. With the default duration of 60 the
+    // mark is landing plus 120, already an hour past, and it is the only one.
     ride(1, {
       client: 'agency',
       pickupAt: new Date(now.getTime() - 90 * MINUTE),
@@ -240,7 +241,8 @@ export function buildDemoPicture(now: Date): DemoPicture {
       vehicle: 'gap',
       mustAccept: false,
     }),
-    // In progress, no flight and no landing, already past the unclosed mark.
+    // In progress, no flight and no landing. Seventy minutes after pickup is
+    // still short of pickup plus the default duration plus 60, so no mark.
     ride(2, {
       client: 'hotel',
       pickupAt: new Date(now.getTime() - 70 * MINUTE),

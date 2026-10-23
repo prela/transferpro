@@ -365,11 +365,9 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   landingAt: z.iso.datetime().nullable(),
   // The live estimate. Shown in the Tenant time zone. Empty until the status reports one.
   expectedArrival: z.iso.datetime().nullable(),
-  // Derived at read. Display only. A Ride with no landing stays false (ADR-0030).
-  landingAlarm: z.boolean(),
   // Derived at read, by the same rule as office home. Display only.
-  // Temporarily on at pickup plus 60 minutes for an in-progress Ride and
-  // a handed-off Ride. ADR-0055's occupied end comes in #476.
+  // On 60 minutes after the occupied end for an in-progress Ride and a
+  // handed-off Ride (ADR-0055).
   unclosedMark: z.boolean(),
   // Derived at read. Display only. Empty unless the Ride is assigned or accepted.
   warnings: boardWarningsSchema,

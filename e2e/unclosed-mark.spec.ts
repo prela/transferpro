@@ -40,8 +40,8 @@ async function storeLanding(rideId: string, landingAt: string): Promise<void> {
   }
 }
 
-test('an in-progress Ride with a landing shows the landing alarm on home and the day board, and a Ride without one does not', async ({ page }) => {
-  const tenant = await seedTenant('landing-alarm')
+test('a landed Ride past its planned end shows only the unclosed mark, and a Ride 90 minutes after pickup shows none', async ({ page }) => {
+  const tenant = await seedTenant('unclosed-mark')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
 
   const licence = '2031-01-01'
@@ -73,8 +73,9 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
     },
   }))
 
-  // Pickup 90 minutes ago keeps the unclosed mark (pickup + 60). Landing 150
-  // minutes ago keeps the landing alarm (landing + duration 60 + grace 60).
+  // Default duration 60. A city Ride is marked at pickup plus 120, so 90
+  // minutes is still quiet. Landing 150 minutes ago is landing plus 120,
+  // which is already past, so that Ride shows only the unclosed mark.
   // Near the operational-day start that pickup can fall on the previous day;
   // the board selects that day explicitly after every remount.
   const timeZone = 'Europe/Zagreb'
@@ -115,22 +116,29 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
   await record('Open Lara')
 
   await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
-  // A landing alarm and an unclosed mark are urgent, so both rows sit in Pozornost.
-  const progress = page.getByRole('region', { name: 'Pozornost' })
-  const landed = progress.getByRole('listitem').filter({ hasText: 'Landed Lana' })
-  const open = progress.getByRole('listitem').filter({ hasText: 'Open Lara' })
-  await expect(landed).toContainText('Alarm slijetanja')
+  // The landed Ride is urgent, so it sits in Pozornost and not on U tijeku.
+  // The city Ride is still short of its planned end, so it stays in progress.
+  const attention = page.getByRole('region', { name: 'Pozornost' })
+  const inProgress = page.getByRole('region', { name: 'U tijeku' })
+  const landed = attention.getByRole('listitem').filter({ hasText: 'Landed Lana' })
+  const open = inProgress.getByRole('listitem').filter({ hasText: 'Open Lara' })
   await expect(landed).toContainText('Nije zatvoreno')
-  await expect(open).toContainText('Nije zatvoreno')
-  await expect(open).not.toContainText('Alarm slijetanja')
+  await expect(landed).not.toContainText('Alarm slijetanja')
+  await expect(attention.getByRole('listitem').filter({ hasText: 'Open Lara' })).toHaveCount(0)
+  await expect(open).toBeVisible()
+  await expect(open).not.toContainText('Nije zatvoreno')
+  await expect(page.getByText('Alarm slijetanja')).toHaveCount(0)
 
   await switchLocale(page, 'en')
-  const progressEn = page.getByRole('region', { name: 'Attention' })
-  await expect(progressEn.getByRole('listitem').filter({ hasText: 'Landed Lana' })).toContainText('Landing alarm')
-  await expect(progressEn.getByRole('listitem').filter({ hasText: 'Open Lara' })).not.toContainText('Landing alarm')
+  const attentionEn = page.getByRole('region', { name: 'Attention' })
+  const progressEn = page.getByRole('region', { name: 'In progress' })
+  await expect(attentionEn.getByRole('listitem').filter({ hasText: 'Landed Lana' })).toContainText('Not closed')
+  await expect(progressEn.getByRole('listitem').filter({ hasText: 'Open Lara' })).toBeVisible()
+  await expect(progressEn.getByRole('listitem').filter({ hasText: 'Open Lara' })).not.toContainText('Not closed')
+  await expect(page.getByText('Landing alarm')).toHaveCount(0)
   await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
-  await expect(progressEn.getByRole('listitem').filter({ hasText: 'Landed Lana' })).toContainText('Landing alarm')
+  await expect(attentionEn.getByRole('listitem').filter({ hasText: 'Landed Lana' })).toContainText('Not closed')
   await switchTheme(page, 'light')
 
   await page.goto('/transfers')
@@ -154,18 +162,30 @@ test('an in-progress Ride with a landing shows the landing alarm on home and the
   await showPickupDay()
   const boardLanded = page.getByRole('row').filter({ hasText: 'Landed Lana' })
   const boardOpen = page.getByRole('row').filter({ hasText: 'Open Lara' })
-  await expect(boardLanded).toContainText('Landing alarm')
+  await expect(boardLanded).toContainText('Not closed')
+  await expect(boardLanded).not.toContainText('Landing alarm')
   await boardLanded.getByRole('button', { name: 'Actions: Landed Lana' }).click()
   await expect(page.getByRole('menuitem', { name: 'Change vehicle', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
+  await expect(boardOpen).not.toContainText('Not closed')
   await expect(boardOpen).not.toContainText('Landing alarm')
   await boardOpen.getByRole('button', { name: 'Actions: Open Lara' }).click()
   await expect(page.getByRole('menuitem', { name: 'Change vehicle', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
+  await boardLanded.getByText('Landed Lana', { exact: true }).click()
+  await expect(page.getByRole('article')).toContainText('An hour has passed since the planned end and the ride is not closed.')
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Close', exact: true }).click()
   await switchLocale(page, 'hr')
   await showPickupDay()
-  await expect(page.getByRole('row').filter({ hasText: 'Landed Lana' })).toContainText('Alarm slijetanja')
+  const boardLandedHr = page.getByRole('row').filter({ hasText: 'Landed Lana' })
+  await expect(boardLandedHr).toContainText('Nije zatvoreno')
+  await expect(boardLandedHr).not.toContainText('Alarm slijetanja')
+  await expect(page.getByRole('row').filter({ hasText: 'Open Lara' })).not.toContainText('Nije zatvoreno')
+  await boardLandedHr.getByText('Landed Lana', { exact: true }).click()
+  await expect(page.getByRole('article')).toContainText('Prošlo je sat vremena od planiranog kraja, a vožnja nije zatvorena.')
+  await page.locator('#ride-detail header').getByRole('button', { name: 'Zatvori', exact: true }).click()
   await switchTheme(page, 'dark')
   await showPickupDay()
-  await expect(page.getByRole('row').filter({ hasText: 'Landed Lana' })).toContainText('Alarm slijetanja')
+  await expect(page.getByRole('row').filter({ hasText: 'Landed Lana' })).toContainText('Nije zatvoreno')
+  await expect(page.getByText('Alarm slijetanja')).toHaveCount(0)
 })

@@ -492,7 +492,6 @@
       "unassignedAlarm": "Unassigned < 4 h",
       "pastPickup": "Pickup has passed",
       "declined": "Declined: {driver}",
-      "landingAlarm": "Landing alarm",
       "unclosed": "Not closed",
       "overlap": "Overlap",
       "rosterMismatch": "Roster mismatch",
@@ -504,8 +503,7 @@
       "unassignedAlarm": "The ride is unassigned and the pickup is within four hours.",
       "pastPickup": "The pickup has passed and the ride is still unassigned.",
       "declined": "{driver} declined this ride.",
-      "landingAlarm": "The expected time after landing has passed and the ride is not closed.",
-      "unclosed": "More than an hour has passed since pickup and the ride is not closed.",
+      "unclosed": "An hour has passed since the planned end and the ride is not closed.",
       "overlap": "The time overlaps another ride, or the gap to it is too short.",
       "rosterMismatch": "The vehicle is not the one the roster gives this driver for that day.",
       "expiredDocument": "A document for the driver or the vehicle has expired.",
@@ -1087,7 +1085,6 @@
       "unassigned-past-pickup": "Pickup has passed",
       "unassigned-alarm": "Unassigned < 4 h",
       "decline-alert": "Declined",
-      "landing-alarm": "Landing alarm",
       "unclosed-mark": "Not closed"
     },
     "emptyAttention": "No urgent rides. The other rides are on the lists below.",
@@ -1098,7 +1095,6 @@
     "countRides": "Rides",
     "unassignedAlarm": "Unassigned alarm",
     "unclosedMark": "Unclosed mark",
-    "landingAlarm": "Landing alarm",
     "failedMail": {
       "title": "Failed mail",
       "resend": "Send again",

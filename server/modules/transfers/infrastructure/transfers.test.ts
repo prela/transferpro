@@ -429,142 +429,211 @@ it('keeps the Partner id on a handed-off Ride in the day list', async () => {
   expect(queries[0]?.sql).toContain('partner_id')
 })
 
-it('marks a landing alarm on an in-progress Ride 60 minutes after landing plus the transfer duration', async () => {
-  const now = new Date('2026-06-15T10:00:00.000Z')
-  const driverId = 'c1c1c1c1-3333-4333-8333-333333333333'
-  const vehicleId = 'f1f1f1f1-4444-4444-8444-444444444444'
-  function dayRide(id: string, guestName: string, state: 'assigned' | 'accepted' | 'done' | 'unassigned', landingAt: Date | null, mustAccept: boolean | null) {
-    return {
-      rideId: id,
-      transferId,
-      state,
-      driverId: state === 'unassigned' ? null : driverId,
-      vehicleId: state === 'unassigned' ? null : vehicleId,
-      mustAccept,
-      clientId,
-      pickupAt: new Date('2026-06-15T08:00:00.000Z'),
-      startLocationId,
-      endLocationId,
-      passengerCount: 1,
-      guestName,
-      flightNumber: null,
-      price: '10.00',
-      payment: 'cash' as const,
-      airportMark: true,
-      luggageCount: 0,
-      childSeatCount: 0,
-      note: null,
-      tabla: '',
-      clientReference: null,
-      landingAt,
-    }
+const markDriverId = 'c1c1c1c1-3333-4333-8333-333333333333'
+const markVehicleId = 'f1f1f1f1-4444-4444-8444-444444444444'
+const markPartnerId = 'c3c3c3c3-3333-4333-8333-333333333333'
+
+function markDayRide(options: {
+  id: string
+  guestName: string
+  state: 'assigned' | 'accepted' | 'done' | 'no-show' | 'cancelled' | 'unassigned' | 'handed_off'
+  pickupAt: Date
+  landingAt: Date | null
+  mustAccept: boolean | null
+  expectedArrival?: Date | null
+  airportMark?: boolean
+  transferId?: string
+}) {
+  const noCrew = options.state === 'unassigned' || options.state === 'handed_off'
+  return {
+    rideId: options.id,
+    transferId: options.transferId ?? transferId,
+    state: options.state,
+    driverId: noCrew ? null : markDriverId,
+    vehicleId: noCrew ? null : markVehicleId,
+    mustAccept: options.mustAccept,
+    partnerId: options.state === 'handed_off' ? markPartnerId : null,
+    clientId,
+    pickupAt: options.pickupAt,
+    startLocationId,
+    endLocationId,
+    passengerCount: 1,
+    guestName: options.guestName,
+    flightNumber: null,
+    price: '10.00',
+    payment: 'cash' as const,
+    airportMark: options.airportMark ?? false,
+    luggageCount: 0,
+    childSeatCount: 0,
+    note: null,
+    tabla: '',
+    clientReference: null,
+    landingAt: options.landingAt,
+    expectedArrival: options.expectedArrival ?? null,
   }
+}
+
+function marksByGuest(rides: ReadonlyArray<{ guestName: string, unclosedMark: boolean }>) {
+  return Object.fromEntries(rides.map(row => [row.guestName, row.unclosedMark]))
+}
+
+it('marks an in-progress Ride at the occupied end plus 60 minutes, including that instant', async () => {
+  // 12:00 is pickup 10:00 plus duration 60 plus 60. One millisecond later on the basis is quiet.
+  const now = new Date('2026-06-15T12:00:00.000Z')
+  const atEnd = new Date('2026-06-15T10:00:00.000Z')
+  const justShort = new Date('2026-06-15T10:00:00.001Z')
   const { transaction } = fakeTransaction({
     dayRows: [
-      dayRide(rideId, 'Landed', 'assigned', new Date('2026-06-15T08:00:00.000Z'), false),
-      dayRide('e2e2e2e2-2222-4222-8222-222222222222', 'Just short', 'accepted', new Date('2026-06-15T08:00:00.001Z'), true),
-      dayRide('e3e3e3e3-2222-4222-8222-222222222222', 'No landing', 'assigned', null, false),
-      dayRide('e4e4e4e4-2222-4222-8222-222222222222', 'Done', 'done', new Date('2026-06-15T07:00:00.000Z'), false),
-      dayRide('e5e5e5e5-2222-4222-8222-222222222222', 'Waiting', 'assigned', new Date('2026-06-15T07:00:00.000Z'), true),
-      dayRide('e6e6e6e6-2222-4222-8222-222222222222', 'Unassigned', 'unassigned', new Date('2026-06-15T07:00:00.000Z'), null),
+      markDayRide({ id: rideId, guestName: 'At the mark', state: 'assigned', pickupAt: atEnd, landingAt: null, mustAccept: false }),
+      markDayRide({ id: 'e2e2e2e2-2222-4222-8222-222222222222', guestName: 'Just short', state: 'accepted', pickupAt: justShort, landingAt: null, mustAccept: true }),
+      markDayRide({ id: 'e3e3e3e3-2222-4222-8222-222222222222', guestName: 'Landed at the mark', state: 'assigned', pickupAt: new Date('2026-06-15T08:00:00.000Z'), landingAt: atEnd, mustAccept: false }),
+      markDayRide({ id: 'e4e4e4e4-2222-4222-8222-222222222222', guestName: 'Landed just short', state: 'accepted', pickupAt: new Date('2026-06-15T08:00:00.000Z'), landingAt: justShort, mustAccept: true }),
+      // Already past when the Ride is in progress, so the mark is on at once.
+      markDayRide({ id: 'e5e5e5e5-2222-4222-8222-222222222222', guestName: 'Already past', state: 'assigned', pickupAt: new Date('2026-06-15T08:00:00.000Z'), landingAt: null, mustAccept: false }),
     ],
   })
   const rides = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 60)
-  expect(Object.fromEntries(rides.map(row => [row.guestName, row.landingAlarm]))).toEqual({
-    'Landed': true,
-    'Just short': false,
-    'No landing': false,
-    'Done': false,
-    'Waiting': false,
-    'Unassigned': false,
-  })
-  // Temporary (#476): pickup was 08:00 and now is 10:00, so the unclosed
-  // mark is already on. A stored landing and a longer duration move the
-  // alarm and leave the mark.
-  expect(Object.fromEntries(rides.map(row => [row.guestName, row.unclosedMark]))).toEqual({
-    'Landed': true,
-    'Just short': true,
-    'No landing': true,
-    'Done': false,
-    'Waiting': false,
-    'Unassigned': false,
-  })
-
-  const longer = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 90)
-  expect(longer.find(row => row.guestName === 'Landed')?.landingAlarm).toBe(false)
-  expect(longer.find(row => row.guestName === 'Landed')?.unclosedMark).toBe(true)
-})
-
-it('temporarily marks an in-progress Ride and a handed-off Ride at pickup plus 60 minutes (#476)', async () => {
-  // 10:00 is exactly 60 minutes after 09:00. One millisecond later on the pickup is still quiet.
-  const now = new Date('2026-06-15T10:00:00.000Z')
-  const atPickup = new Date('2026-06-15T09:00:00.000Z')
-  const justShortPickup = new Date('2026-06-15T09:00:00.001Z')
-  const driverId = 'c1c1c1c1-3333-4333-8333-333333333333'
-  const vehicleId = 'f1f1f1f1-4444-4444-8444-444444444444'
-  const partnerId = 'c3c3c3c3-3333-4333-8333-333333333333'
-  function dayRide(
-    id: string,
-    guestName: string,
-    state: 'assigned' | 'accepted' | 'done' | 'unassigned' | 'handed_off',
-    pickupAt: Date,
-    landingAt: Date | null,
-    mustAccept: boolean | null,
-  ) {
-    return {
-      rideId: id,
-      transferId,
-      state,
-      driverId: state === 'unassigned' || state === 'handed_off' ? null : driverId,
-      vehicleId: state === 'unassigned' || state === 'handed_off' ? null : vehicleId,
-      mustAccept,
-      partnerId: state === 'handed_off' ? partnerId : null,
-      clientId,
-      pickupAt,
-      startLocationId,
-      endLocationId,
-      passengerCount: 1,
-      guestName,
-      flightNumber: null,
-      price: '10.00',
-      payment: 'cash' as const,
-      airportMark: landingAt !== null,
-      luggageCount: 0,
-      childSeatCount: 0,
-      note: null,
-      tabla: '',
-      clientReference: null,
-      landingAt,
-    }
-  }
-  const { transaction } = fakeTransaction({
-    dayRows: [
-      dayRide(rideId, 'At the mark', 'assigned', atPickup, new Date('2026-06-15T11:00:00.000Z'), false),
-      dayRide('e2e2e2e2-2222-4222-8222-222222222222', 'Just short', 'accepted', justShortPickup, null, true),
-      dayRide('e3e3e3e3-2222-4222-8222-222222222222', 'Handed at the mark', 'handed_off', atPickup, new Date('2026-06-15T11:00:00.000Z'), null),
-      dayRide('e4e4e4e4-2222-4222-8222-222222222222', 'Handed just short', 'handed_off', justShortPickup, null, null),
-      dayRide('e5e5e5e5-2222-4222-8222-222222222222', 'Waiting', 'assigned', atPickup, new Date('2026-06-15T08:00:00.000Z'), true),
-      dayRide('e6e6e6e6-2222-4222-8222-222222222222', 'Unassigned', 'unassigned', atPickup, null, null),
-      dayRide('e7e7e7e7-2222-4222-8222-222222222222', 'Done', 'done', atPickup, new Date('2026-06-15T08:00:00.000Z'), false),
-    ],
-  })
-  const rides = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 90)
-  expect(Object.fromEntries(rides.map(row => [row.guestName, row.unclosedMark]))).toEqual({
+  expect(marksByGuest(rides)).toEqual({
     'At the mark': true,
     'Just short': false,
+    'Landed at the mark': true,
+    'Landed just short': false,
+    'Already past': true,
+  })
+  expect(rides.every(row => !('landingAlarm' in row))).toBe(true)
+})
+
+it('a late landing turns the mark off, and clearing the landing turns it back on', async () => {
+  const now = new Date('2026-06-15T12:00:00.000Z')
+  const pickupAt = new Date('2026-06-15T09:00:00.000Z')
+  const { transaction } = fakeTransaction({
+    dayRows: [
+      markDayRide({ id: rideId, guestName: 'No landing', state: 'assigned', pickupAt, landingAt: null, mustAccept: false }),
+      markDayRide({ id: 'e2e2e2e2-2222-4222-8222-222222222222', guestName: 'Late landing', state: 'assigned', pickupAt, landingAt: new Date('2026-06-15T11:30:00.000Z'), mustAccept: false }),
+    ],
+  })
+  const rides = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 60)
+  // No landing: end 10:00, mark 11:00. Late landing 11:30: end 12:30, mark 13:30.
+  expect(marksByGuest(rides)).toEqual({
+    'No landing': true,
+    'Late landing': false,
+  })
+})
+
+it('the expected arrival does not move the mark, and a duration change does', async () => {
+  const now = new Date('2026-06-15T12:00:00.000Z')
+  const pickupAt = new Date('2026-06-15T10:00:00.000Z')
+  const { transaction } = fakeTransaction({
+    dayRows: [
+      markDayRide({
+        id: rideId,
+        guestName: 'Early estimate',
+        state: 'assigned',
+        pickupAt: new Date('2026-06-15T10:00:00.001Z'),
+        landingAt: null,
+        mustAccept: false,
+        expectedArrival: new Date('2026-06-15T08:00:00.000Z'),
+      }),
+      markDayRide({
+        id: 'e2e2e2e2-2222-4222-8222-222222222222',
+        guestName: 'Late estimate',
+        state: 'assigned',
+        pickupAt,
+        landingAt: null,
+        mustAccept: false,
+        expectedArrival: new Date('2026-06-15T12:00:00.000Z'),
+        airportMark: true,
+      }),
+      markDayRide({
+        id: 'e3e3e3e3-2222-4222-8222-222222222222',
+        guestName: 'Landed',
+        state: 'assigned',
+        pickupAt: new Date('2026-06-15T08:00:00.000Z'),
+        landingAt: pickupAt,
+        mustAccept: false,
+      }),
+    ],
+  })
+  const rides = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 60)
+  expect(marksByGuest(rides)).toEqual({
+    // An estimate of 08:00 would already be marked if it were a landing.
+    'Early estimate': false,
+    // An estimate of 12:00 would still be quiet if it were a landing.
+    'Late estimate': true,
+    'Landed': true,
+  })
+  const longer = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 90)
+  expect(longer.find(row => row.guestName === 'Landed')?.unclosedMark).toBe(false)
+  expect(longer.find(row => row.guestName === 'Late estimate')?.unclosedMark).toBe(false)
+})
+
+it('changing the pickup moves the mark only while no landing is stored', async () => {
+  const now = new Date('2026-06-15T12:00:00.000Z')
+  const landingAt = new Date('2026-06-15T10:00:00.000Z')
+  const { transaction } = fakeTransaction({
+    dayRows: [
+      markDayRide({ id: rideId, guestName: 'City at the mark', state: 'assigned', pickupAt: new Date('2026-06-15T10:00:00.000Z'), landingAt: null, mustAccept: false }),
+      markDayRide({ id: 'e2e2e2e2-2222-4222-8222-222222222222', guestName: 'City just short', state: 'assigned', pickupAt: new Date('2026-06-15T10:00:00.001Z'), landingAt: null, mustAccept: false }),
+      markDayRide({ id: 'e3e3e3e3-2222-4222-8222-222222222222', guestName: 'Landed early pickup', state: 'assigned', pickupAt: new Date('2026-06-15T08:00:00.000Z'), landingAt, mustAccept: false }),
+      // Pickup 11:30 with no landing would be quiet. The landing keeps the mark.
+      markDayRide({ id: 'e4e4e4e4-2222-4222-8222-222222222222', guestName: 'Landed late pickup', state: 'assigned', pickupAt: new Date('2026-06-15T11:30:00.000Z'), landingAt, mustAccept: false }),
+    ],
+  })
+  const rides = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 60)
+  expect(marksByGuest(rides)).toEqual({
+    'City at the mark': true,
+    'City just short': false,
+    'Landed early pickup': true,
+    'Landed late pickup': true,
+  })
+})
+
+it('a handed-off Ride shares the instant, and a finished Ride does not take the mark', async () => {
+  const now = new Date('2026-06-15T12:00:00.000Z')
+  const atEnd = new Date('2026-06-15T10:00:00.000Z')
+  const past = new Date('2026-06-15T08:00:00.000Z')
+  const { transaction } = fakeTransaction({
+    dayRows: [
+      markDayRide({ id: rideId, guestName: 'Handed at the mark', state: 'handed_off', pickupAt: atEnd, landingAt: null, mustAccept: null }),
+      markDayRide({ id: 'e2e2e2e2-2222-4222-8222-222222222222', guestName: 'Handed just short', state: 'handed_off', pickupAt: new Date('2026-06-15T10:00:00.001Z'), landingAt: null, mustAccept: null }),
+      markDayRide({ id: 'e3e3e3e3-2222-4222-8222-222222222222', guestName: 'Handed landed', state: 'handed_off', pickupAt: new Date('2026-06-15T11:30:00.000Z'), landingAt: atEnd, mustAccept: null }),
+      markDayRide({ id: 'e4e4e4e4-2222-4222-8222-222222222222', guestName: 'Waiting', state: 'assigned', pickupAt: past, landingAt: null, mustAccept: true }),
+      markDayRide({ id: 'e5e5e5e5-2222-4222-8222-222222222222', guestName: 'Unassigned', state: 'unassigned', pickupAt: past, landingAt: null, mustAccept: null }),
+      markDayRide({ id: 'e6e6e6e6-2222-4222-8222-222222222222', guestName: 'Done', state: 'done', pickupAt: past, landingAt: null, mustAccept: false }),
+      markDayRide({ id: 'e7e7e7e7-2222-4222-8222-222222222222', guestName: 'No-show', state: 'no-show', pickupAt: past, landingAt: null, mustAccept: false }),
+      markDayRide({ id: 'e8e8e8e8-2222-4222-8222-222222222222', guestName: 'Cancelled', state: 'cancelled', pickupAt: past, landingAt: null, mustAccept: false }),
+    ],
+  })
+  const rides = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 60)
+  expect(marksByGuest(rides)).toEqual({
     'Handed at the mark': true,
     'Handed just short': false,
+    'Handed landed': true,
     'Waiting': false,
     'Unassigned': false,
     'Done': false,
+    'No-show': false,
+    'Cancelled': false,
   })
-  expect(Object.fromEntries(rides.map(row => [row.guestName, row.landingAlarm]))).toEqual({
-    'At the mark': false,
-    'Just short': false,
-    'Handed at the mark': false,
-    'Handed just short': false,
-    'Waiting': false,
-    'Unassigned': false,
-    'Done': false,
+})
+
+it('marks each member of a group from its own landing, and closing one leaves the other', async () => {
+  // Each member is its own Transfer (ADR-0054). The day read has no group.
+  const now = new Date('2026-06-15T12:00:00.000Z')
+  const pickupAt = new Date('2026-06-15T08:00:00.000Z')
+  const { transaction } = fakeTransaction({
+    dayRows: [
+      // Landing 09:00, duration 60: end 10:00, mark 11:00.
+      markDayRide({ id: rideId, guestName: 'Early landing', state: 'assigned', pickupAt, landingAt: new Date('2026-06-15T09:00:00.000Z'), mustAccept: false, transferId: 'd2d2d2d2-1111-4111-8111-111111111111' }),
+      // Landing 11:00: end 12:00, mark 13:00.
+      markDayRide({ id: 'e2e2e2e2-2222-4222-8222-222222222222', guestName: 'Later landing', state: 'assigned', pickupAt, landingAt: new Date('2026-06-15T11:00:00.000Z'), mustAccept: false, transferId: 'd3d3d3d3-1111-4111-8111-111111111111' }),
+      markDayRide({ id: 'e3e3e3e3-2222-4222-8222-222222222222', guestName: 'Closed early', state: 'done', pickupAt, landingAt: new Date('2026-06-15T09:00:00.000Z'), mustAccept: false, transferId: 'd4d4d4d4-1111-4111-8111-111111111111' }),
+    ],
+  })
+  const rides = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 60)
+  expect(marksByGuest(rides)).toEqual({
+    'Early landing': true,
+    'Later landing': false,
+    'Closed early': false,
   })
 })

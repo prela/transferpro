@@ -1,6 +1,27 @@
 import type { RideState } from './transfer'
 import { calendarDateInTimeZone, isCalendarDate, operationalDateInTimeZone } from './date'
-import { rideIsInProgress } from './landing-alarm'
+
+/**
+ * In progress, the same way the office-home list decides it (ADR-0022).
+ * Unassigned, handed off, and waiting on acceptance are not in progress.
+ * A handed-off Ride has no Driver (ADR-0048). A finished Ride is not.
+ * The pickup instant is excluded: the Ride becomes in progress once that
+ * instant is past.
+ */
+export function rideIsInProgress(
+  state: RideState,
+  mustAccept: boolean | null,
+  driverId: string | null,
+  pickupMs: number,
+  nowMs: number,
+): boolean {
+  if (state === 'unassigned' || state === 'handed_off')
+    return false
+  if (state === 'assigned' && mustAccept === true)
+    return false
+  const finished = state === 'done' || state === 'no-show' || state === 'cancelled'
+  return !finished && driverId !== null && pickupMs < nowMs
+}
 
 /**
  * Four hours, in milliseconds. The unassigned alarm includes this instant
@@ -12,7 +33,6 @@ export const RIDE_ATTENTION_KINDS = [
   'unassigned-past-pickup',
   'unassigned-alarm',
   'decline-alert',
-  'landing-alarm',
   'unclosed-mark',
   'overlap',
   'unavailable',
@@ -38,7 +58,6 @@ export interface RideAttentionSource {
   readonly pickupAt: string
   readonly driverId: string | null
   readonly mustAccept: boolean | null
-  readonly landingAlarm: boolean
   /** The day read's unclosed mark. This classification does not keep a second clock. */
   readonly unclosedMark: boolean
   readonly warnings: {
@@ -60,7 +79,6 @@ const URGENT = new Set<RideAttentionKind>([
   'unassigned-past-pickup',
   'unassigned-alarm',
   'decline-alert',
-  'landing-alarm',
   'unclosed-mark',
 ])
 
@@ -97,9 +115,6 @@ export function classifyRideAttention(
 
   for (const decline of declines)
     items.push({ tier: 'urgent', kind: 'decline-alert', driverName: decline.driverName })
-
-  if (ride.landingAlarm)
-    items.push({ tier: 'urgent', kind: 'landing-alarm' })
 
   const inProgress = rideIsInProgress(ride.state, ride.mustAccept, ride.driverId, pickup, nowMs)
   // A handed-off Ride is not in progress. It takes the mark the day read

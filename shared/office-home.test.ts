@@ -2,7 +2,6 @@ import type { OfficeHomeRide } from './office-home'
 import { expect, it } from 'vitest'
 import { instantFromWallClock } from './date'
 import { buildOfficeHome, officeHomeBlocks, officeHomeCountPath, officeHomeUrgentKeys, officeHomeUrgentRideCount } from './office-home'
-import { UNCLOSED_MARK_MS } from './unclosed-mark'
 
 /**
  * The office home snapshot. Lists keep every matching Ride. Counts keep
@@ -216,7 +215,7 @@ it('derives in progress from a past pickup, including an earlier day, and leaves
   expect(snapshot.waitingOnAcceptance).toEqual([])
 })
 
-it('marks an in-progress Ride once 60 minutes have passed since the scheduled pickup', () => {
+it('marks an in-progress Ride 60 minutes after the pickup plus the transfer duration', () => {
   const now = new Date('2026-06-15T10:00:00.000Z')
   const driver = {
     driverId: '00000000-0000-4000-8000-0000000000aa',
@@ -235,7 +234,7 @@ it('marks an in-progress Ride once 60 minutes have passed since the scheduled pi
     ride({
       rideId: '00000000-0000-4000-8000-000000000051',
       guestName: 'Hour',
-      pickupAt: '2026-06-15T09:00:00.000Z',
+      pickupAt: '2026-06-15T08:00:00.000Z',
       state: 'assigned',
       mustAccept: false,
       ...driver,
@@ -243,7 +242,7 @@ it('marks an in-progress Ride once 60 minutes have passed since the scheduled pi
     ride({
       rideId: '00000000-0000-4000-8000-000000000052',
       guestName: 'Just under',
-      pickupAt: '2026-06-15T09:00:00.001Z',
+      pickupAt: '2026-06-15T08:00:00.001Z',
       state: 'accepted',
       mustAccept: true,
       ...driver,
@@ -283,8 +282,8 @@ it('marks an in-progress Ride once 60 minutes have passed since the scheduled pi
   expect(snapshot.counts.inProgress).toBe(2)
 })
 
-it('shows a landing alarm 60 minutes after the landing plus the transfer duration, and leaves a Ride with no landing on the unclosed mark', () => {
-  const now = new Date('2026-06-15T10:00:00.000Z')
+it('moves the unclosed mark with a stored landing and the transfer duration', () => {
+  const now = new Date('2026-06-15T12:00:00.000Z')
   const driver = {
     driverId: '00000000-0000-4000-8000-0000000000aa',
     driverName: 'Marko',
@@ -295,7 +294,7 @@ it('shows a landing alarm 60 minutes after the landing plus the transfer duratio
       rideId: '00000000-0000-4000-8000-000000000060',
       guestName: 'Landed',
       pickupAt: '2026-06-15T08:00:00.000Z',
-      landingAt: '2026-06-15T08:00:00.000Z',
+      landingAt: '2026-06-15T10:00:00.000Z',
       state: 'assigned',
       mustAccept: false,
       ...driver,
@@ -304,7 +303,7 @@ it('shows a landing alarm 60 minutes after the landing plus the transfer duratio
       rideId: '00000000-0000-4000-8000-000000000061',
       guestName: 'Just short',
       pickupAt: '2026-06-15T08:00:00.000Z',
-      landingAt: '2026-06-15T08:00:00.001Z',
+      landingAt: '2026-06-15T10:00:00.001Z',
       state: 'accepted',
       mustAccept: true,
       ...driver,
@@ -312,7 +311,7 @@ it('shows a landing alarm 60 minutes after the landing plus the transfer duratio
     ride({
       rideId: '00000000-0000-4000-8000-000000000062',
       guestName: 'No landing',
-      pickupAt: '2026-06-15T08:00:00.000Z',
+      pickupAt: '2026-06-15T10:30:00.000Z',
       landingAt: null,
       state: 'assigned',
       mustAccept: false,
@@ -321,8 +320,8 @@ it('shows a landing alarm 60 minutes after the landing plus the transfer duratio
     ride({
       rideId: '00000000-0000-4000-8000-000000000063',
       guestName: 'Fresh pickup',
-      pickupAt: '2026-06-15T09:30:00.000Z',
-      landingAt: '2026-06-15T07:00:00.000Z',
+      pickupAt: '2026-06-15T11:00:00.000Z',
+      landingAt: '2026-06-15T11:00:00.000Z',
       state: 'assigned',
       mustAccept: false,
       ...driver,
@@ -338,19 +337,13 @@ it('shows a landing alarm 60 minutes after the landing plus the transfer duratio
     }),
   ], now, zone)
 
-  expect(Object.fromEntries(snapshot.inProgress.map(row => [row.guestName, row.landingAlarm]))).toEqual({
-    'Landed': true,
-    'Just short': false,
-    'No landing': false,
-    'Fresh pickup': true,
-  })
   expect(Object.fromEntries(snapshot.inProgress.map(row => [row.guestName, row.unclosedMark]))).toEqual({
     'Landed': true,
-    'Just short': true,
-    'No landing': true,
+    'Just short': false,
+    // Pickup plus 90 minutes. The mark is pickup plus 120.
+    'No landing': false,
     'Fresh pickup': false,
   })
-  expect(snapshot.waitingOnAcceptance.every(row => !('landingAlarm' in row))).toBe(true)
   expect(guests(snapshot.waitingOnAcceptance)).toEqual(['Waiting landed'])
 
   const longer = buildOfficeHome([
@@ -358,14 +351,13 @@ it('shows a landing alarm 60 minutes after the landing plus the transfer duratio
       rideId: '00000000-0000-4000-8000-000000000060',
       guestName: 'Landed',
       pickupAt: '2026-06-15T08:00:00.000Z',
-      landingAt: '2026-06-15T08:00:00.000Z',
+      landingAt: '2026-06-15T10:00:00.000Z',
       state: 'assigned',
       mustAccept: false,
       ...driver,
     }),
   ], now, zone, 5, 90)
-  expect(longer.inProgress[0]?.landingAlarm).toBe(false)
-  expect(longer.inProgress[0]?.unclosedMark).toBe(true)
+  expect(longer.inProgress[0]?.unclosedMark).toBe(false)
 })
 
 it('counts the stored hour, so a 05:30 pickup stays off today when the hour is 06:00 and still appears on the unassigned list', () => {
@@ -559,7 +551,6 @@ it('names the urgent marks already on the office home read', () => {
 
   expect(officeHomeUrgentKeys(snapshot)).toEqual([
     'unassigned-alarm:00000000-0000-4000-8000-000000000051',
-    'landing-alarm:00000000-0000-4000-8000-000000000053',
     'unclosed-mark:00000000-0000-4000-8000-000000000053',
   ])
 })
@@ -772,13 +763,13 @@ it('puts each listed Ride in one Home block, and past pickup and a decline in Po
     ['unassigned-past-pickup', ['Past']],
     ['unassigned-alarm', ['Soon']],
     ['decline-alert', ['Declined']],
-    ['landing-alarm', ['Landed']],
+    ['unclosed-mark', ['Landed']],
   ])
   expect(blocks.attention[0]?.rides[0]?.marks).toEqual([
     { kind: 'unassigned-past-pickup' },
     { kind: 'decline-alert', driverName: 'Ivo Vozač' },
   ])
-  expect(blocks.attention[3]?.rides[0]?.marks.map(mark => mark.kind)).toEqual(['landing-alarm', 'unclosed-mark'])
+  expect(blocks.attention[3]?.rides[0]?.marks.map(mark => mark.kind)).toEqual(['unclosed-mark'])
   expect(guests(blocks.unassigned)).toEqual(['Plain', 'Tomorrow'])
   expect(guests(blocks.waitingOnAcceptance)).toEqual(['Waiting'])
   expect(guests(blocks.inProgress)).toEqual(['Fresh'])
@@ -825,8 +816,9 @@ it('puts each listed Ride in one Home block, and past pickup and a decline in Po
 
 it('counts a handed-off Ride on the day and shows it only once the unclosed mark is on', () => {
   const now = new Date('2026-06-15T10:00:00.000Z')
-  const atMark = new Date(now.getTime() - UNCLOSED_MARK_MS).toISOString()
-  const before = new Date(now.getTime() - UNCLOSED_MARK_MS + 1).toISOString()
+  // Default duration 60. The mark is the pickup plus 120 minutes.
+  const atMark = '2026-06-15T08:00:00.000Z'
+  const before = '2026-06-15T08:00:00.001Z'
   const snapshot = buildOfficeHome([
     ride({
       rideId: '00000000-0000-4000-8000-0000000000a1',

@@ -492,7 +492,6 @@
       "unassignedAlarm": "Nedodijeljeno < 4 h",
       "pastPickup": "Prošlo preuzimanje",
       "declined": "Odbio: {driver}",
-      "landingAlarm": "Alarm slijetanja",
       "unclosed": "Nije zatvoreno",
       "overlap": "Preklapanje",
       "rosterMismatch": "Nesklad rasporeda",
@@ -504,8 +503,7 @@
       "unassignedAlarm": "Vožnja nije dodijeljena, a do preuzimanja je manje od četiri sata.",
       "pastPickup": "Preuzimanje je prošlo, a vožnja još nije dodijeljena.",
       "declined": "{driver} je odbio ovu vožnju.",
-      "landingAlarm": "Prošlo je očekivano trajanje nakon slijetanja, a vožnja nije zatvorena.",
-      "unclosed": "Od preuzimanja je prošlo više od sata, a vožnja nije zatvorena.",
+      "unclosed": "Prošlo je sat vremena od planiranog kraja, a vožnja nije zatvorena.",
       "overlap": "Vrijeme se preklapa s drugom vožnjom ili je razmak do nje preuzak.",
       "rosterMismatch": "Vozilo nije ono koje raspored daje vozaču za taj dan.",
       "expiredDocument": "Vozaču ili vozilu je istekao dokument.",
@@ -1087,7 +1085,6 @@
       "unassigned-past-pickup": "Prošlo preuzimanje",
       "unassigned-alarm": "Nedodijeljeno < 4 h",
       "decline-alert": "Odbio",
-      "landing-alarm": "Alarm slijetanja",
       "unclosed-mark": "Nije zatvoreno"
     },
     "emptyAttention": "Nema hitnih vožnji. Ostale vožnje su na popisima ispod.",
@@ -1098,7 +1095,6 @@
     "countRides": "Vožnje",
     "unassignedAlarm": "Alarm za nedodijeljenu vožnju",
     "unclosedMark": "Nije zatvoreno",
-    "landingAlarm": "Alarm slijetanja",
     "failedMail": {
       "title": "Neuspjeli mailovi",
       "resend": "Pošalji ponovno",
