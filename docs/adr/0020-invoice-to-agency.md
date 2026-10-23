@@ -1,6 +1,6 @@
 # Invoice to agency is a recorded payment
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0033 and ADR-0054
 
 The owner decided this on 2026-10-05.
 

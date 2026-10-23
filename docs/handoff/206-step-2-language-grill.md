@@ -1,6 +1,6 @@
 # 206 Step 2 language grill
 
-Out of scope: code, migrations, and the Q6 record. The grill stays open until Q6 is decided.
+Out of scope: code and migrations. The grill closed on 22.10: the owner accepted Q6a–Q6e as recommended, and ADR-0054 is accepted. Tickets T1–T4 are filed by the owner.
 
 ## Decisions
 
@@ -12,14 +12,27 @@ Out of scope: code, migrations, and the Q6 record. The grill stays open until Q6
 - Q5: step 5 leaves the route. There is no BookingSource port in v1 (ADR-0035). The owner closes #227 as not planned.
 - Q7: a Transfer whose Price is 0 is never invoiced and is not listed under "Za fakturiranje". It is in ADR-0053, which supersedes ADR-0051's sentences on what may be invoiced and on the "Za fakturiranje" filter, and in the glossary entry for **Invoice**. It goes into the #435 spec before #439 starts.
 
-## Open: Q6, a group in several vehicles
+## Q6, a group in several vehicles
 
-Waiting on the reference operator's answer. The owner's rule: the agency ordered transport for the whole group and is invoiced once for that service; how many Vehicles carry it is the Tenant's concern. Two invoices for one group are rejected.
+The reference operator answered: one booking with the group's total price, plus a linked extra vehicle with no sales price, billed once; both vehicles on the schedule, a work order per Driver, and a shared booking reference. How often groups split, and whether one group's vehicles can differ in time or place, stay unknown. The owner chose a Price-0 extra vehicle with an explicit link. ADR-0054 is accepted, revised by the owner on 23.10 before it merged, and partially supersedes ADR-0009, ADR-0020, ADR-0026, ADR-0046, and ADR-0051. `GLOSSARY.md` gains Main Transfer, Extra vehicle, and Group, and the Transfer, Work order, and Client reference entries follow ADR-0054.
 
-- **A, several Rides per Transfer.** One Price, one invoice, a Driver and a Vehicle per Ride. Reopens ADR-0005's "exactly one Ride in v1", which #206 lists as locked, and amends ADR-0028, ADR-0029/0034, ADR-0046, and ADR-0051. About 8 implement tickets, 4–5 high, 1–2 migrations: drop `rides_transfer_id`; add and remove a vehicle; the correction over several Rides (closed rule, capacity per Ride, return to assigned, work orders, the audit entry's single `rideId`); the flight memory, because `expected_arrival_basis_at` and `flight_will_not_arrive_handed` sit on the Transfer and a second Driver would never be told; one version for sibling Rides; the price once on the board, the CSV export, and the Ride history; one Driver collects cash. Collides with the open #358 in the same files.
-- **B, an extra-vehicle Transfer linked to the first.** A nullable `lead_transfer_id` (migration, high), a badge and a "Dodatno vozilo" action, no cash price on the extra, an extra is never invoiced, and a rule for cancelling the first. 3 tickets, 5 if corrections propagate. When A lands, stored extras must become Rides of their first Transfer, or two models stay.
-- **C, a duplicate at Price 0, tied only by the Client reference.** No migration. A third prefill kind in `shared/transfer-prefill.ts`, and "bez naplate" instead of 0,00 € for cash at 0 on the Driver's card and work order, as one medium ticket. Relies on ADR-0053. The invoice of the priced Transfer must show the whole group's passenger count (for example 12), not only its own van. ADR-0051's line text has no passenger count today, and with no link the group's total cannot be summed from the extras (an arrival and its return journey share the Client reference), so C must also decide where that total is kept. No read sums passenger counts today. Risks: a forgotten Price 0 (invoices are issued by hand, one at a time), drift when only one Transfer is corrected, and a cancelled priced Transfer whose Price the office must move by a correction before invoicing.
-- The agent recommended A after v1 with C as the v1 bridge. Not decided.
+Settled from the docs and the code, not asked:
+
+- **Link.** One nullable column on the extra vehicle's row naming its main Transfer, a composite foreign key on the Tenant, a check that it is not its own row and that the Price is 0, an index for the group read. No new table, rewrite, or `UPDATE`. Set at create, never changed. One level, checked under the main Transfer's row lock, no trigger (ADR-0035 precedent).
+- **Work order per vehicle.** Each extra vehicle is a Transfer with its own Ride (ADR-0005 stands), so assign, change, clear, capacity, Popunjeno, live flight, and the version work unchanged. No new mail kind.
+- **Billing.** ADR-0053 keeps every extra vehicle uninvoiced; the main Transfer is invoiced when its own Ride is done. No Vehicle count on the invoice (the owner's rule).
+- **No unlinked Price 0 by copy.** Duplicate and return journey are not offered on an extra vehicle.
+
+Decided by the owner, as recommended:
+
+- **Q6a, names.** Main Transfer / Glavni transfer, extra vehicle / Dodatno vozilo, group / Grupa.
+- **Q6b, the shared booking reference on the Driver's side.** The Client reference, copied at create, stated on every work order and Driver card when set, with a group mark; a Client reference change becomes a changed fact (supersedes two ADR-0026 sentences).
+- **Q6c, changing the main Transfer (revised 23.10).** No automatic propagation, and the notice on save stays. The form also offers "Primijeni i na dodatna vozila" for the pickup, places, and flight, written to every unfinished extra vehicle in one transaction; the extra vehicles' versions are raised, not compared (supersedes one ADR-0046 sentence).
+- **Q6d, cancelling the main Transfer (revised 23.10).** "Otkaži transfer" asks "Grupa ima još N vozila. Otkaži cijelu grupu?" and on confirm cancels the main Transfer and every unfinished extra vehicle in one transaction, each with its own audit entry and cancelled work order. No 409. An extra vehicle is still cancelled on its own, and the main Transfer and its billing stay.
+- **Q6e, the passenger count on the invoice line.** Always stated (supersedes one ADR-0051 sentence).
+- **Group ordered passenger count (revised 23.10).** Stored on the main Transfer: what the Client booked. A nullable column with no default, empty on an extra vehicle by check, empty meaning the Transfer's own count; set when the first extra vehicle is added and never cleared. Adding, removing, or cancelling extra vehicles never changes it; only a correction of the main Transfer does. Its upper bound is a group maximum named in the G1 spec, because 60 is one Transfer's maximum.
+
+Several Rides per Transfer stays possible after v1 with its own ADR, if groups turn out to be frequent.
 
 ## Chore
 

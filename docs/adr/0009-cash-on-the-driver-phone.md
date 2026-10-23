@@ -1,6 +1,6 @@
 # Driver sees the price when payment is cash
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0054
 
 ## Context
 
