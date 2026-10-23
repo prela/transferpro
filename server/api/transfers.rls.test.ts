@@ -2859,3 +2859,374 @@ it('returns this Tenant\'s live contact persons and Client note, and leaves a re
   expect(refusedText).not.toContain(standing)
   expect(refusedText).not.toContain(livePhone)
 })
+
+it('links an extra vehicle to its main Transfer and stores the group count once', async () => {
+  const created = await tenant('htr-extra-link', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-extra-link-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-extra-link-dispatcher@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Grupa', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Polazak Grupa', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Dolazak Grupa', kind: 'hotel' })
+  const pickupAt = pickupOnOpenBoard()
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date(pickupAt))
+
+  const mainResponse = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt))
+  expect(mainResponse.status).toBe(200)
+  const main = await mainResponse.json() as {
+    alreadyRecorded: boolean
+    transfer: { id: string, mainTransferId: string | null, groupPassengerCount: number | null, passengerCount: number }
+    ride: { id: string }
+  }
+  expect(main.alreadyRecorded).toBe(false)
+  expect(main.transfer).toMatchObject({ mainTransferId: null, groupPassengerCount: 2, passengerCount: 2 })
+
+  const externalId = crypto.randomUUID()
+  const extraResponse = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    externalId,
+    price: 0,
+    passengerCount: 4,
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 80,
+    mainVersion: 0,
+  }))
+  expect(extraResponse.status).toBe(200)
+  const extra = await extraResponse.json() as {
+    alreadyRecorded: boolean
+    transfer: { id: string, mainTransferId: string | null, groupPassengerCount: number | null, price: string, passengerCount: number }
+  }
+  expect(extra).toMatchObject({
+    alreadyRecorded: false,
+    transfer: {
+      mainTransferId: main.transfer.id,
+      groupPassengerCount: null,
+      price: '0.00',
+      passengerCount: 4,
+    },
+  })
+
+  const stored = await ownerPool.query<{
+    id: string
+    link: string | null
+    group_passenger_count: number | null
+    version: number
+    price: string
+  }>(
+    `select id, link, group_passenger_count, version, price::text as price
+     from app.transfers where id = any($1::uuid[])`,
+    [[main.transfer.id, extra.transfer.id]],
+  )
+  expect(stored.rows).toEqual(expect.arrayContaining([
+    { id: main.transfer.id, link: null, group_passenger_count: 80, version: 1, price: '42.50' },
+    { id: extra.transfer.id, link: main.transfer.id, group_passenger_count: null, version: 0, price: '0.00' },
+  ]))
+
+  const audits = await ownerPool.query<{ action: string, data: Record<string, unknown> }>(
+    `select action::text as action, data
+     from app.audit_entry
+     where tenant_id = $1 and action::text in ('transfer.created', 'transfer.corrected')
+     order by occurred_at, id`,
+    [created.tenantId],
+  )
+  const extraCreated = audits.rows.find(row => row.action === 'transfer.created' && row.data.transferId === extra.transfer.id)
+  expect(extraCreated?.data.mainTransferId).toBe(main.transfer.id)
+  expect(extraCreated?.data).not.toHaveProperty('groupPassengerCount')
+  expect(Object.values(extraCreated?.data ?? {})).not.toContain(80)
+  const mainCorrected = audits.rows.find(row => row.action === 'transfer.corrected' && row.data.transferId === main.transfer.id)
+  expect(mainCorrected?.data.fields).toEqual(['groupPassengerCount'])
+  expect(mainCorrected?.data).not.toHaveProperty('groupPassengerCount')
+  expect(Object.values(mainCorrected?.data ?? {})).not.toContain(80)
+
+  const listed = await call('GET', `/api/transfers?date=${day}`, dispatcher)
+  expect(listed.status).toBe(200)
+  const dayBody = await listed.json() as {
+    rides: { rideId: string, mainTransferId: string | null, groupPassengerCount: number | null, price: string }[]
+  }
+  expect(dayBody.rides.find(row => row.rideId === main.ride.id)).toMatchObject({
+    mainTransferId: null,
+    groupPassengerCount: 80,
+  })
+  expect(dayBody.rides.find(row => row.mainTransferId === main.transfer.id)).toMatchObject({
+    groupPassengerCount: null,
+    price: '0.00',
+  })
+
+  const beforeRepeat = audits.rows.length
+  const repeat = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    externalId,
+    price: 0,
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 99,
+    mainVersion: 0,
+  }))
+  expect(repeat.status).toBe(200)
+  const repeated = await repeat.json() as { alreadyRecorded: boolean, transfer: { id: string } }
+  expect(repeated).toMatchObject({ alreadyRecorded: true, transfer: { id: extra.transfer.id } })
+  expect(await versionForTransfer(main.transfer.id)).toBe(1)
+  const countAfterRepeat = await ownerPool.query<{ group_passenger_count: number, audit: string }>(
+    `select
+       (select group_passenger_count from app.transfers where id = $1) as group_passenger_count,
+       (select count(*) from app.audit_entry where tenant_id = $2 and action::text in ('transfer.created', 'transfer.corrected')) as audit`,
+    [main.transfer.id, created.tenantId],
+  )
+  expect(Number(countAfterRepeat.rows[0]?.group_passenger_count)).toBe(80)
+  expect(Number(countAfterRepeat.rows[0]?.audit)).toBe(beforeRepeat)
+
+  const second = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    passengerCount: 1,
+    mainTransferId: main.transfer.id,
+  }))
+  expect(second.status).toBe(200)
+  const secondBody = await second.json() as { alreadyRecorded: boolean, transfer: { mainTransferId: string | null, groupPassengerCount: number | null } }
+  expect(secondBody).toMatchObject({
+    alreadyRecorded: false,
+    transfer: { mainTransferId: main.transfer.id, groupPassengerCount: null },
+  })
+  expect(await versionForTransfer(main.transfer.id)).toBe(1)
+})
+
+it('refuses a bad extra vehicle and still allows one on an assigned main Transfer', async () => {
+  const firmA = await tenant('htr-extra-refuse', 'Hana Admin')
+  const firmB = await tenant('htr-extra-other', 'Boris Admin')
+  await addMember(firmA.tenantId, 'htr-extra-refuse-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  await addMember(firmB.tenantId, 'htr-extra-other-dispatcher@example.test', 'Boris Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-extra-refuse-dispatcher@example.test')
+  const other = await signIn('htr-extra-other-dispatcher@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Odbij', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Polazak Odbij', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Dolazak Odbij', kind: 'hotel' })
+  const otherClient = await createClient(other, { name: 'Tuđa Agencija', kind: 'hotel' })
+  const otherStart = await createLocation(other, { name: 'Tuđi Polazak', kind: 'address' })
+  const otherEnd = await createLocation(other, { name: 'Tuđi Dolazak', kind: 'hotel' })
+  const pickupAt = pickupInsideWindow()
+
+  async function recordMain() {
+    const response = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt))
+    expect(response.status).toBe(200)
+    return await response.json() as { transfer: { id: string }, ride: { id: string } }
+  }
+
+  const foreign = await call('POST', '/api/transfers', other, createBody(otherClient.id, otherStart.id, otherEnd.id, pickupAt))
+  expect(foreign.status).toBe(200)
+  const foreignBody = await foreign.json() as { transfer: { id: string } }
+  const cross = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    mainTransferId: foreignBody.transfer.id,
+    groupPassengerCount: 80,
+    mainVersion: 0,
+  }))
+  expect(cross.status).toBe(404)
+  await cross.text()
+  const named = await ownerPool.query(
+    `select id from app.transfers where link = $1`,
+    [foreignBody.transfer.id],
+  )
+  expect(named.rows).toEqual([])
+
+  const main = await recordMain()
+  const linked = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 80,
+    mainVersion: 0,
+  }))
+  expect(linked.status).toBe(200)
+  const extra = await linked.json() as { transfer: { id: string } }
+  const nested = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    mainTransferId: extra.transfer.id,
+    groupPassengerCount: 80,
+    mainVersion: 0,
+  }))
+  expect(nested.status).toBe(409)
+  expect(await nested.text()).toContain('transfer_not_main')
+  expect(await versionForTransfer(extra.transfer.id)).toBe(0)
+
+  for (const state of ['done', 'cancelled', 'no-show']) {
+    const closed = await recordMain()
+    await ownerPool.query(`update app.rides set state = $2 where id = $1`, [closed.ride.id, state])
+    const refused = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+      price: 0,
+      mainTransferId: closed.transfer.id,
+      groupPassengerCount: 80,
+      mainVersion: 0,
+    }))
+    expect(refused.status).toBe(409)
+    expect(await refused.text()).toContain('transfer_closed')
+    expect(await versionForTransfer(closed.transfer.id)).toBe(0)
+    const extras = await ownerPool.query(`select id from app.transfers where link = $1`, [closed.transfer.id])
+    expect(extras.rows).toEqual([])
+  }
+
+  const priced = await recordMain()
+  const nonZero = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    price: 10,
+    mainTransferId: priced.transfer.id,
+    groupPassengerCount: 80,
+    mainVersion: 0,
+  }))
+  expect(nonZero.status).toBe(400)
+  expect(await nonZero.text()).not.toContain('80')
+  const pricedExtras = await ownerPool.query(`select id from app.transfers where link = $1`, [priced.transfer.id])
+  expect(pricedExtras.rows).toEqual([])
+
+  const empty = await recordMain()
+  const missing = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    mainTransferId: empty.transfer.id,
+  }))
+  expect(missing.status).toBe(400)
+  await missing.text()
+  expect(await versionForTransfer(empty.transfer.id)).toBe(0)
+
+  const staleMain = await recordMain()
+  const stale = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    mainTransferId: staleMain.transfer.id,
+    groupPassengerCount: 80,
+    mainVersion: 3,
+  }))
+  expect(stale.status).toBe(409)
+  expect(await stale.text()).toContain('stale_save')
+  const staleRow = await ownerPool.query<{ version: number, group_passenger_count: number | null }>(
+    `select version, group_passenger_count from app.transfers where id = $1`,
+    [staleMain.transfer.id],
+  )
+  expect(staleRow.rows).toEqual([{ version: 0, group_passenger_count: null }])
+
+  const driver = await createDriver(dispatcher, driverInput('Drago Extra', '+385914640001'))
+  const vehicle = await createVehicle(dispatcher, vehicleInput('ZG4640AA'))
+  const assigned = await recordMain()
+  await assignRide(dispatcher, { rideId: assigned.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  const opened = await versionForTransfer(assigned.transfer.id)
+  const wrong = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    mainTransferId: assigned.transfer.id,
+    groupPassengerCount: 12,
+    mainVersion: 0,
+  }))
+  expect(wrong.status).toBe(409)
+  expect(await wrong.text()).toContain('stale_save')
+  const allowed = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    mainTransferId: assigned.transfer.id,
+    groupPassengerCount: 12,
+    mainVersion: opened,
+  }))
+  expect(allowed.status).toBe(200)
+  const allowedBody = await allowed.json() as { transfer: { mainTransferId: string | null, groupPassengerCount: number | null } }
+  expect(allowedBody.transfer).toMatchObject({ mainTransferId: assigned.transfer.id, groupPassengerCount: null })
+  expect(await versionForTransfer(assigned.transfer.id)).toBe(opened + 1)
+})
+
+it('a correction cannot set the link, and a group count is not a work order', async () => {
+  const created = await tenant('htr-extra-correct', 'Hana Admin')
+  await addMember(created.tenantId, 'htr-extra-correct-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  const dispatcher = await signIn('htr-extra-correct-dispatcher@example.test')
+  const client = await createClient(dispatcher, { name: 'Agencija Ispravak', kind: 'agency' })
+  const start = await createLocation(dispatcher, { name: 'Polazak Ispravak', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Dolazak Ispravak', kind: 'hotel' })
+  const pickupAt = pickupOnOpenBoard()
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date(pickupAt))
+  const mainResponse = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt))
+  const main = await mainResponse.json() as { transfer: { id: string }, ride: { id: string } }
+  const extraResponse = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    passengerCount: 4,
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 80,
+    mainVersion: 0,
+  }))
+  expect(extraResponse.status).toBe(200)
+  const extra = await extraResponse.json() as { transfer: { id: string } }
+
+  const priced = await call('PATCH', `/api/transfers/${extra.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+    price: 10,
+    passengerCount: 4,
+  }))
+  expect(priced.status).toBe(409)
+  expect(await priced.text()).toContain('extra_vehicle_price')
+  const pricedRow = await ownerPool.query<{ link: string, version: number }>(
+    `select link, version from app.transfers where id = $1`,
+    [extra.transfer.id],
+  )
+  expect(pricedRow.rows).toEqual([{ link: main.transfer.id, version: 0 }])
+
+  const counted = await call('PATCH', `/api/transfers/${extra.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    passengerCount: 4,
+    groupPassengerCount: 90,
+  }))
+  expect(counted.status).toBe(409)
+  const countedText = await counted.text()
+  expect(countedText).toContain('extra_vehicle_count')
+  expect(countedText).not.toContain('90')
+
+  const relink = await call('PATCH', `/api/transfers/${extra.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    passengerCount: 4,
+    mainTransferId: main.transfer.id,
+  }))
+  expect(relink.status).toBe(400)
+  await relink.text()
+  expect((await ownerPool.query<{ link: string }>(`select link from app.transfers where id = $1`, [extra.transfer.id])).rows).toEqual([
+    { link: main.transfer.id },
+  ])
+
+  const guest = await call('PATCH', `/api/transfers/${extra.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, {
+    price: 0,
+    passengerCount: 4,
+    guestName: 'Iva Dodatna',
+  }))
+  expect(guest.status).toBe(200)
+  await guest.json()
+  expect((await ownerPool.query<{ link: string, guest_name: string }>(
+    `select link, guest_name from app.transfers where id = $1`,
+    [extra.transfer.id],
+  )).rows).toEqual([{ link: main.transfer.id, guest_name: 'Iva Dodatna' }])
+
+  const driver = await createDriver(dispatcher, {
+    ...driverInput('Ana Grupa', '+385914640002'),
+    email: 'htr-extra-correct-driver@example.test',
+  })
+  const vehicle = await createVehicle(dispatcher, vehicleInput('ZG4641AA'))
+  await assignRide(dispatcher, { rideId: main.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  const sent: SentWorkOrder[] = []
+  const quiet = await correctTransfer(dispatcher, main.transfer.id, correctionBody(client.id, start.id, end.id, pickupAt, {
+    groupPassengerCount: 90,
+  }), { mailer: workOrderMailer(sent) })
+  expect(quiet.workOrders).toEqual([])
+  expect(sent).toEqual([])
+  expect(quiet.transfer.groupPassengerCount).toBe(90)
+  const countAudit = await ownerPool.query<{ data: Record<string, unknown> }>(
+    `select data from app.audit_entry
+     where tenant_id = $1 and action = 'transfer.corrected' and data->>'transferId' = $2
+     order by occurred_at desc, id desc
+     limit 1`,
+    [created.tenantId, main.transfer.id],
+  )
+  expect(countAudit.rows[0]?.data.fields).toEqual(['groupPassengerCount'])
+  expect(countAudit.rows[0]?.data).not.toHaveProperty('groupPassengerCount')
+  expect(Object.values(countAudit.rows[0]?.data ?? {})).not.toContain(90)
+  expect(Object.values(countAudit.rows[0]?.data ?? {})).not.toContain('90')
+
+  const passengers = await correctTransfer(dispatcher, main.transfer.id, correctionBody(client.id, start.id, end.id, pickupAt, {
+    passengerCount: 3,
+  }), { mailer: workOrderMailer(sent) })
+  expect(passengers.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+  expect(sent).toHaveLength(1)
+  expect(sent[0]?.text).toContain('Putnici: 3')
+  expect(sent[0]?.text).not.toContain('90')
+  expect((await ownerPool.query<{ group_passenger_count: number, passenger_count: number }>(
+    `select group_passenger_count, passenger_count from app.transfers where id = $1`,
+    [main.transfer.id],
+  )).rows).toEqual([{ group_passenger_count: 90, passenger_count: 3 }])
+
+  const listed = await call('GET', `/api/transfers?date=${day}`, dispatcher)
+  expect(listed.status).toBe(200)
+  const dayBody = await listed.json() as { rides: { rideId: string, groupPassengerCount: number | null, passengerCount: number }[] }
+  expect(dayBody.rides.find(row => row.rideId === main.ride.id)).toMatchObject({
+    groupPassengerCount: 90,
+    passengerCount: 3,
+  })
+})

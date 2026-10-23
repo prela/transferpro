@@ -319,6 +319,9 @@ const transferCreated = z.object({
     startLocationId: locationId,
     endLocationId: locationId,
     fields: z.array(transferFieldSchema).min(1).max(TRANSFER_FIELDS.length),
+    // An extra vehicle names its main Transfer. An ordinary create omits
+    // the key. The id is not a passenger count (ADR-0054).
+    mainTransferId: z.uuid().optional(),
   }),
 })
 

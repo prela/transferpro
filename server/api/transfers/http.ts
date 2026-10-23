@@ -4,7 +4,7 @@ import { ClientNotFoundError } from '../../modules/clients'
 import { LocationArchivedError, LocationNotFoundError } from '../../modules/locations'
 import { PartnerNotFoundError } from '../../modules/partners'
 import { TenantAccessError } from '../../modules/tenancy'
-import { RideOverlapError, RideUnavailableError, StaleSaveError, TransferNotCorrectableError, TransferNotFoundError } from '../../modules/transfers'
+import { ExtraVehicleCountError, ExtraVehiclePriceError, RideOverlapError, RideUnavailableError, StaleSaveError, TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from '../../modules/transfers'
 
 /**
  * Turn a Transfer failure into an HTTP error. The message stays a fixed phrase
@@ -27,7 +27,15 @@ export function transferHttpError(error: unknown): never {
   ) {
     throw createError({ statusCode: error.statusCode })
   }
-  if (error instanceof TransferNotCorrectableError || error instanceof RideOverlapError || error instanceof RideUnavailableError || error instanceof StaleSaveError) {
+  if (
+    error instanceof TransferNotCorrectableError
+    || error instanceof TransferNotMainError
+    || error instanceof ExtraVehiclePriceError
+    || error instanceof ExtraVehicleCountError
+    || error instanceof RideOverlapError
+    || error instanceof RideUnavailableError
+    || error instanceof StaleSaveError
+  ) {
     throw createError({
       statusCode: error.statusCode,
       data: { code: error.code },

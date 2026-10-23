@@ -739,3 +739,182 @@ it('refuses a Transfer version that records a time and a null member', async () 
     [seeded.transferId],
   ))).rejects.toMatchObject({ code: '23514', constraint: 'transfers_data_change' })
 })
+
+it('links an extra vehicle inside the Tenant and refuses a self link, a price, a group count, and another Tenant', async () => {
+  const columns = await ownerPool.query<{ column_name: string, is_nullable: string, column_default: string | null }>(
+    `select column_name, is_nullable, column_default
+     from information_schema.columns
+     where table_schema = 'app' and table_name = 'transfers'
+       and column_name in ('link', 'group_passenger_count')
+     order by column_name`,
+  )
+  expect(columns.rows).toEqual([
+    { column_name: 'group_passenger_count', is_nullable: 'YES', column_default: null },
+    { column_name: 'link', is_nullable: 'YES', column_default: null },
+  ])
+
+  const app = await pool.connect()
+  try {
+    // DELETE is a table privilege. Postgres rejects it as a column privilege.
+    const privileges = await app.query<{
+      column_name: string
+      can_select: boolean
+      can_insert: boolean
+      can_update: boolean
+      can_delete: boolean
+    }>(
+      `select column_name,
+              has_column_privilege(current_user, 'app.transfers', column_name, 'SELECT') as can_select,
+              has_column_privilege(current_user, 'app.transfers', column_name, 'INSERT') as can_insert,
+              has_column_privilege(current_user, 'app.transfers', column_name, 'UPDATE') as can_update,
+              has_table_privilege(current_user, 'app.transfers', 'DELETE') as can_delete
+       from (values ('link'), ('group_passenger_count'), ('passenger_count')) as columns(column_name)
+       order by column_name`,
+    )
+    expect(privileges.rows).toEqual([
+      { column_name: 'group_passenger_count', can_select: true, can_insert: true, can_update: true, can_delete: false },
+      { column_name: 'link', can_select: true, can_insert: true, can_update: true, can_delete: false },
+      { column_name: 'passenger_count', can_select: true, can_insert: true, can_update: true, can_delete: false },
+    ])
+  }
+  finally {
+    app.release()
+  }
+
+  const triggers = await ownerPool.query<{ tgname: string }>(
+    `select t.tgname
+     from pg_trigger t
+     join pg_class c on c.oid = t.tgrelid
+     join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = 'app' and c.relname = 'transfers' and not t.tgisinternal`,
+  )
+  expect(triggers.rows).toEqual([])
+
+  const index = await ownerPool.query<{ indexdef: string }>(
+    `select indexdef from pg_indexes where schemaname = 'app' and indexname = 'transfers_tenant_link'`,
+  )
+  expect(index.rows[0]?.indexdef).toContain('(tenant_id, link)')
+
+  const foreignKey = await ownerPool.query<{ definition: string }>(
+    `select pg_get_constraintdef(oid) as definition
+     from pg_constraint
+     where conname = 'transfers_link_fk'`,
+  )
+  expect(foreignKey.rows[0]?.definition).toContain('FOREIGN KEY (tenant_id, link)')
+  expect(foreignKey.rows[0]?.definition).toContain('REFERENCES app.transfers(tenant_id, id)')
+
+  const seeded = await withTenant(tenantA, async (client) => {
+    const clientRow = await client.query<{ id: string }>(
+      `insert into app.clients (name, kind) values ('Agencija Grupa', 'agency') returning id`,
+    )
+    const start = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Polazak Grupa', 'address') returning id`,
+    )
+    const end = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Dolazak Grupa', 'hotel') returning id`,
+    )
+    const main = await client.query<{ id: string }>(
+      `insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, price, payment, airport_mark,
+        luggage_count, child_seat_count, external_id
+      ) values ($1, '2026-10-06T10:00:00.000Z', $2, $3, 2, 'Ana Anić', 42.50, 'cash', false, 0, 0, gen_random_uuid()::text)
+      returning id`,
+      [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id],
+    )
+    const extra = await client.query<{ id: string }>(
+      `insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, price, payment, airport_mark,
+        luggage_count, child_seat_count, external_id
+      ) values ($1, '2026-10-06T11:00:00.000Z', $2, $3, 1, 'Iva Ivić', 0, 'cash', false, 0, 0, gen_random_uuid()::text)
+      returning id`,
+      [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id],
+    )
+    return {
+      clientId: clientRow.rows[0]?.id,
+      startId: start.rows[0]?.id,
+      endId: end.rows[0]?.id,
+      mainId: main.rows[0]?.id ?? '',
+      extraId: extra.rows[0]?.id ?? '',
+    }
+  })
+  const other = await withTenant(tenantB, async (client) => {
+    const clientRow = await client.query<{ id: string }>(
+      `insert into app.clients (name, kind) values ('Tuđa Agencija', 'agency') returning id`,
+    )
+    const start = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Tuđi Polazak', 'address') returning id`,
+    )
+    const end = await client.query<{ id: string }>(
+      `insert into app.locations (name, kind) values ('Tuđi Dolazak', 'hotel') returning id`,
+    )
+    const transfer = await client.query<{ id: string }>(
+      `insert into app.transfers (
+        client_id, pickup_at, start_location_id, end_location_id,
+        passenger_count, guest_name, price, payment, airport_mark,
+        luggage_count, child_seat_count, external_id
+      ) values ($1, '2026-10-06T12:00:00.000Z', $2, $3, 1, 'Marko Marić', 10, 'cash', false, 0, 0, gen_random_uuid()::text)
+      returning id`,
+      [clientRow.rows[0]?.id, start.rows[0]?.id, end.rows[0]?.id],
+    )
+    return transfer.rows[0]?.id ?? ''
+  })
+
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.transfers set link = id, price = 0 where id = $1`,
+    [seeded.extraId],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'transfers_link' })
+
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.transfers set link = $2 where id = $1`,
+    [seeded.mainId, seeded.extraId],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'transfers_link' })
+
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.transfers set link = $2, price = 0, group_passenger_count = 4 where id = $1`,
+    [seeded.extraId, seeded.mainId],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'transfers_group_passenger_count' })
+
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.transfers set link = $2 where id = $1`,
+    [seeded.extraId, other],
+  ))).rejects.toMatchObject({ code: '23503', constraint: 'transfers_link_fk' })
+
+  const linked = await withTenant(tenantA, async (client) => {
+    await client.query(
+      `update app.transfers set link = $2, price = 0 where id = $1`,
+      [seeded.extraId, seeded.mainId],
+    )
+    return client.query<{ link: string, price: string, group_passenger_count: number | null }>(
+      `select link, price::text as price, group_passenger_count from app.transfers where id = $1`,
+      [seeded.extraId],
+    )
+  })
+  expect(linked.rows).toEqual([{ link: seeded.mainId, price: '0.00', group_passenger_count: null }])
+
+  const hidden = await withTenant(tenantB, client => client.query(
+    `select link from app.transfers where id = $1`,
+    [seeded.extraId],
+  ))
+  expect(hidden.rows).toEqual([])
+
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.transfers set group_passenger_count = 0 where id = $1`,
+    [seeded.mainId],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'transfers_group_passenger_count' })
+  await expect(withTenant(tenantA, client => client.query(
+    `update app.transfers set group_passenger_count = 1001 where id = $1`,
+    [seeded.mainId],
+  ))).rejects.toMatchObject({ code: '23514', constraint: 'transfers_group_passenger_count' })
+
+  const counted = await withTenant(tenantA, async (client) => {
+    await client.query(`update app.transfers set group_passenger_count = 1000 where id = $1`, [seeded.mainId])
+    await client.query(`update app.transfers set group_passenger_count = 1 where id = $1`, [seeded.mainId])
+    return client.query<{ group_passenger_count: number }>(
+      `select group_passenger_count from app.transfers where id = $1`,
+      [seeded.mainId],
+    )
+  })
+  expect(counted.rows).toEqual([{ group_passenger_count: 1 }])
+})

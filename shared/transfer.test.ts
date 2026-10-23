@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
+import { canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, officeGroupPassengerCount, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -11,6 +11,7 @@ const note = 'Čeka na terminalu'
 
 const now = new Date('2026-10-06T12:00:00.000Z')
 const externalId = 'c3c3c3c3-3333-4333-8333-333333333333'
+const mainTransferId = 'd4d4d4d4-4444-4444-8444-444444444444'
 
 const body = {
   clientId,
@@ -74,6 +75,47 @@ it('accepts confirm on a correction and refuses it on a new Transfer', () => {
   expect(() => parseCorrectTransfer(body, now)).toThrow(TransferInputError)
   expect(() => parseCorrectTransfer({ ...body, version: -1 }, now)).toThrow(TransferInputError)
   expect(() => parseCreateTransfer(withEntryKey({ ...body, confirm: true }), now)).toThrow(TransferInputError)
+})
+
+it('accepts an extra vehicle at price 0 and refuses a group count on an ordinary create', () => {
+  expect(parseRecordTransfer(withEntryKey({
+    ...body,
+    price: 0,
+    mainTransferId,
+    groupPassengerCount: GROUP_PASSENGER_COUNT_MAX,
+    mainVersion: 0,
+  }), now)).toMatchObject({
+    mainTransferId,
+    groupPassengerCount: GROUP_PASSENGER_COUNT_MAX,
+    mainVersion: 0,
+    input: { price: '0.00' },
+  })
+  expect(parseRecordTransfer(withEntryKey(body), now)).toMatchObject({
+    mainTransferId: null,
+    groupPassengerCount: null,
+    mainVersion: null,
+  })
+  expect(() => parseRecordTransfer(withEntryKey({ ...body, price: 0, mainTransferId: 'not-a-uuid' }), now)).toThrow(TransferInputError)
+  expect(() => parseRecordTransfer(withEntryKey({ ...body, mainTransferId }), now)).toThrow(TransferInputError)
+  expect(() => parseRecordTransfer(withEntryKey({ ...body, groupPassengerCount: 80 }), now)).toThrow(TransferInputError)
+  expect(() => parseRecordTransfer(withEntryKey({ ...body, mainVersion: 0 }), now)).toThrow(TransferInputError)
+  expect(() => parseRecordTransfer(withEntryKey({
+    ...body,
+    price: 0,
+    mainTransferId,
+    groupPassengerCount: GROUP_PASSENGER_COUNT_MAX + 1,
+  }), now)).toThrow(TransferInputError)
+  expect(parseCorrectTransfer({ ...body, version: 1, groupPassengerCount: 80 }, now).groupPassengerCount).toBe(80)
+  expect(parseCorrectTransfer({ ...body, version: 1 }, now).groupPassengerCount).toBeNull()
+  expect(() => parseCorrectTransfer({ ...body, version: 0, mainTransferId }, now)).toThrow(TransferInputError)
+  expect(() => parseCorrectTransfer({ ...body, version: 0, groupPassengerCount: 0 }, now)).toThrow(TransferInputError)
+  expect(() => parseCorrectTransfer({ ...body, version: 0, groupPassengerCount: null }, now)).toThrow(TransferInputError)
+})
+
+it('reads the stored group count for a main Transfer and none for an extra vehicle', () => {
+  expect(officeGroupPassengerCount(null, null, 2)).toBe(2)
+  expect(officeGroupPassengerCount(null, 80, 2)).toBe(80)
+  expect(officeGroupPassengerCount(mainTransferId, null, 2)).toBeNull()
 })
 
 it('requires an external id on a new Transfer and refuses it on a correction', () => {

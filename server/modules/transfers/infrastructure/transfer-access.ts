@@ -24,10 +24,23 @@ function officeOnly(role: string): void {
  * `alreadyRecorded: false`. Both are the caller's HTTP 200.
  */
 export async function createTransfer(headers: Headers, raw: unknown): Promise<RecordedCreate> {
-  const { input, externalId } = parseRecordTransfer(raw)
+  const parsed = parseRecordTransfer(raw)
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
-    const recorded = await recordTransfer(transaction, actor.userId, input, externalId)
+    const recorded = await recordTransfer(
+      transaction,
+      actor.userId,
+      parsed.input,
+      parsed.externalId,
+      undefined,
+      parsed.mainTransferId === null
+        ? null
+        : {
+            mainTransferId: parsed.mainTransferId,
+            groupPassengerCount: parsed.groupPassengerCount,
+            mainVersion: parsed.mainVersion,
+          },
+    )
     // A repeat writes nothing, so it carries no fully booked warning.
     // A new Transfer still saves when the window is fully booked (ADR-0034).
     if (recorded.alreadyRecorded)
