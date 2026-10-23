@@ -6,7 +6,7 @@ import { driverDisplayName } from '../transfer-day-labels'
 const props = defineProps<{
   day: string
   rides: TransferDayRide[]
-  locations: Location[]
+  locations: readonly Location[]
   drivers: Driver[]
   vehicles: Vehicle[]
   timeZone: string

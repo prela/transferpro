@@ -6,7 +6,7 @@ const props = defineProps<{
   day: string
   /** Every Ride of the loaded day. Filters do not change the paper. */
   rides: TransferDayRide[]
-  locations: Location[]
+  locations: readonly Location[]
   vehicles: Vehicle[]
   timeZone: string
   locale: DisplayLocale

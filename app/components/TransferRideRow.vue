@@ -8,7 +8,7 @@ import { canCallOff, canChangeAssignment, canChangePartner, canHandOff, canNoSho
 const props = defineProps<{
   cell: 'phone' | 'time' | 'flight' | 'guest' | 'route' | 'client' | 'crew' | 'state' | 'price' | 'actions'
   ride?: TransferDayRide
-  locations?: Location[]
+  locations?: readonly Location[]
   drivers?: Driver[]
   vehicles?: Vehicle[]
   partners?: Partner[]

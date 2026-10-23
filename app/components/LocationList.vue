@@ -27,7 +27,6 @@ const editingId = ref<string | null>(null)
 const openedName = ref('')
 const confirming = ref<OfficeLocation | null>(null)
 /** The map frame. It is in the document only after the press (ADR-0052). */
-const mapFrameId = useId()
 const mapOpen = ref(false)
 /**
  * The first address edit hides the map until this panel is opened again.
@@ -275,18 +274,6 @@ watch(mapEmbedUrl, (url) => {
   if (url === null)
     mapOpen.value = false
 })
-
-/**
- * The press opens Google's frame. Focus stays on this button so a keyboard
- * user is not dropped into that frame (ADR-0052).
- */
-async function toggleMap(event: MouseEvent) {
-  mapOpen.value = !mapOpen.value
-  const button = event.currentTarget
-  await nextTick()
-  if (button instanceof HTMLElement)
-    button.focus()
-}
 
 function onAddressInput(value: string | number | null | undefined) {
   const next = value == null ? '' : String(value)
@@ -681,36 +668,13 @@ onMounted(loadLocations)
               >{{ error }}</span>
             </template>
           </UFormField>
-          <div v-if="mapEmbedUrl">
-            <UButton
-              type="button"
-              color="neutral"
-              variant="outline"
-              :size="commandControlSize(phone)"
-              class="w-full justify-center sm:w-auto"
-              :class="commandControlClass(phone)"
-              :aria-expanded="mapOpen"
-              :aria-controls="mapFrameId"
-              @click="toggleMap"
-            >
-              {{ mapOpen ? t('locations.hideMap') : t('locations.showMap') }}
-            </UButton>
-            <!--
-              The frame exists only after the press, so nothing is sent
-              before then. No sandbox: Google's scripts and its larger-map
-              link must run. allow grants nothing. The border is the theme
-              token. The map is not restyled, cropped, or credited again.
-            -->
-            <iframe
-              v-if="mapOpen"
-              :id="mapFrameId"
-              :src="mapEmbedUrl"
-              :title="t('locations.mapTitle', { name: openedName })"
-              class="mt-2 block h-[240px] w-full border border-default"
-              referrerpolicy="strict-origin-when-cross-origin"
-              allow=""
-            />
-          </div>
+          <LocationMapToggle
+            v-if="mapEmbedUrl"
+            v-model:open="mapOpen"
+            :embed-url="mapEmbedUrl"
+            :name="openedName"
+            :phone="phone"
+          />
           <UFormField
             v-if="state.kind === 'airport'"
             :label="t('locations.iata')"

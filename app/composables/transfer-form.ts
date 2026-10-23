@@ -1,7 +1,7 @@
 import type { InjectionKey } from 'vue'
-import type { Client, ClientKind, DisplayLocale, Driver, Location, LocationKind, LocationPlace, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
+import type { Client, ClientKind, DisplayLocale, Driver, LocationKind, LocationPlace, OfficeLocation, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
 import { z } from 'zod'
-import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, locationSchema, luggageCountError, noteError, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
+import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, luggageCountError, noteError, officeLocationSchema, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -45,7 +45,7 @@ export function useTransferForm(options: {
   persistDraft: boolean
   clients: () => readonly Client[]
   drivers: () => readonly Driver[]
-  locations: Ref<Location[]>
+  locations: Ref<OfficeLocation[]>
   day: Ref<string>
   loadDay: () => Promise<void>
   saved: Ref<boolean>
@@ -233,7 +233,7 @@ export function useTransferForm(options: {
     placePending.value = true
     formErrorKey.value = null
     try {
-      const created = locationSchema.parse(await $fetch('/api/locations', {
+      const created = officeLocationSchema.parse(await $fetch('/api/locations', {
         method: 'POST',
         body: {
           name: placeName.value,
