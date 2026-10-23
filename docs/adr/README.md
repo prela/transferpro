@@ -45,7 +45,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0027 | Unclosed mark | accepted; partially superseded by ADR-0039 and ADR-0055 |
 | ADR-0028 | Live flight | accepted; partially superseded by ADR-0055 |
 | ADR-0029 | Ride occupation | accepted; partially superseded by ADR-0034 |
-| ADR-0030 | Landing alarm | accepted; partially superseded by ADR-0039 and ADR-0055 |
+| ADR-0030 | Landing alarm | superseded by ADR-0055 |
 | ADR-0031 | Maps for Locations behind a port | accepted; partially superseded by ADR-0052 |
 | ADR-0032 | Board warnings are derived on read | accepted |
 | ADR-0033 | v1 scope: price list, invoices through a provider, Client card, and Partner record | accepted |
@@ -53,8 +53,8 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0035 | Idempotent manual entry, and reactions to a change without an event log | accepted |
 | ADR-0036 | The Transfer is the order, and who owns the v1 modules | accepted; partially superseded by ADR-0051 |
 | ADR-0037 | Console mailer on preview | accepted; partially superseded by ADR-0042 |
-| ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted; partially superseded by ADR-0041 and ADR-0042 |
-| ADR-0039 | Urgent and warning tiers, and live refresh | accepted; partially superseded by ADR-0045, ADR-0046, and ADR-0051 |
+| ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted; partially superseded by ADR-0041, ADR-0042, and ADR-0055 |
+| ADR-0039 | Urgent and warning tiers, and live refresh | accepted; partially superseded by ADR-0045, ADR-0046, ADR-0051, and ADR-0055 |
 | ADR-0040 | Theme tokens and contrast rules | accepted |
 | ADR-0041 | Revoke a pending invitation | accepted |
 | ADR-0042 | Password change and password reset | accepted; partially superseded by ADR-0044 |

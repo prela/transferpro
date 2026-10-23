@@ -1,6 +1,6 @@
 # Landing alarm
 
-Status: accepted
+Status: superseded by ADR-0055
 
 Damir locked this on 11 October 2026, on issue #183. This does not supersede ADR-0027 or ADR-0029.
 
