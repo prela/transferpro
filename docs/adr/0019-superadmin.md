@@ -4,7 +4,7 @@ The platform owner lists, opens, and renames firms. Opening a firm shows only it
 
 ## Status
 
-Accepted (Damir, 5.10.2026)
+Accepted (Damir, 5.10.2026). Partially superseded by ADR-0057: a Tenant member's session is no longer the seven-day session. The superadmin half of this record stands.
 
 ## Context
 
