@@ -168,12 +168,26 @@ export const relocationWarningSchema = z.object({
 export type RelocationWarning = z.infer<typeof relocationWarningSchema>
 
 /**
- * A cancel. `workOrders` is empty when the Ride had no Driver, and one
- * entry when it had one. The address is not on this object.
+ * One Ride this cancel wrote, with that Ride's own work-order result.
+ * `workOrders` is empty when the Ride had no Driver. A handed-off Ride
+ * has no Driver. The address is not on this object.
+ */
+export const cancelledRideMemberSchema = z.object({
+  ride: rideSchema,
+  workOrders: z.array(workOrderNoticeSchema),
+})
+
+/**
+ * A cancel. `workOrders` is the named Ride: empty when it had no Driver,
+ * and one entry when it had one. `cancelled` is present when unfinished
+ * extra vehicles were cancelled with that Ride. The named Ride is first,
+ * then each extra vehicle. A cancel that writes one Ride omits `cancelled`,
+ * so the body stays `{ ride, workOrders }`. The address is not on this object.
  */
 export const cancelledRideResultSchema = z.object({
   ride: rideSchema,
   workOrders: z.array(workOrderNoticeSchema),
+  cancelled: z.array(cancelledRideMemberSchema).optional(),
 })
 
 export type CancelledRideResult = z.infer<typeof cancelledRideResultSchema>

@@ -15,6 +15,10 @@ import { rideHttpError } from '../http'
  * Driver id. A name, a plate, a phone, or a guest is not stored.
  * The current Driver is mailed cancelled after the Ride is saved. A Ride
  * with no Driver sends nothing. The body is `{ ride, workOrders }`.
+ * Cancelling a main Transfer also cancels every unfinished extra vehicle.
+ * The body then also lists `cancelled`: the named Ride first, then each
+ * extra vehicle, each with its own work-order result. A finished extra
+ * vehicle is absent. An extra vehicle cancelled on its own omits the list.
  * The address is not on it. A rejected send leaves the Ride cancelled.
  */
 export default defineEventHandler(async (event) => {

@@ -121,6 +121,7 @@ function fakeTransaction(options: {
             partnerId: null,
             mainTransferId: null,
             groupPassengerCount: null,
+            unfinishedExtraVehicleCount: 0,
             ...(typeof row === 'object' && row !== null ? row : {}),
           })),
         }
@@ -373,10 +374,11 @@ it('loads the Zagreb operational day as a half-open range of local 05:00 and map
       note: null,
       tabla,
       clientReference: 'V-19',
+      unfinishedExtraVehicleCount: 4,
     }],
   })
   await expect(loadRidesForDay(transaction, '2026-10-07', 'Europe/Zagreb')).resolves.toMatchObject([
-    { rideId, pickupAt: '2026-10-07T10:30:00.000Z', price: '42.00', airportMark: true, tabla, guestName: guest, note: null, clientReference: 'V-19' },
+    { rideId, pickupAt: '2026-10-07T10:30:00.000Z', price: '42.00', airportMark: true, tabla, guestName: guest, note: null, clientReference: 'V-19', unfinishedExtraVehicleCount: 4 },
   ])
   expect(queries[0]?.sql.toLowerCase()).not.toContain('::date')
   expect(queries[0]?.sql.toLowerCase()).not.toContain('at time zone')

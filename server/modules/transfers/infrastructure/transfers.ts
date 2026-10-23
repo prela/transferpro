@@ -50,6 +50,7 @@ const dayRowSchema = transferRowSchema.omit({ id: true }).extend({
   vehicleId: z.uuid().nullable(),
   mustAccept: z.boolean().nullable(),
   partnerId: z.uuid().nullable(),
+  unfinishedExtraVehicleCount: z.number().int().nonnegative(),
   version: z.number().int(),
   changedAt: z.unknown().nullable(),
   changedByName: z.string().min(1).nullable(),
@@ -404,6 +405,19 @@ export async function loadRidesForDay(
       t.client_reference as "clientReference",
       t.link as "mainTransferId",
       t.group_passenger_count as "groupPassengerCount",
+      -- Unfinished extra vehicles of this Transfer, any day. An extra
+      -- vehicle has none: a group is one level. The cancel dialog asks
+      -- with this count and sends nothing until the office confirms.
+      (
+        select count(*)::int
+        from app.transfers as extra
+        join app.rides as extra_ride
+          on extra_ride.transfer_id = extra.id
+         and extra_ride.tenant_id = extra.tenant_id
+        where extra.tenant_id = t.tenant_id
+          and extra.link = t.id
+          and extra_ride.state in ('unassigned', 'assigned', 'accepted', 'handed_off')
+      ) as "unfinishedExtraVehicleCount",
       t.landing_at as "landingAt",
       t.expected_arrival_at as "expectedArrival",
       t.version,
@@ -541,6 +555,7 @@ function toDayRide(
     clientReference: row.clientReference,
     mainTransferId: row.mainTransferId,
     groupPassengerCount: officeGroupPassengerCount(row.mainTransferId, row.groupPassengerCount, row.passengerCount),
+    unfinishedExtraVehicleCount: row.unfinishedExtraVehicleCount,
     landingAt,
     expectedArrival,
     version: row.version,
