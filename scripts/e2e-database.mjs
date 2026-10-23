@@ -66,7 +66,7 @@ export function e2eDatabaseUrl(raw, name) {
   assertE2eQuery(raw, name)
   const identity = databaseIdentity(raw)
   if (!isE2eDatabaseHost(identity.host))
-    throw new Error('E2E refused to start: the database host must be localhost.')
+    throw new Error('E2E refused to start: the database host must be localhost or the CI service host postgres.')
   const rewritten = raw.replace(
     /^(postgres(?:ql)?:\/\/[^/?#]+)\/[^/?#]*/,
     `$1/${E2E_DATABASE_NAME}`,
@@ -74,7 +74,7 @@ export function e2eDatabaseUrl(raw, name) {
   assertE2eQuery(rewritten, name)
   const checked = databaseIdentity(rewritten)
   if (!isE2eDatabaseHost(checked.host) || checked.database !== E2E_DATABASE_NAME)
-    throw new Error(`E2E refused to start: the database must be ${E2E_DATABASE_NAME} on localhost.`)
+    throw new Error(`E2E refused to start: the database must be ${E2E_DATABASE_NAME} on localhost or the CI service host postgres.`)
   return rewritten
 }
 
@@ -137,7 +137,7 @@ export function assertE2eDatabaseEnv(env, names = E2E_DATABASE_ENV) {
       throw new Error(`E2E refused to start: ${name} is not a valid database URL.`)
     }
     if (!isE2eDatabaseHost(identity.host))
-      throw new Error(`E2E refused to start: ${name} must target localhost.`)
+      throw new Error(`E2E refused to start: ${name} must target localhost or the CI service host postgres.`)
     if (identity.database !== E2E_DATABASE_NAME)
       throw new Error(`E2E refused to start: ${name} must use the database ${E2E_DATABASE_NAME}.`)
   }
