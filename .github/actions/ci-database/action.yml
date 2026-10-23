@@ -4,20 +4,57 @@
 name: CI database env
 description: Mint ephemeral database roles, migrate, and write .env plus .env.migrate.
 
+inputs:
+  postgres-host:
+    description: >
+      Hostname of the Postgres service. The runner reaches a published port
+      at 127.0.0.1. The e2e job runs in a container, so it uses the service
+      label postgres. Any other value is refused.
+    required: false
+    default: 127.0.0.1
+
 runs:
   using: composite
   steps:
     - name: Mint roles, migrate, and write env files
       shell: bash
+      env:
+        POSTGRES_HOST: ${{ inputs.postgres-host }}
       run: |
         set -euo pipefail
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq postgresql-client
+        # The Playwright image is root and has no sudo. The Ubuntu runner is
+        # not root and uses sudo. Install the client only when it is missing.
+        if ! command -v psql >/dev/null 2>&1; then
+          if [ "$(id -u)" -eq 0 ]; then
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends postgresql-client
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+        fi
+        if ! command -v openssl >/dev/null 2>&1; then
+          if [ "$(id -u)" -eq 0 ]; then
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends openssl
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq openssl
+          fi
+        fi
+
+        case "$POSTGRES_HOST" in
+          127.0.0.1|postgres) ;;
+          *)
+            echo "CI database host must be 127.0.0.1 or postgres." >&2
+            exit 1
+            ;;
+        esac
 
         export POSTGRES_USER=postgres
         export POSTGRES_PASSWORD=postgres
         export POSTGRES_DB=transferpro
-        export PGHOST=127.0.0.1
+        export PGHOST="$POSTGRES_HOST"
         export PGPORT=5432
         export PGPASSWORD=postgres
 
@@ -57,15 +94,15 @@ runs:
         TRANSFERPRO_AUTH_PASSWORD=${auth_password}
         TRANSFERPRO_QUEUE_PASSWORD=${queue_password}
         TRANSFERPRO_PLATFORM_PASSWORD=${platform_password}
-        DATABASE_URL=postgres://transferpro_app:${app_password}@127.0.0.1:5432/transferpro_e2e
-        AUTH_DATABASE_URL=postgres://transferpro_auth:${auth_password}@127.0.0.1:5432/transferpro_e2e
-        QUEUE_DATABASE_URL=postgres://transferpro_queue:${queue_password}@127.0.0.1:5432/transferpro_e2e
-        PLATFORM_DATABASE_URL=postgres://transferpro_platform:${platform_password}@127.0.0.1:5432/transferpro_e2e
+        DATABASE_URL=postgres://transferpro_app:${app_password}@${POSTGRES_HOST}:5432/transferpro_e2e
+        AUTH_DATABASE_URL=postgres://transferpro_auth:${auth_password}@${POSTGRES_HOST}:5432/transferpro_e2e
+        QUEUE_DATABASE_URL=postgres://transferpro_queue:${queue_password}@${POSTGRES_HOST}:5432/transferpro_e2e
+        PLATFORM_DATABASE_URL=postgres://transferpro_platform:${platform_password}@${POSTGRES_HOST}:5432/transferpro_e2e
         BETTER_AUTH_SECRET=${better_auth_secret}
         BETTER_AUTH_URL=http://127.0.0.1:3000
         EOF
         cat > .env.migrate <<EOF
-        DATABASE_MIGRATE_URL=postgres://transferpro_owner:${owner_password}@127.0.0.1:5432/transferpro_e2e
+        DATABASE_MIGRATE_URL=postgres://transferpro_owner:${owner_password}@${POSTGRES_HOST}:5432/transferpro_e2e
         EOF
 
         pnpm db:migrate:local

@@ -167,9 +167,22 @@ jobs:
   # Three runners, one shard each. fail-fast stays off so a red shard does
   # not cancel the others: every spec still executes, and the merge job can
   # see every blob. The denominator matches the matrix length.
+  # The image bakes the browsers and their OS packages. Its tag is the
+  # @playwright/test version in the lockfile (v1.63.0). A step checks the
+  # image marker against the installed package.
   e2e:
     needs: [fast, e2e-build]
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      # The image's default user is root, which is what this job needs for
+      # apt. --ipc=host gives Chromium a normal /dev/shm. The container
+      # default is 64MB and Chromium crashes on it.
+      options: --user root --ipc=host
+    env:
+      # The image installs browsers here. GitHub sets HOME to /github/home,
+      # so without this Playwright would look in an empty cache directory.
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     strategy:
       fail-fast: false
       matrix:
@@ -210,6 +223,20 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # The container image tag above cannot be read from node_modules: the
+      # container starts before any step. This compares the image marker
+      # /ms-playwright/.docker-info with the package the lockfile installed.
+      - name: Playwright image matches the lockfile
+        run: |
+          set -euo pipefail
+          installed=$(node -p "require('@playwright/test/package.json').version")
+          image=$(node -p "JSON.parse(require('fs').readFileSync('/ms-playwright/.docker-info','utf8')).driverVersion")
+          if [ "$installed" != "$image" ]; then
+            echo "Playwright image v${image} does not match @playwright/test@${installed} from the lockfile." >&2
+            echo "Set the e2e container image to mcr.microsoft.com/playwright:v${installed}-noble." >&2
+            exit 1
+          fi
+
       # The artifact is the build from this run. Shards do not restore the
       # cache and do not run nuxi build.
       - name: Download Nuxt build
@@ -221,30 +248,13 @@ jobs:
       - name: Nuxt server is present
         run: test -f .output/server/index.mjs
 
-      # Browsers live in the runner cache. OS packages do not, so a cache hit
-      # still installs system dependencies. The key is the installed Playwright
-      # version, which tracks the lockfile without busting on unrelated bumps.
-      - name: Resolve Playwright version
-        id: playwright-version
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
-
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Install Playwright system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
-
+      # Inside this container, localhost is the job itself. The Postgres
+      # service is the hostname `postgres` on the job network. The harness
+      # accepts that host and still refuses every other one.
       - name: Database roles
         uses: ./.github/actions/ci-database
+        with:
+          postgres-host: postgres
 
       # Playwright sets NODE_ENV=test and clears RESEND_API_KEY.
       # scripts/e2e-server.mjs refuses to start if that is not true, so this
