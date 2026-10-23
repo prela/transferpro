@@ -421,6 +421,13 @@
       "when": 1791400049000,
       "tag": "0059_place_ref_checked_at",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1791400050000,
+      "tag": "0060_tenants_due_place_refresh",
+      "breakpoints": true
     }
   ]
 }
