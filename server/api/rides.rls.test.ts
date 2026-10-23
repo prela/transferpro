@@ -9,9 +9,10 @@ import { captureLogs } from '../core/testing'
 import { createClient } from '../modules/clients'
 import { archiveDriver, createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
+import { createPartner } from '../modules/partners'
 import { setRosterDay } from '../modules/roster'
 import { closeTenantRuntime, createTenant, handleAuthRequest, updateUserLocale, withTenantFromSession } from '../modules/tenancy'
-import { assignRide as assignRideRaw, cancelRide, changeVehicle as changeVehicleRaw, clearRide as clearRideRaw, createTransfer, listTransferDay, listUpcomingRides, readOfficeHome, reassignRide as reassignRideRaw, refreshFlightLandings } from '../modules/transfers'
+import { assignRide as assignRideRaw, cancelRide, changeVehicle as changeVehicleRaw, clearRide as clearRideRaw, createTransfer, handOffRide, listTransferDay, listUpcomingRides, readOfficeHome, reassignRide as reassignRideRaw, refreshFlightLandings } from '../modules/transfers'
 import { archiveVehicle, createVehicle } from '../modules/vehicles'
 import postAcceptByPhone from './rides/[id]/accept-by-phone.post'
 import postAccept from './rides/[id]/accept.post'
@@ -3114,6 +3115,345 @@ it('hides another Tenant from cancel and writes no audit row', async () => {
   expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'unassigned' })
   expect(await cancelAudits(world.tenantId)).toEqual([])
   expect(await cancelAudits(foreign.tenantId)).toEqual([])
+})
+
+async function transferRows(ids: string[]) {
+  const result = await ownerPool.query<{
+    id: string
+    version: number
+    group_passenger_count: number | null
+    price: string
+    link: string | null
+  }>(
+    `select id, version, group_passenger_count, price::text as price, link
+     from app.transfers
+     where id = any($1::uuid[])
+     order by id`,
+    [ids],
+  )
+  return result.rows
+}
+
+async function outboxRows(tenantId: string) {
+  const result = await ownerPool.query<{
+    ride_id: string | null
+    driver_id: string | null
+    work_order_status: string | null
+  }>(
+    `select ride_id, driver_id, work_order_status
+     from app.mail_outbox
+     where tenant_id = $1
+     order by created_at, id`,
+    [tenantId],
+  )
+  return result.rows
+}
+
+it('cancels a main Transfer and its unfinished extra vehicles, and leaves a finished one', async () => {
+  const world = await office('hasg-cancel-group')
+  const address = 'ana-group@example.test'
+  const driver = await createDriver(world.dispatcher, {
+    ...driverBody,
+    name: 'Ana Grupa',
+    phone: '+385911114650',
+    email: address,
+  })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG4650AA'))
+  const partner = await createPartner(world.dispatcher, { name: 'Mora Grupa' })
+  const pickup = new Date(Date.now() + 40 * 60 * 60 * 1000).toISOString()
+  const main = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    guestName: 'Gost Glavni',
+    price: 42.5,
+  })
+  const assigned = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    price: 0,
+    guestName: 'Gost Dodan',
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 12,
+    mainVersion: 0,
+  })
+  const handed = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    price: 0,
+    guestName: 'Gost Predan',
+    mainTransferId: main.transfer.id,
+  })
+  const finished = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    price: 0,
+    guestName: 'Gost Gotov',
+    mainTransferId: main.transfer.id,
+  })
+  const handedOff = await handOffRide(world.dispatcher, handed.ride.id, { partnerId: partner.id, version: 0 })
+  expect(handedOff.ride).toMatchObject({ state: 'handed_off', partnerId: partner.id, driverId: null })
+  await assignRide(world.dispatcher, { rideId: finished.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  expect((await call('POST', `/api/rides/${finished.ride.id}/done`, world.dispatcher, {})).status).toBe(200)
+  await assignRide(world.dispatcher, { rideId: assigned.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+
+  const day = operationalDateInTimeZone('Europe/Zagreb', new Date(pickup))
+  const listed = await listTransferDay(world.dispatcher, day)
+  expect(listed.rides.find(row => row.rideId === main.ride.id)?.unfinishedExtraVehicleCount).toBe(2)
+  expect(listed.rides.find(row => row.rideId === assigned.ride.id)?.unfinishedExtraVehicleCount).toBe(0)
+  expect(listed.rides.find(row => row.rideId === finished.ride.id)?.unfinishedExtraVehicleCount).toBe(0)
+
+  const transferIds = [main.transfer.id, assigned.transfer.id, handed.transfer.id, finished.transfer.id]
+  const beforeTransfers = await transferRows(transferIds)
+  const beforeMail = await outboxRows(world.tenantId)
+
+  const response = await call('POST', `/api/rides/${main.ride.id}/cancel`, world.dispatcher, {})
+  expect(response.status).toBe(200)
+  const body = await response.json() as {
+    ride: { id: string, state: string, driverId: string | null }
+    workOrders: { driverId: string, outcome: string }[]
+    cancelled: {
+      ride: { id: string, transferId: string, state: string, driverId: string | null, vehicleId: string | null, mustAccept: boolean | null }
+      workOrders: { driverId: string, outcome: string }[]
+    }[]
+  }
+  const unfinished = [assigned, handed].sort((left, right) => left.transfer.id < right.transfer.id ? -1 : 1)
+  expect(body.ride).toMatchObject({ id: main.ride.id, state: 'cancelled', driverId: null })
+  expect(body.workOrders).toEqual([])
+  expect(body.cancelled.map(member => ({
+    id: member.ride.id,
+    state: member.ride.state,
+    driverId: member.ride.driverId,
+    workOrders: member.workOrders,
+  }))).toEqual([
+    { id: main.ride.id, state: 'cancelled', driverId: null, workOrders: [] },
+    ...unfinished.map(extra => ({
+      id: extra.ride.id,
+      state: 'cancelled',
+      driverId: extra.ride.id === assigned.ride.id ? driver.id : null,
+      workOrders: extra.ride.id === assigned.ride.id ? [{ driverId: driver.id, outcome: 'sent' }] : [],
+    })),
+  ])
+  expect(JSON.stringify(body)).not.toContain(address)
+  expect(JSON.stringify(body)).not.toContain(finished.ride.id)
+
+  expect(await rideRow(main.ride.id)).toMatchObject({ state: 'cancelled', driver_id: null, vehicle_id: null, must_accept: null })
+  expect(await rideRow(assigned.ride.id)).toMatchObject({
+    state: 'cancelled',
+    driver_id: driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: false,
+  })
+  expect(await rideRow(handed.ride.id)).toMatchObject({
+    state: 'cancelled',
+    driver_id: null,
+    vehicle_id: null,
+    must_accept: null,
+  })
+  expect(await rideRow(finished.ride.id)).toMatchObject({
+    state: 'done',
+    driver_id: driver.id,
+    vehicle_id: vehicle.id,
+    must_accept: false,
+  })
+  expect(await transferRows(transferIds)).toEqual(beforeTransfers)
+
+  const audits = await cancelAudits(world.tenantId)
+  // One transaction stamps the same instant on every entry, so the id
+  // order is not the write order. Each cancelled Ride has one entry.
+  const byRide = (rows: typeof audits) => [...rows].sort((left, right) => (left.data.rideId ?? '').localeCompare(right.data.rideId ?? ''))
+  expect(byRide(audits).map(row => row.data)).toEqual(byRide([
+    { actor_user_id: world.dispatcherId, subject_user_id: null, data: { rideId: main.ride.id, driverId: null, fields: ['state'] } },
+    ...unfinished.map(extra => ({
+      actor_user_id: world.dispatcherId,
+      subject_user_id: null,
+      data: {
+        rideId: extra.ride.id,
+        driverId: extra.ride.id === handed.ride.id ? partner.id : driver.id,
+        fields: ['state'] as string[],
+      },
+    })),
+  ]).map(row => row.data))
+  expect(audits.every(row => row.actor_user_id === world.dispatcherId && row.subject_user_id === null)).toBe(true)
+  const stored = JSON.stringify(audits)
+  expect(stored).not.toContain(address)
+  expect(stored).not.toContain('Gost Glavni')
+  expect(stored).not.toContain('Gost Dodan')
+  expect(stored).not.toContain('Gost Predan')
+  expect(stored).not.toContain('Gost Gotov')
+  expect(stored).not.toContain('Mora Grupa')
+  // A uuid can contain the digits of the group count. The count is not a field.
+  expect(stored).not.toContain('groupPassengerCount')
+
+  const cancelledMail = (await outboxRows(world.tenantId)).filter(row => row.work_order_status === 'cancelled')
+  expect(cancelledMail).toEqual([{ ride_id: assigned.ride.id, driver_id: driver.id, work_order_status: 'cancelled' }])
+  expect((await outboxRows(world.tenantId)).filter(row => row.work_order_status !== 'cancelled')).toEqual(beforeMail)
+})
+
+it('a failure while cancelling one member leaves the group, the audit log, and the mail outbox unchanged', async () => {
+  const world = await office('hasg-cancel-group-fail')
+  const driver = await createDriver(world.dispatcher, {
+    ...driverBody,
+    name: 'Ana Povrat',
+    phone: '+385911114651',
+    email: 'ana-rollback@example.test',
+  })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG4651AA'))
+  const pickup = new Date(Date.now() + 42 * 60 * 60 * 1000).toISOString()
+  const main = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    guestName: 'Gost Povrat',
+    price: 42.5,
+  })
+  const extra = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    price: 0,
+    guestName: 'Gost Clan',
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 12,
+    mainVersion: 0,
+  })
+  await assignRide(world.dispatcher, { rideId: extra.ride.id, driverId: driver.id, vehicleId: vehicle.id })
+  const rideIds = [main.ride.id, extra.ride.id]
+  const transferIds = [main.transfer.id, extra.transfer.id]
+  const beforeRides = await ownerPool.query(
+    `select id, state, driver_id, vehicle_id, must_accept, partner_id
+     from app.rides where id = any($1::uuid[]) order by id`,
+    [rideIds],
+  )
+  const beforeTransfers = await transferRows(transferIds)
+  const beforeAudits = await cancelAudits(world.tenantId)
+  const beforeMail = await outboxRows(world.tenantId)
+  // The extra vehicle's cancel update fails. The main Transfer was already
+  // written in that transaction, so a commit would leave half the group.
+  const constraint = 'rides_group_cancel_member_fail'
+  await ownerPool.query(`alter table app.rides drop constraint if exists ${constraint}`)
+  try {
+    await ownerPool.query(
+      `alter table app.rides add constraint ${constraint} check (id <> '${extra.ride.id}'::uuid or state <> 'cancelled')`,
+    )
+    const response = await call('POST', `/api/rides/${main.ride.id}/cancel`, world.dispatcher, {}).catch(() => null)
+    if (response !== null) {
+      const text = await response.text()
+      expect(response.status).toBeGreaterThanOrEqual(500)
+      expect(text).not.toContain('Gost Povrat')
+      expect(text).not.toContain('ana-rollback@example.test')
+    }
+    const afterRides = await ownerPool.query(
+      `select id, state, driver_id, vehicle_id, must_accept, partner_id
+       from app.rides where id = any($1::uuid[]) order by id`,
+      [rideIds],
+    )
+    expect(afterRides.rows).toEqual(beforeRides.rows)
+    expect(await transferRows(transferIds)).toEqual(beforeTransfers)
+    expect(await cancelAudits(world.tenantId)).toEqual(beforeAudits)
+    expect(await outboxRows(world.tenantId)).toEqual(beforeMail)
+  }
+  finally {
+    await ownerPool.query(`alter table app.rides drop constraint if exists ${constraint}`)
+  }
+})
+
+it('an extra vehicle whose cancel writes nothing rolls the whole group back', async () => {
+  const world = await office('hasg-cancel-group-miss')
+  const pickup = new Date(Date.now() + 43 * 60 * 60 * 1000).toISOString()
+  const main = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    guestName: 'Gost Propust',
+    price: 42.5,
+  })
+  const extra = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    price: 0,
+    guestName: 'Gost Prazan',
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 12,
+    mainVersion: 0,
+  })
+  const rideIds = [main.ride.id, extra.ride.id]
+  const transferIds = [main.transfer.id, extra.transfer.id]
+  const beforeRides = await ownerPool.query(
+    `select id, state, driver_id, vehicle_id, must_accept, partner_id
+     from app.rides where id = any($1::uuid[]) order by id`,
+    [rideIds],
+  )
+  const beforeTransfers = await transferRows(transferIds)
+  const beforeAudits = await cancelAudits(world.tenantId)
+  const beforeMail = await outboxRows(world.tenantId)
+  // The main Ride's cancel closes the extra vehicle first, so the extra's
+  // own update matches nothing. Committing would leave the main cancelled.
+  const trigger = 'rides_group_cancel_extra_miss'
+  const fn = 'group_cancel_extra_already_closed'
+  await ownerPool.query(`drop trigger if exists ${trigger} on app.rides`)
+  await ownerPool.query(`drop function if exists app.${fn}()`)
+  await ownerPool.query(`
+    create function app.${fn}()
+    returns trigger
+    language plpgsql
+    as $fn$
+    begin
+      if new.id = '${main.ride.id}'::uuid
+         and new.state = 'cancelled'
+         and old.state is distinct from 'cancelled' then
+        update app.rides
+        set state = 'cancelled', partner_id = null
+        where id = '${extra.ride.id}'::uuid;
+      end if;
+      return new;
+    end;
+    $fn$
+  `)
+  await ownerPool.query(`create trigger ${trigger} before update on app.rides
+    for each row execute function app.${fn}()`)
+  try {
+    const response = await call('POST', `/api/rides/${main.ride.id}/cancel`, world.dispatcher, {})
+    const text = await response.text()
+    expect(response.status).toBe(409)
+    expect(text).not.toContain('Gost Propust')
+    expect(text).not.toContain('Gost Prazan')
+    expect(await ownerPool.query(
+      `select id, state, driver_id, vehicle_id, must_accept, partner_id
+       from app.rides where id = any($1::uuid[]) order by id`,
+      [rideIds],
+    )).toMatchObject({ rows: beforeRides.rows })
+    expect(await transferRows(transferIds)).toEqual(beforeTransfers)
+    expect(await cancelAudits(world.tenantId)).toEqual(beforeAudits)
+    expect(await outboxRows(world.tenantId)).toEqual(beforeMail)
+  }
+  finally {
+    await ownerPool.query(`drop trigger if exists ${trigger} on app.rides`)
+    await ownerPool.query(`drop function if exists app.${fn}()`)
+  }
+})
+
+it('cancelling an extra vehicle leaves the main Transfer, its group count, and its price', async () => {
+  const world = await office('hasg-cancel-extra')
+  const pickup = new Date(Date.now() + 44 * 60 * 60 * 1000).toISOString()
+  const main = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    guestName: 'Gost Sam',
+    price: 42.5,
+  })
+  const extra = await createTransfer(world.dispatcher, {
+    ...transferBody(world, pickup),
+    price: 0,
+    guestName: 'Gost Samo',
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 12,
+    mainVersion: 0,
+  })
+  const before = await transferRows([main.transfer.id, extra.transfer.id])
+
+  const response = await call('POST', `/api/rides/${extra.ride.id}/cancel`, world.dispatcher, {})
+  expect(response.status).toBe(200)
+  const body = await response.json() as { ride: { id: string, state: string }, workOrders: unknown[], cancelled?: unknown }
+  expect(body.ride).toMatchObject({ id: extra.ride.id, state: 'cancelled' })
+  expect(body.workOrders).toEqual([])
+  expect(body.cancelled).toBeUndefined()
+
+  expect(await rideRow(main.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null })
+  expect(await rideRow(extra.ride.id)).toMatchObject({ state: 'cancelled' })
+  expect(await transferRows([main.transfer.id, extra.transfer.id])).toEqual(before)
+  expect(await cancelAudits(world.tenantId)).toEqual([{
+    actor_user_id: world.dispatcherId,
+    subject_user_id: null,
+    data: { rideId: extra.ride.id, driverId: null, fields: ['state'] },
+  }])
 })
 
 async function declineAudits(tenantId: string) {

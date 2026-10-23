@@ -11,9 +11,14 @@
  * No fee is stored. No mail is sent.
  * The Driver declines from `assigned` only. The Ride returns to unassigned
  * and a decline alert names that Driver. No mail.
- * The office may cancel from `unassigned`, `assigned`, or `accepted`.
- * That cancel mails the current Driver a work order with status cancelled
- * and no price, after the Ride is saved. A Ride with no Driver sends nothing.
+ * The office may cancel from `unassigned`, `assigned`, `accepted`, or
+ * `handed_off`. Cancelling a main Transfer also cancels every unfinished
+ * extra vehicle in that same transaction, each with its own audit entry
+ * and its own Driver's cancelled work order. An extra vehicle that
+ * cannot be written fails the command. A handed-off Ride has no
+ * Driver and sends nothing. An extra vehicle cancelled on its own leaves
+ * the main Transfer. No member's version changes. A Ride with no Driver
+ * sends nothing.
  * The office or the assigned Driver can record or clear a landing time
  * while the Ride is unfinished. The Ride state stays. No mail.
  * The office can correct the Transfer while the Ride is unfinished.

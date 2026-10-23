@@ -22,9 +22,21 @@ type CancelRideFailure
     | 'ride.cancelRideConflict'
     | 'ride.signedOut'
 
-const cancelling = ref<{ rideId: string, guestName: string } | null>(null)
+const cancelling = ref<{
+  rideId: string
+  guestName: string
+  unfinishedExtraVehicleCount: number
+} | null>(null)
 const cancelPending = ref(false)
 const cancelErrorKey = ref<CancelRideFailure | null>(null)
+
+/** A main Transfer with unfinished extra vehicles cancels the whole group. */
+const groupCancel = computed(() => (cancelling.value?.unfinishedExtraVehicleCount ?? 0) > 0)
+
+function groupQuestion(count: number): string {
+  const vehicles = t(count === 1 ? 'ride.cancelGroupVehicle' : 'ride.cancelGroupVehicles')
+  return t('ride.cancelGroupBody', { count, vehicles })
+}
 
 function driverLabel(id: string | null): string {
   return driverDisplayName(props.drivers, id, t('ride.unknownDriver'))
@@ -34,7 +46,12 @@ function open(ride: TransferDayRide) {
   if (!canCallOff(ride) || cancelPending.value)
     return
   cancelErrorKey.value = null
-  cancelling.value = { rideId: ride.rideId, guestName: ride.guestName }
+  // An extra vehicle is cancelled on its own. The count is only for a main Transfer.
+  cancelling.value = {
+    rideId: ride.rideId,
+    guestName: ride.guestName,
+    unfinishedExtraVehicleCount: ride.mainTransferId === null ? ride.unfinishedExtraVehicleCount : 0,
+  }
 }
 
 function closeCancelRide() {
@@ -69,8 +86,9 @@ function cancelRideFailureKey(error: unknown): CancelRideFailure {
 /**
  * POST /api/rides/:id/cancel with an empty body. Success reloads the day.
  * The Ride stays on the day list and shows Cancelled. Dismiss writes nothing.
- * The notice names the current Driver. A Ride with no Driver has no notice.
- * The address is not on the response.
+ * A main Transfer with unfinished extra vehicles has already asked, and
+ * this sends the whole group. Each Driver gets their own notice. A Ride
+ * with no Driver shares one toast. The address is not on the response.
  */
 async function confirmCancelRide() {
   const target = cancelling.value
@@ -84,13 +102,23 @@ async function confirmCancelRide() {
       body: {},
     }))
     notifyAuditChanged()
-    const notice = cancelled.workOrders[0]
-    if (notice === undefined) {
-      const savedNotice = { title: t('ride.cancelled'), color: 'success' as const, role: 'status' }
-      toast.add(savedNotice)
+    // One Ride uses the named result. A group lists every cancelled Ride,
+    // each with its own Driver. A Ride with no Driver shares one toast.
+    const members = cancelled.cancelled ?? [{ ride: cancelled.ride, workOrders: cancelled.workOrders }]
+    let quiet = false
+    for (const member of members) {
+      const notice = member.workOrders[0]
+      if (notice === undefined) {
+        quiet = true
+        continue
+      }
+      present(member.ride.id, notice.outcome, driverLabel(notice.driverId), t('ride.cancelled'))
     }
-    else {
-      present(target.rideId, notice.outcome, driverLabel(notice.driverId), t('ride.cancelled'))
+    if (quiet) {
+      // `role` is not on the toast prop type. A fresh literal would drop
+      // the status announcement the board already relies on.
+      const savedNotice = { title: t('ride.cancelled'), color: 'success' as const, role: 'status' as const }
+      toast.add(savedNotice)
     }
     cancelling.value = null
     await props.loadDay()
@@ -111,8 +139,8 @@ defineExpose({ open })
 <template>
   <UModal
     v-model:open="cancelRideOpen"
-    :title="t('ride.cancelRideTitle')"
-    :description="t('ride.cancelRideBody')"
+    :title="groupCancel ? t('ride.cancelGroupTitle') : t('ride.cancelRideTitle')"
+    :description="groupCancel && cancelling ? groupQuestion(cancelling.unfinishedExtraVehicleCount) : t('ride.cancelRideBody')"
     :dismissible="!cancelPending"
     :ui="{ footer: 'flex-col sm:flex-row sm:justify-end' }"
   >
@@ -149,7 +177,9 @@ defineExpose({ open })
         :disabled="cancelPending"
         @click="confirmCancelRide"
       >
-        {{ cancelPending ? t('ride.cancelRideConfirming') : t('ride.cancelRideConfirm') }}
+        {{ cancelPending
+          ? t(groupCancel ? 'ride.cancelGroupConfirming' : 'ride.cancelRideConfirming')
+          : t(groupCancel ? 'ride.cancelGroupConfirm' : 'ride.cancelRideConfirm') }}
       </UButton>
     </template>
   </UModal>

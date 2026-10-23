@@ -371,6 +371,11 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   unclosedMark: z.boolean(),
   // Derived at read. Display only. Empty unless the Ride is assigned or accepted.
   warnings: boardWarningsSchema,
+  // How many unfinished extra vehicles this main Transfer still has, on
+  // any day. Zero on an extra vehicle and when the group has none left.
+  // The cancel dialog reads it. Nothing is sent until the office confirms
+  // (ADR-0054).
+  unfinishedExtraVehicleCount: z.number().int().nonnegative(),
   // The Transfer version the form was opened with (ADR-0046). One version covers the Ride.
   version: z.number().int().nonnegative(),
   // Null until an office data save. A member who has left leaves the name null.
