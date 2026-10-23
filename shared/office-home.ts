@@ -5,7 +5,7 @@ import { landingAlarmOn, rideIsInProgress } from './landing-alarm'
 import { tenantRoleSchema } from './tenant-role'
 import { OPERATIONAL_DAY_START_DEFAULT, operationalDayStartHourSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from './tenant-settings'
 import { PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema, TABLA_MAX_LENGTH, transferPriceSchema } from './transfer'
-import { UNCLOSED_MARK_MS } from './unclosed-mark'
+import { unclosedMarkOn } from './unclosed-mark'
 import { WORK_ORDER_STATUSES } from './work-order'
 
 /**
@@ -108,10 +108,11 @@ const officeHomeCountsSchema = z.strictObject({
  * is not a fourth list: a row appears only in Pozornost, once the unclosed
  * mark is on (ADR-0048). An unassigned row also carries decline
  * alerts for any pickup day and the past-pickup flag. Waiting has no mark.
- * In progress carries the unclosed mark (ADR-0027) and the landing alarm
- * (ADR-0030). The lists still include a Ride that Home shows only in
- * Pozornost; the blocks below are what the screen renders. There is no
- * week, month, or euro total.
+ * In progress carries the unclosed mark and the landing alarm (ADR-0030).
+ * Temporarily the unclosed mark is pickup plus 60 minutes. ADR-0055's
+ * occupied end comes in #476. The lists still include a Ride that Home
+ * shows only in Pozornost; the blocks below are what the screen renders.
+ * There is no week, month, or euro total.
  * `failedMails` sits below Pozornost and outside both attention tiers
  * (ADR-0045). It does not change the urgent count. The Driver's name is
  * derived on read. The Driver's address is not a field.
@@ -265,6 +266,15 @@ export function buildOfficeHome(
     cancelled: 0,
   }
 
+  // In progress and handed off ask the one rule. Temporarily the answer
+  // is pickup plus 60 minutes. ADR-0055's occupied end comes in #476.
+  const unclosedMark = (ride: OfficeHomeRide) => unclosedMarkOn({
+    pickupAt: ride.pickupAt,
+    landingAt: ride.landingAt,
+    nowMs,
+    transferDurationMinutes,
+  })
+
   for (const ride of rides) {
     const pickup = pickupMillis(ride.pickupAt)
     const onDay = pickup >= startMs && pickup < endMs
@@ -323,15 +333,15 @@ export function buildOfficeHome(
     else if (list === 'inProgress') {
       inProgress.push({
         ...shown,
-        unclosedMark: nowMs - pickup >= UNCLOSED_MARK_MS,
+        unclosedMark: unclosedMark(ride),
         landingAlarm: landingAlarmOn(ride.landingAt, nowMs, transferDurationMinutes, true),
       })
     }
     else if (ride.state === 'handed_off') {
-      // The same threshold as an in-progress Ride. The instant is included (ADR-0048).
+      // The same rule as an in-progress Ride. The instant is included (ADR-0048).
       handedOff.push({
         ...shown,
-        unclosedMark: nowMs - pickup >= UNCLOSED_MARK_MS,
+        unclosedMark: unclosedMark(ride),
       })
     }
   }
