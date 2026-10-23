@@ -470,7 +470,92 @@ it('marks a landing alarm on an in-progress Ride 60 minutes after landing plus t
     'Waiting': false,
     'Unassigned': false,
   })
+  // Pickup was 08:00 and now is 10:00, so the unclosed mark is already on.
+  // A stored landing and a longer duration move the alarm and leave the mark.
+  expect(Object.fromEntries(rides.map(row => [row.guestName, row.unclosedMark]))).toEqual({
+    'Landed': true,
+    'Just short': true,
+    'No landing': true,
+    'Done': false,
+    'Waiting': false,
+    'Unassigned': false,
+  })
 
   const longer = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 90)
   expect(longer.find(row => row.guestName === 'Landed')?.landingAlarm).toBe(false)
+  expect(longer.find(row => row.guestName === 'Landed')?.unclosedMark).toBe(true)
+})
+
+it('marks an in-progress Ride and a handed-off Ride at pickup plus 60 minutes, and a stored landing does not move it', async () => {
+  // 10:00 is exactly 60 minutes after 09:00. One millisecond later on the pickup is still quiet.
+  const now = new Date('2026-06-15T10:00:00.000Z')
+  const atPickup = new Date('2026-06-15T09:00:00.000Z')
+  const justShortPickup = new Date('2026-06-15T09:00:00.001Z')
+  const driverId = 'c1c1c1c1-3333-4333-8333-333333333333'
+  const vehicleId = 'f1f1f1f1-4444-4444-8444-444444444444'
+  const partnerId = 'c3c3c3c3-3333-4333-8333-333333333333'
+  function dayRide(
+    id: string,
+    guestName: string,
+    state: 'assigned' | 'accepted' | 'done' | 'unassigned' | 'handed_off',
+    pickupAt: Date,
+    landingAt: Date | null,
+    mustAccept: boolean | null,
+  ) {
+    return {
+      rideId: id,
+      transferId,
+      state,
+      driverId: state === 'unassigned' || state === 'handed_off' ? null : driverId,
+      vehicleId: state === 'unassigned' || state === 'handed_off' ? null : vehicleId,
+      mustAccept,
+      partnerId: state === 'handed_off' ? partnerId : null,
+      clientId,
+      pickupAt,
+      startLocationId,
+      endLocationId,
+      passengerCount: 1,
+      guestName,
+      flightNumber: null,
+      price: '10.00',
+      payment: 'cash' as const,
+      airportMark: landingAt !== null,
+      luggageCount: 0,
+      childSeatCount: 0,
+      note: null,
+      tabla: '',
+      clientReference: null,
+      landingAt,
+    }
+  }
+  const { transaction } = fakeTransaction({
+    dayRows: [
+      dayRide(rideId, 'At the mark', 'assigned', atPickup, new Date('2026-06-15T11:00:00.000Z'), false),
+      dayRide('e2e2e2e2-2222-4222-8222-222222222222', 'Just short', 'accepted', justShortPickup, null, true),
+      dayRide('e3e3e3e3-2222-4222-8222-222222222222', 'Handed at the mark', 'handed_off', atPickup, new Date('2026-06-15T11:00:00.000Z'), null),
+      dayRide('e4e4e4e4-2222-4222-8222-222222222222', 'Handed just short', 'handed_off', justShortPickup, null, null),
+      dayRide('e5e5e5e5-2222-4222-8222-222222222222', 'Waiting', 'assigned', atPickup, new Date('2026-06-15T08:00:00.000Z'), true),
+      dayRide('e6e6e6e6-2222-4222-8222-222222222222', 'Unassigned', 'unassigned', atPickup, null, null),
+      dayRide('e7e7e7e7-2222-4222-8222-222222222222', 'Done', 'done', atPickup, new Date('2026-06-15T08:00:00.000Z'), false),
+    ],
+  })
+  const rides = await loadRidesForDay(transaction, '2026-06-15', 'Europe/Zagreb', 5, now, 90)
+  expect(Object.fromEntries(rides.map(row => [row.guestName, row.unclosedMark]))).toEqual({
+    'At the mark': true,
+    'Just short': false,
+    'Handed at the mark': true,
+    'Handed just short': false,
+    'Waiting': false,
+    'Unassigned': false,
+    'Done': false,
+  })
+  expect(Object.fromEntries(rides.map(row => [row.guestName, row.landingAlarm]))).toEqual({
+    'At the mark': false,
+    'Just short': false,
+    'Handed at the mark': false,
+    'Handed just short': false,
+    'Waiting': false,
+    'Unassigned': false,
+    'Done': false,
+  })
 })

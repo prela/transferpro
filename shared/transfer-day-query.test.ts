@@ -58,6 +58,7 @@ it('counts quick filters on the rows the search and the party filters already ke
     driverId: null,
     mustAccept: null,
     landingAlarm: false,
+    unclosedMark: false,
     warnings: { expiredDocuments: [], rosterMismatch: false, overlappingRideIds: [] },
   }
   const counts = transferDayFilterCounts(rows.map(row => ({ rideId: row.guestName, ride: attention })), Date.parse('2026-06-15T10:00:00.000Z'))

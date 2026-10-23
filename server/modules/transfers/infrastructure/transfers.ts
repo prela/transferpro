@@ -3,7 +3,7 @@ import type { CreateTransfer, DeclineAlert, RecordedCreate, Ride, Transfer, Tran
 import type { Logger, TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { emptyBoardWarnings, landingAlarmOn, localDayBounds, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, transferPriceSchema } from '../../../../shared'
+import { emptyBoardWarnings, landingAlarmOn, localDayBounds, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, transferPriceSchema, unclosedMarkOn } from '../../../../shared'
 import { getLogger } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
@@ -235,8 +235,10 @@ function logAlreadyRecorded(log: Logger | undefined, transferId: string): void {
  * missing hour of a daylight-saving night. A pickup before the start hour is
  * not in this interval; it belongs to the previous operational day.
  * Omitting the hour uses 05:00. The day list passes the stored hour.
- * The landing alarm uses `now` and the Tenant transfer duration. The day
- * only chooses which Rides are listed (ADR-0030).
+ * The landing alarm uses `now` and the Tenant transfer duration. The
+ * unclosed mark is the same read: pickup, stored landing, and that
+ * duration, still decided from the pickup (ADR-0027). The day only
+ * chooses which Rides are listed (ADR-0030).
  */
 export async function loadRidesForDay(
   transaction: TenantTransaction,
@@ -381,6 +383,9 @@ function toDayRide(
   const landingAt = row.landingAt == null ? null : toInstant(row.landingAt)
   const expectedArrival = row.expectedArrival == null ? null : toInstant(row.expectedArrival)
   const pickupMs = new Date(pickupAt).getTime()
+  const inProgress = rideIsInProgress(row.state, row.mustAccept, row.driverId, pickupMs, nowMs)
+  // In progress and handed off share one rule. Every other state stays off.
+  const openForMark = inProgress || row.state === 'handed_off'
   return {
     rideId: row.rideId,
     transferId: row.transferId,
@@ -413,8 +418,14 @@ function toDayRide(
       landingAt,
       nowMs,
       transferDurationMinutes,
-      rideIsInProgress(row.state, row.mustAccept, row.driverId, pickupMs, nowMs),
+      inProgress,
     ),
+    unclosedMark: openForMark && unclosedMarkOn({
+      pickupAt,
+      landingAt,
+      nowMs,
+      transferDurationMinutes,
+    }),
     warnings: emptyBoardWarnings(),
   }
 }

@@ -27,6 +27,7 @@ function source(overrides: Partial<Parameters<typeof classifyRideAttention>[0]> 
     driverId: null,
     mustAccept: null,
     landingAlarm: false,
+    unclosedMark: false,
     warnings: {
       expiredDocuments: [],
       rosterMismatch: false,
@@ -68,13 +69,14 @@ it('names each decline and keeps a past pickup beside it', () => {
   ])
 })
 
-it('marks a landing alarm and an unclosed Ride from the pickup, and a landing does not clear the mark', () => {
+it('shows a landing alarm and the unclosed mark together when the day read set both', () => {
   const open = source({
     state: 'accepted',
     driverId: '00000000-0000-4000-8000-000000000010',
     mustAccept: false,
     pickupAt: new Date(NOW - HOUR).toISOString(),
     landingAlarm: true,
+    unclosedMark: true,
   })
   expect(classifyRideAttention(open, [], NOW)).toEqual([
     { tier: 'urgent', kind: 'landing-alarm' },
@@ -88,6 +90,19 @@ it('marks a landing alarm and an unclosed Ride from the pickup, and a landing do
     landingAlarm: false,
   })
   expect(classifyRideAttention(fresh, [], NOW)).toEqual([])
+})
+
+it('shows the unclosed mark the day read returned, without a second pickup clock', () => {
+  const recent = source({
+    state: 'accepted',
+    driverId: '00000000-0000-4000-8000-000000000010',
+    mustAccept: false,
+    pickupAt: new Date(NOW - 60_000).toISOString(),
+    unclosedMark: true,
+  })
+  expect(classifyRideAttention(recent, [], NOW)).toEqual([
+    { tier: 'urgent', kind: 'unclosed-mark' },
+  ])
 })
 
 it('treats overlap, a short gap, a roster mismatch, and an expired document as warnings', () => {
@@ -163,10 +178,11 @@ it('opens the Home balance parts that are not toolbar chips', () => {
   expect(transferDayFilterMatches('inProgress', source({ state: 'handed_off' }), [], NOW)).toBe(false)
 })
 
-it('marks a handed-off Ride at the shared unclosed threshold, and not as unassigned or in progress', () => {
+it('files a handed-off Ride under the unclosed mark the day read returned, and not as unassigned or in progress', () => {
   const at = source({
     state: 'handed_off',
     pickupAt: new Date(NOW - UNCLOSED_MARK_MS).toISOString(),
+    unclosedMark: true,
   })
   expect(classifyRideAttention(at, [], NOW)).toEqual([
     { tier: 'urgent', kind: 'unclosed-mark' },

@@ -5,7 +5,7 @@ import { landingAlarmOn, rideIsInProgress } from './landing-alarm'
 import { tenantRoleSchema } from './tenant-role'
 import { OPERATIONAL_DAY_START_DEFAULT, operationalDayStartHourSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from './tenant-settings'
 import { PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema, TABLA_MAX_LENGTH, transferPriceSchema } from './transfer'
-import { UNCLOSED_MARK_MS } from './unclosed-mark'
+import { unclosedMarkOn } from './unclosed-mark'
 import { WORK_ORDER_STATUSES } from './work-order'
 
 /**
@@ -265,6 +265,15 @@ export function buildOfficeHome(
     cancelled: 0,
   }
 
+  // In progress and handed off ask the one rule. The landing and the
+  // duration are passed through; the answer is still the pickup (ADR-0027).
+  const unclosedMark = (ride: OfficeHomeRide) => unclosedMarkOn({
+    pickupAt: ride.pickupAt,
+    landingAt: ride.landingAt,
+    nowMs,
+    transferDurationMinutes,
+  })
+
   for (const ride of rides) {
     const pickup = pickupMillis(ride.pickupAt)
     const onDay = pickup >= startMs && pickup < endMs
@@ -323,15 +332,15 @@ export function buildOfficeHome(
     else if (list === 'inProgress') {
       inProgress.push({
         ...shown,
-        unclosedMark: nowMs - pickup >= UNCLOSED_MARK_MS,
+        unclosedMark: unclosedMark(ride),
         landingAlarm: landingAlarmOn(ride.landingAt, nowMs, transferDurationMinutes, true),
       })
     }
     else if (ride.state === 'handed_off') {
-      // The same threshold as an in-progress Ride. The instant is included (ADR-0048).
+      // The same rule as an in-progress Ride. The instant is included (ADR-0048).
       handedOff.push({
         ...shown,
-        unclosedMark: nowMs - pickup >= UNCLOSED_MARK_MS,
+        unclosedMark: unclosedMark(ride),
       })
     }
   }

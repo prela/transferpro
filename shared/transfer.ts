@@ -332,6 +332,10 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   expectedArrival: z.iso.datetime().nullable(),
   // Derived at read. Display only. A Ride with no landing stays false (ADR-0030).
   landingAlarm: z.boolean(),
+  // Derived at read, by the same rule as office home. Display only. On at
+  // the scheduled pickup plus 60 minutes for an in-progress Ride and a
+  // handed-off Ride. A stored landing does not move it (ADR-0027).
+  unclosedMark: z.boolean(),
   // Derived at read. Display only. Empty unless the Ride is assigned or accepted.
   warnings: boardWarningsSchema,
   // The Transfer version the form was opened with (ADR-0046). One version covers the Ride.

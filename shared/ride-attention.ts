@@ -1,7 +1,6 @@
 import type { RideState } from './transfer'
 import { calendarDateInTimeZone, isCalendarDate, operationalDateInTimeZone } from './date'
 import { rideIsInProgress } from './landing-alarm'
-import { UNCLOSED_MARK_MS } from './unclosed-mark'
 
 /**
  * Four hours, in milliseconds. The unassigned alarm includes this instant
@@ -40,6 +39,8 @@ export interface RideAttentionSource {
   readonly driverId: string | null
   readonly mustAccept: boolean | null
   readonly landingAlarm: boolean
+  /** The day read's unclosed mark. This classification does not keep a second clock. */
+  readonly unclosedMark: boolean
   readonly warnings: {
     readonly expiredDocuments: readonly string[]
     readonly rosterMismatch: boolean
@@ -101,10 +102,10 @@ export function classifyRideAttention(
     items.push({ tier: 'urgent', kind: 'landing-alarm' })
 
   const inProgress = rideIsInProgress(ride.state, ride.mustAccept, ride.driverId, pickup, nowMs)
-  // A handed-off Ride is not in progress. It takes the same mark, from the
-  // same instant, so a Partner Ride nobody closes is not forgotten (ADR-0048).
+  // A handed-off Ride is not in progress. It takes the mark the day read
+  // already derived, so a Partner Ride nobody closes is not forgotten (ADR-0048).
   const unclosed = inProgress || ride.state === 'handed_off'
-  if (unclosed && nowMs - pickup >= UNCLOSED_MARK_MS)
+  if (unclosed && ride.unclosedMark)
     items.push({ tier: 'urgent', kind: 'unclosed-mark' })
 
   if (ride.warnings.overlappingRideIds.length > 0)
