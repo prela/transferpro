@@ -174,6 +174,17 @@ function transferFieldsArray(data: AnyPgColumn) {
   return sql`jsonb_typeof(${data} -> ${sql.raw(`'fields'`)}) = 'array' and jsonb_array_length(${data} -> ${sql.raw(`'fields'`)}) between 1 and ${transferFieldCount} and ${data} -> ${sql.raw(`'fields'`)} <@ ${transferFieldsJson}`
 }
 
+/**
+ * `transfer.created` always names the new Transfer. An extra vehicle also
+ * names its main Transfer. Either shape is exact: a count cannot sit beside
+ * the ids (ADR-0054).
+ */
+function transferCreatedKeys(data: AnyPgColumn) {
+  const required = sql.raw(`'{transferId,rideId,clientId,startLocationId,endLocationId,fields}'::text[]`)
+  const withMain = sql.raw(`'{transferId,rideId,clientId,startLocationId,endLocationId,fields,mainTransferId}'::text[]`)
+  return sql`((${data} - ${required} = '{}'::jsonb) or (${data} - ${withMain} = '{}'::jsonb and ${uuidText(data, 'mainTransferId')}))`
+}
+
 const transferCorrectionFieldsJson = sql.raw(`'${JSON.stringify([...TRANSFER_CORRECTION_FIELDS])}'::jsonb`)
 const transferCorrectionFieldCount = sql.raw(String(TRANSFER_CORRECTION_FIELDS.length))
 
@@ -364,7 +375,7 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'location.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'locationId', 'fields')} and ${locationIdText(table.data)} and ${locationFieldsArray(table.data)}
     when 'location.field_changed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'locationId', 'field')} and ${locationIdText(table.data)} and ${locationFieldText(table.data)}
     when 'location.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'locationId')} and ${locationIdText(table.data)}
-    when 'transfer.created' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'transferId', 'rideId', 'clientId', 'startLocationId', 'endLocationId', 'fields')} and ${uuidText(table.data, 'transferId')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'clientId')} and ${uuidText(table.data, 'startLocationId')} and ${uuidText(table.data, 'endLocationId')} and ${transferFieldsArray(table.data)}
+    when 'transfer.created' then ${table.subjectUserId} is null and ${transferCreatedKeys(table.data)} and ${uuidText(table.data, 'transferId')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'clientId')} and ${uuidText(table.data, 'startLocationId')} and ${uuidText(table.data, 'endLocationId')} and ${transferFieldsArray(table.data)}
     when 'transfer.corrected' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'transferId', 'rideId', 'clientId', 'startLocationId', 'endLocationId', 'fields')} and ${uuidText(table.data, 'transferId')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'clientId')} and ${uuidText(table.data, 'startLocationId')} and ${uuidText(table.data, 'endLocationId')} and ${transferCorrectionFieldsArray(table.data)}
     when 'ride.assigned' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'vehicleId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${uuidText(table.data, 'vehicleId')} and ${rideAssignmentFieldsArray(table.data)}
     when 'ride.accepted' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'rideId', 'driverId', 'fields')} and ${uuidText(table.data, 'rideId')} and ${uuidText(table.data, 'driverId')} and ${rideAcceptedFieldsArray(table.data)}

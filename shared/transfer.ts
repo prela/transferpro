@@ -16,6 +16,14 @@ export const TRANSFER_PRICE_MAX = 99_999_999.99
 export const PASSENGER_COUNT_MIN = 1
 export const PASSENGER_COUNT_MAX = 60
 
+/**
+ * The group's ordered passenger count. One more than a coach, and not a
+ * pasted spreadsheet: a thousand is the group maximum the G1 spec names.
+ * Empty on the row means the Transfer's own passenger count (ADR-0054).
+ */
+export const GROUP_PASSENGER_COUNT_MIN = 1
+export const GROUP_PASSENGER_COUNT_MAX = 1000
+
 export const LUGGAGE_COUNT_MIN = 0
 export const LUGGAGE_COUNT_MAX = 60
 
@@ -139,6 +147,8 @@ export function canCorrectTransfer(state: RideState): boolean {
  * ids on the row as well, and a change of either is still a field name.
  * A guest name, a flight number, a note, a tabla, a Client reference, or a
  * price is not a name in this list: those values stay on the Transfer.
+ * `groupPassengerCount` is the group's ordered count on the main Transfer.
+ * The number itself is not stored on the audit row (ADR-0054).
  */
 export const TRANSFER_CORRECTION_FIELDS = [
   'clientId',
@@ -146,6 +156,7 @@ export const TRANSFER_CORRECTION_FIELDS = [
   'startLocationId',
   'endLocationId',
   ...TRANSFER_FIELDS.filter(field => field !== 'pickupAt'),
+  'groupPassengerCount',
 ] as const
 
 export const transferCorrectionFieldSchema = z.enum(TRANSFER_CORRECTION_FIELDS)
@@ -196,7 +207,26 @@ function sameDesignatorSpelling(before: string | null, after: string | null): bo
 function sameTransferField(field: TransferCorrectionField, before: CreateTransfer, after: CreateTransfer): boolean {
   if (field === 'pickupAt')
     return new Date(before.pickupAt).getTime() === new Date(after.pickupAt).getTime()
+  // The group count is not a booking field. The correction compares it
+  // beside this list, so a booking-only diff does not report it.
+  if (field === 'groupPassengerCount')
+    return true
   return before[field] === after[field]
+}
+
+/**
+ * The group count an office Transfer read returns. An extra vehicle has
+ * none of its own: the count lives on the main Transfer. A main Transfer
+ * with an empty column uses its own passenger count (ADR-0054).
+ */
+export function officeGroupPassengerCount(
+  mainTransferId: string | null,
+  stored: number | null,
+  passengerCount: number,
+): number | null {
+  if (mainTransferId !== null)
+    return null
+  return stored ?? passengerCount
 }
 
 /**
@@ -265,6 +295,11 @@ export const transferSchema = z.object({
   note: z.string().min(1).max(NOTE_MAX_LENGTH).nullable(),
   tabla: z.string().max(TABLA_MAX_LENGTH),
   clientReference: z.string().min(1).max(CLIENT_REFERENCE_MAX_LENGTH).nullable(),
+  // Null when this Transfer is not an extra vehicle. The group's count is
+  // then on this row. An extra vehicle names its main Transfer and carries
+  // no group count of its own (ADR-0054).
+  mainTransferId: z.uuid().nullable(),
+  groupPassengerCount: z.number().int().min(GROUP_PASSENGER_COUNT_MIN).max(GROUP_PASSENGER_COUNT_MAX).nullable(),
 })
 
 export type Transfer = z.infer<typeof transferSchema>
@@ -434,6 +469,9 @@ const transferBookingSchema = z.strictObject({
   note: noteSchema.optional(),
   tabla: tablaSchema,
   clientReference: clientReferenceSchema.optional(),
+  // The group's ordered count. A correction of the main Transfer may send
+  // it. Absent leaves the stored count. Null is not a clear (ADR-0054).
+  groupPassengerCount: z.number().int().min(GROUP_PASSENGER_COUNT_MIN).max(GROUP_PASSENGER_COUNT_MAX).optional(),
 })
 
 /**
@@ -446,6 +484,30 @@ const transferBookingSchema = z.strictObject({
  */
 export const createTransferSchema = transferBookingSchema.extend({
   externalId: z.uuid(),
+  // The main Transfer this extra vehicle belongs to. Absent on an ordinary create.
+  mainTransferId: z.uuid().optional(),
+  // The main Transfer's opened version, required only when this create stores
+  // the group count. The route checks that after it locks the main row.
+  mainVersion: z.number().int().nonnegative().optional(),
+}).superRefine((value, ctx) => {
+  const linked = value.mainTransferId !== undefined
+  // A group count and the main version belong to an extra-vehicle create.
+  // An ordinary Transfer does not store either.
+  if (!linked && (value.groupPassengerCount !== undefined || value.mainVersion !== undefined)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['mainTransferId'],
+      message: 'A group count belongs on an extra vehicle.',
+    })
+  }
+  // The Price of an extra vehicle is 0. Any other Price is refused before a session.
+  if (linked && value.price !== 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['price'],
+      message: 'An extra vehicle has no price.',
+    })
+  }
 })
 
 export interface CreateTransfer {
@@ -493,11 +555,25 @@ export function parseCreateTransfer(raw: unknown, now: Date = new Date()): Creat
  * A missing `externalId` is the same 400 as any other bad body. The server
  * does not assign one. The id is not part of {@link CreateTransfer}.
  */
-export function parseRecordTransfer(raw: unknown, now: Date = new Date()): { input: CreateTransfer, externalId: string } {
+export interface RecordTransferRequest {
+  readonly input: CreateTransfer
+  readonly externalId: string
+  /** Set when this create is an extra vehicle. Null on an ordinary Transfer. */
+  readonly mainTransferId: string | null
+  /** The group count to store on the main Transfer, or null when the body omits it. */
+  readonly groupPassengerCount: number | null
+  /** The main Transfer's opened version, or null when the body omits it. */
+  readonly mainVersion: number | null
+}
+
+export function parseRecordTransfer(raw: unknown, now: Date = new Date()): RecordTransferRequest {
   const parsed = readBooking(createTransferSchema, raw, now)
   return {
     input: toCreateTransfer(parsed),
     externalId: parsed.externalId,
+    mainTransferId: parsed.mainTransferId ?? null,
+    groupPassengerCount: parsed.groupPassengerCount ?? null,
+    mainVersion: parsed.mainVersion ?? null,
   }
 }
 
@@ -558,13 +634,21 @@ const correctionEnvelopeSchema = z.object({
   version: z.number().int().nonnegative(),
 }).passthrough()
 
-export function parseCorrectTransfer(raw: unknown, now: Date = new Date()): { input: CreateTransfer, confirm: boolean, version: number } {
+export function parseCorrectTransfer(raw: unknown, now: Date = new Date()): { input: CreateTransfer, confirm: boolean, version: number, groupPassengerCount: number | null } {
   const envelope = correctionEnvelopeSchema.safeParse(raw)
   if (!envelope.success)
     throw new TransferInputError()
   const { confirm, version, ...booking } = envelope.data
   // The booking schema has no key. A body that sends one fails here.
-  return { input: toCreateTransfer(readBooking(transferBookingSchema, booking, now)), confirm: confirm === true, version }
+  // A link is not a correction field. The group count is, and null means
+  // the body left it out: a correction does not clear it.
+  const parsed = readBooking(transferBookingSchema, booking, now)
+  return {
+    input: toCreateTransfer(parsed),
+    confirm: confirm === true,
+    version,
+    groupPassengerCount: parsed.groupPassengerCount ?? null,
+  }
 }
 
 /**

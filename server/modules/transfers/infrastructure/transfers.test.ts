@@ -95,6 +95,8 @@ function fakeTransaction(options: {
             note: params[12],
             tabla: params[13],
             clientReference: params[14],
+            mainTransferId: params[15],
+            groupPassengerCount: null,
           }],
         }
       }
@@ -117,6 +119,8 @@ function fakeTransaction(options: {
             changedAt: null,
             changedByName: null,
             partnerId: null,
+            mainTransferId: null,
+            groupPassengerCount: null,
             ...(typeof row === 'object' && row !== null ? row : {}),
           })),
         }
@@ -173,6 +177,8 @@ it('records one unassigned Ride and names fields, not the guest, the flight, the
       note,
       tabla: '',
       clientReference: null,
+      mainTransferId: null,
+      groupPassengerCount: 2,
     },
     ride: {
       id: rideId,
@@ -224,6 +230,8 @@ it('returns the stored Transfer when the manual external id is already recorded 
       note,
       tabla: '',
       clientReference: null,
+      mainTransferId: null,
+      groupPassengerCount: null,
       rideId,
       state: 'unassigned',
       driverId: null,

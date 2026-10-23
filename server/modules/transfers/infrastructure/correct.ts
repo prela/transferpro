@@ -4,7 +4,7 @@ import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { canCorrectTransfer, changedTransferFields, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
+import { canCorrectTransfer, changedTransferFields, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, officeGroupPassengerCount, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
 import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { correctionMovesWindow, lockTenantCapacity, tenantCapacityMinutes } from '../../capacity'
@@ -13,32 +13,12 @@ import { loadLocation, LocationArchivedError } from '../../locations'
 import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { checkRideCapacity, transferFullyBooked } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
+import { ExtraVehicleCountError, ExtraVehiclePriceError, TransferNotCorrectableError, TransferNotFoundError } from './transfer-errors'
 import { refuseStaleVersion, StaleSaveError } from './transfer-version'
 import { toInstant, toPrice } from './transfers'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
-/** The Transfer is not in this Tenant. Another Tenant's row looks the same. */
-export class TransferNotFoundError extends Error {
-  readonly statusCode = 404
-
-  constructor() {
-    super('Not Found')
-    this.name = 'TransferNotFoundError'
-  }
-}
-
-/**
- * The Ride is finished. The booking stays as it was. Nothing is written.
- */
-export class TransferNotCorrectableError extends Error {
-  readonly statusCode = 409
-  readonly code = 'transfer_closed'
-
-  constructor() {
-    super('Conflict')
-    this.name = 'TransferNotCorrectableError'
-  }
-}
+export { ExtraVehicleCountError, ExtraVehiclePriceError, TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from './transfer-errors'
 
 const lockedRows = z.object({
   rows: z.array(z.object({
@@ -58,6 +38,8 @@ const lockedRows = z.object({
     note: z.string().nullable(),
     tabla: z.string(),
     clientReference: z.string().nullable(),
+    mainTransferId: z.uuid().nullable(),
+    groupPassengerCount: z.number().int().nullable(),
     rideId: z.uuid(),
     state: rideStateSchema,
     driverId: z.uuid().nullable(),
@@ -87,12 +69,18 @@ const writtenRows = z.object({
  * a session. `confirm` is only for a true overlap the office has already seen.
  * The record route does not accept it.
  */
-function parseCorrect(transferId: unknown, body: unknown): { id: string, input: CreateTransfer, confirm: boolean, version: number } {
+function parseCorrect(transferId: unknown, body: unknown): { id: string, input: CreateTransfer, confirm: boolean, version: number, groupPassengerCount: number | null } {
   const id = z.uuid().safeParse(transferId)
   if (!id.success)
     throw new TransferInputError()
   const parsed = parseCorrectTransfer(body)
-  return { id: id.data, input: parsed.input, confirm: parsed.confirm, version: parsed.version }
+  return {
+    id: id.data,
+    input: parsed.input,
+    confirm: parsed.confirm,
+    version: parsed.version,
+    groupPassengerCount: parsed.groupPassengerCount,
+  }
 }
 
 function officeOnly(role: string): void {
@@ -128,7 +116,7 @@ export async function correctTransfer(
   const queue = await mailOutboxQueue()
   const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
     officeOnly(actor.role)
-    const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm, parsed.version)
+    const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm, parsed.version, parsed.groupPassengerCount)
     // The snapshot needs a Driver. An unassigned correction has nobody to mail.
     if (!corrected.notify || corrected.recorded.ride.driverId === null)
       return { recorded: corrected.recorded, staged: null, relocationWarnings: corrected.relocationWarnings, fullyBooked: corrected.fullyBooked }
@@ -156,6 +144,7 @@ export async function correctTransferForOffice(
   input: CreateTransfer,
   confirm: boolean,
   version: number,
+  groupPassengerCount: number | null,
 ): Promise<{ recorded: RecordedTransfer, notify: boolean, relocationWarnings: ScheduleClash[], fullyBooked: boolean }> {
   const current = await lockTransfer(transaction, transferId)
   if (!current)
@@ -166,11 +155,23 @@ export async function correctTransferForOffice(
   refuseStaleVersion(current.version, version)
   if (!canCorrectTransfer(current.state))
     throw new TransferNotCorrectableError()
+  // An extra vehicle keeps Price 0 and has no group count. Either refusal
+  // writes nothing, including when the rest of the body matches the row.
+  if (current.mainTransferId !== null && input.price !== '0.00')
+    throw new ExtraVehiclePriceError()
+  if (current.mainTransferId !== null && groupPassengerCount !== null)
+    throw new ExtraVehicleCountError()
 
   await requireLiveBooking(transaction, input)
   const stored = toBooking(current)
   const changed = changedTransferFields(stored, input)
-  if (changed.length === 0)
+  // Absent leaves the stored count. A sent number that differs is a change
+  // of the main Transfer only. The column value, not the office read, is
+  // what "differs" means: empty stays empty until a number is sent.
+  const groupChanged = groupPassengerCount !== null && groupPassengerCount !== current.groupPassengerCount
+  const fields = TRANSFER_CORRECTION_FIELDS.filter(field => changed.includes(field) || (groupChanged && field === 'groupPassengerCount'))
+  const nextGroup = groupPassengerCount ?? current.groupPassengerCount
+  if (fields.length === 0)
     return { recorded: toRecorded(current, stored), notify: false, relocationWarnings: [], fullyBooked: false }
 
   // A different designator throws away the landing, the expected arrival,
@@ -182,7 +183,7 @@ export async function correctTransferForOffice(
   // after the Transfer lock and the refusals above, before another Ride is read.
   if (occupation)
     await lockTenantCapacity(transaction)
-  await writeTransfer(transaction, transferId, input, clearLanding, version, actorUserId)
+  await writeTransfer(transaction, transferId, input, clearLanding, version, actorUserId, nextGroup)
   const capacity = occupation
     ? await checkRideCapacity(transaction, {
         rideId: current.rideId,
@@ -224,21 +225,22 @@ export async function correctTransferForOffice(
     clientId: input.clientId,
     startLocationId: input.startLocationId,
     endLocationId: input.endLocationId,
-    fields: changed,
+    fields,
   })
   if (returned && ride.driverId)
     await appendReturned(transaction, actorUserId, ride.id, ride.driverId)
 
   return {
     recorded: {
-      transfer: { id: current.id, ...input },
+      transfer: presentTransfer(current.id, input, current.mainTransferId, nextGroup),
       ride,
     },
     // A mailed fact is the list in ADR-0026. The price mails only while the
     // Driver collects cash. The Client reference is stored and is not mailed:
     // the work order does not state it, and a save that changes only that
-    // number sends nothing.
-    notify: changed.some(field => field !== 'clientReference' && (field !== 'price' || input.payment === 'cash')),
+    // number sends nothing. The group's ordered passenger count is not a
+    // work-order fact (ADR-0054).
+    notify: fields.some(field => field !== 'clientReference' && field !== 'groupPassengerCount' && (field !== 'price' || input.payment === 'cash')),
     relocationWarnings,
     fullyBooked,
   }
@@ -301,6 +303,8 @@ async function lockTransfer(transaction: TenantTransaction, transferId: string):
            t.note,
            t.tabla,
            t.client_reference as "clientReference",
+           t.link as "mainTransferId",
+           t.group_passenger_count as "groupPassengerCount",
            r.id as "rideId",
            r.state,
            r.driver_id as "driverId",
@@ -335,9 +339,23 @@ function toBooking(row: LockedTransfer): CreateTransfer {
   }
 }
 
+function presentTransfer(
+  id: string,
+  booking: CreateTransfer,
+  mainTransferId: string | null,
+  storedGroupPassengerCount: number | null,
+) {
+  return {
+    id,
+    ...booking,
+    mainTransferId,
+    groupPassengerCount: officeGroupPassengerCount(mainTransferId, storedGroupPassengerCount, booking.passengerCount),
+  }
+}
+
 function toRecorded(row: LockedTransfer, booking: CreateTransfer): RecordedTransfer {
   return {
-    transfer: { id: row.id, ...booking },
+    transfer: presentTransfer(row.id, booking, row.mainTransferId, row.groupPassengerCount),
     ride: {
       id: row.rideId,
       transferId: row.id,
@@ -356,6 +374,7 @@ async function writeTransfer(
   clearLanding: boolean,
   version: number,
   actorUserId: string,
+  groupPassengerCount: number | null,
 ): Promise<void> {
   // The version predicate is the compare-and-swap. The booking and the bump
   // are one update, so a concurrent correction cannot both pass. ADR-0046.
@@ -376,6 +395,7 @@ async function writeTransfer(
         note = ${input.note},
         tabla = ${input.tabla},
         client_reference = ${input.clientReference},
+        group_passenger_count = ${groupPassengerCount},
         landing_at = case when ${clearLanding} then null else landing_at end,
         expected_arrival_at = case when ${clearLanding} then null else expected_arrival_at end,
         expected_arrival_basis_at = case when ${clearLanding} then null else expected_arrival_basis_at end,

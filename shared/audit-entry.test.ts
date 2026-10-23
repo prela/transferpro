@@ -295,6 +295,20 @@ it('records a Transfer by ids and field names, and refuses the guest name, the f
     data: { ...created.data, fields: ['guestName', 'Ana Anić'] },
   }).success).toBe(false)
   expect(auditFactSchema.safeParse({ ...created, subjectUserId: memberId }).success).toBe(false)
+  const mainTransferId = 'd4d4d4d4-4444-4444-8444-444444444444'
+  const linked = {
+    ...created,
+    data: { ...created.data, mainTransferId },
+  }
+  expect(auditFactSchema.parse(linked)).toEqual(linked)
+  expect(auditFactSchema.safeParse({
+    ...linked,
+    data: { ...linked.data, mainTransferId: 'not-a-uuid' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...created,
+    data: { ...created.data, groupPassengerCount: 80 },
+  }).success).toBe(false)
 })
 
 it('records a correction by ids and changed field names, and a return to assigned by the Ride id and the Driver id', () => {
@@ -324,6 +338,15 @@ it('records a correction by ids and changed field names, and a return to assigne
   expect(auditFactSchema.safeParse({
     ...corrected,
     data: { ...corrected.data, fields: [] },
+  }).success).toBe(false)
+  const groupCount = {
+    ...corrected,
+    data: { ...corrected.data, fields: ['groupPassengerCount'] as const },
+  }
+  expect(auditFactSchema.parse(groupCount)).toEqual(groupCount)
+  expect(auditFactSchema.safeParse({
+    ...groupCount,
+    data: { ...groupCount.data, groupPassengerCount: 80 },
   }).success).toBe(false)
 
   const returned = {

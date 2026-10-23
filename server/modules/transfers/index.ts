@@ -67,7 +67,7 @@ export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableE
 export { RideDriverArchivedError, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
 export { assignRide, rosterVehicleForRide } from './infrastructure/assign-access'
 export { cancelRide, CancelRideInputError, RideNotCancellableError } from './infrastructure/cancel'
-export { correctTransfer, TransferNotCorrectableError, TransferNotFoundError } from './infrastructure/correct'
+export { correctTransfer, ExtraVehicleCountError, ExtraVehiclePriceError, TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from './infrastructure/correct'
 export { declineRide, DeclineRideInputError, RideNotDeclinableError } from './infrastructure/decline'
 export { markRideDone, MarkRideDoneInputError, RideNotFinishableError } from './infrastructure/done'
 export { listUpcomingRides } from './infrastructure/driver-ride-access'

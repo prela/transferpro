@@ -589,3 +589,50 @@ it('the owner cannot update, delete, or truncate an entry either', async () => {
   expect(await refusal(ownerPool, null, 'truncate app.audit_entry')).toMatchObject({ ...insufficientPrivilege, message: 'app.audit_entry is append-only' })
   expect(await entriesOf(tenant)).toEqual(before)
 })
+
+it('append_entry may name a main Transfer and the group count field, and refuses the count', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const transferId = 'd1d1d1d1-1111-4111-8111-111111111111'
+  const rideId = 'e1e1e1e1-2222-4222-8222-222222222222'
+  const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
+  const endLocationId = 'b1b2c3d4-6666-4666-8666-666666666666'
+  const mainTransferId = 'd4d4d4d4-4444-4444-8444-444444444444'
+  const append = `select audit.append_entry($1, $2, null, $3::jsonb)`
+  const created = {
+    transferId,
+    rideId,
+    clientId,
+    startLocationId,
+    endLocationId,
+    fields: ['pickupAt', 'passengerCount'],
+  }
+  await inSession(appPool, tenant, async (client) => {
+    await client.query(append, ['transfer.created', actor, JSON.stringify(created)])
+    await client.query(append, ['transfer.created', actor, JSON.stringify({ ...created, mainTransferId })])
+    await client.query(append, ['transfer.corrected', actor, JSON.stringify({ ...created, fields: ['groupPassengerCount'] })])
+  })
+  const rows = await entriesOf(tenant)
+  expect(rows.map(row => row.data)).toEqual([
+    created,
+    { ...created, mainTransferId },
+    { ...created, fields: ['groupPassengerCount'] },
+  ])
+  // The stored rows are the ids and the field name. A count is not one of them.
+  expect(rows.every(row => !Object.values(row.data).includes(80))).toBe(true)
+
+  const counted = await refusal(appPool, tenant, append, [
+    'transfer.created',
+    actor,
+    JSON.stringify({ ...created, groupPassengerCount: 80 }),
+  ])
+  expect(counted).toMatchObject({ code: '23514' })
+  const correctedCount = await refusal(appPool, tenant, append, [
+    'transfer.corrected',
+    actor,
+    JSON.stringify({ ...created, fields: ['groupPassengerCount'], groupPassengerCount: 80 }),
+  ])
+  expect(correctedCount).toMatchObject({ code: '23514' })
+  expect(await entriesOf(tenant)).toHaveLength(3)
+})

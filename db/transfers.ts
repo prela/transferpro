@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { boolean, check, foreignKey, index, integer, numeric, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
-import { CHILD_SEAT_COUNT_MAX, CHILD_SEAT_COUNT_MIN, CLIENT_REFERENCE_MAX_LENGTH, FLIGHT_NUMBER_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, LUGGAGE_COUNT_MIN, NOTE_MAX_LENGTH, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, PAYMENT_METHODS, RIDE_STATES, TABLA_MAX_LENGTH } from '../shared'
+import { CHILD_SEAT_COUNT_MAX, CHILD_SEAT_COUNT_MIN, CLIENT_REFERENCE_MAX_LENGTH, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GROUP_PASSENGER_COUNT_MIN, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, LUGGAGE_COUNT_MIN, NOTE_MAX_LENGTH, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, PAYMENT_METHODS, RIDE_STATES, TABLA_MAX_LENGTH } from '../shared'
 import { clients } from './clients'
 import { drivers } from './drivers'
 import { locations } from './locations'
@@ -30,6 +30,8 @@ const luggageMin = sql.raw(String(LUGGAGE_COUNT_MIN))
 const luggageMax = sql.raw(String(LUGGAGE_COUNT_MAX))
 const seatsMin = sql.raw(String(CHILD_SEAT_COUNT_MIN))
 const seatsMax = sql.raw(String(CHILD_SEAT_COUNT_MAX))
+const groupMin = sql.raw(String(GROUP_PASSENGER_COUNT_MIN))
+const groupMax = sql.raw(String(GROUP_PASSENGER_COUNT_MAX))
 
 export const transfers = tenantTable('transfers', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -74,12 +76,30 @@ export const transfers = tenantTable('transfers', {
   // The member user id. Text, like audit actor ids. No foreign key: a member
   // who has left must not block the row, and the name is read from app.tenant_member.
   dataChangedBy: text('data_changed_by'),
+  // The main Transfer's id. Null on a main Transfer and on every Transfer
+  // that has never been linked. No default: existing rows stay unlinked
+  // without a rewrite or an UPDATE (ADR-0054).
+  link: uuid('link'),
+  // How many passengers the Client booked for the whole group. Null on an
+  // extra vehicle, and null until the first extra vehicle is added: empty
+  // means this Transfer's own passenger count. No default, because a default
+  // cannot read passenger_count and a copy would drift when that count changes.
+  groupPassengerCount: integer('group_passenger_count'),
 }, table => [
   uniqueIndex('transfers_tenant_id_id').on(table.tenantId, table.id),
   // One ExternalRef per Tenant. The same external_id may exist in another Tenant.
   uniqueIndex('transfers_tenant_channel_external_id').on(table.tenantId, table.channel, table.externalId),
   // The day list reads one Tenant's pickups in instant order.
   index('transfers_tenant_pickup_at').on(table.tenantId, table.pickupAt),
+  // The group read lists every extra vehicle of one main Transfer.
+  index('transfers_tenant_link').on(table.tenantId, table.link),
+  // Another Tenant's Transfer cannot be named. The pair is this Tenant's
+  // own (tenant_id, id). Null link is not checked.
+  foreignKey({
+    name: 'transfers_link_fk',
+    columns: [table.tenantId, table.link],
+    foreignColumns: [table.tenantId, table.id],
+  }),
   foreignKey({
     name: 'transfers_client_fk',
     columns: [table.tenantId, table.clientId],
@@ -108,6 +128,12 @@ export const transfers = tenantTable('transfers', {
   // The known channels. v1 has manual entry only.
   check('transfers_channel', sql`${table.channel} in ('manual')`),
   check('transfers_version', sql`${table.version} >= 0`),
+  // A link never names its own row, and a linked Transfer's Price is 0.
+  // One level, and the Price, are not a trigger (ADR-0054).
+  check('transfers_link', sql`${table.link} is null or (${table.link} <> ${table.id} and ${table.price} = 0)`),
+  // The group count is empty on an extra vehicle. When set, it is a group,
+  // not one Vehicle's passenger count.
+  check('transfers_group_passenger_count', sql`(${table.link} is null or ${table.groupPassengerCount} is null) and (${table.groupPassengerCount} is null or ${table.groupPassengerCount} between ${groupMin} and ${groupMax})`),
   // Version 0 has no recorded change. A later version names when and who.
   // `<> ''` is unknown when the member is null, and a CHECK accepts unknown,
   // so the member must also be present. Otherwise version >= 1 with no member passes.

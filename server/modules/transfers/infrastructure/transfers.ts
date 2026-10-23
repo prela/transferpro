@@ -3,11 +3,12 @@ import type { CreateTransfer, DeclineAlert, RecordedCreate, Ride, Transfer, Tran
 import type { Logger, TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { emptyBoardWarnings, landingAlarmOn, localDayBounds, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, transferPriceSchema, unclosedMarkOn } from '../../../../shared'
+import { canCorrectTransfer, emptyBoardWarnings, landingAlarmOn, localDayBounds, officeGroupPassengerCount, OPERATIONAL_DAY_START_DEFAULT, paymentMethodSchema, rideIsInProgress, rideStateSchema, StaleSaveError, TRANSFER_CORRECTION_FIELDS, TRANSFER_DURATION_DEFAULT_MINUTES, TRANSFER_FIELDS, TransferInputError, transferPriceSchema, unclosedMarkOn } from '../../../../shared'
 import { getLogger } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
+import { TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from './transfer-errors'
 
 const transferRowSchema = z.object({
   id: z.uuid(),
@@ -26,6 +27,8 @@ const transferRowSchema = z.object({
   note: z.string().nullable(),
   tabla: z.string(),
   clientReference: z.string().nullable(),
+  mainTransferId: z.uuid().nullable(),
+  groupPassengerCount: z.number().int().nullable(),
   landingAt: z.unknown().nullish(),
   expectedArrival: z.unknown().nullish(),
 })
@@ -68,28 +71,42 @@ const transferColumns = sql`
   child_seat_count as "childSeatCount",
   note,
   tabla,
-  client_reference as "clientReference"
+  client_reference as "clientReference",
+  link as "mainTransferId",
+  group_passenger_count as "groupPassengerCount"
 `
 
 /**
  * Insert one Transfer and its one unassigned Ride, then append
  * `transfer.created` on this transaction. The entry names ids and field
  * names. It does not store the guest name, the flight, the note, the tabla,
- * the Client reference, the price, the channel, or the external id.
- * The caller has already required a dispatcher or an admin, and has already
- * checked that role before this lookup. `externalId` is required: this
- * function does not assign one. A repeat of the same manual external id
- * returns the stored Transfer and writes nothing.
+ * the Client reference, the price, the channel, the external id, or a
+ * passenger count. An extra vehicle's entry also holds the main Transfer's
+ * id. The caller has already required a dispatcher or an admin, and has
+ * already checked that role before this lookup. `externalId` is required:
+ * this function does not assign one. A repeat of the same manual external id
+ * returns the stored Transfer and writes nothing, including nothing on the
+ * main Transfer (ADR-0035, ADR-0054).
  */
+export interface ExtraVehicleCreate {
+  readonly mainTransferId: string
+  /** Null when the body left the group count out. Required when the main row has none. */
+  readonly groupPassengerCount: number | null
+  /** The main Transfer's opened version. Required when this create stores the count. */
+  readonly mainVersion: number | null
+}
+
 export async function recordTransfer(
   transaction: TenantTransaction,
   actorUserId: string,
   input: CreateTransfer,
   externalId: string,
   log?: Logger,
+  link: ExtraVehicleCreate | null = null,
 ): Promise<Omit<RecordedCreate, 'fullyBooked'>> {
   // The key is resolved before any catalog read, so a different payload
   // is not applied and a missing Client does not turn a repeat into an error.
+  // A repeat also skips the main Transfer, so it cannot store a group count.
   const existing = await loadManualTransfer(transaction, externalId)
   if (existing) {
     logAlreadyRecorded(log, existing.transfer.id)
@@ -107,18 +124,21 @@ export async function recordTransfer(
   if (end.archivedAt !== null)
     throw new LocationArchivedError()
 
+  // The one-level check holds the main Transfer's row. A repeat already
+  // returned, so this lock cannot write a group count onto a duplicate.
+  const main = link === null ? null : await lockMainForExtraVehicle(transaction, link)
   const inserted = z.object({ rows: z.array(transferRowSchema) }).parse(await writeTransfer(transaction, sql`
     insert into app.transfers (
       client_id, pickup_at, start_location_id, end_location_id,
       passenger_count, guest_name, flight_number, price, payment,
       airport_mark, luggage_count, child_seat_count, note, tabla, client_reference,
-      channel, external_id
+      link, channel, external_id
     )
     values (
       ${input.clientId}, ${input.pickupAt}, ${input.startLocationId}, ${input.endLocationId},
       ${input.passengerCount}, ${input.guestName}, ${input.flightNumber}, ${input.price}, ${input.payment},
       ${input.airportMark}, ${input.luggageCount}, ${input.childSeatCount}, ${input.note}, ${input.tabla},
-      ${input.clientReference}, 'manual', ${externalId}
+      ${input.clientReference}, ${link?.mainTransferId ?? null}, 'manual', ${externalId}
     )
     on conflict (tenant_id, channel, external_id) do nothing
     returning ${transferColumns}
@@ -145,6 +165,11 @@ export async function recordTransfer(
     throw new Error('Transfer write failed')
   const ride = rideRow
 
+  // Store the group count only after the extra vehicle exists, so a
+  // conflicting entry key rolls nothing onto the main Transfer.
+  if (main !== null && main.countToStore !== null && link !== null && link.mainVersion !== null)
+    await storeGroupPassengerCount(transaction, actorUserId, main.row, link.mainVersion, main.countToStore)
+
   await appendAuditEntry(transaction, {
     action: 'transfer.created',
     actorUserId,
@@ -156,9 +181,107 @@ export async function recordTransfer(
       startLocationId: transfer.startLocationId,
       endLocationId: transfer.endLocationId,
       fields: createdFields(input),
+      ...(link === null ? {} : { mainTransferId: link.mainTransferId }),
     },
   })
   return { transfer, ride, alreadyRecorded: false }
+}
+
+const mainLockSchema = z.object({
+  rows: z.array(z.object({
+    id: z.uuid(),
+    mainTransferId: z.uuid().nullable(),
+    groupPassengerCount: z.number().int().nullable(),
+    version: z.number().int(),
+    clientId: z.uuid(),
+    startLocationId: z.uuid(),
+    endLocationId: z.uuid(),
+    rideId: z.uuid(),
+    state: rideStateSchema,
+  })),
+})
+
+type MainLock = z.infer<typeof mainLockSchema>['rows'][number]
+
+/**
+ * Lock the main Transfer and refuse a link that is not one level, or a
+ * Ride that is finished or cancelled. When the group count is still empty,
+ * the body must bring the count and the opened version. A mismatch is
+ * `stale_save` before the extra vehicle is inserted.
+ */
+async function lockMainForExtraVehicle(
+  transaction: TenantTransaction,
+  link: ExtraVehicleCreate,
+): Promise<{ row: MainLock, countToStore: number | null }> {
+  const selected = mainLockSchema.parse(await writeTransfer(transaction, sql`
+    select t.id,
+           t.link as "mainTransferId",
+           t.group_passenger_count as "groupPassengerCount",
+           t.version,
+           t.client_id as "clientId",
+           t.start_location_id as "startLocationId",
+           t.end_location_id as "endLocationId",
+           r.id as "rideId",
+           r.state
+    from app.transfers as t
+    join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
+    where t.id = ${link.mainTransferId}
+    for update
+  `))
+  const row = selected.rows[0]
+  // Missing and another Tenant are the same 404. The foreign key agrees.
+  if (!row)
+    throw new TransferNotFoundError()
+  if (row.mainTransferId !== null)
+    throw new TransferNotMainError()
+  if (!canCorrectTransfer(row.state))
+    throw new TransferNotCorrectableError()
+  if (row.groupPassengerCount !== null)
+    return { row, countToStore: null }
+  if (link.groupPassengerCount === null || link.mainVersion === null)
+    throw new TransferInputError()
+  if (row.version !== link.mainVersion)
+    throw new StaleSaveError()
+  return { row, countToStore: link.groupPassengerCount }
+}
+
+/**
+ * The first extra vehicle stores the group count on the main Transfer.
+ * The version predicate is the opened version. The audit names the field
+ * and not the count. The link column is not written.
+ */
+async function storeGroupPassengerCount(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  main: MainLock,
+  mainVersion: number,
+  count: number,
+): Promise<void> {
+  const written = z.object({ rows: z.array(z.object({ id: z.uuid() })) }).parse(await writeTransfer(transaction, sql`
+    update app.transfers
+    set group_passenger_count = ${count},
+        version = version + 1,
+        data_changed_at = now(),
+        data_changed_by = ${actorUserId}
+    where id = ${main.id}
+      and version = ${mainVersion}
+    returning id
+  `))
+  if (!written.rows[0])
+    throw new StaleSaveError()
+  await appendAuditEntry(transaction, {
+    action: 'transfer.corrected',
+    actorUserId,
+    subjectUserId: null,
+    data: {
+      transferId: main.id,
+      rideId: main.rideId,
+      clientId: main.clientId,
+      startLocationId: main.startLocationId,
+      endLocationId: main.endLocationId,
+      fields: TRANSFER_CORRECTION_FIELDS.filter(field => field === 'groupPassengerCount'),
+    },
+  })
 }
 
 /**
@@ -195,6 +318,8 @@ async function loadManualTransfer(
       t.note,
       t.tabla,
       t.client_reference as "clientReference",
+      t.link as "mainTransferId",
+      t.group_passenger_count as "groupPassengerCount",
       r.id as "rideId",
       r.state,
       r.driver_id as "driverId",
@@ -277,6 +402,8 @@ export async function loadRidesForDay(
       t.note,
       t.tabla,
       t.client_reference as "clientReference",
+      t.link as "mainTransferId",
+      t.group_passenger_count as "groupPassengerCount",
       t.landing_at as "landingAt",
       t.expected_arrival_at as "expectedArrival",
       t.version,
@@ -372,6 +499,8 @@ function toTransfer(row: z.infer<typeof transferRowSchema>): Transfer {
     note: row.note,
     tabla: row.tabla,
     clientReference: row.clientReference,
+    mainTransferId: row.mainTransferId,
+    groupPassengerCount: officeGroupPassengerCount(row.mainTransferId, row.groupPassengerCount, row.passengerCount),
   }
 }
 
@@ -410,6 +539,8 @@ function toDayRide(
     note: row.note,
     tabla: row.tabla,
     clientReference: row.clientReference,
+    mainTransferId: row.mainTransferId,
+    groupPassengerCount: officeGroupPassengerCount(row.mainTransferId, row.groupPassengerCount, row.passengerCount),
     landingAt,
     expectedArrival,
     version: row.version,
