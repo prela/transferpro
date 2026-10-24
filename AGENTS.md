@@ -16,7 +16,7 @@ Skills live in `.agents/skills/`. Issue tracker, labels, and domain: `docs/agent
 
 ## Workflow
 
-Start with `/implement #N`. Use a subagent only when the ticket asks for one. One slice per chat. `/implement` ends at `READY_FOR_QC`. `/conclude` opens the pull request. Claim a work package only when its dependencies are merged. Blocked? Stop. Write what blocks you on the ticket; do not start another, and do not guess.
+Start with `/ship #N`. `/ship` creates `<type>/<issue>-<slug>` from `origin/develop`, follows `/implement`, follows `/conclude`, then reports `READY_FOR_QC`. Use a subagent only when the ticket asks for one. One slice per chat. Claim a work package only when its dependencies are merged. Blocked? Stop. Write what blocks you on the ticket; do not start another, and do not guess.
 
 While working, run only the tests for changed files. At the end, run the full suite once: `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm test:rls` when the slice touches tenant data. If the same failure happens twice, stop and report. Tests first: red before green for domain and application code. Coverage is 80% global and 95% for domain and application services. Never weaken or remove a test; flag any that you did. A UI change adds or extends a spec under `e2e/`. `pnpm test:rls` and `pnpm test:e2e` stay off the pre-commit hook. Both run only against the database `transferpro_e2e`: RLS exits unless every suite URL already names it, and e2e rewrites a localhost URL, or the CI service host `postgres`, onto that name or exits.
 
@@ -26,9 +26,9 @@ Migrations, RLS, auth, and ride assignment run only on the strongest tier: Grok 
 
 ## Git
 
-A local agent told a branch name, and not already on it, runs `git fetch origin` then `git switch -c <branch> origin/develop` before any edit. If that branch exists, stop and report; never switch to it. It may also `git switch -c <name>` or `git checkout -b <name>`, with an optional start of exactly `develop` or `origin/develop` and no other flags. `git checkout -B` and `git switch -C` stay denied.
+`/ship` always creates `<type>/<issue>-<slug>` from `origin/develop` before any edit. If that branch exists, stop and report. A local agent told some other branch name, and not already on it, runs `git fetch origin` then `git switch -c <branch> origin/develop` before any edit. If that branch exists, stop and report; never switch to it. It may also `git switch -c <name>` or `git checkout -b <name>`, with an optional start of exactly `develop` or `origin/develop` and no other flags. `git checkout -B` and `git switch -C` stay denied.
 
-`git add`, `git commit`, and `git push` (including `git push -u origin <branch>`) run only on the ticket's `feature/*`, `fix/*`, or `chore/*` branch. Open a pull request only from `/conclude`. Never commit to `develop` or `main`. Never push to `develop`, `main`, or any other branch. A bare `git push` uses the upstream name when one is set, otherwise the current branch. Before push, run `pnpm lint && pnpm typecheck && pnpm test`. Conventional Commits. Do not hand-edit `CHANGELOG.md`; it is generated.
+`git add` and `git commit` run only on the ticket's `feature/*`, `fix/*`, or `chore/*` branch. `git push` (including `git push -u origin <branch>`) runs only from `/conclude`, and only on that same branch. Open a pull request only from `/conclude`. Never commit to `develop` or `main`. Never push to `develop`, `main`, or any other branch. A bare `git push` uses the upstream name when one is set, otherwise the current branch. That push waits until `/conclude` has finished its checks, including the full `pnpm test:e2e`, and committed the handoff. Conventional Commits. Do not hand-edit `CHANGELOG.md`; it is generated.
 
 Denied for a local agent, and still denied for a cloud agent unless the cloud paragraph says otherwise: a force push, `--force-with-lease`, a `+refspec`, deleting a remote branch (`--delete` or `:name`), `git reset` (including `--hard`), `git branch -D`, `git stash`, `git restore`, and a `checkout`, `restore`, or `stash` that discards changes. Plain `checkout` or `switch` of an existing branch or of files stays denied, including for a cloud agent.
 
@@ -36,7 +36,7 @@ On `git add`, `git commit`, `git push`, or a branch create: no `--no-verify` or 
 
 Do not print or commit `.env` or `.env.migrate`. `printenv` and a bare `env` dump are denied; `env pnpm test` is allowed. `cat`, `less`, `more`, `head`, `tail`, and `grep` may not read `.env` except `.env.example`. The read hook denies `.env` and `.env.*` except names ending in `.example`, plus `*.pem`, `*.key`, and anything under `~/.ssh`.
 
-`.husky/pre-commit` refuses a commit on `develop` or `main` unless `ALLOW_PROTECTED_BRANCH=1`. Commit messages, PR titles, and PR bodies do not name models or contain a `Model:` line. PR bodies do not contain an agent footer or an agent-run link. `.husky/commit-msg` and `.github/workflows/agent-guard.yml` enforce that. A pull request names the work package, what changed, what it could break, and any migration notes.
+`.husky/pre-commit` refuses a commit on `develop` or `main` unless `ALLOW_PROTECTED_BRANCH=1`. Commit messages, PR titles, and PR bodies do not name models or contain a `Model:` line. PR bodies do not contain an agent footer or an agent-run link. `.husky/commit-msg` and `.github/workflows/agent-guard.yml` enforce that. `pr-text` also rejects an empty body, a body without `Closes #N`, and a body whose OWASP ASVS checklist is missing or unchecked. A pull request names the work package, what changed, what it could break, and any migration notes.
 
 `.cursor/hooks.json` runs `.cursor/hooks/guard-shell.sh` on `beforeShellExecution` and `.cursor/hooks/guard-read.sh` on `beforeReadFile`. The guard fails closed.
 
@@ -56,6 +56,6 @@ No deep imports across modules or tiers. Import only from a module's `index.ts`.
 
 ## Report
 
-`/implement` reports the commit SHA, branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, and open questions, then `Context summarized: yes/no`. Its last line is `READY_FOR_QC`.
+`/ship` reports, after `/conclude`, the commit SHA, branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, open questions, the handoff, and the pull request link. That report's last line is `READY_FOR_QC`.
 
-`/conclude` writes `docs/handoff/<issue>-<slug>.md` and opens the pull request. Its last line is `REVIEW_READY` with the pull request link.
+`/conclude` writes `docs/handoff/<issue>-<slug>.md` and opens the pull request. When `/ship` called it, `/ship` writes the closing report. On its own, `/conclude`'s last line is `REVIEW_READY` with the pull request link.

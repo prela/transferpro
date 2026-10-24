@@ -1,0 +1,5 @@
+interface:
+  display_name: "Ship"
+  short_description: "Implement a ticket, then open the pull request"
+policy:
+  allow_implicit_invocation: false

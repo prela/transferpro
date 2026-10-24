@@ -11,13 +11,13 @@ metadata:
 
 Use this template for writing the PR body.
 
-`pr-text` (`.github/workflows/agent-guard.yml`, `.cursor/hooks/check-pr-text.mjs`) rejects the title and the body. It does not require a section. The OWASP ASVS checklist in `.github/pull_request_template.md` is the Charter's security review, not a `pr-text` check. A body from this template passes `pr-text` when the title and body contain none of these:
+`pr-text` (`.github/workflows/agent-guard.yml`, `.cursor/hooks/check-pr-text.mjs`) rejects an empty body, a body without `Closes #N`, and a body that is missing the OWASP ASVS checklist or leaves an item unchecked. It also rejects the title or the body when either contains any of these:
 
 - a model name, or a `Model:` line (`.cursor/hooks/agent-text.mjs`)
 - an agent footer or an agent-run link (`cursor.com/agents`, `cursor_agent`)
 - a redacted name listed in `.cursor/hooks/check-pr-text.mjs`
 
-When the branch closes an issue, add `Closes #N` under Linked issue.
+Add `Closes #N` under Linked issue.
 
 ```markdown
 ## Summary
@@ -49,7 +49,7 @@ Closes #N
 
 ## OWASP ASVS 5.0 Level 1
 
-Paste the checklist from `.github/pull_request_template.md`. Mark every item `- [x] reviewed` or `- [x] n/a — reason: …`. `pr-text` does not read this section. The Charter does.
+Paste the checklist from `.github/pull_request_template.md`. Mark every item `- [x] reviewed` or `- [x] n/a — reason: …`.
 ```
 
 ## Sections
