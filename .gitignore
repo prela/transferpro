@@ -15,6 +15,9 @@ dist/
 # Backup script work directory. Holds a plaintext dump and connection files.
 .backup-work/
 
+# Image secret scan. `docker cp` writes the built output here, then deletes it.
+.image-secret-scan*/
+
 # Test coverage
 coverage/
 
