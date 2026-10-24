@@ -12,6 +12,51 @@ import process from 'node:process'
 import test from 'node:test'
 import { footerProblem, modelProblem } from './agent-text.mjs'
 
+// A body pr-text accepts: Closes #N plus every template item checked.
+// The audit heading keeps the backticks from the pull request template.
+const ASVS_CHECKED = `
+## OWASP ASVS 5.0 Level 1
+
+### Authentication and session (V7.2.1, V7.4.1)
+
+- [x] reviewed
+
+### Access control, including tenant isolation (V8.2.2)
+
+- [x] reviewed
+
+### Input validation with Zod at the server boundary (V2.2.2)
+
+- [x] n/a — reason: no request body
+
+### Output encoding (V1.2.1)
+
+- [x] reviewed
+
+### Secrets are not in code, logs, or URLs (V14.2.1)
+
+- [x] reviewed
+
+### No personal data in logs (V16.2.5, Level 2)
+
+- [x] reviewed
+
+### \`pnpm audit --audit-level=high\` is green (V15.2.1)
+
+- [x] reviewed
+
+### Error messages leak nothing (V16.5.1, Level 2)
+
+- [x] reviewed
+`
+
+/**
+ * @param {string} prose
+ */
+function acceptedBody(prose) {
+  return `${prose}\n\nCloses #495\n${ASVS_CHECKED}`
+}
+
 test('model names and a Model line are rejected; ordinary prose is not', () => {
   for (const text of [
     'implemented with grok',
@@ -67,7 +112,7 @@ test('pull request text check reads the event payload from the environment', () 
     env: {
       ...process.env,
       PR_TITLE: 'chore: agent rules and guard hooks',
-      PR_BODY: 'What changed and why.\n\nHow to test the hooks locally.\n',
+      PR_BODY: acceptedBody('What changed and why.\n\nHow to test the hooks locally.\n'),
     },
   })
   assert.equal(clean.status, 0, clean.stderr)
@@ -122,8 +167,66 @@ test('pull request text rejects redacted names and keeps ordinary words', () => 
     env: {
       ...process.env,
       PR_TITLE: 'chore: redact names from the charter',
-      PR_BODY: 'The first Tenant, the reference operator, the fiscalization provider, and email import. Solomon booked a console.',
+      PR_BODY: acceptedBody('The first Tenant, the reference operator, the fiscalization provider, and email import. Solomon booked a console.'),
     },
   })
   assert.equal(clean.status, 0, clean.stderr)
+})
+
+test('pull request text rejects an empty body, a missing Closes line, and an incomplete ASVS checklist', () => {
+  for (const body of ['', '   \n\t']) {
+    const rejected = spawnSync('node', ['.cursor/hooks/check-pr-text.mjs'], {
+      encoding: 'utf8',
+      env: { ...process.env, PR_TITLE: 'chore: ship the wrapper', PR_BODY: body },
+    })
+    assert.equal(rejected.status, 1, JSON.stringify(body))
+    assert.match(rejected.stderr, /empty pull request body/, JSON.stringify(body))
+  }
+
+  const prose = spawnSync('node', ['.cursor/hooks/check-pr-text.mjs'], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PR_TITLE: 'chore: ship the wrapper',
+      PR_BODY: 'What changed and why.\n',
+    },
+  })
+  assert.equal(prose.status, 1)
+  assert.match(prose.stderr, /lacks Closes #N/)
+  assert.match(prose.stderr, /OWASP ASVS checklist/)
+
+  const closesOnly = spawnSync('node', ['.cursor/hooks/check-pr-text.mjs'], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PR_TITLE: 'chore: ship the wrapper',
+      PR_BODY: 'Closes #495\n',
+    },
+  })
+  assert.equal(closesOnly.status, 1)
+  assert.match(closesOnly.stderr, /OWASP ASVS checklist/)
+  assert.doesNotMatch(closesOnly.stderr, /lacks Closes #N/)
+
+  const unchecked = spawnSync('node', ['.cursor/hooks/check-pr-text.mjs'], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PR_TITLE: 'chore: ship the wrapper',
+      PR_BODY: acceptedBody('What changed.').replace('- [x] reviewed', '- [ ] reviewed'),
+    },
+  })
+  assert.equal(unchecked.status, 1)
+  assert.match(unchecked.stderr, /OWASP ASVS checklist/)
+
+  const noCloses = spawnSync('node', ['.cursor/hooks/check-pr-text.mjs'], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PR_TITLE: 'chore: ship the wrapper',
+      PR_BODY: `What changed.\n${ASVS_CHECKED}`,
+    },
+  })
+  assert.equal(noCloses.status, 1)
+  assert.match(noCloses.stderr, /lacks Closes #N/)
+  assert.doesNotMatch(noCloses.stderr, /OWASP ASVS checklist/)
 })

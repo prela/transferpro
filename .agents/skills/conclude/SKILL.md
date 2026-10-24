@@ -14,6 +14,6 @@ b. Write or update `docs/handoff/<issue>-<slug>.md`: a one-line out-of-scope not
 
 c. Push the current branch. Done when the remote has the commits from a and b.
 
-d. Open a pull request. The body follows `/pr`, includes `Closes #N`, fills the OWASP ASVS checklist from `.github/pull_request_template.md`, and passes `pr-text` (no model name, no `Model:` line, no agent footer or agent-run link, no redacted name). Done when the pull request is open.
+d. Open a pull request. The body follows `/pr`, includes `Closes #N`, fills the OWASP ASVS checklist from `.github/pull_request_template.md` with every item checked, and passes `pr-text` (non-empty body, `Closes #N`, completed checklist, no model name, no `Model:` line, no agent footer or agent-run link, no redacted name). Done when the pull request is open.
 
 e. Report `REVIEW_READY` and the pull request link. The pull request stays open for review.
