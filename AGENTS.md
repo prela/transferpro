@@ -26,7 +26,7 @@ Migrations, RLS, auth, and ride assignment run only on the strongest tier: Grok 
 
 ## Git
 
-A local agent told a branch name, and not already on it, runs `git fetch origin` then `git switch -c <branch> origin/develop` before any edit. If that branch exists, stop and report; never switch to it. It may also `git switch -c <name>` or `git checkout -b <name>`, with an optional start of exactly `develop` or `origin/develop` and no other flags. `git checkout -B` and `git switch -C` stay denied.
+`/ship` always creates `<type>/<issue>-<slug>` from `origin/develop` before any edit. If that branch exists, stop and report. A local agent told some other branch name, and not already on it, runs `git fetch origin` then `git switch -c <branch> origin/develop` before any edit. If that branch exists, stop and report; never switch to it. It may also `git switch -c <name>` or `git checkout -b <name>`, with an optional start of exactly `develop` or `origin/develop` and no other flags. `git checkout -B` and `git switch -C` stay denied.
 
 `git add` and `git commit` run only on the ticket's `feature/*`, `fix/*`, or `chore/*` branch. `git push` (including `git push -u origin <branch>`) runs only from `/conclude`, and only on that same branch. Open a pull request only from `/conclude`. Never commit to `develop` or `main`. Never push to `develop`, `main`, or any other branch. A bare `git push` uses the upstream name when one is set, otherwise the current branch. That push waits until `/conclude` has finished its checks, including the full `pnpm test:e2e`, and committed the handoff. Conventional Commits. Do not hand-edit `CHANGELOG.md`; it is generated.
 
