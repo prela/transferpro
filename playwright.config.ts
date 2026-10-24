@@ -18,6 +18,14 @@ const port = process.env.E2E_PORT ?? '3000'
 const baseURL = `http://127.0.0.1:${port}`
 
 /**
+ * The e2e CI job is root inside the Playwright image. Chromium refuses the
+ * sandbox as root. A normal user keeps it.
+ */
+const rootChromium = process.getuid?.() === 0
+  ? { launchOptions: { chromiumSandbox: false } }
+  : {}
+
+/**
  * The built server inherits this env. The Resend key is omitted on purpose:
  * `scripts/e2e-server.mjs` exits if it is present, and the app selects the
  * fake mailer when NODE_ENV is test. `DATABASE_MIGRATE_URL` is the owner
@@ -65,7 +73,7 @@ export default defineConfig({
     locale: 'hr-HR',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], ...rootChromium } },
     // Phone checks for steps 10–12. Only specs tagged @phone run here.
     // The desktop project stays the full suite.
     {
@@ -73,6 +81,7 @@ export default defineConfig({
       grep: /@phone/,
       use: {
         ...devices['Desktop Chrome'],
+        ...rootChromium,
         viewport: { width: 390, height: 844 },
         hasTouch: true,
         isMobile: true,

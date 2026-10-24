@@ -3,7 +3,8 @@
  * The database is dropped at the start of each run, so test firms do not pile up.
  * This never connects to the dev database `transferpro`. Audit rows left there
  * by older e2e runs stay; the trigger that blocks deleting them is not touched.
- * AGENTS.md allows this drop only for `transferpro_e2e` on localhost.
+ * AGENTS.md allows this drop only for `transferpro_e2e` on localhost or the
+ * CI service host `postgres`.
  */
 import { spawn } from 'node:child_process'
 import process from 'node:process'

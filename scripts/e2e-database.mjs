@@ -1,7 +1,8 @@
 /**
- * e2e talks only to the database `transferpro_e2e` on localhost.
+ * e2e talks only to the database `transferpro_e2e` on localhost, or on the
+ * GitHub Actions service host `postgres` when the e2e job runs in a container.
  * The dev database `transferpro` stays untouched, including audit rows
- * left behind by older runs. A remote host is refused, so this never
+ * left behind by older runs. Any other host is refused, so this never
  * rewrites a production URL.
  *
  * node-pg copies query keys onto the config after the host in the URL.
@@ -23,6 +24,17 @@ export const E2E_APP_DATABASE_ENV = [
 ]
 
 const E2E_DATABASE_ENV = [...E2E_APP_DATABASE_ENV, 'DATABASE_MIGRATE_URL']
+
+/**
+ * `databaseIdentity` already maps the hostname `localhost` to `127.0.0.1`.
+ * `postgres` is the service label in `.github/workflows/ci.yml`. A longer
+ * name such as `postgres.example` is a remote host and is refused.
+ *
+ * @param {string} host
+ */
+function isE2eDatabaseHost(host) {
+  return host === '127.0.0.1' || host === 'postgres'
+}
 
 /**
  * node-pg prefers query keys over the host written in the URL.
@@ -53,16 +65,16 @@ function assertE2eQuery(raw, name) {
 export function e2eDatabaseUrl(raw, name) {
   assertE2eQuery(raw, name)
   const identity = databaseIdentity(raw)
-  if (identity.host !== '127.0.0.1')
-    throw new Error('E2E refused to start: the database host must be localhost.')
+  if (!isE2eDatabaseHost(identity.host))
+    throw new Error('E2E refused to start: the database host must be localhost or the CI service host postgres.')
   const rewritten = raw.replace(
     /^(postgres(?:ql)?:\/\/[^/?#]+)\/[^/?#]*/,
     `$1/${E2E_DATABASE_NAME}`,
   )
   assertE2eQuery(rewritten, name)
   const checked = databaseIdentity(rewritten)
-  if (checked.host !== '127.0.0.1' || checked.database !== E2E_DATABASE_NAME)
-    throw new Error(`E2E refused to start: the database must be ${E2E_DATABASE_NAME} on localhost.`)
+  if (!isE2eDatabaseHost(checked.host) || checked.database !== E2E_DATABASE_NAME)
+    throw new Error(`E2E refused to start: the database must be ${E2E_DATABASE_NAME} on localhost or the CI service host postgres.`)
   return rewritten
 }
 
@@ -104,7 +116,8 @@ export function e2eAdminLogin(env) {
 }
 
 /**
- * Refuse to start unless every named URL is `transferpro_e2e` on localhost.
+ * Refuse to start unless every named URL is `transferpro_e2e` on localhost
+ * or the CI service host `postgres`.
  * The message names the variable, never the URL, so a secret is not printed.
  *
  * @param {NodeJS.ProcessEnv} env
@@ -123,8 +136,8 @@ export function assertE2eDatabaseEnv(env, names = E2E_DATABASE_ENV) {
     catch {
       throw new Error(`E2E refused to start: ${name} is not a valid database URL.`)
     }
-    if (identity.host !== '127.0.0.1')
-      throw new Error(`E2E refused to start: ${name} must target localhost.`)
+    if (!isE2eDatabaseHost(identity.host))
+      throw new Error(`E2E refused to start: ${name} must target localhost or the CI service host postgres.`)
     if (identity.database !== E2E_DATABASE_NAME)
       throw new Error(`E2E refused to start: ${name} must use the database ${E2E_DATABASE_NAME}.`)
   }

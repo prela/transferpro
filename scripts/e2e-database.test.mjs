@@ -31,6 +31,33 @@ it('refuses to start e2e against the dev database and does not echo the secret',
   })
 })
 
+it('accepts the CI service host postgres and refuses a lookalike host', () => {
+  const env = {
+    ...dev,
+    DATABASE_URL: 'postgres://transferpro_app:app-secret@postgres:5432/transferpro',
+    AUTH_DATABASE_URL: 'postgres://transferpro_auth:auth-secret@postgres:5432/transferpro',
+    QUEUE_DATABASE_URL: 'postgres://transferpro_queue:queue-secret@postgres:5432/transferpro',
+    PLATFORM_DATABASE_URL: 'postgres://transferpro_platform:platform-secret@postgres:5432/transferpro',
+    DATABASE_MIGRATE_URL: 'postgres://transferpro_owner:owner-secret@postgres:5432/transferpro',
+  }
+  applyE2eDatabaseEnv(env)
+  assert.equal(env.DATABASE_URL, 'postgres://transferpro_app:app-secret@postgres:5432/transferpro_e2e')
+  assert.equal(env.DATABASE_MIGRATE_URL, 'postgres://transferpro_owner:owner-secret@postgres:5432/transferpro_e2e')
+  assert.doesNotThrow(() => assertE2eDatabaseEnv(env))
+
+  const lookalike = {
+    ...env,
+    DATABASE_URL: 'postgres://transferpro_app:app-secret@postgres.example:5432/transferpro_e2e',
+  }
+  assert.throws(() => applyE2eDatabaseEnv(lookalike), (error) => {
+    assert.equal(error instanceof Error, true)
+    assert.match(error.message, /localhost/)
+    assert.equal(error.message.includes('app-secret'), false)
+    assert.equal(error.message.includes('postgres.example'), false)
+    return true
+  })
+})
+
 it('refuses a remote host even when the database is named transferpro_e2e', () => {
   const env = {
     ...dev,
