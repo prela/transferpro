@@ -173,6 +173,11 @@ jobs:
   e2e:
     needs: [fast, e2e-build]
     runs-on: ubuntu-latest
+    # Inside a job container the default shell is sh. sh rejects
+    # `set -o pipefail` in the version check below.
+    defaults:
+      run:
+        shell: bash
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-noble
       # The image's default user is root, which is what this job needs for
