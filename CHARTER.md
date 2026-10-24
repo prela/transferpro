@@ -128,7 +128,7 @@ The solution MUST:
 - RLS policy test for every tenant table (a query as Tenant A must not see Tenant B).
 - No deep imports between modules or Tiers; enforced by lint rule in CI.
 - No global installs; only repo-defined scripts.
-- Agents never touch production, never run destructive DB operations (drop, truncate, mass delete, destructive migration). The only allowed destructive database operation is the e2e harness (`pnpm test:e2e`) dropping and recreating `transferpro_e2e`, on localhost or the CI service host `postgres`. Every other database stays forbidden. Every migration is reviewed by the owner.
+- Agents never touch production, never run destructive DB operations (drop, truncate, mass delete/update, destructive migration). The only allowed destructive database operation is the e2e harness (`pnpm test:e2e`) dropping and recreating `transferpro_e2e`, on localhost or the CI service host `postgres`. Destructive operations on any other database stay forbidden. Every migration is reviewed by the owner.
 - Prioritize correctness, security, and a shipped v1 over extra features.
 - Do not assume; ask. Do not edit this Charter without owner approval.
 
