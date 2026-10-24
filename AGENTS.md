@@ -16,7 +16,7 @@ Skills live in `.agents/skills/`. Issue tracker, labels, and domain: `docs/agent
 
 ## Workflow
 
-Start with `/ship #N`. `/ship` follows `/implement`, reports `READY_FOR_QC`, then follows `/conclude`. Use a subagent only when the ticket asks for one. One slice per chat. Claim a work package only when its dependencies are merged. Blocked? Stop. Write what blocks you on the ticket; do not start another, and do not guess.
+Start with `/ship #N`. `/ship` creates `<type>/<issue>-<slug>` from `origin/develop`, follows `/implement`, follows `/conclude`, then reports `READY_FOR_QC`. Use a subagent only when the ticket asks for one. One slice per chat. Claim a work package only when its dependencies are merged. Blocked? Stop. Write what blocks you on the ticket; do not start another, and do not guess.
 
 While working, run only the tests for changed files. At the end, run the full suite once: `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm test:rls` when the slice touches tenant data. If the same failure happens twice, stop and report. Tests first: red before green for domain and application code. Coverage is 80% global and 95% for domain and application services. Never weaken or remove a test; flag any that you did. A UI change adds or extends a spec under `e2e/`. `pnpm test:rls` and `pnpm test:e2e` stay off the pre-commit hook. Both run only against the database `transferpro_e2e`: RLS exits unless every suite URL already names it, and e2e rewrites a localhost URL, or the CI service host `postgres`, onto that name or exits.
 
@@ -56,6 +56,6 @@ No deep imports across modules or tiers. Import only from a module's `index.ts`.
 
 ## Report
 
-`/ship` reports the commit SHA, branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, and open questions, then `Context summarized: yes/no`. That report's last line is `READY_FOR_QC`, and `/ship` then follows `/conclude`.
+`/ship` reports, after `/conclude`, the commit SHA, branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, open questions, the handoff, and the pull request link. That report's last line is `READY_FOR_QC`.
 
-`/conclude` writes `docs/handoff/<issue>-<slug>.md` and opens the pull request. Its last line is `REVIEW_READY` with the pull request link.
+`/conclude` writes `docs/handoff/<issue>-<slug>.md` and opens the pull request. When `/ship` called it, `/ship` writes the closing report. On its own, `/conclude`'s last line is `REVIEW_READY` with the pull request link.

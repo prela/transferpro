@@ -8,11 +8,11 @@ Matches upstream. The ticket-fetch paragraph and the Skill-tool wording are upst
 
 ## `.agents/skills/ship/SKILL.md`
 
-Local skill, not upstream. User-invoked. It follows implement, then the local steps, then conclude. A vendor update must not delete it.
+Local skill, not upstream. User-invoked. It creates the branch, follows implement, follows conclude, then writes the report. A vendor update must not delete it.
 
-- Branch create, before implement. A local agent that is told a branch name and is not already on it runs `git fetch origin` and then `git switch -c <branch> origin/develop`, before any edit. If the branch already exists, stop and report; never switch to it.
+- Branch create, before implement. The branch is `<type>/<issue>-<slug>` from `origin/develop`. If that branch already exists, stop and report.
 - Both code-review subagents: see Lead below.
-- After the implement commit: the short report, last line `READY_FOR_QC`. The branch stays unpushed until conclude finishes its checks and the handoff, then pushes and opens the pull request.
+- After conclude: the report lists the commit SHA, the branch, what changed, tests, migrations, decisions, open questions, the handoff, and the pull request link. The last line is `READY_FOR_QC`. When `/ship` called conclude, conclude does not write `REVIEW_READY`.
 
 ## `.agents/skills/conclude/SKILL.md`
 
