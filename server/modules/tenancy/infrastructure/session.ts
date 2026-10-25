@@ -6,7 +6,7 @@ import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
-import { inviteLink, inviteResultSchema, memberListSchema, operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantRoleSchema } from '../../../../shared'
+import { inviteLink, inviteResultSchema, memberListSchema, operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantChoiceListSchema, tenantRoleSchema } from '../../../../shared'
 import { getLogger, loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
@@ -16,16 +16,19 @@ import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, remove
 import { changeTenantSettings, loadTenantSettings, TenantSettingsMissingError } from './tenant-settings'
 
 /**
- * A session with no user is 401. A user with no single membership, or with
- * a role other than admin, dispatcher, or driver, is 403. ADR-0011: one
- * active organization and exactly one of those roles. A superadmin has no
- * membership and cannot mint a context.
+ * A session with no user is 401. No working membership, a role other than
+ * admin, dispatcher, or driver, or an active membership that was removed or
+ * whose Tenant was deactivated, is 403. ADR-0011: one active organization
+ * and exactly one of those roles. A superadmin has no membership and cannot
+ * mint a context.
  *
- * When the session has not set an active organization, the one membership
- * is the Tenant. Callers do not pass a tenant id.
+ * Two or more working memberships and no active organization is 409. That
+ * is the gate, not no-access: the caller lists the companies and the person
+ * chooses. Nothing here stores a last Tenant. Callers do not pass a tenant id
+ * except that choice.
  */
 export class TenantAccessError extends Error {
-  readonly statusCode: 401 | 403
+  readonly statusCode: 401 | 403 | 409
 
   /**
    * Set when a signed-in user is refused, so a platform log can name the
@@ -33,8 +36,8 @@ export class TenantAccessError extends Error {
    */
   readonly userId?: string
 
-  constructor(statusCode: 401 | 403, userId?: string) {
-    super(statusCode === 401 ? 'Unauthorized' : 'Forbidden')
+  constructor(statusCode: 401 | 403 | 409, userId?: string) {
+    super(statusCode === 401 ? 'Unauthorized' : statusCode === 409 ? 'Conflict' : 'Forbidden')
     this.name = 'TenantAccessError'
     this.statusCode = statusCode
     this.userId = userId
@@ -464,10 +467,6 @@ export async function updateUserLocale(headers: Headers, locale: DisplayLocale):
 }
 
 /**
- * One getSession and one memberships read per call. The context and the
- * role both come from the membership `chooseMembership` picks.
- */
-/**
  * The platform gate. No session is 401. Any signed-in user who is not in
  * `platform.superadmin` is 403, before the caller looks at an organization id.
  * The result has no tenantId and is not a TenantContext.
@@ -497,39 +496,132 @@ export async function readAccountIdentity(userId: string): Promise<{ name: strin
   return tenantRuntime().handle.accountIdentity(userId)
 }
 
+/**
+ * Companies the signed-in person can open. A deactivated Tenant is absent.
+ * This does not open a tenant session and does not return Tenant data.
+ * The gate reads it when the shell is 409. A session that already has an
+ * active Tenant does not show that gate.
+ */
+export async function listTenantChoices(headers: Headers) {
+  const { handle } = tenantRuntime()
+  const userId = await signedInUserId(handle, headers)
+  const working = await workingMemberships(handle, userId)
+  const choices = await Promise.all(working.map(async (membership) => {
+    return {
+      tenantId: membership.organizationId,
+      tenantName: await handle.organizationName(membership.organizationId),
+      role: membership.role,
+    }
+  }))
+  choices.sort((left, right) => left.tenantName.localeCompare(right.tenantName, 'hr'))
+  return tenantChoiceListSchema.parse({ choices })
+}
+
+/**
+ * Sets the active Tenant on this session only. A company that is not a
+ * working membership is refused, including a deactivated Tenant. The user
+ * row is not updated: the next sign-in does not restore this choice.
+ */
+export async function chooseActiveTenant(headers: Headers, tenantId: string): Promise<void> {
+  const { handle } = tenantRuntime()
+  const userId = await signedInUserId(handle, headers)
+  const working = await workingMemberships(handle, userId)
+  if (!working.some(membership => membership.organizationId === tenantId))
+    throw new TenantAccessError(403, userId)
+  try {
+    await handle.auth.api.setActiveOrganization({
+      headers,
+      body: { organizationId: tenantId },
+    })
+  }
+  catch {
+    throw new TenantAccessError(403, userId)
+  }
+}
+
+async function signedInUserId(handle: Runtime['handle'], headers: Headers): Promise<string> {
+  const result = await handle.auth.api.getSession({ headers })
+  const parsed = sessionSchema.safeParse(result)
+  if (!parsed.success)
+    throw new TenantAccessError(401)
+  return parsed.data.user.id
+}
+
 async function actorFromSession(handle: Runtime['handle'], headers: Headers): Promise<Actor> {
   const result = await handle.auth.api.getSession({ headers })
   const parsed = sessionSchema.safeParse(result)
   if (!parsed.success)
     throw new TenantAccessError(401)
 
-  const membership = chooseMembership(await handle.memberships(parsed.data.user.id), parsed.data.session.activeOrganizationId)
-  // A deactivated firm fails closed on the next request. The session row stays.
-  if (await handle.organizationSuspended(membership.organizationId))
-    throw new TenantAccessError(403, parsed.data.user.id)
-  return { context: { tenantId: membership.organizationId }, userId: parsed.data.user.id, role: membership.role }
+  const userId = parsed.data.user.id
+  const membership = await resolveMembership(handle, userId, parsed.data.session.activeOrganizationId)
+  return { context: { tenantId: membership.organizationId }, userId, role: membership.role }
 }
 
-function chooseMembership(
-  memberships: readonly Membership[],
+/**
+ * The active organization wins when it is still a working membership.
+ * A removed or deactivated active membership stays 403 until sign-out:
+ * the gate is only for a session that has not chosen. One working
+ * membership opens that company. Two or more, with nothing active, is 409.
+ */
+async function resolveMembership(
+  handle: Runtime['handle'],
+  userId: string,
   activeOrganizationId: string | null | undefined,
-): { organizationId: string, role: TenantRole } {
-  if (memberships.length === 0)
-    throw new TenantAccessError(403)
+): Promise<{ organizationId: string, role: TenantRole }> {
+  if (activeOrganizationId) {
+    const memberships = await readableMemberships(handle, userId)
+    const active = memberships.find(membership => membership.organizationId === activeOrganizationId)
+    // Not a member of the active company, or the role is not a Tenant role.
+    if (!active)
+      throw new TenantAccessError(403)
+    // The session row stays. The next sign-in follows the gate.
+    if (await handle.organizationSuspended(active.organizationId))
+      throw new TenantAccessError(403, userId)
+    return active
+  }
 
-  const active = activeOrganizationId ? memberships.filter(member => member.organizationId === activeOrganizationId) : []
-  const chosen = activeOrganizationId
-    ? active
-    : memberships.length === 1 ? memberships : []
-  const membership = chosen.length === 1 ? chosen[0] : undefined
-  if (!membership)
+  const working = await workingMemberships(handle, userId)
+  const only = working.length === 1 ? working[0] : undefined
+  if (only)
+    return only
+  if (working.length === 0)
     throw new TenantAccessError(403)
+  throw new TenantAccessError(409, userId)
+}
 
+async function workingMemberships(
+  handle: Runtime['handle'],
+  userId: string,
+): Promise<{ organizationId: string, role: TenantRole }[]> {
+  const memberships = await readableMemberships(handle, userId)
+  const working: { organizationId: string, role: TenantRole }[] = []
+  for (const membership of memberships) {
+    if (await handle.organizationSuspended(membership.organizationId))
+      continue
+    working.push(membership)
+  }
+  return working
+}
+
+/** Memberships whose role is exactly one Tenant role. A second role is still refused. */
+async function readableMemberships(
+  handle: Runtime['handle'],
+  userId: string,
+): Promise<{ organizationId: string, role: TenantRole }[]> {
+  const rows = await handle.memberships(userId)
+  return rows.flatMap((membership) => {
+    const parsed = oneTenantRole(membership)
+    return parsed ? [parsed] : []
+  })
+}
+
+function oneTenantRole(membership: Membership): { organizationId: string, role: TenantRole } | undefined {
   const parts = membership.role.split(',').map(part => part.trim()).filter(part => part !== '')
   const role = tenantRoleSchema.safeParse(parts[0])
   if (parts.length !== 1 || !role.success)
-    throw new TenantAccessError(403)
+    return undefined
   if (!z.uuid().safeParse(membership.organizationId).success)
-    throw new TenantAccessError(403)
+    return undefined
   return { organizationId: membership.organizationId, role: role.data }
 }

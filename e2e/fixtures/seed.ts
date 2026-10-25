@@ -3,7 +3,7 @@ import pg from 'pg'
 import { assertE2eDatabaseEnv } from '../../scripts/e2e-database.mjs'
 import { createSuperadmin } from '../../server/modules/platform'
 import { createTenant } from '../../server/modules/tenancy'
-import { insertCredentialMemberConnecting, insertCredentialUserConnecting } from '../../server/modules/tenancy/testing'
+import { insertCredentialMemberConnecting, insertCredentialUserConnecting, insertMembership } from '../../server/modules/tenancy/testing'
 
 // node-pg prefers ?host and ?hostaddr over the host in the URL.
 // Refuse before any seed function opens a connection.
@@ -77,6 +77,27 @@ export async function seedMember(tenantId: string, role: 'admin' | 'dispatcher' 
     role,
   })
   return { userId, email, name, password: memberPassword }
+}
+
+/**
+ * A second membership for someone who already has an account.
+ * The gate lists it when the Tenant is working.
+ */
+export async function seedMembership(tenantId: string, email: string, role: 'admin' | 'dispatcher' | 'driver'): Promise<void> {
+  const pool = new pg.Pool({ connectionString: required('AUTH_DATABASE_URL'), max: 1 })
+  try {
+    const found = await pool.query<{ id: string }>(
+      'select id from auth."user" where lower(email) = $1',
+      [email.toLowerCase()],
+    )
+    const userId = found.rows[0]?.id
+    if (!userId)
+      throw new Error('Membership seed has no account.')
+    await insertMembership(pool, tenantId, userId, role)
+  }
+  finally {
+    await pool.end()
+  }
 }
 
 /** A credential user with no membership. Sign-in then shows the no-access message. */

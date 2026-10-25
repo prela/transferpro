@@ -33,6 +33,11 @@
     "more": "Više",
     "newTransfer": "Novi transfer"
   },
+  "tenantGate": {
+    "title": "Odaberite tvrtku",
+    "lead": "Član ste više tvrtki. Odaberite onu koju otvarate.",
+    "failed": "Tvrtka nije otvorena. Pokušajte ponovno."
+  },
   "profile": {
     "changePassword": "Promjena lozinke",
     "currentPassword": "Trenutna lozinka",

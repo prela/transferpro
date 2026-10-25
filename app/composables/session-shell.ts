@@ -1,5 +1,5 @@
-import type { SessionShell } from '../../shared'
-import { applyTransferDraftEvent, platformShellSchema, sessionShellSchema } from '../../shared'
+import type { SessionShell, TenantChoice } from '../../shared'
+import { applyTransferDraftEvent, platformShellSchema, sessionShellSchema, tenantChoiceListSchema } from '../../shared'
 
 /**
  * Payload key for the signed-in Tenant shell.
@@ -26,6 +26,7 @@ interface SessionShellOptions {
 export type TenantSessionLookup
   = | { kind: 'member', session: SessionShell }
     | { kind: 'signed-out' }
+    | { kind: 'choose-tenant' }
     | { kind: 'unavailable' }
 
 /** Admin and Dispatcher. A Driver is not an office member. */
@@ -47,6 +48,10 @@ export async function readTenantSession(): Promise<TenantSessionLookup> {
   catch (error) {
     if (httpStatus(error) === 401)
       return { kind: 'signed-out' }
+    // Two or more working companies, and this session has not chosen.
+    // Office pages leave for the gate. No-access stays a 403.
+    if (httpStatus(error) === 409)
+      return { kind: 'choose-tenant' }
     return { kind: 'unavailable' }
   }
 }
@@ -68,6 +73,8 @@ export async function useSessionShell(options?: SessionShellOptions) {
   // Shared across pages. The first caller owns the async-data handler, and a
   // later refresh (sign-in on Home) still has to see this flag.
   const platformRedirect = useState('session-platform-redirect', () => false)
+  // The gate. Null is the sign-in form. A list is the companies to open.
+  const tenantChoices = useState<TenantChoice[] | null>('tenant-choices', () => null)
   // Await below leaves this composable without the Nuxt instance. The page
   // setup keeps it; a nested composable does not (NUXT_E1001 on a document request).
   const nuxtApp = useNuxtApp()
@@ -90,14 +97,26 @@ export async function useSessionShell(options?: SessionShellOptions) {
 
   async function loadShell(): Promise<SessionShell | null> {
     platformRedirect.value = false
+    tenantChoices.value = null
     try {
       return sessionShellSchema.parse(await requestFetch<unknown>('/api/session'))
     }
     catch (error) {
       if (httpStatus(error) === 401)
         return null
+      // The gate is Home. Another page must not paint Tenant data while choosing.
+      if (httpStatus(error) === 409) {
+        if (route.path !== '/') {
+          await navigateTo('/')
+          return null
+        }
+        const list = tenantChoiceListSchema.parse(await requestFetch<unknown>('/api/tenant-choices'))
+        tenantChoices.value = list.choices
+        return null
+      }
       // 200 stays on this page. 403 then a platform session goes to the firm list.
       // Office pages keep the no-access state: the firm list is only from Home.
+      // A Member is 409 or a tenant shell, never this redirect.
       if (httpStatus(error) === 403 && route.path === '/' && await hasPlatformSession()) {
         platformRedirect.value = true
         await navigateTo('/admin/tenants')
@@ -159,6 +178,7 @@ export async function useSessionShell(options?: SessionShellOptions) {
     chooseLocale,
     loadMessage,
     platformRedirect,
+    tenantChoices,
   }
 }
 
@@ -250,6 +270,8 @@ function clearSharedShell() {
   // useNuxtData reads `data ?? payload`. Null would fall through to the
   // payload copy, which still holds the previous Tenant.
   delete nuxtApp.payload.data[sessionShellKey]
+  // A leftover list would paint the gate after sign-out.
+  useState<TenantChoice[] | null>('tenant-choices', () => null).value = null
 }
 
 function httpStatus(error: unknown): number | undefined {

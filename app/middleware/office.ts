@@ -9,10 +9,11 @@
 export default defineNuxtRouteMiddleware(async () => {
   const nuxtApp = useNuxtApp()
   const lookup = await readTenantSession()
-  if (lookup.kind === 'signed-out')
+  if (lookup.kind === 'signed-out' || lookup.kind === 'choose-tenant')
     return nuxtApp.runWithContext(() => navigateTo('/'))
-  // A 403 or a failed read stays on the page. Home is the only place that
-  // sends a superadmin to the firm list.
+  // A 403 or a failed read stays on the page. The gate is Home, so a 409
+  // leaves before this page can request its collection. Home is the only
+  // place that sends a superadmin to the firm list.
   if (lookup.kind === 'unavailable')
     return
   if (lookup.session.role === 'driver')
