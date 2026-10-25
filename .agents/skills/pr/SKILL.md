@@ -11,7 +11,7 @@ metadata:
 
 Use this template for writing the PR body.
 
-`pr-text` (`.github/workflows/agent-guard.yml`, `.cursor/hooks/check-pr-text.mjs`) rejects an empty body, a body without `Closes #N`, and a body that is missing the OWASP ASVS checklist or leaves an item unchecked. It also rejects the title or the body when either contains any of these:
+`pr-text` (`.github/workflows/pr-text.yml`, `.cursor/hooks/check-pr-text.mjs`) rejects an empty body, a body without `Closes #N`, and a body that is missing the OWASP ASVS checklist or leaves an item unchecked. It also rejects the title or the body when either contains any of these:
 
 - a model name, or a `Model:` line (`.cursor/hooks/agent-text.mjs`)
 - an agent footer or an agent-run link (`cursor.com/agents`, `cursor_agent`)

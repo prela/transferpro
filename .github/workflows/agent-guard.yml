@@ -1,8 +1,8 @@
 # Separate from ci.yml so the app pipeline stays unchanged.
-# pull_request payload carries the title and body; this job uses no extra token.
 # Push runs on develop and main. A new push to the same ref cancels the
 # run already in progress. Docs and markdown skip this workflow. Changes
 # under .cursor still run it, because the guard scripts live there.
+# Pull request title and body checks live in pr-text.yml.
 name: agent-guard
 
 on:
@@ -35,20 +35,4 @@ jobs:
           node-version: 24.22.1
 
       - name: Shell guard and text checks
-        run: node --test .cursor/hooks/guard-shell.checks.mjs .cursor/hooks/agent-text.checks.mjs
-
-  pr-text:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 24.22.1
-
-      - name: Reject banned names and agent footers in the PR text
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: node .cursor/hooks/check-pr-text.mjs
+        run: node --test .cursor/hooks/guard-shell.checks.mjs .cursor/hooks/agent-text.checks.mjs .cursor/hooks/pr-text-workflow.checks.mjs

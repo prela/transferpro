@@ -1,0 +1,33 @@
+# Runs on every pull request, including a docs-only diff.
+# A path filter would skip this job, and an empty body could merge.
+# The pull_request payload carries the title and body, so the job
+# needs no extra token. A new event on the same ref cancels the
+# run already in progress.
+name: pr-text
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pr-text:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24.22.1
+
+      - name: Check the pull request title and body
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node .cursor/hooks/check-pr-text.mjs
