@@ -1,7 +1,7 @@
 import { loadEnvFile } from 'node:process'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { chooseActiveTenant, closeTenantRuntime, readSessionShell, switchActiveTenant, TenantAccessError } from '..'
+import { chooseActiveTenant, closeTenantRuntime, readSessionShell, switchActiveTenant, TenantAccessError, updateUserLocale } from '..'
 import { instantFromWallClock, operationalDateInTimeZone } from '../../../../shared/date'
 import { parseAppEnv } from '../../../core/index'
 import { closeDriverHoldingRides, driverHasHoldingRide } from '../../transfers'
@@ -279,6 +279,7 @@ it('refuses a driver at twelve hours unless a Ride in this Tenant is holding, an
   expectHours(await sessionLife(driver.userId), 16)
 
   await ageSession(driver.userId, '13 hours')
+  await expect(updateUserLocale(headers, 'en')).rejects.toMatchObject({ statusCode: 401 })
   await expect(readSessionShell(headers)).rejects.toMatchObject({ statusCode: 401 })
 
   const again = await signIn(driver.email)

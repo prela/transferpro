@@ -337,12 +337,22 @@ export async function revokePendingInvitation(headers: Headers, invitationId: st
 }
 
 export async function previewMemberInvitation(raw: unknown, headers: Headers) {
-  return previewInvitation(tenantRuntime().handle, raw, headers)
+  const { handle } = tenantRuntime()
+  // A stale driver cookie must not count as the invited account.
+  // The preview stays public: the row is gone, so this read is signed out.
+  await refuseStaleMember(handle, headers).catch((error: unknown) => {
+    if (error instanceof TenantAccessError && error.statusCode === 401)
+      return
+    throw error
+  })
+  return previewInvitation(handle, raw, headers)
 }
 
 /** `key` is the client address. The limiter is the sign-in rule. */
 export async function acceptMemberInvitation(raw: unknown, headers: Headers, key: string) {
-  return acceptInvitation(tenantRuntime().handle, raw, headers, { key })
+  const { handle } = tenantRuntime()
+  await refuseStaleMember(handle, headers)
+  return acceptInvitation(handle, raw, headers, { key })
 }
 
 /**
@@ -474,11 +484,8 @@ export async function removeTenantMember(
  */
 export async function updateUserLocale(headers: Headers, locale: DisplayLocale): Promise<void> {
   const { handle } = tenantRuntime()
-  const result = await handle.auth.api.getSession({ headers })
-  const parsed = sessionSchema.safeParse(result)
-  if (!parsed.success)
-    throw new TenantAccessError(401)
-  await handle.setUserLocale(parsed.data.user.id, locale)
+  const userId = await liveUserId(handle, headers)
+  await handle.setUserLocale(userId, locale)
 }
 
 /**
@@ -488,11 +495,7 @@ export async function updateUserLocale(headers: Headers, locale: DisplayLocale):
  */
 export async function platformActorFromSession(headers: Headers): Promise<PlatformActor> {
   const { handle } = tenantRuntime()
-  const result = await handle.auth.api.getSession({ headers })
-  const parsed = sessionSchema.safeParse(result)
-  if (!parsed.success)
-    throw new TenantAccessError(401)
-  const userId = parsed.data.user.id
+  const userId = await liveUserId(handle, headers)
   if (!await handle.isSuperadmin(userId))
     throw new TenantAccessError(403, userId)
   return { userId }
@@ -605,10 +608,67 @@ async function signedInSession(
   const parsed = sessionSchema.safeParse(result)
   if (!parsed.success)
     throw new TenantAccessError(401)
+  await liveOrDelete(handle, parsed.data)
   return {
     userId: parsed.data.user.id,
     activeOrganizationId: parsed.data.session.activeOrganizationId,
   }
+}
+
+/**
+ * No session stays no session. A member past the active cap is deleted,
+ * so the next read is signed out. A platform owner is left to the
+ * eight-hour row.
+ */
+async function refuseStaleMember(handle: Runtime['handle'], headers: Headers): Promise<void> {
+  const result = await handle.auth.api.getSession({ headers })
+  const parsed = sessionSchema.safeParse(result)
+  if (!parsed.success)
+    return
+  await liveOrDelete(handle, parsed.data)
+}
+
+/** The signed-in user, after the member cap. No session is 401. */
+async function liveUserId(handle: Runtime['handle'], headers: Headers): Promise<string> {
+  const result = await handle.auth.api.getSession({ headers })
+  const parsed = sessionSchema.safeParse(result)
+  if (!parsed.success)
+    throw new TenantAccessError(401)
+  await liveOrDelete(handle, parsed.data)
+  return parsed.data.user.id
+}
+
+async function liveOrDelete(
+  handle: Runtime['handle'],
+  session: { user: { id: string }, session: { id: string, createdAt: Date, activeOrganizationId?: string | null } },
+): Promise<void> {
+  if (await handle.isSuperadmin(session.user.id))
+    return
+  const cap = await roleForCap(handle, session.user.id, session.session.activeOrganizationId)
+  await memberLifetime(handle, session.user.id, cap.role, cap.tenantId, session.session)
+}
+
+/**
+ * The cap is the active membership. One company and none active uses that
+ * role, so a sole Driver is still asked about a holding Ride. No company,
+ * or two and none active, is the twelve-hour office cap: the row already
+ * expires then.
+ */
+async function roleForCap(
+  handle: Runtime['handle'],
+  userId: string,
+  activeOrganizationId: string | null | undefined,
+): Promise<{ role: TenantRole, tenantId: string }> {
+  const memberships = await readableMemberships(handle, userId)
+  const active = activeOrganizationId
+    ? memberships.find(membership => membership.organizationId === activeOrganizationId)
+    : undefined
+  if (active)
+    return { role: active.role, tenantId: active.organizationId }
+  const only = !activeOrganizationId && memberships.length === 1 ? memberships[0] : undefined
+  if (only)
+    return { role: only.role, tenantId: only.organizationId }
+  return { role: 'admin', tenantId: activeOrganizationId ?? '' }
 }
 
 async function actorFromSession(handle: Runtime['handle'], headers: Headers): Promise<Actor> {
