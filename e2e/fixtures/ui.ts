@@ -100,7 +100,7 @@ export async function useTheme(page: Page, theme: 'light' | 'dark') {
   }, theme)
 }
 
-/** The office navbar trigger's accessible name is the Tenant, including on a phone where only the initials show. */
+/** The office navbar trigger's accessible name is the Tenant. The name is also visible, including on a phone. */
 export async function openUserMenu(page: Page, tenantName: string) {
   await page.getByRole('button', { name: tenantName, exact: true }).click()
   const menu = page.getByRole('menu')

@@ -521,17 +521,46 @@ export async function listTenantChoices(headers: Headers) {
  * Sets the active Tenant on this session only. A company that is not a
  * working membership is refused, including a deactivated Tenant. The user
  * row is not updated: the next sign-in does not restore this choice.
+ * A session that already has a company does not switch here.
  */
 export async function chooseActiveTenant(headers: Headers, tenantId: string): Promise<void> {
   const { handle } = tenantRuntime()
   const signedIn = await signedInSession(handle, headers)
-  // A session that already has a company does not switch here. The profile
-  // menu does that, and it is a later ticket.
   if (signedIn.activeOrganizationId)
     throw new TenantAccessError(403, signedIn.userId)
-  const working = await workingMemberships(handle, signedIn.userId)
-  if (!working.some(membership => membership.organizationId === tenantId))
+  await activateWorkingTenant(handle, headers, signedIn.userId, tenantId)
+}
+
+/**
+ * The profile menu changes the active Tenant without signing out (ADR-0056).
+ * The gate is the only path when the session has not chosen. A removed or
+ * deactivated active membership stays no-access. A company that is not a
+ * working membership is refused, and nothing stores the choice on the user.
+ */
+export async function switchActiveTenant(headers: Headers, tenantId: string): Promise<void> {
+  const { handle } = tenantRuntime()
+  const signedIn = await signedInSession(handle, headers)
+  if (!signedIn.activeOrganizationId)
     throw new TenantAccessError(403, signedIn.userId)
+  const working = await workingMemberships(handle, signedIn.userId)
+  const current = working.find(membership => membership.organizationId === signedIn.activeOrganizationId)
+  if (!current)
+    throw new TenantAccessError(403, signedIn.userId)
+  if (current.organizationId === tenantId)
+    return
+  await activateWorkingTenant(handle, headers, signedIn.userId, tenantId, working)
+}
+
+async function activateWorkingTenant(
+  handle: Runtime['handle'],
+  headers: Headers,
+  userId: string,
+  tenantId: string,
+  working?: { organizationId: string, role: TenantRole }[],
+): Promise<void> {
+  const memberships = working ?? await workingMemberships(handle, userId)
+  if (!memberships.some(membership => membership.organizationId === tenantId))
+    throw new TenantAccessError(403, userId)
   try {
     await handle.auth.api.setActiveOrganization({
       headers,
@@ -539,7 +568,7 @@ export async function chooseActiveTenant(headers: Headers, tenantId: string): Pr
     })
   }
   catch {
-    throw new TenantAccessError(403, signedIn.userId)
+    throw new TenantAccessError(403, userId)
   }
 }
 

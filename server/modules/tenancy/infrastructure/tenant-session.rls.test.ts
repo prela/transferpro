@@ -8,9 +8,10 @@ import { ofetch } from 'ofetch'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
-import { chooseActiveTenant, closeTenantRuntime, listMembers, listTenantChoices, platformActorFromSession, readAuditLog, readSessionShell, TenantAccessError, withTenantFromSession } from '..'
+import { chooseActiveTenant, closeTenantRuntime, listMembers, listTenantChoices, platformActorFromSession, readAuditLog, readSessionShell, switchActiveTenant, TenantAccessError, withTenantFromSession } from '..'
 import authRoute from '../../../api/auth/[...all]'
 import sessionRoute from '../../../api/session.get'
+import tenantSwitchRoute from '../../../api/tenant-switch.post'
 import { handleLoggedError, parseAppEnv, runWithRequestId } from '../../../core/index'
 import { captureLogs } from '../../../core/testing'
 import { listUpcomingRides } from '../../transfers'
@@ -85,6 +86,8 @@ const fixtures = [
   { slug: 'slice10-gate-pw-b', email: 'slice10-gate-pw-b@example.com' },
   { slug: 'slice10-invite-home', email: 'slice10-invite-home@example.com' },
   { slug: 'slice10-invite-new', email: 'slice10-invite-new@example.com' },
+  { slug: 'slice10-switch-a', email: 'slice10-switch@example.com' },
+  { slug: 'slice10-switch-b', email: 'slice10-switch-b@example.com' },
 ]
 
 const settingsRows = z.object({
@@ -623,6 +626,124 @@ it('shows the gate and no tenant data until a person with two working companies 
   const afterChange = await sessionOrganizationIds(alpha.adminUserId)
   expect(afterChange.length).toBeGreaterThan(0)
   expect(afterChange.every(id => id === null)).toBe(true)
+})
+
+it('switches to another working company, and a save stays on that company', async () => {
+  const alpha = await createTenant({
+    name: 'Switch Alpha',
+    slug: 'slice10-switch-a',
+    adminEmail: 'slice10-switch@example.com',
+    adminName: 'Ada Switch',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  const beta = await createTenant({
+    name: 'Switch Beta',
+    slug: 'slice10-switch-b',
+    adminEmail: 'slice10-switch-b@example.com',
+    adminName: 'Boris Switch',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  await insertMembership(authPool, beta.tenantId, alpha.adminUserId, 'driver')
+  await ownerPool.query(
+    `insert into app.clients (tenant_id, name, kind) values ($1, 'Switch Alpha Secret', 'agency')`,
+    [alpha.tenantId],
+  )
+
+  const signedIn = await signIn('slice10-switch@example.com')
+  // Two companies and no active organization is the gate. The switch is not that choice.
+  await expect(readSessionShell(signedIn.headers)).rejects.toMatchObject({ statusCode: 409 })
+  await expect(switchActiveTenant(signedIn.headers, alpha.tenantId)).rejects.toMatchObject({ statusCode: 403 })
+  await expect(readSessionShell(signedIn.headers)).rejects.toMatchObject({ statusCode: 409 })
+
+  await chooseActiveTenant(signedIn.headers, alpha.tenantId)
+  expect((await readSessionShell(signedIn.headers)).role).toBe('admin')
+  await expect(switchActiveTenant(signedIn.headers, '00000000-0000-4000-8000-0000000000ff')).rejects.toMatchObject({ statusCode: 403 })
+  expect((await readSessionShell(signedIn.headers)).tenantId).toBe(alpha.tenantId)
+  // The choice route stays the first choice. A session that already has a company uses the switch.
+  await expect(chooseActiveTenant(signedIn.headers, beta.tenantId)).rejects.toMatchObject({ statusCode: 403 })
+
+  await switchActiveTenant(signedIn.headers, beta.tenantId)
+  const asDriver = await readSessionShell(signedIn.headers)
+  expect(asDriver).toMatchObject({ tenantId: beta.tenantId, role: 'driver' })
+  await expect(listMembers(signedIn.headers)).rejects.toMatchObject({ statusCode: 403 })
+  await expect(readAuditLog(signedIn.headers)).rejects.toMatchObject({ statusCode: 403 })
+  await expect(listUpcomingRides(signedIn.headers)).resolves.toMatchObject({ rides: [] })
+  const seen = await withTenantFromSession(signedIn.headers, async ({ context, transaction }) => {
+    const selected = z.object({ rows: z.array(z.object({ name: z.string() })) }).parse(
+      await transaction.execute(sql`select name from app.clients`),
+    )
+    return { tenantId: context.tenantId, names: selected.rows.map(row => row.name) }
+  })
+  expect(seen.tenantId).toBe(beta.tenantId)
+  expect(seen.names).not.toContain('Switch Alpha Secret')
+
+  const stolen = await withTenantFromSession(signedIn.headers, async ({ transaction }) => {
+    await transaction.execute(sql`
+      insert into app.clients (tenant_id, name, kind)
+      values (${alpha.tenantId}::uuid, 'Switch Stolen', 'agency')
+    `)
+  }).then(() => null, (error: unknown) => error)
+  expect(stolen).not.toBeNull()
+  expect((await ownerPool.query(`select 1 from app.clients where name = 'Switch Stolen'`)).rowCount).toBe(0)
+
+  await withTenantFromSession(signedIn.headers, async ({ context, transaction }) => {
+    await transaction.execute(sql`
+      insert into app.clients (tenant_id, name, kind)
+      values (${context.tenantId}::uuid, 'Switch Beta Own', 'agency')
+    `)
+  })
+  const owned = await ownerPool.query<{ tenant_id: string }>(
+    `select tenant_id from app.clients where name = 'Switch Beta Own'`,
+  )
+  expect(owned.rows.map(row => row.tenant_id)).toEqual([beta.tenantId])
+
+  // Switching to the company that is already active stays there.
+  await switchActiveTenant(signedIn.headers, beta.tenantId)
+  expect((await readSessionShell(signedIn.headers)).tenantId).toBe(beta.tenantId)
+
+  const app = createApp()
+  app.use(tenantSwitchRoute)
+  const refusedBody = await toWebHandler(app)(new Request(`${baseUrl}/api/tenant-switch`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'cookie': signedIn.token,
+    },
+    body: JSON.stringify({ tenantId: 'not-a-company' }),
+  }))
+  expect(refusedBody.status).toBe(400)
+  const switched = await toWebHandler(app)(new Request(`${baseUrl}/api/tenant-switch`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'cookie': signedIn.token,
+    },
+    body: JSON.stringify({ tenantId: alpha.tenantId }),
+  }))
+  expect(switched.status).toBe(200)
+  expect(await readSessionShell(signedIn.headers)).toMatchObject({ tenantId: alpha.tenantId, role: 'admin' })
+  await expect(listMembers(signedIn.headers)).resolves.toMatchObject({ members: expect.any(Array) })
+  await expect(listUpcomingRides(signedIn.headers)).rejects.toMatchObject({ statusCode: 403 })
+  const hidden = await withTenantFromSession(signedIn.headers, async ({ transaction }) => {
+    const selected = z.object({ rows: z.array(z.object({ name: z.string() })) }).parse(
+      await transaction.execute(sql`select name from app.clients`),
+    )
+    return selected.rows.map(row => row.name)
+  })
+  expect(hidden).toContain('Switch Alpha Secret')
+  expect(hidden).not.toContain('Switch Beta Own')
+
+  await ownerPool.query(
+    'insert into platform.tenant_account (organization_id, suspended_at) values ($1, now())',
+    [beta.tenantId],
+  )
+  await expect(switchActiveTenant(signedIn.headers, beta.tenantId)).rejects.toMatchObject({ statusCode: 403 })
+  expect((await readSessionShell(signedIn.headers)).tenantId).toBe(alpha.tenantId)
+  expect((await listTenantChoices(signedIn.headers)).choices.map(choice => choice.tenantId)).toEqual([alpha.tenantId])
 })
 
 it('keeps no-access when the active membership is removed, then opens the only company on the next sign-in', async () => {

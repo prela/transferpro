@@ -71,6 +71,18 @@ it('drops a draft once it is 24 hours old and keeps one that is younger', () => 
   expect(store.getItem(transferDraftKey(USER, TENANT))).toBeNull()
 })
 
+it('sign-out removes only the active Tenant draft and leaves the other until it expires', () => {
+  const store = memory()
+  rememberTransferDraft(store, USER, TENANT, fields(), NOW)
+  rememberTransferDraft(store, USER, OTHER_TENANT, fields({ guest: 'Boris Skica' }), NOW)
+
+  applyTransferDraftEvent(store, USER, TENANT, 'sign-out')
+
+  expect(recallTransferDraft(store, USER, TENANT, NOW)).toBeNull()
+  expect(recallTransferDraft(store, USER, OTHER_TENANT, NOW)?.guest).toBe('Boris Skica')
+  expect(store.getItem(transferDraftKey(USER, OTHER_TENANT))).not.toBeNull()
+})
+
 it('clears the draft on save, on discard, and on sign-out, and leaves it while editing', () => {
   for (const event of ['save', 'discard', 'sign-out'] as const) {
     const store = memory()

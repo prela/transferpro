@@ -4,9 +4,11 @@ import { paymentMethodSchema } from './transfer'
 /**
  * An unfinished new Transfer stays in the browser (ADR-0038). The storage
  * key is the user and the Tenant, so the next person on a shared computer
- * does not read it. It expires 24 hours after it was written. Save, discard,
- * and sign-out remove it. The booking fields stay in the browser. The entry
- * key is the exception: the form sends that one id on create (ADR-0035).
+ * does not read it, and another Tenant never reads it either. It expires
+ * 24 hours after it was written. Save, discard, and sign-out remove the
+ * active Tenant's draft only. Switching Tenant is not one of those events
+ * (ADR-0056). The booking fields stay in the browser. The entry key is the
+ * exception: the form sends that one id on create (ADR-0035).
  */
 export const TRANSFER_DRAFT_TTL_MS = 24 * 60 * 60 * 1000
 
@@ -173,10 +175,12 @@ export function recallTransferDraft(store: TransferDraftStore, userId: string, t
 }
 
 /**
- * Save, discard, and sign-out remove the draft. Editing keeps it, so a
- * reload can bring the same unfinished Transfer back. An already-recorded
- * answer keeps it too: the Dispatcher still has values to copy into a
- * correction, and the entry key has to survive until they confirm.
+ * Save, discard, and sign-out remove this user and Tenant's draft.
+ * Editing keeps it, so a reload can bring the same unfinished Transfer
+ * back. An already-recorded answer keeps it too: the Dispatcher still has
+ * values to copy into a correction, and the entry key has to survive until
+ * they confirm. There is no switch event: leaving a Tenant must not delete
+ * the draft that belongs to it (ADR-0056).
  */
 export function applyTransferDraftEvent(store: TransferDraftStore, userId: string, tenantId: string, event: TransferDraftEvent): void {
   if (event === 'edit' || event === 'already-recorded')

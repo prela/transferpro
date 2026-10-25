@@ -17,6 +17,8 @@
     "signOut": "Odjava",
     "signingOut": "Odjava u tijeku",
     "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno.",
+    "switchFailed": "Tvrtka nije promijenjena. Pokušajte ponovno.",
+    "otherCompanies": "Druge tvrtke",
     "exampleTime": "Primjer vremena",
     "unavailable": "Zaslon se nije mogao učitati. Pokušajte ponovno.",
     "noAccess": "Niste član nijednog prijevoznika. Odjavite se ili zatražite novu pozivnicu.",
