@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { plantOperationalRows, seedMembership, seedTenant } from './fixtures/seed'
-import { hydrated, signOut, useTheme } from './fixtures/ui'
+import { hydrated, useTheme } from './fixtures/ui'
 
 /**
  * The gate is the choice after sign-in (ADR-0056). It lists each company
@@ -49,9 +49,21 @@ test('two companies show the gate before any tenant data, on desktop in both the
   await expect(page.getByText(driverRows.clientName)).toHaveCount(0)
   await expect(page.getByText(driverRows.driverName)).toHaveCount(0)
 
-  await signOut(page)
+  const nextPassword = `${office.password}-2`
+  await page.goto('/profile')
+  await expect(page.getByRole('heading', { level: 1, name: 'Profil', exact: true })).toBeVisible()
+  await hydrated(page)
+  await page.getByLabel('Trenutna lozinka').fill(office.password)
+  await page.getByLabel('Nova lozinka').fill(nextPassword)
+  await page.getByLabel('Potvrda lozinke').fill(nextPassword)
+  await page.getByRole('button', { name: 'Spremi lozinku', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Odaberite tvrtku' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Početna', exact: true })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Odjava', exact: true }).click()
+  await expect(page.getByLabel('E-pošta')).toBeVisible()
   await page.getByLabel('E-pošta').fill(office.adminEmail)
-  await page.getByLabel('Lozinka').fill(office.password)
+  await page.getByLabel('Lozinka').fill(nextPassword)
   await page.getByRole('button', { name: 'Prijavi se', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Odaberite tvrtku' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 1, name: 'Početna', exact: true })).toHaveCount(0)

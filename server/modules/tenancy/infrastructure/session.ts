@@ -524,10 +524,14 @@ export async function listTenantChoices(headers: Headers) {
  */
 export async function chooseActiveTenant(headers: Headers, tenantId: string): Promise<void> {
   const { handle } = tenantRuntime()
-  const userId = await signedInUserId(handle, headers)
-  const working = await workingMemberships(handle, userId)
+  const signedIn = await signedInSession(handle, headers)
+  // A session that already has a company does not switch here. The profile
+  // menu does that, and it is a later ticket.
+  if (signedIn.activeOrganizationId)
+    throw new TenantAccessError(403, signedIn.userId)
+  const working = await workingMemberships(handle, signedIn.userId)
   if (!working.some(membership => membership.organizationId === tenantId))
-    throw new TenantAccessError(403, userId)
+    throw new TenantAccessError(403, signedIn.userId)
   try {
     await handle.auth.api.setActiveOrganization({
       headers,
@@ -535,16 +539,26 @@ export async function chooseActiveTenant(headers: Headers, tenantId: string): Pr
     })
   }
   catch {
-    throw new TenantAccessError(403, userId)
+    throw new TenantAccessError(403, signedIn.userId)
   }
 }
 
 async function signedInUserId(handle: Runtime['handle'], headers: Headers): Promise<string> {
+  return (await signedInSession(handle, headers)).userId
+}
+
+async function signedInSession(
+  handle: Runtime['handle'],
+  headers: Headers,
+): Promise<{ userId: string, activeOrganizationId: string | null | undefined }> {
   const result = await handle.auth.api.getSession({ headers })
   const parsed = sessionSchema.safeParse(result)
   if (!parsed.success)
     throw new TenantAccessError(401)
-  return parsed.data.user.id
+  return {
+    userId: parsed.data.user.id,
+    activeOrganizationId: parsed.data.session.activeOrganizationId,
+  }
 }
 
 async function actorFromSession(handle: Runtime['handle'], headers: Headers): Promise<Actor> {

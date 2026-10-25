@@ -106,12 +106,11 @@ export async function useSessionShell(options?: SessionShellOptions) {
         return null
       // The gate is Home. Another page must not paint Tenant data while choosing.
       if (httpStatus(error) === 409) {
-        if (route.path !== '/') {
-          await navigateTo('/')
-          return null
-        }
         const list = tenantChoiceListSchema.parse(await requestFetch<unknown>('/api/tenant-choices'))
         tenantChoices.value = list.choices
+        // Profile and office pages are not the gate. Home paints the list.
+        if (route.path !== '/')
+          await navigateTo('/')
         return null
       }
       // 200 stays on this page. 403 then a platform session goes to the firm list.

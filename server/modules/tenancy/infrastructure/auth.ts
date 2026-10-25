@@ -365,7 +365,7 @@ export function createAuth(
             )
           }
           catch {
-            logger?.warn({ event: 'auth.password_changed_tenant_clear_failed', userId })
+            logger?.error({ event: 'auth.password_changed_tenant_clear_failed', userId })
           }
           if (!logger)
             return

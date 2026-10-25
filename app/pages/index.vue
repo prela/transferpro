@@ -103,7 +103,7 @@ async function signIn() {
     })
     password.value = ''
     await refresh()
-    if (platformRedirect.value)
+    if (platformRedirect.value || tenantChoices.value)
       return
     if (!session.value) {
       formError.value = 'signIn.failed'
