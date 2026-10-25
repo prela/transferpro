@@ -35,7 +35,7 @@ On `git add`, `git commit`, `git push`, or a branch create: no `--no-verify` or 
 
 Do not print or commit `.env` or `.env.migrate`. `printenv` and a bare `env` dump are denied; `env pnpm test` is allowed. `cat`, `less`, `more`, `head`, `tail`, and `grep` may not read `.env` except `.env.example`. The read hook denies `.env` and `.env.*` except names ending in `.example`, plus `*.pem`, `*.key`, and anything under `~/.ssh`.
 
-`.husky/pre-commit` refuses a commit on `develop` or `main` unless `ALLOW_PROTECTED_BRANCH=1`. Commit messages, PR titles, and PR bodies do not name models or contain a `Model:` line. PR bodies do not contain an agent footer or an agent-run link. `.husky/commit-msg` and `.github/workflows/agent-guard.yml` enforce that. `pr-text` also rejects an empty body, a body without `Closes #N`, and a body whose OWASP ASVS checklist is missing or unchecked. A pull request names the work package, what changed, what it could break, and any migration notes.
+`.husky/pre-commit` refuses a commit on `develop` or `main` unless `ALLOW_PROTECTED_BRANCH=1`. Commit messages, PR titles, and PR bodies do not name models or contain a `Model:` line. PR bodies do not contain an agent footer or an agent-run link. `.husky/commit-msg` enforces that on commit messages. `.github/workflows/pr-text.yml` enforces it on pull request titles and bodies. `pr-text` also rejects an empty body, a body without `Closes #N`, and a body whose OWASP ASVS checklist is missing or unchecked. A pull request names the work package, what changed, what it could break, and any migration notes.
 
 `.cursor/hooks.json` runs `.cursor/hooks/guard-shell.sh` on `beforeShellExecution` and `.cursor/hooks/guard-read.sh` on `beforeReadFile`. The guard fails closed.
 
