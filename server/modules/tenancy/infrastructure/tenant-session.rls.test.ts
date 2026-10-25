@@ -8,13 +8,16 @@ import { ofetch } from 'ofetch'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
-import { closeTenantRuntime, readSessionShell, TenantAccessError, withTenantFromSession } from '..'
+import { chooseActiveTenant, closeTenantRuntime, listMembers, listTenantChoices, platformActorFromSession, readAuditLog, readSessionShell, TenantAccessError, withTenantFromSession } from '..'
 import authRoute from '../../../api/auth/[...all]'
 import sessionRoute from '../../../api/session.get'
 import { handleLoggedError, parseAppEnv, runWithRequestId } from '../../../core/index'
 import { captureLogs } from '../../../core/testing'
+import { listUpcomingRides } from '../../transfers'
+import { insertMembership } from '../testing'
 import { createAuth } from './auth'
 import { createTenant } from './create-tenant'
+import { acceptInvitation, createInvitation } from './invitation'
 
 /**
  * Session seam: the operator script, the Better Auth cookie, and
@@ -73,6 +76,15 @@ const fixtures = [
   { slug: 'slice10-removed', email: 'slice10-removed@example.com' },
   { slug: 'slice10-prod', email: 'slice10-prod@example.com' },
   { slug: 'slice10-no-create-org', email: 'slice10-no-create-org@example.com' },
+  { slug: 'slice10-gate-a', email: 'slice10-gate@example.com' },
+  { slug: 'slice10-gate-b', email: 'slice10-gate-b@example.com' },
+  { slug: 'slice10-gate-off', email: 'slice10-gate-off@example.com' },
+  { slug: 'slice10-gate-left', email: 'slice10-gate-left@example.com' },
+  { slug: 'slice10-gate-gone', email: 'slice10-gate-gone@example.com' },
+  { slug: 'slice10-gate-pw', email: 'slice10-gate-pw@example.com' },
+  { slug: 'slice10-gate-pw-b', email: 'slice10-gate-pw-b@example.com' },
+  { slug: 'slice10-invite-home', email: 'slice10-invite-home@example.com' },
+  { slug: 'slice10-invite-new', email: 'slice10-invite-new@example.com' },
 ]
 
 const settingsRows = z.object({
@@ -487,6 +499,202 @@ it('a user of tenant B cannot read or change tenant A rows through the session h
   expect(seenByA.rows).toEqual([{ default_locale: 'hr', time_zone: 'Europe/Zagreb' }])
 })
 
+it('shows the gate and no tenant data until a person with two working companies chooses', async () => {
+  const alpha = await createTenant({
+    name: 'Gate Alpha',
+    slug: 'slice10-gate-a',
+    adminEmail: 'slice10-gate@example.com',
+    adminName: 'Ada Gate',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  const beta = await createTenant({
+    name: 'Gate Beta',
+    slug: 'slice10-gate-b',
+    adminEmail: 'slice10-gate-b@example.com',
+    adminName: 'Boris Beta',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  const closed = await createTenant({
+    name: 'Gate Closed',
+    slug: 'slice10-gate-off',
+    adminEmail: 'slice10-gate-off@example.com',
+    adminName: 'Cara Closed',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  await ownerPool.query(
+    `insert into app.clients (tenant_id, name, kind) values ($1, 'GateSecretClient', 'agency')`,
+    [alpha.tenantId],
+  )
+
+  const alone = await signIn('slice10-gate@example.com')
+  const opened = await readSessionShell(alone.headers)
+  expect(opened.tenantId).toBe(alpha.tenantId)
+  expect(opened.role).toBe('admin')
+
+  await insertMembership(authPool, beta.tenantId, alpha.adminUserId, 'driver')
+  await insertMembership(authPool, closed.tenantId, alpha.adminUserId, 'dispatcher')
+  await ownerPool.query(
+    'insert into platform.tenant_account (organization_id, suspended_at) values ($1, now())',
+    [closed.tenantId],
+  )
+
+  let ran = false
+  const refused = await withTenantFromSession(alone.headers, async () => {
+    ran = true
+    return 'tenant-data'
+  }).catch(caught => caught)
+  expect(ran).toBe(false)
+  expect(refused).toBeInstanceOf(TenantAccessError)
+  expect(refused).toMatchObject({ statusCode: 409 })
+
+  const app = createApp()
+  app.use(sessionRoute)
+  const response = await toWebHandler(app)(new Request(`${baseUrl}/api/session`, {
+    headers: { cookie: alone.token },
+  }))
+  expect(response.status).toBe(409)
+  const body = await response.text()
+  expect(body).not.toContain('GateSecretClient')
+  expect(body).not.toContain(alpha.tenantId)
+
+  const choices = await listTenantChoices(alone.headers)
+  expect(choices.choices).toEqual([
+    { tenantId: alpha.tenantId, tenantName: 'Gate Alpha', role: 'admin' },
+    { tenantId: beta.tenantId, tenantName: 'Gate Beta', role: 'driver' },
+  ])
+  expect(JSON.stringify(choices)).not.toContain('GateSecretClient')
+  expect(JSON.stringify(choices)).not.toContain('Gate Closed')
+  await expect(platformActorFromSession(alone.headers)).rejects.toMatchObject({ statusCode: 403 })
+
+  // Suspending Beta leaves Alpha. The gate stays hidden, and Closed stays absent.
+  await ownerPool.query(
+    'insert into platform.tenant_account (organization_id, suspended_at) values ($1, now())',
+    [beta.tenantId],
+  )
+  expect(await readSessionShell(alone.headers)).toMatchObject({ tenantId: alpha.tenantId, role: 'admin' })
+  expect((await listTenantChoices(alone.headers)).choices.map(choice => choice.tenantId)).toEqual([alpha.tenantId])
+  await ownerPool.query(
+    'insert into platform.tenant_account (organization_id, suspended_at) values ($1, now())',
+    [alpha.tenantId],
+  )
+  await expect(readSessionShell(alone.headers)).rejects.toMatchObject({ statusCode: 403 })
+  await ownerPool.query('delete from platform.tenant_account where organization_id = any($1::text[])', [[alpha.tenantId, beta.tenantId]])
+  await expect(readSessionShell(alone.headers)).rejects.toMatchObject({ statusCode: 409 })
+
+  await chooseActiveTenant(alone.headers, beta.tenantId)
+  const asDriver = await readSessionShell(alone.headers)
+  expect(asDriver).toMatchObject({ tenantId: beta.tenantId, role: 'driver' })
+  await expect(listMembers(alone.headers)).rejects.toMatchObject({ statusCode: 403 })
+  await expect(readAuditLog(alone.headers)).rejects.toMatchObject({ statusCode: 403 })
+  await expect(listUpcomingRides(alone.headers)).resolves.toMatchObject({ rides: [] })
+  // The choice route is not the profile switch. This session already has Beta.
+  await expect(chooseActiveTenant(alone.headers, alpha.tenantId)).rejects.toMatchObject({ statusCode: 403 })
+  expect((await readSessionShell(alone.headers)).tenantId).toBe(beta.tenantId)
+
+  await signOut(alone.token)
+  const office = await signIn('slice10-gate@example.com')
+  await chooseActiveTenant(office.headers, alpha.tenantId)
+  const asAdmin = await readSessionShell(office.headers)
+  expect(asAdmin).toMatchObject({ tenantId: alpha.tenantId, role: 'admin' })
+  await expect(listUpcomingRides(office.headers)).rejects.toMatchObject({ statusCode: 403 })
+  const members = await listMembers(office.headers)
+  expect(members.members.map(member => member.userId)).toEqual([alpha.adminUserId])
+  await expect(readAuditLog(office.headers)).resolves.toMatchObject({ entries: expect.any(Array) })
+
+  expect(await sessionOrganizationIds(alpha.adminUserId)).toEqual([alpha.tenantId])
+  const signedOut = await signOut(office.token)
+  expect(signedOut.toLowerCase()).toContain('max-age=0')
+  const again = await signIn('slice10-gate@example.com')
+  await expect(readSessionShell(again.headers)).rejects.toMatchObject({ statusCode: 409 })
+  expect(await sessionOrganizationIds(alpha.adminUserId)).toEqual([null])
+
+  await chooseActiveTenant(again.headers, alpha.tenantId)
+  const changed = await changePassword(again.token, password, `${password}-2`)
+  expect(changed.status).toBe(200)
+  const kept = sessionToken(changed) ?? again.token
+  await changed.arrayBuffer()
+  await expect(readSessionShell(new Headers({ cookie: kept }))).rejects.toMatchObject({ statusCode: 409 })
+  const afterChange = await sessionOrganizationIds(alpha.adminUserId)
+  expect(afterChange.length).toBeGreaterThan(0)
+  expect(afterChange.every(id => id === null)).toBe(true)
+})
+
+it('keeps no-access when the active membership is removed, then opens the only company on the next sign-in', async () => {
+  const kept = await createTenant({
+    name: 'Gate Kept',
+    slug: 'slice10-gate-left',
+    adminEmail: 'slice10-gate-left@example.com',
+    adminName: 'Ada Kept',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  const other = await createTenant({
+    name: 'Gate Other',
+    slug: 'slice10-gate-gone',
+    adminEmail: 'slice10-gate-gone@example.com',
+    adminName: 'Boris Other',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  await insertMembership(authPool, other.tenantId, kept.adminUserId, 'driver')
+  const signedIn = await signIn('slice10-gate-left@example.com')
+  await expect(readSessionShell(signedIn.headers)).rejects.toMatchObject({ statusCode: 409 })
+  await chooseActiveTenant(signedIn.headers, kept.tenantId)
+  expect((await readSessionShell(signedIn.headers)).tenantId).toBe(kept.tenantId)
+
+  await authPool.query(
+    'delete from auth.member where user_id = $1 and organization_id = $2',
+    [kept.adminUserId, kept.tenantId],
+  )
+  await expect(readSessionShell(signedIn.headers)).rejects.toMatchObject({ statusCode: 403 })
+  await expect(withTenantFromSession(signedIn.headers, async () => 'rows')).rejects.toMatchObject({ statusCode: 403 })
+
+  await signOut(signedIn.token)
+  const next = await signIn('slice10-gate-left@example.com')
+  const shell = await readSessionShell(next.headers)
+  expect(shell).toMatchObject({ tenantId: other.tenantId, role: 'driver' })
+})
+
+it('opens the invited company because that session already has it active', async () => {
+  const home = await createTenant({
+    name: 'Invite Home',
+    slug: 'slice10-invite-home',
+    adminEmail: 'slice10-invite-home@example.com',
+    adminName: 'Ada Home',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  const invited = await createTenant({
+    name: 'Invite New',
+    slug: 'slice10-invite-new',
+    adminEmail: 'slice10-invite-new@example.com',
+    adminName: 'Boris New',
+    password,
+    authDatabaseUrl,
+    migrateDatabaseUrl: ownerUrl,
+  })
+  const person = await signIn('slice10-invite-home@example.com')
+  expect((await readSessionShell(person.headers)).tenantId).toBe(home.tenantId)
+  const inviter = await signIn('slice10-invite-new@example.com')
+  const invitationId = await createInvitation(currentAuth(), inviter.headers, {
+    email: 'slice10-invite-home@example.com',
+    role: 'dispatcher',
+    organizationId: invited.tenantId,
+  })
+  await acceptInvitation(currentAuth(), { invitationId }, person.headers)
+  const shell = await readSessionShell(person.headers)
+  expect(shell).toMatchObject({ tenantId: invited.tenantId, role: 'dispatcher' })
+})
+
 /** pnpm's lifecycle line repeats argv. The script's own text is what we assert. */
 function scriptOutput(stderr: string): string {
   return stderr
@@ -540,6 +748,38 @@ function postSignOut(token: string, body?: Record<string, never>) {
     },
     ignoreResponseError: true,
   })
+}
+
+async function sessionOrganizationIds(userId: string): Promise<(string | null)[]> {
+  const result = await authPool.query<{ active_organization_id: string | null }>(
+    'select active_organization_id from auth.session where user_id = $1 order by created_at',
+    [userId],
+  )
+  return result.rows.map(row => row.active_organization_id)
+}
+
+async function changePassword(token: string, current: string, next: string): Promise<Response> {
+  return currentAuth().auth.handler(new Request(`${baseUrl}/api/auth/change-password`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'origin': baseUrl,
+      'cookie': token,
+    },
+    body: JSON.stringify({
+      currentPassword: current,
+      newPassword: next,
+      revokeOtherSessions: true,
+    }),
+  }))
+}
+
+function sessionToken(response: Response): string | undefined {
+  const setCookie = response.headers.getSetCookie().find(part => part.includes('session_token'))
+  const token = setCookie?.split(';')[0]
+  if (!token || token.endsWith('='))
+    return undefined
+  return token
 }
 
 async function signOut(token: string): Promise<string> {

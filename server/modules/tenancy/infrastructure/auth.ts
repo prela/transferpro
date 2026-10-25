@@ -345,7 +345,30 @@ export function createAuth(
           if (!session.success)
             return
           const userId = session.data.user.id
-          const logger = options?.logger ?? getLogger()
+          let logger = options?.logger
+          if (!logger) {
+            try {
+              logger = getLogger()
+            }
+            catch {
+              logger = undefined
+            }
+          }
+          try {
+            // A password change is a fresh session for the gate (ADR-0056).
+            // The company stays on this session row unless it is cleared, and
+            // nothing on the user remembers it. A missing logger must not
+            // keep the company or fail the saved change.
+            await pool.query(
+              'update auth.session set active_organization_id = null where user_id = $1',
+              [userId],
+            )
+          }
+          catch {
+            logger?.error({ event: 'auth.password_changed_tenant_clear_failed', userId })
+          }
+          if (!logger)
+            return
           try {
             const account = await passwordMailAccount(pool, userId)
             noticePasswordChanged(options?.mailer, logger, userId, account)

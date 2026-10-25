@@ -2,7 +2,8 @@
 import { calendarDateInTimeZone, formatCalendarDate, signInErrorKey } from '../../shared'
 
 // Layout only. A Driver stays on the phone layout. Office staff get the
-// dashboard layout. Sign-in, no-access, and the firm list stay on this page.
+// dashboard layout. Sign-in, the Tenant gate, no-access, and the firm list
+// stay on this page.
 definePageMeta({
   middleware: 'authenticated',
 })
@@ -25,7 +26,11 @@ const {
   chooseLocale,
   loadMessage,
   platformRedirect,
+  tenantChoices,
 } = await useSessionShell()
+
+const choiceError = ref(false)
+const choosing = ref(false)
 
 // The middleware runs on navigation. Sign-in and sign-out on Home stay on
 // this URL, so the layout has to follow the shell after those actions too.
@@ -53,11 +58,40 @@ const driverToday = computed(() => {
 })
 
 useHead({
-  title: () => session.value?.tenantName ?? t('signIn.title'),
+  title: () => {
+    if (session.value)
+      return session.value.tenantName
+    if (tenantChoices.value)
+      return t('tenantGate.title')
+    return t('signIn.title')
+  },
 })
 
 // Office Home's h1 is the navbar title. A Driver keeps the name in the page.
 bindScreenTitle(() => isOfficeMember(session.value?.role) ? t('shell.home') : '')
+
+async function chooseTenant(tenantId: string) {
+  choiceError.value = false
+  choosing.value = true
+  try {
+    await $fetch('/api/tenant-choices', {
+      method: 'POST',
+      body: { tenantId },
+    })
+    await refresh()
+    if (!session.value) {
+      choiceError.value = true
+      return
+    }
+    await setLocale(session.value.locale)
+  }
+  catch {
+    choiceError.value = true
+  }
+  finally {
+    choosing.value = false
+  }
+}
 
 async function signIn() {
   formError.value = null
@@ -69,7 +103,7 @@ async function signIn() {
     })
     password.value = ''
     await refresh()
-    if (platformRedirect.value)
+    if (platformRedirect.value || tenantChoices.value)
       return
     if (!session.value) {
       formError.value = 'signIn.failed'
@@ -105,7 +139,36 @@ function httpStatus(error: unknown): number | undefined {
     v-if="!loadError && !session"
     @choose="chooseLocale"
   >
-    <form @submit.prevent="signIn">
+    <div v-if="tenantChoices">
+      <TenantGate
+        :choices="tenantChoices"
+        :pending="choosing || pending"
+        @choose="chooseTenant"
+      />
+      <UButton
+        type="button"
+        size="xl"
+        block
+        class="mt-4"
+        :disabled="choosing || pending"
+        @click="signOut"
+      >
+        {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
+      </UButton>
+      <UAlert
+        v-if="choiceError"
+        color="error"
+        variant="subtle"
+        role="alert"
+        class="mt-4"
+        :description="t('tenantGate.failed')"
+        :ui="{ description: 'text-sm text-default opacity-100' }"
+      />
+    </div>
+    <form
+      v-else
+      @submit.prevent="signIn"
+    >
       <UAlert
         v-if="passwordChanged"
         color="success"

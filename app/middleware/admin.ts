@@ -8,7 +8,7 @@ import { isCompanySettingsPath } from '../../shared'
 export default defineNuxtRouteMiddleware(async (to) => {
   const nuxtApp = useNuxtApp()
   const lookup = await readTenantSession()
-  if (lookup.kind === 'signed-out')
+  if (lookup.kind === 'signed-out' || lookup.kind === 'choose-tenant')
     return nuxtApp.runWithContext(() => navigateTo('/'))
   if (lookup.kind === 'unavailable')
     return

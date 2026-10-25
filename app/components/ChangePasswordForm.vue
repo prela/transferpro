@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { passwordLengthLimits, passwordLengthRule } from '../../shared'
+import { sessionShellKey } from '../composables/session-shell'
 import { errorCode, httpStatus } from '../transfer-day-http'
 
 /**
@@ -65,6 +66,9 @@ async function submit() {
     currentPassword.value = ''
     nextPassword.value = ''
     confirmPassword.value = ''
+    // The company was cleared. Two working memberships land on the gate.
+    // One membership reloads this shell. A failed refresh leaves the form.
+    await refreshNuxtData(sessionShellKey)
     // A variable, so `role` reaches the toast the way the other saved notices do.
     // Partial<Toast> does not declare role, and an object literal is rejected.
     const saved = {

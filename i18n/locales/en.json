@@ -33,6 +33,11 @@
     "more": "More",
     "newTransfer": "New transfer"
   },
+  "tenantGate": {
+    "title": "Choose a company",
+    "lead": "You belong to more than one company. Choose the one to open.",
+    "failed": "The company was not opened. Try again."
+  },
   "profile": {
     "changePassword": "Change password",
     "currentPassword": "Current password",
