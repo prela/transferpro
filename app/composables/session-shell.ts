@@ -181,7 +181,35 @@ export async function useSessionShell(options?: SessionShellOptions) {
   }
 }
 
-type ShellError = 'shell.saveFailed' | 'shell.signOutFailed' | null
+export type ShellError = 'shell.saveFailed' | 'shell.signOutFailed' | 'shell.switchFailed' | null
+
+/**
+ * Other open tabs listen for this key. The value is a fresh token, not a
+ * Tenant id: the session already holds the active company. A write means
+ * the company changed, so those tabs drop the screen they were showing.
+ */
+export const TENANT_SWITCH_STORAGE_KEY = 'transferpro-tenant-switch'
+
+/** Other tabs hear this before the session moves, and again when it has. */
+export const TENANT_SWITCH_CHANNEL = 'transferpro-tenant-switch'
+
+/** One id per document. A tab ignores its own broadcast. */
+const tenantSwitchTabId = import.meta.client ? crypto.randomUUID() : ''
+
+export function postTenantSwitch(phase: 'leave' | 'stay' | 'done'): void {
+  if (!import.meta.client)
+    return
+  const channel = new BroadcastChannel(TENANT_SWITCH_CHANNEL)
+  channel.postMessage({ phase, tabId: tenantSwitchTabId })
+  channel.close()
+}
+
+export function isOwnTenantSwitch(data: unknown): boolean {
+  return typeof data === 'object'
+    && data !== null
+    && 'tabId' in data
+    && data.tabId === tenantSwitchTabId
+}
 
 /**
  * The one sign-out for every Tenant role (office menu, Driver menu, and the
@@ -240,6 +268,52 @@ export function useShellSignOut() {
   }
 
   return { pending, shellError, signOut, session }
+}
+
+/**
+ * The profile menu changes company without signing out (ADR-0056).
+ * Pending is the same flag as sign-out, so the two cannot run together.
+ * The draft stays under its own key. A full load drops the screen and the
+ * live refresh of the company they left.
+ */
+export function useTenantSwitch() {
+  const pending = useState('session-shell-pending', () => false)
+  const shellError = useState<ShellError>('session-shell-error', () => null)
+  const session = computed(readSharedSession)
+  const route = useRoute()
+
+  async function switchTenant(tenantId: string): Promise<boolean> {
+    if (pending.value)
+      return false
+    pending.value = true
+    shellError.value = null
+    try {
+      // Other documents stop fetching before the session moves. This
+      // document ignores its own broadcast, leaves the form, then changes
+      // the session. A full load drops what is still on screen.
+      postTenantSwitch('leave')
+      if (route.path !== '/')
+        await navigateTo('/')
+      await $fetch('/api/tenant-switch', { method: 'POST', body: { tenantId } })
+      if (import.meta.client) {
+        localStorage.setItem(TENANT_SWITCH_STORAGE_KEY, crypto.randomUUID())
+        postTenantSwitch('done')
+        window.location.assign('/')
+      }
+      return true
+    }
+    catch {
+      postTenantSwitch('stay')
+      if (session.value)
+        shellError.value = 'shell.switchFailed'
+      return false
+    }
+    finally {
+      pending.value = false
+    }
+  }
+
+  return { switchTenant }
 }
 
 function readSharedSession(): SessionShell | null {

@@ -17,6 +17,8 @@
     "signOut": "Sign out",
     "signingOut": "Signing out",
     "signOutFailed": "Sign-out failed. Try again.",
+    "switchFailed": "The company was not changed. Try again.",
+    "otherCompanies": "Other companies",
     "exampleTime": "Example time",
     "unavailable": "The screen could not be loaded. Try again.",
     "noAccess": "You are not a member of any company. Sign out or ask for a new invitation.",

@@ -289,7 +289,7 @@ function httpStatus(error: unknown): number | undefined {
             {{ driverToday.label }}
           </time>
         </div>
-        <OfficeUserMenu />
+        <OfficeUserMenu :show-tenant-on-trigger="false" />
       </div>
       <!--
         One notice row, and only when a document expires. It sits above the
