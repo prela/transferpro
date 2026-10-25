@@ -10,7 +10,6 @@ Read `docs/agents/working-rules.md` when the work touches database roles, migrat
 2. `GLOSSARY.md` — Transfer, Ride, Client, Partner, Tenant. Use those terms in code, tests, and tickets.
 3. `docs/adr/` — ADRs 0001–0020, including `0018-module-boundaries.md`. Do not contradict one; propose a new ADR. When adding a module, follow ADR-0018. Update `GLOSSARY.md` or an ADR when a term or a decision changes.
 4. The GitHub issue. Before starting, read every comment headed `Owner decisions <d.m.>`.
-5. `docs/handoff/<issue>-<slug>.md` when that ticket has one. `docs/handoff/README.md` says when to delete it.
 
 Skills live in `.agents/skills/`. Issue tracker, labels, and domain: `docs/agents/`.
 
@@ -28,7 +27,7 @@ Migrations, RLS, auth, and ride assignment run only on the strongest tier: Grok 
 
 `/ship` always creates `<type>/<issue>-<slug>` from `origin/develop` before any edit. If that branch exists, stop and report. A local agent told some other branch name, and not already on it, runs `git fetch origin` then `git switch -c <branch> origin/develop` before any edit. If that branch exists, stop and report; never switch to it. It may also `git switch -c <name>` or `git checkout -b <name>`, with an optional start of exactly `develop` or `origin/develop` and no other flags. `git checkout -B` and `git switch -C` stay denied.
 
-`git add` and `git commit` run only on the ticket's `feature/*`, `fix/*`, or `chore/*` branch. `git push` (including `git push -u origin <branch>`) runs only from `/conclude`, and only on that same branch. Open a pull request only from `/conclude`. Never commit to `develop` or `main`. Never push to `develop`, `main`, or any other branch. A bare `git push` uses the upstream name when one is set, otherwise the current branch. That push waits until `/conclude` has finished its checks, including the full `pnpm test:e2e`, and committed the handoff. Conventional Commits. Do not hand-edit `CHANGELOG.md`; it is generated.
+`git add` and `git commit` run only on the ticket's `feature/*`, `fix/*`, or `chore/*` branch. `git push` (including `git push -u origin <branch>`) runs only from `/conclude`, and only on that same branch. Open a pull request only from `/conclude`. Never commit to `develop` or `main`. Never push to `develop`, `main`, or any other branch. A bare `git push` uses the upstream name when one is set, otherwise the current branch. That push waits until `/conclude` has finished its checks, including the full `pnpm test:e2e`. Post a pull-request comment only from `/conclude`. Conventional Commits. Do not hand-edit `CHANGELOG.md`; it is generated.
 
 Denied for a local agent, and still denied for a cloud agent unless the cloud paragraph says otherwise: a force push, `--force-with-lease`, a `+refspec`, deleting a remote branch (`--delete` or `:name`), `git reset` (including `--hard`), `git branch -D`, `git stash`, `git restore`, and a `checkout`, `restore`, or `stash` that discards changes. Plain `checkout` or `switch` of an existing branch or of files stays denied, including for a cloud agent.
 
@@ -56,6 +55,6 @@ No deep imports across modules or tiers. Import only from a module's `index.ts`.
 
 ## Report
 
-`/ship` reports, after `/conclude`, the commit SHA, branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, open questions, the handoff, and the pull request link. That report's last line is `READY_FOR_QC`.
+`/ship` reports, after `/conclude`, the commit SHA, branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, open questions, the pull-request comment link, and the pull request link. That report's last line is `READY_FOR_QC`.
 
-`/conclude` writes `docs/handoff/<issue>-<slug>.md` and opens the pull request. When `/ship` called it, `/ship` writes the closing report. On its own, `/conclude`'s last line is `REVIEW_READY` with the pull request link.
+`/conclude` opens the pull request and adds one comment. When `/ship` called it, `/ship` writes the closing report. On its own, `/conclude`'s last line is `REVIEW_READY` with the pull request link.

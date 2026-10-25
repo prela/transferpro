@@ -10,6 +10,6 @@ Ship one ticket: implement, then conclude.
 
 2. Implement. Read and follow `.agents/skills/implement/SKILL.md` from start to finish. When it says to call code-review, set `fast=false` in both subagent prompts before they start. Done when that skill's commit is on the current branch and the branch has not been pushed.
 
-3. Conclude. Read and follow `.agents/skills/conclude/SKILL.md` through the open pull request. Done when the pull request is open.
+3. Conclude. Read and follow `.agents/skills/conclude/SKILL.md` through the open pull request and its QC comment. Done when the pull request is open and the comment is on it.
 
-4. Report. State the commit SHA, the branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, open questions, the handoff path, and the pull request link. The last line is `READY_FOR_QC`. Done when that line is the last line of the report.
+4. Report. State the commit SHA, the branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, open questions, the pull-request comment link, and the pull request link. The last line is `READY_FOR_QC`. Done when that line is the last line of the report.
