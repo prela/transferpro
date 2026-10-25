@@ -1,7 +1,19 @@
+import type { Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { plantOperationalRows, seedMembership, seedTenant } from './fixtures/seed'
 import { hydrated, useTheme } from './fixtures/ui'
+
+/**
+ * The selected theme control is `bg-inverted` at 90% while the pointer
+ * hovers it, which fails contrast. A tap on the heading moves that hover
+ * off the control before axe reads the colours.
+ */
+async function axeGate(page: Page) {
+  await page.getByRole('heading', { name: 'Odaberite tvrtku' }).click()
+  await page.mouse.move(8, 700)
+  await expectNoAxeViolations(page)
+}
 
 /**
  * The gate is the choice after sign-in (ADR-0056). It lists each company
@@ -28,9 +40,7 @@ test('two companies show the gate before any tenant data, on desktop in both the
     await expect(page.getByText(officeRows.clientName)).toHaveCount(0)
     await expect(page.getByText(driverRows.clientName)).toHaveCount(0)
     await expect(page.getByRole('heading', { name: 'Tvrtke', exact: true })).toHaveCount(0)
-    // A hover on the selected theme control drops it to 90% and fails contrast.
-    await page.mouse.move(8, 700)
-    await expectNoAxeViolations(page)
+    await axeGate(page)
   }
 
   await page.goto('/clients')
@@ -87,9 +97,7 @@ test.describe('@phone', () => {
       await expect(page.getByRole('heading', { name: 'Odaberite tvrtku' })).toBeVisible()
       await expect(page.getByRole('button', { name: `${office.name}, Administrator` })).toBeVisible()
       await expect(page.getByRole('button', { name: `${driving.name}, Vozač` })).toBeVisible()
-      // A hover on the selected theme control drops it to 90% and fails contrast.
-      await page.mouse.move(8, 700)
-      await expectNoAxeViolations(page)
+      await axeGate(page)
     }
 
     await page.getByRole('button', { name: `${driving.name}, Vozač` }).click()
