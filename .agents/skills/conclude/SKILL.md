@@ -14,7 +14,7 @@ b. Push the current branch. Done when the remote has the commits from a.
 
 c. Open a pull request. Write the body with .agents/skills/pr/SKILL.md. It includes `Closes #N`, fills the OWASP ASVS checklist from `.github/pull_request_template.md` with every item checked, and passes `pr-text` (non-empty body, `Closes #N`, completed checklist, no model name, no `Model:` line, no agent footer or agent-run link, no redacted name). `pr-text` checks the title and the body only.
 
-Add one comment on that pull request. Use exactly these four lines, and no other line:
+Add one comment on that pull request, at most 8 lines. Start with these labels, in this order. A label may continue on the next line when it names more than one deviation or finding.
 
 ```text
 Deviations: <how this differs from the issue, each with a reason, or None>
@@ -23,6 +23,6 @@ Local checks: build <pass|fail>; lint <pass|fail>; typecheck <pass|fail>; test <
 Open questions: <or None>
 ```
 
-Write the four lines as plain text. Leave out client names, company names, amounts, keys, and tool markers. A tool marker is a tool-call tag. Done when the pull request is open and that four-line comment is on it.
+Write the comment as plain text. Leave out client names, company names, amounts, keys, and tool markers. Done when the pull request is open and that comment is on it.
 
 d. The pull request stays open for review. When `/ship` called this skill, return to it for the report. Otherwise the last line is `REVIEW_READY` and the pull request link.
