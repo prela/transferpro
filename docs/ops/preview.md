@@ -30,4 +30,20 @@ Set these names in the preview environment. Values stay in Coolify.
 
 `DATABASE_MIGRATE_URL` is not an app variable. Do not put it on the container.
 
+Every name in the table is runtime only. In Coolify, leave "Available at Buildtime" off. The Dockerfile declares no secret `ARG` or `ENV`. `docker build` must not warn `SecretsUsedInArgOrEnv`.
+
+`nuxi build` does not read `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `AUTH_DATABASE_URL`, `MAPS_API_KEY`, or `MAPS_EMBED_KEY`. Boot reads them from the process environment (`parseAppEnv`). Nitro's production build replaces the token `process.env.NODE_ENV` only, not those names. `.dockerignore` excludes `.env`, so a local file is not copied into the build. The server bundle still contains the key strings, because that is how it reads `process.env` at start. The client bundle (`.output/public`) must not. No value is required at build time, so the image does not use a BuildKit secret mount.
+
+`NODE_ENV=production` is set on the runtime stage. It is not a build `ARG` and it is not a secret. `nuxi build` emits a production server without that variable. Do not pass it as a build-arg.
+
+`SENTRY_DSN` is also runtime for the server SDK. `nuxt.config.ts` reads it while the config loads, and a value present then is copied into the client runtime config. Leave it off the build as well.
+
+After a build, this fails if a secret name was declared, if `docker history` records a name or a supplied value, or if a supplied value (or a secret name in the client bundle) is in `.output`. Findings do not print values.
+
+```sh
+node scripts/assert-image-secrets.mjs --image <image> --values-file <sentinels.txt>
+```
+
+`<sentinels.txt>` is one value per line, at least 8 characters, and is not committed. Omit `--values-file` to check names only.
+
 Preview sets `DEPLOY_ENV` to `preview` (ADR-0043), and `MAILER` to `resend`, `RESEND_API_KEY`, and `MAIL_ALLOWLIST` (ADR-0042). Boot refuses to start when `DEPLOY_ENV` is `preview` and `MAIL_ALLOWLIST` is unset. Only addresses on that list are sent; every other recipient is the console line. `NODE_ENV` stays `production` on preview and on production. Production leaves `DEPLOY_ENV` unset or sets `production`, leaves `MAIL_ALLOWLIST` unset, and sets `MAILER` to `resend` with `RESEND_API_KEY`. A deployment that wants console only sets `ALLOW_CONSOLE_MAILER` to `1` and `MAILER` to `console` (ADR-0037).
