@@ -12,4 +12,4 @@ Ship one ticket: implement, then conclude.
 
 3. Conclude. Read and follow `.agents/skills/conclude/SKILL.md` through the open pull request. Done when the pull request is open.
 
-4. Report. State the commit SHA, the branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, open questions, the handoff path, and the pull request link. The last line is `READY_FOR_QC`. Done when that line is the last line of the report.
+4. Report. State the commit SHA, the branch, what changed, tests added or changed (never weaken or remove a test; flag any), migrations, decisions, open questions, the pull-request comment link, and the pull request link. The last line is `READY_FOR_QC`. Done when that line is the last line of the report.

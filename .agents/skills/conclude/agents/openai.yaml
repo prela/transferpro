@@ -1,5 +1,5 @@
 interface:
   display_name: "Conclude"
-  short_description: "Checks, handoff, push, and a pull request"
+  short_description: "Checks, push, a pull request, and a QC comment"
 policy:
   allow_implicit_invocation: false

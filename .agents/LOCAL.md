@@ -12,7 +12,7 @@ Local skill, not upstream. User-invoked. It creates the branch, follows implemen
 
 - Branch create, before implement. The branch is `<type>/<issue>-<slug>` from `origin/develop`. If that branch already exists, stop and report.
 - Both code-review subagents: see Lead below.
-- After conclude: the report lists the commit SHA, the branch, what changed, tests, migrations, decisions, open questions, the handoff, and the pull request link. The last line is `READY_FOR_QC`. When `/ship` called conclude, conclude does not write `REVIEW_READY`.
+- After conclude: the report lists the commit SHA, the branch, what changed, tests, migrations, decisions, open questions, the pull-request comment link, and the pull request link. The last line is `READY_FOR_QC`. When `/ship` called conclude, conclude does not write `REVIEW_READY`.
 
 ## `.agents/skills/conclude/SKILL.md`
 
@@ -30,7 +30,7 @@ Leave a running ship's review model and `fast` as they were at launch. A steer t
 
 ## Not this workflow
 
-The Pocock `handoff` skill writes to the OS temp directory. It is not part of this workflow. Lead QC uses only the repo file `docs/handoff/<issue>-<slug>.md`.
+The Pocock skill that writes a conversation summary to the OS temp directory is not part of this workflow. Lead QC reads the pull-request comment from `/conclude`.
 
 ## Update rule
 
