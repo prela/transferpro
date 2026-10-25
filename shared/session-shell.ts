@@ -20,6 +20,12 @@ export const sessionShellSchema = z.object({
   timeZone: z.string().min(1),
   operationalDayStartHour: operationalDayStartHourSchema,
   role: tenantRoleSchema,
+  /** This sign-in. The caps are measured from here, not from the last request. */
+  signedInAt: z.iso.datetime(),
+  /** When the next use is refused. A holding Ride moves a Driver from twelve hours to sixteen. */
+  sessionEndsAt: z.iso.datetime(),
+  /** True only for a Driver whose active Tenant has a holding Ride. */
+  holdingRide: z.boolean(),
 })
 
 export type SessionShell = z.infer<typeof sessionShellSchema>

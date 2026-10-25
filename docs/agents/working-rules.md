@@ -65,6 +65,8 @@ The mail outbox worker has no actor, so the loaders it calls do not check a role
 
 Sign-in and sign-out are Better Auth at `/api/auth/*`. Keep the session cookie `httpOnly` and `SameSite=Lax`, with `Secure` and the `__Secure-` prefix when `NODE_ENV` is `production`. One failure message for every status except 429. Keep the production limit on `/sign-in/email` (3 requests per 10 seconds, `signInRateLimit`). Changing any of these needs an ADR.
 
+A Tenant member's session ends twelve hours after sign-in (ADR-0057). A Driver's row may last sixteen hours so a holding Ride can be seen; the next use is refused at twelve hours when no Ride holds it, and at sixteen hours even during a Ride. A refresh cannot extend either cap to seven days. The superadmin eight-hour cap is unchanged. Office idle, thirty minutes without a person's action, is the open screen. A live refresh does not reset it. Pressing sign-out deletes the active Tenant's draft. An idle end and the twelve-hour end do not.
+
 ## Superadmin
 
 ADR-0019. A superadmin is a Better Auth user with a row in `platform.superadmin` and no membership. `pnpm superadmin:create --name --email` and `pnpm superadmin:revoke --email` are the only writers of that row. `pnpm superadmin:password --email` sets a new password for that grant and deletes every session of that user in the same transaction (ADR-0042). It is not a recovery path for a Member, a user without the grant, or an unknown email: each exits 1 with one fixed sentence that omits the email. The password is read like `tenant:create`. `--password` is refused. A duplicate email, an existing membership, or an existing grant exits 1 with a fixed sentence that omits the email.

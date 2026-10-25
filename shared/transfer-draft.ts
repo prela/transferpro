@@ -5,9 +5,10 @@ import { paymentMethodSchema } from './transfer'
  * An unfinished new Transfer stays in the browser (ADR-0038). The storage
  * key is the user and the Tenant, so the next person on a shared computer
  * does not read it, and another Tenant never reads it either. It expires
- * 24 hours after it was written. Save, discard, and sign-out remove the
- * active Tenant's draft only. Switching Tenant is not one of those events
- * (ADR-0056). The booking fields stay in the browser. The entry key is the
+ * 24 hours after it was written. Save, discard, and pressing sign-out remove
+ * the active Tenant's draft only. Switching Tenant, an idle end, and the
+ * twelve-hour office end are not those events (ADR-0056, ADR-0057). The
+ * booking fields stay in the browser. The entry key is the
  * exception: the form sends that one id on create (ADR-0035).
  */
 export const TRANSFER_DRAFT_TTL_MS = 24 * 60 * 60 * 1000

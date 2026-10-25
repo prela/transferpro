@@ -10,7 +10,7 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
 import * as authSchema from '../../../../db/auth-schema'
-import { passwordLengthLimits, SUPERADMIN_SESSION_SECONDS, tenantRoleSchema } from '../../../../shared'
+import { DRIVER_HELD_SESSION_MS, OFFICE_SESSION_MS, passwordLengthLimits, SUPERADMIN_SESSION_SECONDS, tenantRoleSchema } from '../../../../shared'
 import { getLogger, nodeEnv } from '../../../core/index'
 import { noticePasswordChanged, passwordMailAccount, queuePasswordChangedMail } from './password-changed'
 import { createResetMailLimiter, deleteRemainingResetTokens, hashResetPasswordIdentifier, queuePasswordReset, RESET_PASSWORD_IDENTIFIER_PREFIX, RESET_PASSWORD_TOKEN_SECONDS } from './password-reset'
@@ -159,12 +159,14 @@ export interface InvitationRecord {
 
 /**
  * Eight hours after the session was created, and not a sliding window.
- * A missing grant leaves the caller's expiresAt alone, so a Tenant member
- * keeps the seven-day session. The select lists user_id only.
+ * A Tenant member is capped from the same instant: sixteen hours on the
+ * row, and the trigger lowers an office membership to twelve (ADR-0057).
+ * The select lists user_id, created_at, and the active company only.
  */
 const sessionStamp = z.object({
   user_id: z.string(),
   created_at: z.coerce.date(),
+  active_organization_id: z.string().nullable().optional(),
 })
 
 interface SessionHookContext {
@@ -192,46 +194,77 @@ async function sessionToken(context: unknown): Promise<string | undefined> {
   return typeof token === 'string' && token !== '' ? token : undefined
 }
 
-async function superadminExpiresAt(
+interface SessionStamp {
+  readonly userId: string
+  readonly createdAt: Date
+  readonly activeOrganizationId: string | null
+}
+
+async function loadSessionStamp(
   pool: pg.Pool,
-  session: { id?: string, userId?: string, createdAt?: Date },
+  session: { id?: string, userId?: string, createdAt?: Date, activeOrganizationId?: string | null },
   context?: unknown,
-): Promise<Date | undefined> {
+): Promise<SessionStamp | undefined> {
   let userId = session.userId
   let createdAt = session.createdAt
+  let activeOrganizationId = session.activeOrganizationId ?? null
   if (!userId || !createdAt) {
     const token = await sessionToken(context)
     const existing = session.id
-      ? await pool.query('select user_id, created_at from auth.session where id = $1', [session.id])
+      ? await pool.query('select user_id, created_at, active_organization_id from auth.session where id = $1', [session.id])
       : token
-        ? await pool.query('select user_id, created_at from auth.session where token = $1', [token])
+        ? await pool.query('select user_id, created_at, active_organization_id from auth.session where token = $1', [token])
         : undefined
     const row = sessionStamp.safeParse(existing?.rows[0])
     if (row.success) {
       userId ??= row.data.user_id
       createdAt ??= row.data.created_at
+      if (activeOrganizationId === null)
+        activeOrganizationId = row.data.active_organization_id ?? null
     }
   }
   if (!userId || !createdAt)
     return undefined
-  const grant = await pool.query(
-    'select user_id from platform.superadmin where user_id = $1',
-    [userId],
-  )
-  if ((grant.rowCount ?? 0) === 0)
-    return undefined
-  return new Date(createdAt.getTime() + SUPERADMIN_SESSION_SECONDS * 1000)
+  return { userId, createdAt, activeOrganizationId }
 }
 
-async function capSuperadminSession(
+/**
+ * The active membership decides twelve or sixteen hours. One membership
+ * and no company yet uses that membership: a Driver's row has to survive
+ * until the company is set, or the hold can never be seen. Two companies
+ * and none active stay at twelve hours.
+ */
+async function memberExpiresAt(pool: pg.Pool, stamp: SessionStamp): Promise<Date> {
+  const roles = stamp.activeOrganizationId
+    ? await pool.query(
+        'select role from auth.member where user_id = $1 and organization_id = $2',
+        [stamp.userId, stamp.activeOrganizationId],
+      )
+    : await pool.query('select role from auth.member where user_id = $1', [stamp.userId])
+  const only = !stamp.activeOrganizationId && roles.rows.length === 1 ? roles.rows[0] : undefined
+  const role = stamp.activeOrganizationId ? roles.rows[0]?.role : only?.role
+  const life = role === 'driver' ? DRIVER_HELD_SESSION_MS : OFFICE_SESSION_MS
+  return new Date(stamp.createdAt.getTime() + life)
+}
+
+async function capSession(
   pool: pg.Pool,
-  session: { id?: string, userId?: string, createdAt?: Date },
+  session: { id?: string, userId?: string, createdAt?: Date, activeOrganizationId?: string | null },
   context: unknown,
 ) {
-  const expiresAt = await superadminExpiresAt(pool, session, context)
-  if (!expiresAt)
+  const stamp = await loadSessionStamp(pool, session, context)
+  if (!stamp)
     return
-  return { data: { ...session, expiresAt } }
+  const grant = await pool.query(
+    'select user_id from platform.superadmin where user_id = $1',
+    [stamp.userId],
+  )
+  const expiresAt = (grant.rowCount ?? 0) > 0
+    ? new Date(stamp.createdAt.getTime() + SUPERADMIN_SESSION_SECONDS * 1000)
+    : await memberExpiresAt(pool, stamp)
+  // Only the expiry. Spreading the session back overwrites the new token
+  // after a password change, and the first cookie is then already dead.
+  return { data: { expiresAt } }
 }
 
 export function createAuth(
@@ -247,6 +280,11 @@ export function createAuth(
   const auth = betterAuth({
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
+    session: {
+      // A refresh would write seven days and set a second cookie. The row's
+      // expires_at is the cap, so a read must not move it (ADR-0057).
+      disableSessionRefresh: true,
+    },
     disabledPaths,
     emailAndPassword: {
       enabled: true,
@@ -396,13 +434,14 @@ export function createAuth(
     databaseHooks: {
       session: {
         create: {
-          // A platform owner does not keep the seven-day session.
-          // The row's expires_at is what getSession honours.
-          before: async (session, context) => capSuperadminSession(pool, session, context),
+          // The row's expires_at is what getSession honours. A platform
+          // owner stays at eight hours. A member stays inside twelve, or
+          // sixteen for a Driver. The trigger is the backstop.
+          before: async (session, context) => capSession(pool, session, context),
         },
         update: {
-          // A refresh must not stretch an eight-hour session out to seven days.
-          before: async (session, context) => capSuperadminSession(pool, session, context),
+          // A refresh must not stretch a session out to seven days.
+          before: async (session, context) => capSession(pool, session, context),
         },
       },
     },
@@ -444,6 +483,13 @@ export function createAuth(
     authPool: pool,
     baseURL: env.BETTER_AUTH_URL,
     close: () => pool.end(),
+    /**
+     * Drops one session row. The cap refuses the next use by deleting it,
+     * so a later getSession cannot honour a still-future expires_at.
+     */
+    async deleteSession(id: string): Promise<void> {
+      await pool.query('delete from auth.session where id = $1', [id])
+    },
     async invitationById(id: string): Promise<InvitationRecord | null> {
       const result = await pool.query(
         `select id, email, role, status, expires_at, organization_id

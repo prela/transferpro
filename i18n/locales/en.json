@@ -50,7 +50,14 @@
     "currentPasswordWrong": "The current password is not correct.",
     "passwordMismatch": "The new password and the confirmation do not match.",
     "passwordChanged": "Your password was changed",
-    "passwordChangeFailed": "The password was not changed. Try again."
+    "passwordChangeFailed": "The password was not changed. Try again.",
+    "otherDevices": "Saving the password signs out your other devices. Save open edits on them first."
+  },
+  "session": {
+    "officeEnding": "This session ends in about 15 minutes. Save open work. You can keep working until then.",
+    "driverEnding": "This session ends in about 30 minutes.",
+    "driverHeld": "A ride in progress is keeping this session open. It still ends 16 hours after sign-in.",
+    "driverCap": "This session ends in about 30 minutes, including during the ride."
   },
   "forgotPassword": {
     "title": "Forgot password",

@@ -80,6 +80,7 @@ export { FailedMailInputError, FailedMailNotFoundError, resendFailedMail } from 
 export { askFlightLandings, LandingTimeClosedError, LandingTimeInFutureError, recordLandingTime, refreshFlightLandings } from './infrastructure/flight-landing'
 export { startFlightLandingWorker } from './infrastructure/flight-landing-worker'
 export { changeRidePartner, handOffRide, RideNotHandedOffError, RideNotHandoffableError, RidePartnerArchivedError, RidePartnerUnchangedError, takeBackRide } from './infrastructure/handoff'
+export { closeDriverHoldingRides, driverHasHoldingRide } from './infrastructure/holding-ride'
 export { RecordLandingInputError, recordRideLanding, RideLandingClosedError, RideLandingInFutureError } from './infrastructure/landing'
 export { closeMailOutboxQueue, mailOutboxQueue, mailOutboxStore, startMailOutboxWorker } from './infrastructure/mail-outbox-worker'
 export { markNoShow, MarkNoShowInputError, NoShowTooEarlyError, RideNotNoShowError } from './infrastructure/no-show'

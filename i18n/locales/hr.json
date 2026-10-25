@@ -50,7 +50,14 @@
     "currentPasswordWrong": "Trenutna lozinka nije točna",
     "passwordMismatch": "Nova lozinka i potvrda nisu iste.",
     "passwordChanged": "Lozinka je promijenjena",
-    "passwordChangeFailed": "Lozinka nije promijenjena. Pokušajte ponovno."
+    "passwordChangeFailed": "Lozinka nije promijenjena. Pokušajte ponovno.",
+    "otherDevices": "Spremanje lozinke odjavljuje ostale uređaje. Otvorene izmjene na njima prvo spremite."
+  },
+  "session": {
+    "officeEnding": "Sesija završava za oko 15 minuta. Spremite otvoreni rad. Možete raditi do tog kraja.",
+    "driverEnding": "Sesija završava za oko 30 minuta.",
+    "driverHeld": "Vožnja u tijeku drži sesiju otvorenom. I dalje završava 16 sati nakon prijave.",
+    "driverCap": "Sesija završava za oko 30 minuta, i za vrijeme vožnje."
   },
   "forgotPassword": {
     "title": "Zaboravljena lozinka",

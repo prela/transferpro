@@ -41,6 +41,8 @@ export type { AddressSuggestion, CreateLocation, Location, LocationAddressError,
 export { fittedMeetSign, MEET_SIGN_MIN_PX } from './meet-sign-fit'
 export { changeMemberRoleBodySchema, memberErrorKey, memberErrorMessage, memberListSchema, memberSchema } from './member'
 export type { ChangeMemberRoleBody, Member, MemberErrorKey, MemberList } from './member'
+export { createOfficeIdleClock, DRIVER_HELD_SESSION_MS, DRIVER_WARNING_LEAD_MS, driverSessionBanners, memberSessionCapMs, OFFICE_IDLE_MS, OFFICE_SESSION_MS, OFFICE_WARNING_LEAD_MS, officeSessionWarning, rideHoldsDriverSession } from './member-session'
+export type { DriverSessionBanner, HoldingRideFacts, OfficeIdleClock } from './member-session'
 export { canMarkNoShow, noShowWaitBounds, noShowWaitElapsed, noShowWindowLabels } from './no-show'
 export type { NoShowClock } from './no-show'
 export { occupationStripStorageKey, placeOccupationStrip, readOccupationStripCollapsed, writeOccupationStripCollapsed } from './occupation-strip'

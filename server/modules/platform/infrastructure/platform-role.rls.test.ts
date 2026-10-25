@@ -426,7 +426,9 @@ it('keeps a superadmin session shorter than a tenant admin session', async () =>
   const created = await tenant('plt-session')
   await signIn(created.adminEmail)
   const adminLife = await sessionLife(created.adminEmail)
-  expect(adminLife).toBeGreaterThan(24 * 60 * 60)
+  // A member session is twelve hours, not seven days (ADR-0057).
+  expect(adminLife).toBeGreaterThan(11.5 * 60 * 60)
+  expect(adminLife).toBeLessThan(12.5 * 60 * 60)
 
   const email = 'plt-owner-session@example.test'
   await createSuperadmin({
@@ -459,7 +461,9 @@ it('keeps a superadmin session shorter than a tenant admin session', async () =>
      where user_id = $1`,
     [created.adminUserId],
   )
-  expect(await sessionLife(created.adminEmail)).toBeGreaterThan(6 * 24 * 60 * 60)
+  const memberLife = await sessionLife(created.adminEmail)
+  expect(memberLife).toBeGreaterThan(11.5 * 60 * 60)
+  expect(memberLife).toBeLessThan(12.5 * 60 * 60)
 })
 
 it('signing out a superadmin the way the platform page does clears the session cookie', async () => {

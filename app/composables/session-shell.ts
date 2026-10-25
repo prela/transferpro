@@ -218,9 +218,10 @@ export function isOwnTenantSwitch(data: unknown): boolean {
  * the failure, which is what a fresh page ref used to do. The device theme
  * is not touched.
  *
- * The new-Transfer draft is cleared here, before the session cookie is
- * dropped, so the next person on this browser does not see it. Do not add
- * a second member sign-out.
+ * Pressing sign-out clears the active Tenant's draft before the cookie
+ * drops, so the next person on this browser does not see it. An idle end
+ * and the session cap keep that draft: they call endSessionKeepingDraft.
+ * Do not add a second member sign-out.
  */
 export function useShellSignOut() {
   const { setLocale } = useI18n()
@@ -267,7 +268,28 @@ export function useShellSignOut() {
     }
   }
 
-  return { pending, shellError, signOut, session }
+  /**
+   * The cookie ends. The active Tenant's draft stays, for an idle end,
+   * the twelve-hour end, and a session the server has already revoked.
+   */
+  async function endSessionKeepingDraft(): Promise<void> {
+    if (pending.value)
+      return
+    pending.value = true
+    shellError.value = null
+    try {
+      await $fetch('/api/auth/sign-out', { method: 'POST', body: {} }).catch(() => undefined)
+      clearSharedShell()
+      await setLocale('hr')
+      if (route.fullPath !== '/')
+        await navigateTo('/')
+    }
+    finally {
+      pending.value = false
+    }
+  }
+
+  return { pending, shellError, signOut, endSessionKeepingDraft, session }
 }
 
 /**

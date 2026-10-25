@@ -191,9 +191,16 @@ async function submit() {
         {{ confirmError }}
       </p>
     </div>
+    <p
+      id="change-password-other-devices"
+      class="mb-4 text-sm text-muted"
+    >
+      {{ t('profile.otherDevices') }}
+    </p>
     <UButton
       type="submit"
       size="xl"
+      aria-describedby="change-password-other-devices"
       :disabled="pending"
     >
       {{ pending ? t('profile.submitting') : t('profile.submit') }}

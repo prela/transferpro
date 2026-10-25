@@ -357,6 +357,7 @@ test.describe('@phone', () => {
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       await page.goto('/profile')
       await expect(page.getByRole('heading', { level: 2, name: 'Promjena lozinke' })).toBeVisible()
+      await expect(page.locator('#change-password-other-devices')).toContainText('Spremanje lozinke odjavljuje ostale uređaje.')
       await hydrated(page)
       const current = page.getByLabel('Trenutna lozinka', { exact: true })
       await expect(current).toBeVisible()
@@ -390,6 +391,7 @@ test.describe('@phone', () => {
       if (theme === 'light') {
         await switchLocale(page, 'en')
         await expect(page.getByRole('heading', { level: 2, name: 'Change password' })).toBeVisible()
+        await expect(page.locator('#change-password-other-devices')).toContainText('Saving the password signs out your other devices.')
         await expect(page.getByLabel('Current password', { exact: true })).toBeVisible()
         await expect(page.getByRole('button', { name: 'Save password', exact: true })).toBeVisible()
         await page.getByLabel('Current password', { exact: true }).fill('not-the-password')
@@ -431,6 +433,7 @@ test.describe('@phone', () => {
       await signIn(page, member.email, member.password, tenant.name)
       await page.goto('/profile')
       await expect(page.getByRole('heading', { level: 2, name: 'Promjena lozinke' })).toBeVisible()
+      await expect(page.locator('#change-password-other-devices')).toContainText('Spremanje lozinke odjavljuje ostale uređaje.')
       await expect(page.getByLabel('Trenutna lozinka', { exact: true })).toBeVisible()
       await expect(page.getByLabel('Nova lozinka', { exact: true })).toBeVisible()
       await expect(page.getByLabel('Potvrda lozinke', { exact: true })).toBeVisible()
