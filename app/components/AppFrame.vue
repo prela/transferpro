@@ -47,6 +47,16 @@ const showFloating = computed(() =>
   props.showNewTransfer === true && (route.path === '/' || route.path === '/transfers'),
 )
 
+/**
+ * `pb-20` clears the phone bar. The new-transfer button is another `min-h-12`
+ * above that bar (`bottom-20`), so on Home and Transfers the list pads past
+ * the button. Otherwise the button covers the last row's menu.
+ */
+const panelBodyClass = computed(() => {
+  const pad = showFloating.value ? 'pb-36' : 'pb-20'
+  return `bg-[var(--tp-working)] ${pad} lg:pb-0`
+})
+
 function toItem(link: FrameLink): NavigationMenuItem {
   return {
     'label': link.label,
@@ -91,7 +101,7 @@ function onPhoneNavigate() {
       </template>
     </UDashboardSidebar>
 
-    <UDashboardPanel :ui="{ body: 'bg-[var(--tp-working)] pb-20 lg:pb-0' }">
+    <UDashboardPanel :ui="{ body: panelBodyClass }">
       <template #header>
         <UDashboardNavbar
           :toggle="false"

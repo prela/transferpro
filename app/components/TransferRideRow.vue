@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, DisplayLocale, Driver, Location, Partner, RideAttentionItem, TransferDayRide, Vehicle } from '../../shared'
-import { canAddExtraVehicle, canCorrectTransfer, canRecordLandingTime, classifyRideAttention, clockLabel, formatInstant, locationLabel, pickupNeedsCalendarDate, rideStateMark } from '../../shared'
+import { calendarDateInTimeZone, canAddExtraVehicle, canCorrectTransfer, canRecordLandingTime, classifyRideAttention, clockLabel, formatCalendarDate, formatInstant, locationLabel, pickupNeedsCalendarDate, rideStateMark } from '../../shared'
 import { driverDisplayName } from '../transfer-day-labels'
 import { canCallOff, canChangeAssignment, canChangePartner, canHandOff, canNoShow, canTakeBack } from '../transfer-ride-guards'
 
@@ -100,6 +100,18 @@ function clock(instant: string): string {
   return formatInstant(new Date(instant), props.timeZone, props.locale)
 }
 
+/** The pickup falls on a different calendar date than the day on screen. */
+function namesCalendarDate(pickupAt: string): boolean {
+  if (props.day === undefined)
+    return false
+  return pickupNeedsCalendarDate(pickupAt, props.day, props.timeZone)
+}
+
+function calendarDateLabel(pickupAt: string): string {
+  const day = calendarDateInTimeZone(props.timeZone, new Date(pickupAt))
+  return formatCalendarDate(day, props.locale)
+}
+
 function vehicleLabel(id: string | null): string {
   if (id === null)
     return ''
@@ -188,14 +200,25 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     @click="emit('open', ride)"
     @keydown.enter.self.prevent="emit('open', ride)"
   >
-    <div class="flex items-center gap-2">
-      <time
-        class="shrink-0 tabular-nums"
-        :datetime="ride.pickupAt"
-      >{{ clock(ride.pickupAt) }}</time>
-      <span class="min-w-0 truncate font-medium">{{ ride.guestName }}</span>
-      <span class="text-xs text-muted">{{ t('transfers.passengersCount', { count: ride.passengerCount }) }}</span>
-      <span class="ms-auto shrink-0">
+    <div class="flex min-w-0 items-center gap-2">
+      <!--
+        The date stacks under the clock. A full instant on this line
+        squeezes the guest name to nothing on a phone.
+      -->
+      <span class="shrink-0 text-center leading-tight tabular-nums">
+        <time
+          class="block"
+          :datetime="ride.pickupAt"
+        >{{ clockLabel(new Date(ride.pickupAt), timeZone, locale) }}</time>
+        <span
+          v-if="namesCalendarDate(ride.pickupAt)"
+          class="block text-xs text-muted"
+        >{{ calendarDateLabel(ride.pickupAt) }}</span>
+      </span>
+      <!-- min-w-24 is the floor. flex-1 still truncates a long name. -->
+      <span class="min-w-24 flex-1 truncate font-medium">{{ ride.guestName }}</span>
+      <span class="shrink-0 text-xs text-muted">{{ t('transfers.passengersCount', { count: ride.passengerCount }) }}</span>
+      <span class="shrink-0">
         <UBadge
           :color="mark().color"
           :variant="mark().variant"
@@ -234,7 +257,7 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     class="tabular-nums"
     :datetime="ride.pickupAt"
   >
-    {{ day && pickupNeedsCalendarDate(ride.pickupAt, day, timeZone) ? clock(ride.pickupAt) : clockLabel(new Date(ride.pickupAt), timeZone, locale) }}
+    {{ namesCalendarDate(ride.pickupAt) ? clock(ride.pickupAt) : clockLabel(new Date(ride.pickupAt), timeZone, locale) }}
   </time>
 
   <span
