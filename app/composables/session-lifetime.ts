@@ -1,14 +1,15 @@
 import type { DriverSessionBanner, SessionShell, SharedOfficeIdle } from '../../shared'
-import { createOfficeIdleClock, DRIVER_WARNING_LEAD_MS, driverSessionBanners, OFFICE_IDLE_CHANNEL, OFFICE_IDLE_END_KEY, OFFICE_IDLE_MS, OFFICE_IDLE_STORAGE_KEY, OFFICE_SESSION_MS, OFFICE_WARNING_LEAD_MS, officeSessionWarning, parseOfficeIdleMessage, readSharedOfficeIdle, readSharedOfficeIdleEnd, sessionShellSchema, sharedIdleAfterAction, sharedIdleForSession } from '../../shared'
+import { clearOfficeIdleEnd, createOfficeIdleClock, DRIVER_WARNING_LEAD_MS, driverSessionBanners, finishOfficeIdle, laterOfficeIdleAt, noteOfficeIdleAction, OFFICE_IDLE_END_KEY, OFFICE_IDLE_MS, OFFICE_IDLE_STORAGE_KEY, OFFICE_SESSION_MS, OFFICE_WARNING_LEAD_MS, officeSessionWarning, openOfficeIdleChannel, parseOfficeIdleMessage, publishOfficeIdleMark, readOfficeIdleEndMark, readOfficeIdleMark, readSharedOfficeIdle, readSharedOfficeIdleEnd, sessionShellSchema, sharedIdleForSession } from '../../shared'
 import { isOfficeMember, sessionShellKey } from './session-shell'
 
 /**
  * Office idle and the absolute cap (ADR-0057).
- * One idle mark is shared by every tab of this browser. A key, a click,
- * or a command in a visible tab moves it. A live refresh is a fetch, and
- * a hidden tab is not a person's action, so neither moves it.
- * When the half hour passes, this tab signs out and tells the others.
- * The draft stays. A poll also signs out when the server has ended the session.
+ * One idle mark is shared by every tab of this browser when storage works.
+ * A key, a click, or a command in a visible tab moves it. A live refresh
+ * is a fetch, and a hidden tab is not a person's action, so neither moves it.
+ * When storage or BroadcastChannel is blocked, this tab keeps its own clock
+ * and still signs out after a quiet half hour. The draft stays either way.
+ * A poll also signs out when the server has ended the session.
  */
 export function useSessionLifetime() {
   const { endSessionKeepingDraft } = useShellSignOut()
@@ -20,7 +21,7 @@ export function useSessionLifetime() {
   const idleSession = useState<string | null>('office-idle-session', () => null)
 
   if (import.meta.client) {
-    const storedAtStart = readSharedOfficeIdle(localStorage.getItem(OFFICE_IDLE_STORAGE_KEY))
+    const storedAtStart = readOfficeIdleMark(browserStorage())
     if (idleMark.value === null)
       idleMark.value = storedAtStart?.lastActionAt ?? Date.now()
     const idle = createOfficeIdleClock(storedAtStart?.lastActionAt ?? idleMark.value)
@@ -30,21 +31,25 @@ export function useSessionLifetime() {
     let idleOn = false
     let stopped = false
     let ending = false
-    const channel = new BroadcastChannel(OFFICE_IDLE_CHANNEL)
+    // Missing or throwing BroadcastChannel leaves this tab on its own clock.
+    const channel = openOfficeIdleChannel(typeof BroadcastChannel === 'function' ? BroadcastChannel : undefined)
 
     function armIdle() {
       cancelIdle?.()
-      const shared = readSharedOfficeIdle(localStorage.getItem(OFFICE_IDLE_STORAGE_KEY))
-      if (shared?.signedInAt === idleSession.value)
-        idle.reset(shared.lastActionAt)
+      const shared = readOfficeIdleMark(browserStorage())
+      // Only a newer shared stamp moves the wait. An older one is a write that did not land.
+      const later = laterOfficeIdleAt(idleMark.value, shared, idleSession.value)
+      if (later !== null && (idleMark.value === null || later > idleMark.value))
+        idle.reset(later)
       // The wait is whatever is left of the shared half hour. A fresh
       // half hour here would let a refresh, or another tab mounting,
       // push the sign-out out.
       const id = setTimeout(() => {
         nowMs.value = Date.now()
-        const shared = readSharedOfficeIdle(localStorage.getItem(OFFICE_IDLE_STORAGE_KEY))
-        if (shared && shared.signedInAt === idleSession.value && shared.lastActionAt > (idleMark.value ?? 0))
-          applyMark(shared)
+        const shared = readOfficeIdleMark(browserStorage())
+        const later = laterOfficeIdleAt(idleMark.value, shared, idleSession.value)
+        if (later !== null && idleSession.value && later > (idleMark.value ?? 0))
+          applyMark({ signedInAt: idleSession.value, lastActionAt: later })
         if (idle.due(nowMs.value))
           endFromIdle()
         else
@@ -61,21 +66,18 @@ export function useSessionLifetime() {
     }
 
     function publishMark(record: SharedOfficeIdle) {
-      localStorage.setItem(OFFICE_IDLE_STORAGE_KEY, JSON.stringify(record))
-      channel.postMessage({ kind: 'action', signedInAt: record.signedInAt, lastActionAt: record.lastActionAt })
-      applyMark(record)
+      // Apply the returned mark even when the shared write was skipped.
+      applyMark(publishOfficeIdleMark(browserStorage(), channel, record))
     }
 
     function endFromIdle() {
       if (ending)
         return
       ending = true
-      const signedInAt = idleSession.value ?? readShell()?.signedInAt
-      if (signedInAt) {
-        localStorage.setItem(OFFICE_IDLE_END_KEY, JSON.stringify({ signedInAt }))
-        channel.postMessage({ kind: 'end', signedInAt })
-      }
-      void endSessionKeepingDraft()
+      const signedInAt = idleSession.value ?? readShell()?.signedInAt ?? null
+      finishOfficeIdle(browserStorage(), channel, signedInAt, () => {
+        void endSessionKeepingDraft()
+      })
     }
 
     function onRemoteEnd(signedInAt: string) {
@@ -97,7 +99,8 @@ export function useSessionLifetime() {
     }
 
     function onStorage(event: StorageEvent) {
-      if (event.storageArea !== localStorage)
+      const area = browserStorage()
+      if (area === null || event.storageArea !== area)
         return
       if (event.key === OFFICE_IDLE_STORAGE_KEY) {
         const record = readSharedOfficeIdle(event.newValue)
@@ -111,7 +114,7 @@ export function useSessionLifetime() {
       }
     }
 
-    function onChannel(event: MessageEvent) {
+    function onChannel(event: { data: unknown }) {
       const message = parseOfficeIdleMessage(event.data)
       if (message === null)
         return
@@ -125,14 +128,14 @@ export function useSessionLifetime() {
       const signedInAt = idleSession.value
       if (!signedInAt)
         return
-      const current = readSharedOfficeIdle(localStorage.getItem(OFFICE_IDLE_STORAGE_KEY))
-        ?? { signedInAt, lastActionAt: idleMark.value ?? Date.now() }
-      if (current.signedInAt !== signedInAt)
-        return
-      const next = sharedIdleAfterAction(current, Date.now(), document.visibilityState === 'visible')
-      if (next === null)
-        return
-      publishMark(next)
+      noteOfficeIdleAction(
+        browserStorage(),
+        channel,
+        { signedInAt, lastActionAt: idleMark.value ?? Date.now() },
+        Date.now(),
+        document.visibilityState === 'visible',
+        applyMark,
+      )
     }
 
     function startIdle() {
@@ -180,10 +183,12 @@ export function useSessionLifetime() {
       const shell = readShell()
       if (!shell)
         return
-      const shared = readSharedOfficeIdle(localStorage.getItem(OFFICE_IDLE_STORAGE_KEY))
+      const shared = readOfficeIdleMark(browserStorage())
       // The dedicated timer can be a full half hour if this tab's clock
-      // lagged the mark. The poll is the backstop: the shared mark is due.
-      if (isOfficeMember(shell.role) && shared?.signedInAt === shell.signedInAt && Date.now() - shared.lastActionAt >= OFFICE_IDLE_MS) {
+      // lagged the mark. The poll is the backstop: the later of this tab
+      // and the shared stamp is due. A failed write must not count as quiet.
+      const mark = laterOfficeIdleAt(idleMark.value, shared, shell.signedInAt)
+      if (isOfficeMember(shell.role) && mark !== null && Date.now() - mark >= OFFICE_IDLE_MS) {
         endFromIdle()
         return
       }
@@ -217,7 +222,7 @@ export function useSessionLifetime() {
         cancelEnd?.()
         return
       }
-      const ended = readSharedOfficeIdleEnd(localStorage.getItem(OFFICE_IDLE_END_KEY))
+      const ended = readOfficeIdleEndMark(browserStorage())
       if (ended?.signedInAt === next.signedInAt) {
         onRemoteEnd(next.signedInAt)
         return
@@ -225,10 +230,10 @@ export function useSessionLifetime() {
       // The first tab of a sign-in starts the half hour. A later tab keeps that mark.
       if (idleSession.value !== next.signedInAt) {
         idleSession.value = next.signedInAt
-        const stored = readSharedOfficeIdle(localStorage.getItem(OFFICE_IDLE_STORAGE_KEY))
+        const stored = readOfficeIdleMark(browserStorage())
         const aligned = sharedIdleForSession(stored, next.signedInAt, Date.now())
         if (stored?.signedInAt !== next.signedInAt) {
-          localStorage.removeItem(OFFICE_IDLE_END_KEY)
+          clearOfficeIdleEnd(browserStorage())
           publishMark(aligned)
         }
         else {
@@ -261,6 +266,16 @@ export function useSessionLifetime() {
   }
 
   return { notices }
+}
+
+/** Site data can throw on the property itself, before getItem. Null runs the clock per tab. */
+function browserStorage(): Storage | null {
+  try {
+    return localStorage
+  }
+  catch {
+    return null
+  }
 }
 
 function readShell(): SessionShell | null {
