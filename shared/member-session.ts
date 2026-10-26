@@ -92,14 +92,13 @@ export function driverSessionBanners(signedInAt: Date, now: Date, holdingRide: b
 }
 
 /**
- * The office idle clock. A hidden tab is not a person's action.
- * `refresh` is the live board read: it never moves the clock.
+ * The office idle clock for one tab.
+ * A hidden tab is not a person's action (`sharedIdleAfterAction`).
+ * A live refresh is not one either, so only `reset` moves the mark.
  */
 export interface OfficeIdleClock {
-  action: (at: number, visible: boolean) => void
-  refresh: () => void
   due: (at: number) => boolean
-  /** Milliseconds until idle. Starting the timer over must use this, or a refresh grants another half hour. */
+  /** Milliseconds until idle. Starting the timer over must use this, or a fresh wait grants another half hour. */
   remaining: (at: number) => number
   /** Replace the mark. A shared stamp from another tab may be earlier or later. */
   reset: (at: number) => void
@@ -108,14 +107,6 @@ export interface OfficeIdleClock {
 export function createOfficeIdleClock(startedAt: number): OfficeIdleClock {
   let lastActionAt = startedAt
   return {
-    action(at, visible) {
-      if (!visible || at < lastActionAt)
-        return
-      lastActionAt = at
-    },
-    refresh() {
-      // A board left refreshing still goes idle (ADR-0057).
-    },
     due(at) {
       return at - lastActionAt >= OFFICE_IDLE_MS
     },
@@ -209,6 +200,223 @@ export function sharedIdleAfterAction(current: SharedOfficeIdle, at: number, vis
   if (!visible || at <= current.lastActionAt)
     return null
   return { signedInAt: current.signedInAt, lastActionAt: at }
+}
+
+/** The three storage calls the idle clock makes. Null means the browser blocked storage. */
+export interface OfficeIdleStorage {
+  getItem: (key: string) => string | null
+  setItem: (key: string, value: string) => void
+  removeItem: (key: string) => void
+}
+
+/**
+ * Other tabs of this browser. When there is no channel, every method
+ * does nothing and the storage event plus the 60s poll still run.
+ */
+export interface OfficeIdleChannel {
+  postMessage: (message: OfficeIdleMessage) => void
+  addEventListener: (type: 'message', listener: (event: { data: unknown }) => void) => void
+  removeEventListener: (type: 'message', listener: (event: { data: unknown }) => void) => void
+  close: () => void
+}
+
+interface OfficeIdleChannelPort {
+  postMessage: (message: unknown) => void
+  addEventListener: (type: 'message', listener: (event: { data: unknown }) => void) => void
+  removeEventListener: (type: 'message', listener: (event: { data: unknown }) => void) => void
+  close: () => void
+}
+
+/** `BroadcastChannel`, or a stand-in whose constructor throws. */
+export type OfficeIdleChannelFactory = new (name: string) => OfficeIdleChannelPort
+
+/**
+ * A throw is "no shared mark". Privacy mode and a disabled site store do this.
+ */
+export function readOfficeIdleMark(storage: OfficeIdleStorage | null): SharedOfficeIdle | null {
+  if (storage === null)
+    return null
+  try {
+    return readSharedOfficeIdle(storage.getItem(OFFICE_IDLE_STORAGE_KEY))
+  }
+  catch {
+    return null
+  }
+}
+
+/** A throw is "no shared end". This tab decides its own sign-out. */
+export function readOfficeIdleEndMark(storage: OfficeIdleStorage | null): SharedOfficeIdleEnd | null {
+  if (storage === null)
+    return null
+  try {
+    return readSharedOfficeIdleEnd(storage.getItem(OFFICE_IDLE_END_KEY))
+  }
+  catch {
+    return null
+  }
+}
+
+/** A throw is skipped. Clearing the end stamp is only for the other tabs. */
+export function clearOfficeIdleEnd(storage: OfficeIdleStorage | null): void {
+  if (storage === null)
+    return
+  try {
+    storage.removeItem(OFFICE_IDLE_END_KEY)
+  }
+  catch {
+    // This tab still signs out. The other tabs will not hear a blocked store.
+  }
+}
+
+function writeOfficeIdleRaw(storage: OfficeIdleStorage | null, key: string, value: string): void {
+  if (storage === null)
+    return
+  try {
+    storage.setItem(key, value)
+  }
+  catch {
+    // Quota or a blocked store. The caller still applies the mark on this tab.
+  }
+}
+
+function postOfficeIdle(channel: OfficeIdleChannel, message: OfficeIdleMessage): void {
+  try {
+    channel.postMessage(message)
+  }
+  catch {
+    // A closed channel matches no channel. The storage event and the poll remain.
+  }
+}
+
+/**
+ * Share the mark, then hand it back so this tab can apply it.
+ * The write is best-effort: a throw still returns `record`.
+ */
+export function publishOfficeIdleMark(
+  storage: OfficeIdleStorage | null,
+  channel: OfficeIdleChannel,
+  record: SharedOfficeIdle,
+): SharedOfficeIdle {
+  writeOfficeIdleRaw(storage, OFFICE_IDLE_STORAGE_KEY, JSON.stringify(record))
+  postOfficeIdle(channel, { kind: 'action', signedInAt: record.signedInAt, lastActionAt: record.lastActionAt })
+  return record
+}
+
+/**
+ * The mark this tab waits on. A shared stamp counts only for this sign-in.
+ * The later one wins: another tab's newer action extends the wait, and an
+ * older stamp left behind by a failed write does not pull this tab back.
+ */
+export function laterOfficeIdleAt(
+  localAt: number | null,
+  shared: SharedOfficeIdle | null,
+  signedInAt: string | null,
+): number | null {
+  const sharedAt = shared !== null && signedInAt !== null && shared.signedInAt === signedInAt
+    ? shared.lastActionAt
+    : null
+  if (localAt === null)
+    return sharedAt
+  if (sharedAt === null)
+    return localAt
+  return Math.max(localAt, sharedAt)
+}
+
+/**
+ * A visible key, click, or command moves this tab even when publishing fails.
+ * `apply` is that local move. A hidden tab, an older stamp, and a different
+ * sign-in leave the clock where it is.
+ */
+export function noteOfficeIdleAction(
+  storage: OfficeIdleStorage | null,
+  channel: OfficeIdleChannel,
+  local: SharedOfficeIdle,
+  at: number,
+  visible: boolean,
+  apply: (record: SharedOfficeIdle) => void,
+): void {
+  const stored = readOfficeIdleMark(storage)
+  const current = stored ?? local
+  if (current.signedInAt !== local.signedInAt)
+    return
+  const next = sharedIdleAfterAction(current, at, visible)
+  if (next === null)
+    return
+  apply(publishOfficeIdleMark(storage, channel, next))
+}
+
+/**
+ * Ask the other tabs to follow, then sign this tab out.
+ * `endSessionKeepingDraft` runs even when the write was skipped,
+ * so a blocked store still ends the session and the draft stays.
+ */
+export function finishOfficeIdle(
+  storage: OfficeIdleStorage | null,
+  channel: OfficeIdleChannel,
+  signedInAt: string | null,
+  endSessionKeepingDraft: () => void,
+): void {
+  if (signedInAt) {
+    writeOfficeIdleRaw(storage, OFFICE_IDLE_END_KEY, JSON.stringify({ signedInAt }))
+    postOfficeIdle(channel, { kind: 'end', signedInAt })
+  }
+  endSessionKeepingDraft()
+}
+
+function silentOfficeIdleChannel(): OfficeIdleChannel {
+  return {
+    postMessage() {
+      // No channel. A storage event, when the store works, and the poll still run.
+    },
+    addEventListener() {
+      // Nothing to hear.
+    },
+    removeEventListener() {
+      // Nothing was subscribed.
+    },
+    close() {
+      // Nothing was opened.
+    },
+  }
+}
+
+/**
+ * `undefined` means this browser has no BroadcastChannel.
+ * A constructor that throws is the same: this tab keeps its own clock.
+ */
+export function openOfficeIdleChannel(Factory: OfficeIdleChannelFactory | undefined): OfficeIdleChannel {
+  if (typeof Factory !== 'function')
+    return silentOfficeIdleChannel()
+  try {
+    const channel = new Factory(OFFICE_IDLE_CHANNEL)
+    return {
+      postMessage(message) {
+        try {
+          channel.postMessage(message)
+        }
+        catch {
+          // The other tabs still have the storage event and the poll.
+        }
+      },
+      addEventListener(type, listener) {
+        channel.addEventListener(type, listener)
+      },
+      removeEventListener(type, listener) {
+        channel.removeEventListener(type, listener)
+      },
+      close() {
+        try {
+          channel.close()
+        }
+        catch {
+          // Already closed, or the browser refused. This tab is done with it.
+        }
+      },
+    }
+  }
+  catch {
+    return silentOfficeIdleChannel()
+  }
 }
 
 export function parseOfficeIdleMessage(value: unknown): OfficeIdleMessage | null {

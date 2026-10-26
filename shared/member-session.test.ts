@@ -1,6 +1,7 @@
+import type { OfficeIdleStorage } from './member-session'
 import { expect, it } from 'vitest'
 import { instantFromWallClock } from './date'
-import { createOfficeIdleClock, DRIVER_HELD_SESSION_MS, DRIVER_WARNING_LEAD_MS, driverSessionBanners, memberSessionCapMs, OFFICE_IDLE_MS, OFFICE_SESSION_MS, OFFICE_WARNING_LEAD_MS, officeSessionWarning, parseOfficeIdleMessage, readSharedOfficeIdle, readSharedOfficeIdleEnd, rideHoldsDriverSession, sharedIdleAfterAction, sharedIdleForSession } from './member-session'
+import { clearOfficeIdleEnd, createOfficeIdleClock, DRIVER_HELD_SESSION_MS, DRIVER_WARNING_LEAD_MS, driverSessionBanners, finishOfficeIdle, laterOfficeIdleAt, memberSessionCapMs, noteOfficeIdleAction, OFFICE_IDLE_MS, OFFICE_SESSION_MS, OFFICE_WARNING_LEAD_MS, officeSessionWarning, openOfficeIdleChannel, parseOfficeIdleMessage, readOfficeIdleEndMark, readOfficeIdleMark, readSharedOfficeIdle, readSharedOfficeIdleEnd, rideHoldsDriverSession, sharedIdleAfterAction, sharedIdleForSession } from './member-session'
 
 const signedIn = new Date('2026-10-25T06:00:00.000Z')
 
@@ -79,25 +80,155 @@ it('holds a driver session only for today\'s in-progress Ride', () => {
   expect(rideHoldsDriverSession({ ...held, state: 'handed_off', driverId: null }, now)).toBe(false)
 })
 
-it('resets the office idle clock on a visible action, and not on a refresh or a hidden tab', () => {
-  const clock = createOfficeIdleClock(0)
+it('resets the office idle clock on a visible action, and a hidden tab does not move the mark', () => {
+  // A live refresh is not an action. The e2e in session-lifetime.spec.ts is that proof.
+  // This clock has no refresh method.
+  const started = { signedInAt: 'sign-in-1', lastActionAt: 0 }
+  const clock = createOfficeIdleClock(started.lastActionAt)
   expect(clock.due(OFFICE_IDLE_MS - 1)).toBe(false)
-  expect(clock.due(OFFICE_IDLE_MS)).toBe(true)
-
-  clock.action(10 * 60 * 1000, false)
-  expect(clock.due(OFFICE_IDLE_MS)).toBe(true)
-
-  clock.refresh()
   expect(clock.due(OFFICE_IDLE_MS)).toBe(true)
   expect(clock.remaining(10 * 60 * 1000)).toBe(OFFICE_IDLE_MS - 10 * 60 * 1000)
 
-  clock.action(5 * 60 * 1000, true)
+  // A hidden tab is not a person, so the mark stays where the clock started.
+  expect(sharedIdleAfterAction(started, 10 * 60 * 1000, false)).toBeNull()
+  expect(clock.due(OFFICE_IDLE_MS)).toBe(true)
+
+  const visible = sharedIdleAfterAction(started, 5 * 60 * 1000, true)
+  expect(visible).toEqual({ signedInAt: 'sign-in-1', lastActionAt: 5 * 60 * 1000 })
+  clock.reset(5 * 60 * 1000)
   expect(clock.remaining(5 * 60 * 1000)).toBe(OFFICE_IDLE_MS)
   expect(clock.due(5 * 60 * 1000 + OFFICE_IDLE_MS - 1)).toBe(false)
   expect(clock.due(5 * 60 * 1000 + OFFICE_IDLE_MS)).toBe(true)
 
   clock.reset(0)
   expect(clock.due(OFFICE_IDLE_MS)).toBe(true)
+})
+
+function blockedStorage(): OfficeIdleStorage {
+  const blocked = (): never => {
+    throw new Error('SecurityError')
+  }
+  return { getItem: blocked, setItem: blocked, removeItem: blocked }
+}
+
+it('shares the idle mark when storage accepts the write', () => {
+  const saved = new Map<string, string>()
+  const storage: OfficeIdleStorage = {
+    getItem: key => saved.get(key) ?? null,
+    setItem: (key, value) => {
+      saved.set(key, value)
+    },
+    removeItem: (key) => {
+      saved.delete(key)
+    },
+  }
+  const channel = openOfficeIdleChannel(undefined)
+  const clock = createOfficeIdleClock(0)
+  noteOfficeIdleAction(storage, channel, { signedInAt: 'sign-in-1', lastActionAt: 0 }, 5_000, true, (record) => {
+    clock.reset(record.lastActionAt)
+  })
+  expect(readOfficeIdleMark(storage)).toEqual({ signedInAt: 'sign-in-1', lastActionAt: 5_000 })
+  expect(clock.remaining(5_000)).toBe(OFFICE_IDLE_MS)
+  let keptDraft = false
+  finishOfficeIdle(storage, channel, 'sign-in-1', () => {
+    keptDraft = true
+  })
+  expect(keptDraft).toBe(true)
+  expect(readOfficeIdleEndMark(storage)).toEqual({ signedInAt: 'sign-in-1' })
+})
+
+it('keeps a visible action when the old mark is still readable and the write throws', () => {
+  const stored = JSON.stringify({ signedInAt: 'sign-in-1', lastActionAt: 0 })
+  const storage: OfficeIdleStorage = {
+    getItem: () => stored,
+    setItem: () => {
+      throw new Error('QuotaExceededError')
+    },
+    removeItem: () => {
+      throw new Error('QuotaExceededError')
+    },
+  }
+  const channel = openOfficeIdleChannel(undefined)
+  const clock = createOfficeIdleClock(0)
+  noteOfficeIdleAction(storage, channel, { signedInAt: 'sign-in-1', lastActionAt: 0 }, 60_000, true, (record) => {
+    clock.reset(record.lastActionAt)
+  })
+  const shared = readOfficeIdleMark(storage)
+  expect(shared).toEqual({ signedInAt: 'sign-in-1', lastActionAt: 0 })
+  // The readable stamp is the one the write did not replace. Idle is measured from the action.
+  expect(laterOfficeIdleAt(60_000, shared, 'sign-in-1')).toBe(60_000)
+  expect(laterOfficeIdleAt(60_000, { signedInAt: 'sign-in-1', lastActionAt: 120_000 }, 'sign-in-1')).toBe(120_000)
+  expect(clock.due(OFFICE_IDLE_MS)).toBe(false)
+  expect(clock.remaining(60_000)).toBe(OFFICE_IDLE_MS)
+  expect(clock.due(60_000 + OFFICE_IDLE_MS)).toBe(true)
+})
+
+it('keeps this tab\'s idle clock when storage throws, and still signs out keeping the draft', () => {
+  const storage = blockedStorage()
+  const channel = openOfficeIdleChannel(undefined)
+  const clock = createOfficeIdleClock(0)
+  const local = { signedInAt: 'sign-in-1', lastActionAt: 0 }
+
+  expect(readOfficeIdleMark(storage)).toBeNull()
+  expect(readOfficeIdleEndMark(storage)).toBeNull()
+  expect(() => clearOfficeIdleEnd(storage)).not.toThrow()
+
+  noteOfficeIdleAction(storage, channel, local, 60_000, true, (record) => {
+    clock.reset(record.lastActionAt)
+  })
+
+  expect(clock.remaining(60_000)).toBe(OFFICE_IDLE_MS)
+  expect(clock.due(60_000 + OFFICE_IDLE_MS - 1)).toBe(false)
+  expect(clock.due(60_000 + OFFICE_IDLE_MS)).toBe(true)
+
+  let keptDraft = false
+  finishOfficeIdle(storage, channel, local.signedInAt, () => {
+    keptDraft = true
+  })
+  expect(keptDraft).toBe(true)
+})
+
+class BlockedChannel {
+  constructor(_name: string) {
+    throw new Error('SecurityError')
+  }
+
+  postMessage(): void {
+    throw new Error('unreachable')
+  }
+
+  addEventListener(): void {
+    throw new Error('unreachable')
+  }
+
+  removeEventListener(): void {
+    throw new Error('unreachable')
+  }
+
+  close(): void {
+    throw new Error('unreachable')
+  }
+}
+
+it('signs this tab out when BroadcastChannel is missing or its constructor throws', () => {
+  const storage = blockedStorage()
+  const local = { signedInAt: 'sign-in-1', lastActionAt: 0 }
+  for (const factory of [undefined, BlockedChannel]) {
+    const channel = openOfficeIdleChannel(factory)
+    const clock = createOfficeIdleClock(0)
+    noteOfficeIdleAction(storage, channel, local, 1_000, true, (record) => {
+      clock.reset(record.lastActionAt)
+    })
+    expect(clock.due(1_000 + OFFICE_IDLE_MS)).toBe(true)
+    let keptDraft = false
+    finishOfficeIdle(storage, channel, local.signedInAt, () => {
+      keptDraft = true
+    })
+    expect(keptDraft).toBe(true)
+    expect(() => {
+      channel.close()
+    }).not.toThrow()
+  }
 })
 
 it('keeps one idle mark for every tab of a sign-in', () => {
