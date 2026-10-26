@@ -54,13 +54,13 @@ The image has no `scripts/` and does not run the seed. Run it from a local check
 
 Create a local `.env.seed` and do not commit it. It holds the preview `AUTH_DATABASE_URL` and `DATABASE_MIGRATE_URL`, `DEPLOY_ENV=preview`, `MAILER=console`, an empty `RESEND_API_KEY`, and `DEMO_SEED=1`. `DEMO_SEED_PASSWORD` is optional.
 
-`pnpm db:seed:demo` loads `.env` and then `.env.migrate`. A later file overrides an earlier one, and that script does not load `.env.seed`, so it would keep the local database. A name already set in the shell wins over the file. Apply migrations to the preview database first, then run the seed with only `.env.seed`:
+Apply migrations to the preview database first, then run:
 
 ```sh
-node --import ./scripts/register-ts.mjs --env-file=.env.seed ./scripts/demo-seed.ts
+pnpm db:seed:demo
 ```
 
-A second run replaces the `demo` Tenant and touches nothing else.
+That command loads `.env`, then `.env.migrate`, then `.env.seed` when the file exists. A later file overrides an earlier one, so the preview URLs and `MAILER=console` replace the local ones. A name already set in the shell wins over the files. A second run replaces the `demo` Tenant and touches nothing else.
 
 Keep `DEMO_SEED_PASSWORD` only in a password manager. If you leave it unset, the command prints a generated password once. Save it. It must never go into the repo, `.env.example`, an issue, or a pull request.
 

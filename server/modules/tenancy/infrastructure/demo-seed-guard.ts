@@ -31,7 +31,9 @@ export interface DemoSeedDecisionInput {
  * then the mailer, then a non-blank Resend key. A blank key counts as
  * unset. Production is refused even when the mailer is console, because
  * preview sets the same mailer as production and a mailer check alone
- * cannot tell them apart. Any argument is refused so a password cannot
+ * cannot tell them apart. An unset deploy env is the local run: it stays
+ * allowed when the mailer is safe, and unset with `MAILER=resend` is
+ * still refused. Any argument is refused so a password cannot
  * travel on the command line.
  */
 export function decideDemoSeed(input: DemoSeedDecisionInput): DemoSeedRefusal | null {
