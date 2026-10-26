@@ -10,6 +10,7 @@ assertLoadedRlsDatabaseEnv()
 export default defineConfig({
   test: {
     include: ['server/**/*.rls.test.ts'],
+    setupFiles: ['server/modules/tenancy/infrastructure/office-claim-fixture.setup.ts'],
     fileParallelism: false,
     // RLS tests spawn the provisioning script (tsx cold start ~3s on CI).
     testTimeout: 30_000,

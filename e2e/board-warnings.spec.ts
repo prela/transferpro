@@ -1,6 +1,6 @@
 import type { APIResponse } from '@playwright/test'
-import { expect, test } from '@playwright/test'
 import { instantFromWallClock } from '../shared/date'
+import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, switchLocale, switchTheme } from './fixtures/ui'

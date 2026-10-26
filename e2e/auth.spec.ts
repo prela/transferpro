@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures/playwright'
 import { seedTenant, seedUserWithoutMembership } from './fixtures/seed'
 import { openUserMenu, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
 

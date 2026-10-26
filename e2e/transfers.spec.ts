@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test'
-import { expect, test } from '@playwright/test'
 import { addCalendarDays } from '../shared/date'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
+import { expect, test } from './fixtures/playwright'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, openListbox, signIn, switchLocale, switchTheme } from './fixtures/ui'
 

@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { expect, test } from './fixtures/playwright'
 import { failInvitationMail, memberPassword, seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, expectNoInvitationCookie, invite, openInvite, openMembers, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 

@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { failedMailResendSchema, tenantRoleSchema, WORK_ORDER_STATUSES } from '../../../../shared'
 import { getLogger, hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { failedWorkOrderMatters, invitationIsCurrent, loadInvitationAttempt, readOutboxKind, resendFailedOutboxEntry, settleFailedOutboxEntry } from '../../mail'
-import { mailerForApp, readInvitationEmails, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { mailerForApp, officeWriteClaim, readInvitationEmails, TenantAccessError, withTenantFromSession } from '../../tenancy'
 import { toInstant } from './transfers'
 import { loadOutboxAttempt } from './work-order-attempt'
 
@@ -230,7 +230,8 @@ function resendStore(transaction: TenantTransaction, context: TenantContext, kin
 /**
  * One immediate resend. A work order is Admin and dispatcher. An invitation
  * is Admin only: a dispatcher is 403 here, not by hiding the row. No session
- * is 401. A missing id, including another Tenant's, is 404. Success, stale,
+ * is 401. A missing or stale screen Tenant is 409 before the row is read.
+ * A missing id, including another Tenant's, is 404. Success, stale,
  * and failure are the body. Nothing is audited. The log is the entry id, the
  * kind, and the outcome. The invitation id is never read from the request.
  */
@@ -241,10 +242,13 @@ export async function resendFailedMail(
   mailer: Pick<Mailer, 'sendWorkOrder' | 'sendInvitation'> = mailerForApp(loadAppEnv()),
   log?: Logger,
 ): Promise<z.infer<typeof failedMailResendSchema>> {
-  // Parsed before the session so a bad id does not change the 401/403 order.
-  // The throw waits until the role is allowed.
+  // The id is parsed before the session so a bad id does not change the
+  // 401/403 order. The throw still waits until the role is allowed.
+  // The claim is compared as the session opens, before that role check,
+  // so a stale screen does not resend under the company the session moved to.
   const id = z.uuid().safeParse(entryId)
-  const emptyBody = z.strictObject({}).safeParse(body ?? {})
+  const office = officeWriteClaim(headers, body ?? {})
+  const emptyBody = z.strictObject({}).safeParse(office.body ?? {})
   return withTenantFromSession(headers, async ({ actor, context, transaction }) => {
     officeOnly(actor.role)
     if (!id.success || !emptyBody.success)
@@ -264,5 +268,5 @@ export async function resendFailedMail(
     if (outcome === 'missing')
       throw new FailedMailNotFoundError()
     return failedMailResendSchema.parse({ outcome })
-  })
+  }, office)
 }

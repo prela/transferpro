@@ -1,7 +1,7 @@
 import type { APIResponse, Page } from '@playwright/test'
-import { expect, test } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
+import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { openRideMenu, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'

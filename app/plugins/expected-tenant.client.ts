@@ -1,4 +1,5 @@
-import { isOfficeWrite, TENANT_CHANGED } from '../../shared'
+import type { OfficeClaimRequest } from '../../shared'
+import { applyOfficeClaim, TENANT_CHANGED } from '../../shared'
 import { screenTenantIdKey, tenantChangedKey } from '../composables/screen-tenant'
 import { sessionShellKey } from '../composables/session-shell'
 
@@ -6,20 +7,14 @@ import { sessionShellKey } from '../composables/session-shell'
  * A later poll can see a company switched in another tab. The form must
  * still name the company it was opened for (issue #506).
  *
- * Nuxt binds `$fetch` before plugins run. ofetch has already captured
- * `window.fetch`, so this plugin does not replace it. The inline script in
- * `nuxt.config` captured the original and calls the hook installed here.
+ * `$fetch.create` adds the claim before ofetch serialises the body. Nuxt's
+ * generated fetch module would keep the previous function, so
+ * `office-fetch-live` makes that export call the current `globalThis.$fetch`.
+ * This plugin replaces it. The fetch function is read at call time, so the
+ * tenant-switch hold (which replaces `window.fetch` only while a switch is
+ * in progress) still applies. Nothing patches `window.fetch` at startup,
+ * and there is no inline script for a Content-Security-Policy to block.
  */
-
-interface TransferproFetchHook {
-  (input: RequestInfo | URL, init: RequestInit | undefined, native: typeof fetch): Promise<Response>
-}
-
-declare global {
-  interface Window {
-    __transferproFetch?: TransferproFetchHook
-  }
-}
 
 const reloadKey = 'transferpro-tenant-changed'
 
@@ -36,17 +31,18 @@ function pathname(url: string): string {
   return url.split('?')[0] ?? url
 }
 
-/** The claim rides in the JSON body as well as the header. A non-JSON body keeps the header only. */
-function mergeClaim(body: string, tenantId: string): string {
-  try {
-    const parsed: unknown = JSON.parse(body)
-    if (isRecord(parsed))
-      return JSON.stringify({ ...parsed, expectedTenantId: tenantId })
-  }
-  catch {
-    // A body that is not JSON still sends the header.
-  }
-  return body
+async function responsePayload(response: Response & { _data?: unknown }): Promise<unknown> {
+  if (response._data !== undefined)
+    return response._data
+  return response.clone().json().catch(() => undefined)
+}
+
+function requestUrl(request: RequestInfo): string {
+  if (typeof request === 'string')
+    return request
+  if (request instanceof URL)
+    return request.href
+  return request.url
 }
 
 export default defineNuxtPlugin({
@@ -84,33 +80,41 @@ export default defineNuxtPlugin({
       }, RELOAD_MS)
     }
 
-    window.__transferproFetch = async (input, init, native) => {
-      const method = init?.method ?? (input instanceof Request ? input.method : 'GET')
-      const url = input instanceof Request ? input.url : String(input)
-      const tenantId = screenTenantId.value
-      if (tenantId !== null && isOfficeWrite(method, url)) {
-        const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
-        headers.set('x-expected-tenant-id', tenantId)
-        const next: RequestInit = init ?? {}
-        next.headers = headers
-        if (typeof next.body === 'string')
-          next.body = mergeClaim(next.body, tenantId)
-        else if (next.body == null && !(input instanceof Request))
-          next.body = JSON.stringify({ expectedTenantId: tenantId })
-        init = next
-      }
-      const response = await native(input, init)
-      if (screenTenantId.value === null && pathname(url) === '/api/session' && response.ok) {
-        const data: unknown = await response.clone().json().catch(() => undefined)
-        if (isRecord(data))
+    // Nuxt's `$fetch.create` type lists one argument. ofetch accepts a second
+    // one, and that is where the fetch implementation lives. Passing it here
+    // keeps Nuxt's defaults and reads `window.fetch` on each call.
+    const createOfficeFetch = $fetch.create as (
+      defaults: Parameters<typeof $fetch.create>[0],
+      globalOptions: { fetch: typeof globalThis.fetch },
+    ) => typeof globalThis.$fetch
+    const officeFetch = createOfficeFetch({
+      onRequest({ request, options }) {
+        const tenantId = screenTenantId.value
+        if (tenantId === null)
+          return
+        const claimed = applyOfficeClaim({
+          method: options.method ?? 'GET',
+          url: requestUrl(request),
+          headers: options.headers,
+          body: options.body,
+        } satisfies OfficeClaimRequest, tenantId)
+        if (!claimed.claimed)
+          return
+        options.headers = claimed.headers
+        options.body = claimed.body as typeof options.body
+      },
+      async onResponse({ request, response }) {
+        const url = requestUrl(request)
+        const data = await responsePayload(response)
+        if (screenTenantId.value === null && pathname(url) === '/api/session' && response.ok && isRecord(data))
           rememberTenant(data.tenantId)
-      }
-      if (response.status === 409) {
-        const data: unknown = await response.clone().json().catch(() => undefined)
-        if (isRecord(data) && data.code === TENANT_CHANGED)
+        if (response.status === 409 && isRecord(data) && data.code === TENANT_CHANGED)
           showTenantChanged()
-      }
-      return response
-    }
+      },
+    }, {
+      fetch: (input, init) => globalThis.fetch(input, init),
+    })
+
+    globalThis.$fetch = officeFetch
   },
 })

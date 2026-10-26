@@ -9,7 +9,7 @@ import { archiveLocation, createLocation, updateLocation } from '../modules/loca
 import { archivePartner, createPartner, restorePartner, updatePartner } from '../modules/partners'
 import { setRosterDay } from '../modules/roster'
 import { changeMemberRole, chooseActiveTenant, closeTenantRuntime, createTenant, handleAuthRequest, inviteMember, readSessionShell, removeTenantMember, revokePendingInvitation, switchActiveTenant, TenantAccessError, TenantChangedError, updateTenantSettings } from '../modules/tenancy'
-import { acceptRide, acceptRideByPhone, addUnavailability, assignRide, cancelRide, changeRidePartner, changeUnavailability, changeVehicle, clearRide, correctTransfer, createTransfer, declineRide, handOffRide, markNoShow, markRideDone, reassignRide, recordRideLanding, removeUnavailability, takeBackRide } from '../modules/transfers'
+import { acceptRide, acceptRideByPhone, addUnavailability, assignRide, cancelRide, changeRidePartner, changeUnavailability, changeVehicle, clearRide, correctTransfer, createTransfer, declineRide, handOffRide, markNoShow, markRideDone, reassignRide, recordRideLanding, removeUnavailability, resendFailedMail, takeBackRide } from '../modules/transfers'
 import { archiveVehicle, createVehicle, updateVehicle } from '../modules/vehicles'
 import postClient from './clients.post'
 
@@ -210,6 +210,7 @@ it('refuses a stale screen after the session moves, and every office write does 
     () => removeTenantMember(stale, id, {}),
     () => changeMemberRole(stale, id, {}),
     () => revokePendingInvitation(stale, id, {}),
+    () => resendFailedMail(stale, id, {}),
   ]
   for (const write of refused)
     await expect(write()).rejects.toMatchObject({ statusCode: 409, code: 'tenant_changed' })

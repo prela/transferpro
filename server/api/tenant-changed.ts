@@ -13,7 +13,8 @@ export function rethrowTenantChanged(error: unknown): void {
 
 /**
  * The screen's Tenant, when the request actually sent JSON.
- * A body-less call from a test stays body-less, so the test default applies.
+ * A body-less call stays body-less. The header still carries the claim.
+ * RLS fixtures that set neither rely on the fixture flag, not on this.
  */
 export async function readOfficeBody(event: H3Event): Promise<unknown> {
   const type = getRequestHeader(event, 'content-type') ?? ''

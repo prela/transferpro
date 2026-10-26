@@ -1,10 +1,10 @@
 import type { Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
 import { z } from 'zod'
 import { e2ePasswordResetOutboxPath } from '../scripts/e2e-reset-outbox.mjs'
 import { resetTokenFromLink } from '../shared/reset-link'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { expect, test } from './fixtures/playwright'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, useTheme } from './fixtures/ui'
 

@@ -1,8 +1,8 @@
 import type { Locator, Page } from '@playwright/test'
-import { expect, test } from '@playwright/test'
 import pg from 'pg'
 import { operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { expect, test } from './fixtures/playwright'
 import { seedMembership, seedTenant } from './fixtures/seed'
 import { chooseOption, hydrated, openListbox, openUserMenu, useTheme } from './fixtures/ui'
 

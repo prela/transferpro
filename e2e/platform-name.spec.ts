@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures/playwright'
 import { seedSuperadmin, seedTenant } from './fixtures/seed'
 
 test('renaming a firm with an empty name shows the length message', async ({ page }) => {

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures/playwright'
 
 const officePaths = ['/clients', '/partners', '/locations', '/drivers', '/vehicles', '/roster', '/transfers', '/settings', '/settings/tenant', '/settings/members', '/settings/profile', '/profile', '/audit', '/admin/tenants'] as const
 

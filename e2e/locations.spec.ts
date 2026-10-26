@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test'
-import { expect, test } from '@playwright/test'
 import { calendarDateInTimeZone, instantFromWallClock } from '../shared'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, openAudit, signIn, signOut, switchLocale, switchTheme } from './fixtures/ui'

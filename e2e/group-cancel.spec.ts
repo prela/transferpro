@@ -1,7 +1,7 @@
 import type { APIRequestContext, Page } from '@playwright/test'
-import { expect, test } from '@playwright/test'
 import { instantFromWallClock } from '../shared/date'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
+import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { openRideMenu, signIn, switchLocale } from './fixtures/ui'

@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
 import { assertExpectedTenant, officeWriteClaim, TenantChangedError } from '..'
 import { createClientSchema } from '../../../../shared'
+import { disableOfficeClaimFixture, enableOfficeClaimFixture } from './office-claim-fixture'
 
 const active = '00000000-0000-4000-8000-00000000000a'
 const other = '00000000-0000-4000-8000-00000000000b'
@@ -11,7 +12,7 @@ it('peels the screen Tenant so a strict body still parses, and a different Tenan
     name: 'Agencija',
     kind: 'agency',
     expectedTenantId: other,
-  }, 'production')
+  })
   expect(office.explicit).toBe(true)
   expect(office.body).toEqual({ name: 'Agencija', kind: 'agency' })
   expect(createClientSchema.safeParse(office.body).success).toBe(true)
@@ -19,19 +20,27 @@ it('peels the screen Tenant so a strict body still parses, and a different Tenan
   expect(() => assertExpectedTenant(other, office.expectedTenantId)).not.toThrow()
 })
 
-it('refuses a missing claim in production and an empty header in tests', () => {
-  const missing = officeWriteClaim(new Headers(), { name: 'Agencija' }, 'production')
+it('refuses a missing claim and an empty header', () => {
+  const missing = officeWriteClaim(new Headers(), { name: 'Agencija' })
   expect(missing.explicit).toBe(false)
   expect(() => assertExpectedTenant(active, missing.expectedTenantId)).toThrow(TenantChangedError)
 
-  const empty = officeWriteClaim(new Headers({ 'x-expected-tenant-id': '' }), { name: 'Agencija' }, 'test')
+  const empty = officeWriteClaim(new Headers({ 'x-expected-tenant-id': '' }), { name: 'Agencija' })
   expect(empty.explicit).toBe(true)
   expect(() => assertExpectedTenant(active, empty.expectedTenantId)).toThrow(TenantChangedError)
 })
 
-it('treats a test fixture that names no Tenant as the session Tenant', () => {
-  const fixture = officeWriteClaim(new Headers(), { name: 'Agencija' }, 'test')
-  expect(fixture.explicit).toBe(false)
-  expect(() => assertExpectedTenant(active, fixture.expectedTenantId)).not.toThrow()
-  expect(() => assertExpectedTenant(other, fixture.expectedTenantId)).not.toThrow()
+it('uses the session Tenant for a missing claim only while the RLS fixture flag is on', () => {
+  enableOfficeClaimFixture()
+  try {
+    const fixture = officeWriteClaim(new Headers(), { name: 'Agencija' })
+    expect(fixture.explicit).toBe(false)
+    expect(() => assertExpectedTenant(active, fixture.expectedTenantId)).not.toThrow()
+    expect(() => assertExpectedTenant(other, fixture.expectedTenantId)).not.toThrow()
+  }
+  finally {
+    disableOfficeClaimFixture()
+  }
+  const refused = officeWriteClaim(new Headers(), { name: 'Agencija' })
+  expect(() => assertExpectedTenant(active, refused.expectedTenantId)).toThrow(TenantChangedError)
 })

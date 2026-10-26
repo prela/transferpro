@@ -2,7 +2,6 @@ import type { AuditEntryList, DisplayLocale, InvitationMailOutcome, InviteResult
 import type { TenantContext, TenantTransaction } from '../../../core/index'
 import type { Membership } from './auth'
 import type { InvitationMail } from './mailer'
-import process from 'node:process'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
@@ -15,6 +14,7 @@ import { askHoldingRide } from './holding-ride'
 import { acceptInvitation, createInvitation, parseInviteInput, previewInvitation, listPendingInvitations as readPendingInvitations, repairInvitationCookies, revokePendingInvitation as revokePendingInvitationImpl } from './invitation'
 import { mailerForApp, ResendTransportError } from './mailer'
 import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, removeMember as removeMemberImpl } from './member-management'
+import { officeClaimFixtureEnabled } from './office-claim-fixture'
 import { changeTenantSettings, loadTenantSettings, TenantSettingsMissingError } from './tenant-settings'
 
 /**
@@ -47,10 +47,9 @@ export class TenantChangedError extends Error {
 }
 
 /**
- * Vitest and the e2e server omit the claim on fixture writes. That claim
- * means "the session's own Tenant", which is the only Tenant those callers
- * can see. Production never uses it. A screen that forgot the claim is a
- * mismatch, not this.
+ * RLS vitest sets this. It means "the session's own Tenant", which is the
+ * only Tenant those fixtures can see. The built server, including e2e,
+ * never sets the flag, so a missing claim stays a missing claim.
  */
 const sessionTenantClaim = Symbol('session-tenant')
 
@@ -71,23 +70,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Vite replaces a direct `process.env.NODE_ENV` with `"production"` in the
- * built server. The e2e server still sets NODE_ENV to test at process start,
- * so the hatch has to read the variable at call time.
- */
-function currentNodeEnv(): string {
-  const key = 'NODE_ENV'
-  return process.env[key] ?? ''
-}
-
-/**
  * The Tenant the office screen was opened for.
  * The JSON field wins. The header is the same claim for a route whose body
  * is not the form, and for a test that sets the header to empty to mean
- * "the screen sent nothing". Under `NODE_ENV=test` only, neither one means
- * the session Tenant. Any other environment treats that as a missing claim.
+ * "the screen sent nothing". Neither one is a missing claim. A missing
+ * claim is refused, except while the RLS fixture flag is on: those tests
+ * send no claim and mean the session Tenant. The e2e server does not set
+ * that flag.
  */
-export function officeWriteClaim(headers: Headers, raw: unknown, nodeEnv: string = currentNodeEnv()): OfficeWriteClaim {
+export function officeWriteClaim(headers: Headers, raw: unknown): OfficeWriteClaim {
   const record = isRecord(raw) ? raw : undefined
   const present = record !== undefined && 'expectedTenantId' in record
   const body = present
@@ -99,7 +90,7 @@ export function officeWriteClaim(headers: Headers, raw: unknown, nodeEnv: string
     return { expectedTenantId: record.expectedTenantId, explicit, body }
   if (header !== null)
     return { expectedTenantId: header, explicit, body }
-  if (nodeEnv === 'test')
+  if (officeClaimFixtureEnabled())
     return { expectedTenantId: sessionTenantClaim, explicit: false, body }
   return { expectedTenantId: undefined, explicit: false, body }
 }
