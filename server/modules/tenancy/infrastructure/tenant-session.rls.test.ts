@@ -90,6 +90,20 @@ const fixtures = [
   { slug: 'slice10-switch-b', email: 'slice10-switch-b@example.com' },
 ]
 
+// Owner reads are not tenant-scoped. A previous run's organization is
+// already gone, so a slug delete cannot see these rows, and each rerun
+// would count one more of the same name.
+const gateSecretClient = 'GateSecretClient'
+const switchAlphaSecret = 'Switch Alpha Secret'
+const switchStolen = 'Switch Stolen'
+const switchBetaOwn = 'Switch Beta Own'
+const fixtureClientNames = [
+  gateSecretClient,
+  switchAlphaSecret,
+  switchStolen,
+  switchBetaOwn,
+]
+
 const settingsRows = z.object({
   rows: z.array(z.object({
     default_locale: z.string(),
@@ -531,8 +545,8 @@ it('shows the gate and no tenant data until a person with two working companies 
     migrateDatabaseUrl: ownerUrl,
   })
   await ownerPool.query(
-    `insert into app.clients (tenant_id, name, kind) values ($1, 'GateSecretClient', 'agency')`,
-    [alpha.tenantId],
+    `insert into app.clients (tenant_id, name, kind) values ($1, $2, 'agency')`,
+    [alpha.tenantId, gateSecretClient],
   )
 
   const alone = await signIn('slice10-gate@example.com')
@@ -563,7 +577,7 @@ it('shows the gate and no tenant data until a person with two working companies 
   }))
   expect(response.status).toBe(409)
   const body = await response.text()
-  expect(body).not.toContain('GateSecretClient')
+  expect(body).not.toContain(gateSecretClient)
   expect(body).not.toContain(alpha.tenantId)
 
   const choices = await listTenantChoices(alone.headers)
@@ -571,7 +585,7 @@ it('shows the gate and no tenant data until a person with two working companies 
     { tenantId: alpha.tenantId, tenantName: 'Gate Alpha', role: 'admin' },
     { tenantId: beta.tenantId, tenantName: 'Gate Beta', role: 'driver' },
   ])
-  expect(JSON.stringify(choices)).not.toContain('GateSecretClient')
+  expect(JSON.stringify(choices)).not.toContain(gateSecretClient)
   expect(JSON.stringify(choices)).not.toContain('Gate Closed')
   await expect(platformActorFromSession(alone.headers)).rejects.toMatchObject({ statusCode: 403 })
 
@@ -649,8 +663,8 @@ it('switches to another working company, and a save stays on that company', asyn
   })
   await insertMembership(authPool, beta.tenantId, alpha.adminUserId, 'driver')
   await ownerPool.query(
-    `insert into app.clients (tenant_id, name, kind) values ($1, 'Switch Alpha Secret', 'agency')`,
-    [alpha.tenantId],
+    `insert into app.clients (tenant_id, name, kind) values ($1, $2, 'agency')`,
+    [alpha.tenantId, switchAlphaSecret],
   )
 
   const signedIn = await signIn('slice10-switch@example.com')
@@ -679,25 +693,26 @@ it('switches to another working company, and a save stays on that company', asyn
     return { tenantId: context.tenantId, names: selected.rows.map(row => row.name) }
   })
   expect(seen.tenantId).toBe(beta.tenantId)
-  expect(seen.names).not.toContain('Switch Alpha Secret')
+  expect(seen.names).not.toContain(switchAlphaSecret)
 
   const stolen = await withTenantFromSession(signedIn.headers, async ({ transaction }) => {
     await transaction.execute(sql`
       insert into app.clients (tenant_id, name, kind)
-      values (${alpha.tenantId}::uuid, 'Switch Stolen', 'agency')
+      values (${alpha.tenantId}::uuid, ${switchStolen}, 'agency')
     `)
   }).then(() => null, (error: unknown) => error)
   expect(stolen).not.toBeNull()
-  expect((await ownerPool.query(`select 1 from app.clients where name = 'Switch Stolen'`)).rowCount).toBe(0)
+  expect((await ownerPool.query('select 1 from app.clients where name = $1', [switchStolen])).rowCount).toBe(0)
 
   await withTenantFromSession(signedIn.headers, async ({ context, transaction }) => {
     await transaction.execute(sql`
       insert into app.clients (tenant_id, name, kind)
-      values (${context.tenantId}::uuid, 'Switch Beta Own', 'agency')
+      values (${context.tenantId}::uuid, ${switchBetaOwn}, 'agency')
     `)
   })
   const owned = await ownerPool.query<{ tenant_id: string }>(
-    `select tenant_id from app.clients where name = 'Switch Beta Own'`,
+    'select tenant_id from app.clients where name = $1',
+    [switchBetaOwn],
   )
   expect(owned.rows.map(row => row.tenant_id)).toEqual([beta.tenantId])
 
@@ -734,8 +749,8 @@ it('switches to another working company, and a save stays on that company', asyn
     )
     return selected.rows.map(row => row.name)
   })
-  expect(hidden).toContain('Switch Alpha Secret')
-  expect(hidden).not.toContain('Switch Beta Own')
+  expect(hidden).toContain(switchAlphaSecret)
+  expect(hidden).not.toContain(switchBetaOwn)
 
   await ownerPool.query(
     'insert into platform.tenant_account (organization_id, suspended_at) values ($1, now())',
@@ -938,6 +953,12 @@ async function getSession(token: string): Promise<{ user: { email: string } } | 
 async function removeFixture(slug: string, email: string) {
   const owner = await ownerPool.connect()
   try {
+    await owner.query(
+      `delete from app.clients
+       where name = any($2::text[])
+          or tenant_id::text in (select id from auth.organization where slug = $1)`,
+      [slug, fixtureClientNames],
+    )
     await owner.query(
       `delete from app.tenant_settings
        where tenant_id::text in (select id from auth.organization where slug = $1)`,
