@@ -85,3 +85,14 @@ it('does not treat a server rewrite as the client rewrite', () => {
   expect(() => plugin.buildEnd.call({ environment: { name: 'ssr' } })).not.toThrow()
   expect(() => plugin.buildEnd.call({ environment: { name: 'client' } })).toThrow(/office-fetch-live/)
 })
+
+// A Nuxt 4.6.2 production build with viteEnvironmentApi off still names the
+// two Vite builds `client` and `ssr`. A build that omits the name must not
+// count as the client one, or a server rewrite would hide a client miss.
+it('does not let a rewrite with no environment name satisfy the client build', () => {
+  const plugin = officeFetchLivePlugin()
+  const rewritten = plugin.transform.call({}, `${expectedExport}\n`, generatedFetchId)
+  expect(rewritten).toContain('(...args) => globalThis.$fetch(...args)')
+  expect(() => plugin.buildEnd.call({})).toThrow(/did not rewrite/)
+  expect(() => plugin.buildEnd.call({ environment: { name: 'client' } })).toThrow(/did not rewrite/)
+})

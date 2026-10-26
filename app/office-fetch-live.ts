@@ -45,8 +45,11 @@ function isGeneratedFetchModuleId(id: string): boolean {
   return normalized === '.nuxt/fetch.mjs' || normalized.endsWith(generatedFetchSuffix)
 }
 
-function environmentName(context: OfficeFetchPluginContext): string {
-  return context.environment?.name ?? 'client'
+function environmentName(context: OfficeFetchPluginContext): string | undefined {
+  const name = context.environment?.name
+  if (name === undefined || name === '')
+    return undefined
+  return name
 }
 
 function missingExportError(): Error {
@@ -58,9 +61,15 @@ function missingExportError(): Error {
 /**
  * Vite plugin. `buildEnd` runs for a production build, not for `nuxt dev`.
  * Client and server builds share one plugin object, so a server rewrite
- * must not count as the client one. A transform error can be reported as
- * the later `buildEnd` error, so a module that was seen without the export
- * fails again there with the same message.
+ * must not count as the client one. Nuxt 4.6.2 with
+ * `experimental.viteEnvironmentApi` off still builds client and server
+ * separately, and Vite sets `this.environment.name` to `client` and `ssr`
+ * on both. A rewrite with no environment name is not stored as the
+ * client rewrite: counting it as one would let a server rewrite hide a
+ * client miss. `buildEnd` with no name still requires that client
+ * rewrite. A transform error can be
+ * reported as the later `buildEnd` error, so a module that was seen
+ * without the export fails again there with the same message.
  */
 export function officeFetchLivePlugin() {
   const rewritten = new Set<string>()
@@ -72,16 +81,23 @@ export function officeFetchLivePlugin() {
       if (!isGeneratedFetchModuleId(id))
         return
       const next = liveDollarFetchExport(code)
+      const name = environmentName(this)
       if (next === undefined) {
-        missingExport.add(environmentName(this))
+        // An unnamed build may be the client one. Record it so `buildEnd`
+        // still fails closed when the export string is gone.
+        missingExport.add(name ?? 'client')
         throw missingExportError()
       }
-      rewritten.add(environmentName(this))
+      if (name !== undefined)
+        rewritten.add(name)
       return next
     },
     buildEnd(this: OfficeFetchPluginContext) {
       const name = environmentName(this)
-      if (name !== 'client')
+      // `ssr` is the server build. Any other named build is not the client
+      // check. An unnamed build still has to prove the client rewrite,
+      // because that is the build a missing name used to impersonate.
+      if (name !== undefined && name !== 'client')
         return
       if (missingExport.has('client'))
         throw missingExportError()
