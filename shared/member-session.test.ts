@@ -206,6 +206,41 @@ it('does not replace a newer sign-in mark from an earlier tab', () => {
   expect(clock.due(OFFICE_IDLE_MS)).toBe(true)
 })
 
+it('broadcasts one action when storage is full and the mark is this sign-in', () => {
+  const signedInAt = '2026-10-26T09:00:00.000Z'
+  const stored = JSON.stringify({ signedInAt, lastActionAt: 0 })
+  const storage = quotaStorage(stored)
+  const posted: unknown[] = []
+  const clock = createOfficeIdleClock(0)
+  noteOfficeIdleAction(storage, recordingChannel(posted), { signedInAt, lastActionAt: 0 }, 60_000, true, (record) => {
+    clock.reset(record.lastActionAt)
+  })
+  expect(posted).toEqual([{ kind: 'action', signedInAt, lastActionAt: 60_000 }])
+  expect(readOfficeIdleMark(storage)).toEqual({ signedInAt, lastActionAt: 0 })
+  expect(clock.remaining(60_000)).toBe(OFFICE_IDLE_MS)
+})
+
+it('does not write or broadcast when a different sign-in id is not an instant', () => {
+  let written = false
+  const storage: OfficeIdleStorage = {
+    getItem: () => JSON.stringify({ signedInAt: 'earlier', lastActionAt: 0 }),
+    setItem: () => {
+      written = true
+    },
+    removeItem: () => {
+      written = true
+    },
+  }
+  const posted: unknown[] = []
+  const clock = createOfficeIdleClock(0)
+  noteOfficeIdleAction(storage, recordingChannel(posted), { signedInAt: 'later', lastActionAt: 0 }, 60_000, true, (record) => {
+    clock.reset(record.lastActionAt)
+  })
+  expect(written).toBe(false)
+  expect(posted).toEqual([])
+  expect(clock.due(OFFICE_IDLE_MS)).toBe(true)
+})
+
 it('keeps a visible action when the old mark is still readable and the write throws', () => {
   const stored = JSON.stringify({ signedInAt: 'sign-in-1', lastActionAt: 0 })
   const storage = quotaStorage(stored)

@@ -4,11 +4,13 @@ import { isOfficeMember, sessionShellKey } from './session-shell'
 
 /**
  * Office idle and the absolute cap (ADR-0057).
- * One idle mark is shared by every tab of this browser when storage works.
- * A key, a click, or a command in a visible tab moves it. A live refresh
- * is a fetch, and a hidden tab is not a person's action, so neither moves it.
- * When storage or BroadcastChannel is blocked, this tab keeps its own clock
- * and still signs out after a quiet half hour. The draft stays either way.
+ * One idle mark is shared by every tab of this browser. A full store still
+ * broadcasts, so the tabs of this sign-in keep one clock. A key, a click, or
+ * a command in a visible tab moves it. A live refresh is a fetch, and a
+ * hidden tab is not a person's action, so neither moves it. This tab keeps
+ * its own clock only when storage and BroadcastChannel are both blocked, or
+ * when the stored mark is from another sign-in. It still signs out after a
+ * quiet half hour. The draft stays either way.
  * A poll also signs out when the server has ended the session.
  */
 export function useSessionLifetime() {
