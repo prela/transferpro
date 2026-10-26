@@ -47,3 +47,21 @@ node scripts/assert-image-secrets.mjs --image <image> --values-file <sentinels.t
 `<sentinels.txt>` is one value per line, at least 8 characters, and is not committed. Omit `--values-file` to check names only.
 
 Preview sets `DEPLOY_ENV` to `preview` (ADR-0043), and `MAILER` to `resend`, `RESEND_API_KEY`, and `MAIL_ALLOWLIST` (ADR-0042). Boot refuses to start when `DEPLOY_ENV` is `preview` and `MAIL_ALLOWLIST` is unset. Only addresses on that list are sent; every other recipient is the console line. `NODE_ENV` stays `production` on preview and on production. Production leaves `DEPLOY_ENV` unset or sets `production`, leaves `MAIL_ALLOWLIST` unset, and sets `MAILER` to `resend` with `RESEND_API_KEY`. A deployment that wants console only sets `ALLOW_CONSOLE_MAILER` to `1` and `MAILER` to `console` (ADR-0037).
+
+## Demo seed
+
+The image has no `scripts/` and does not run the seed. Run it from a local checkout of `develop`, the same way as migrations.
+
+Create a local `.env.seed` and do not commit it. It holds the preview `AUTH_DATABASE_URL` and `DATABASE_MIGRATE_URL`, `DEPLOY_ENV=preview`, `MAILER=console`, an empty `RESEND_API_KEY`, and `DEMO_SEED=1`. `DEMO_SEED_PASSWORD` is optional.
+
+`pnpm db:seed:demo` loads `.env` and then `.env.migrate`. A later file overrides an earlier one, and that script does not load `.env.seed`, so it would keep the local database. A name already set in the shell wins over the file. Apply migrations to the preview database first, then run the seed with only `.env.seed`:
+
+```sh
+node --import ./scripts/register-ts.mjs --env-file=.env.seed ./scripts/demo-seed.ts
+```
+
+A second run replaces the `demo` Tenant and touches nothing else.
+
+Keep `DEMO_SEED_PASSWORD` only in a password manager. If you leave it unset, the command prints a generated password once. Save it. It must never go into the repo, `.env.example`, an issue, or a pull request.
+
+Verify by signing in on preview as `demo-dispatcher@example.com`, opening the office day list (rides are there and the map shows for the airport and the hotel), then signing in as `demo-driver-a@example.com` at 360px and checking the long ride.

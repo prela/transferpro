@@ -15,6 +15,7 @@ import { passwordLengthLimits, passwordLengthRule } from '../shared/index'
 
 const guardEnvSchema = z.object({
   DEMO_SEED: z.string().optional(),
+  DEPLOY_ENV: z.string().optional(),
   MAILER: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
 })
@@ -27,6 +28,7 @@ const databaseEnvSchema = z.object({
 async function main(): Promise<void> {
   const guardEnv = guardEnvSchema.parse({
     DEMO_SEED: process.env.DEMO_SEED,
+    DEPLOY_ENV: process.env.DEPLOY_ENV,
     MAILER: process.env.MAILER,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
   })
