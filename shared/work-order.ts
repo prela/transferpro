@@ -1,5 +1,5 @@
 import type { DisplayLocale } from './display-locale'
-import type { PaymentMethod } from './transfer'
+import type { PaymentMethod, TransferGroupRole } from './transfer'
 import { z } from 'zod'
 import { formatInstant } from './format-instant'
 import { rideSchema, transferSchema } from './transfer'
@@ -8,8 +8,11 @@ import { rideSchema, transferSchema } from './transfer'
  * The mail for one assigned Ride. The locale and the time zone are the
  * Tenant's, not the Driver's UI locale. A Vehicle has no name column:
  * `vehicleName` is the description when one is stored, and the plate is
- * always stated. Cash is the only payment that adds a price line.
+ * always stated. Cash is the only payment that adds a price line, and an
+ * extra vehicle adds neither a price nor a payment line (ADR-0054).
  * ADR-0026. The mail has no link and does not ask the Driver to accept.
+ * `passengerCount` is this vehicle's count. The group's ordered count is
+ * not a fact on this mail.
  */
 export interface AssignedWorkOrderFacts {
   readonly locale: DisplayLocale
@@ -24,6 +27,13 @@ export interface AssignedWorkOrderFacts {
   readonly childSeatCount: number
   readonly flightNumber: string | null
   readonly clientName: string
+  /** Absent when the Transfer has no Client reference. A blank is absent. */
+  readonly clientReference: string | null
+  /**
+   * `extra` hides the price and the payment, whatever the method.
+   * `main` is still a group and still shows a cash price. Null is not a group.
+   */
+  readonly groupRole: TransferGroupRole | null
   readonly vehicleName: string | null
   readonly vehiclePlate: string
   readonly note: string | null
@@ -68,6 +78,8 @@ const COPY = {
     childSeats: 'Dječje sjedalice',
     flight: 'Let',
     client: 'Klijent',
+    clientReference: 'Referenca naručitelja',
+    group: 'Grupa',
     vehicle: 'Vozilo',
     plate: 'Registracija',
     note: 'Napomena',
@@ -86,6 +98,8 @@ const COPY = {
     childSeats: 'Child seats',
     flight: 'Flight',
     client: 'Client',
+    clientReference: 'Client reference',
+    group: 'Group',
     vehicle: 'Vehicle',
     plate: 'Plate',
     note: 'Note',
@@ -97,10 +111,11 @@ const COPY = {
 
 /**
  * Subject is the status, the departure, and the pickup place.
- * The flight line is omitted when the number is blank. Card and
- * invoice-to-agency have no price and no payment line. Cancelled and no
- * longer yours never state a price, even for cash.
- * ADR-0026.
+ * The flight line is omitted when the number is blank. The Client reference
+ * is stated when one is set. A Ride in a group is marked. Card,
+ * invoice-to-agency, and an extra vehicle have no price and no payment
+ * line. Cancelled and no longer yours never state a price, even for cash.
+ * ADR-0026, ADR-0054.
  */
 export function composeWorkOrder(
   facts: AssignedWorkOrderFacts,
@@ -124,15 +139,21 @@ export function composeWorkOrder(
   if (flight !== '')
     lines.push(line(copy.flight, flight))
   lines.push(line(copy.client, facts.clientName))
+  const reference = facts.clientReference?.trim() ?? ''
+  if (reference !== '')
+    lines.push(line(copy.clientReference, reference))
+  // A mark, not a value. The group's ordered passenger count stays off the mail.
+  if (facts.groupRole !== null)
+    lines.push(copy.group)
   const vehicleName = facts.vehicleName?.trim() ?? ''
   if (vehicleName !== '')
     lines.push(line(copy.vehicle, vehicleName))
   lines.push(line(copy.plate, facts.vehiclePlate))
   lines.push(line(copy.note, facts.note ?? ''))
   // Assigned and changed cash state the price. Cancelled and no longer
-  // yours never do. Card and invoice-to-agency stay silent, including
-  // when a fare is stored.
-  if ((status === 'assigned' || status === 'changed') && facts.payment === 'cash') {
+  // yours never do. Card, invoice-to-agency, and an extra vehicle stay
+  // silent, including when a fare is stored (ADR-0054).
+  if ((status === 'assigned' || status === 'changed') && facts.payment === 'cash' && facts.groupRole !== 'extra') {
     const shown = facts.locale === 'hr' ? facts.price.replace('.', ',') : facts.price
     lines.push(line(copy.price, shown))
     lines.push(line(copy.payment, copy.cash))
@@ -195,8 +216,9 @@ export type CancelledRideResult = z.infer<typeof cancelledRideResultSchema>
 /**
  * A Transfer correction. `workOrders` is empty when nothing was mailed:
  * no Driver, a save that changed no mailed fact, or a price change while
- * payment is not cash. One entry when the current Driver was mailed
- * changed. `relocationWarnings` names a tight gap. It is empty when the
+ * payment is not cash. A Client reference change is a mailed fact. The
+ * group's ordered passenger count is not. One entry when the current Driver
+ * was mailed changed. `relocationWarnings` names a tight gap. It is empty when the
  * correction was not judged or the gap is enough. A true overlap is a 409
  * and is not in this list. The address is not on this object.
  */

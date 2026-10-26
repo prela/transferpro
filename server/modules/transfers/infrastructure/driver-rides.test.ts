@@ -30,6 +30,8 @@ it('asks only for this Driver, and only for assigned or accepted, with no pickup
   const pickup = new Date('2020-01-15T10:00:00.000Z')
   const facts = {
     clientId,
+    clientReference: null as string | null,
+    groupRole: null as 'main' | 'extra' | null,
     luggageCount: 0,
     childSeatCount: 0,
     note: null as string | null,
@@ -52,6 +54,8 @@ it('asks only for this Driver, and only for assigned or accepted, with no pickup
     childSeatCount: 1,
     note: 'Terminal 1',
     tabla: 'GOSPOĐA HORVAT',
+    mainTransferId: null,
+    storedGroupPassengerCount: null,
     price: '10.00',
     payment: 'cash',
     state: 'assigned',
@@ -66,6 +70,8 @@ it('asks only for this Driver, and only for assigned or accepted, with no pickup
     flightNumber: null,
     airportMark: false,
     ...facts,
+    mainTransferId: null,
+    storedGroupPassengerCount: null,
     price: '12.00',
     payment: 'card',
     state: 'accepted',
@@ -114,6 +120,9 @@ it('asks only for this Driver, and only for assigned or accepted, with no pickup
   expect(select).toContain('state')
   expect(select).toContain('must_accept')
   expect(select).toContain('client_id')
+  expect(select).toContain('client_reference')
+  expect(select).toContain('group_passenger_count')
+  expect(select).toContain('link')
   expect(select).toContain('luggage_count')
   expect(select).toContain('child_seat_count')
   expect(select).toContain('note')
@@ -146,12 +155,74 @@ it('refuses a Ride with no must-accept copy', async () => {
     note: null,
     tabla: '',
     vehicleId,
+    clientReference: null,
+    mainTransferId: null,
+    storedGroupPassengerCount: null,
     price: '10.00',
     payment: 'cash',
     state: 'assigned',
     mustAccept: null,
   }])
   await expect(loadUpcomingRidesForDriver(transaction, driverId)).rejects.toThrow()
+})
+
+it('marks a group from the link or the stored count and keeps the vehicle passenger count', async () => {
+  const mainTransferId = 'a9a9a9a9-9999-4999-8999-999999999999'
+  const pickup = new Date('2020-01-15T10:00:00.000Z')
+  const shared = {
+    pickupAt: pickup,
+    guestName: 'Ana Anić',
+    startLocationId,
+    endLocationId,
+    flightNumber: null,
+    airportMark: false,
+    clientId,
+    luggageCount: 0,
+    childSeatCount: 0,
+    note: null,
+    tabla: '',
+    landingAt: null,
+    expectedArrival: null,
+    vehicleId,
+    price: '0.00',
+    payment: 'cash',
+    state: 'assigned',
+    mustAccept: false,
+  }
+  const { transaction } = fakeTransaction([{
+    ...shared,
+    rideId,
+    passengerCount: 2,
+    clientReference: 'V-19',
+    mainTransferId,
+    storedGroupPassengerCount: null,
+  }, {
+    ...shared,
+    rideId: acceptedRideId,
+    passengerCount: 3,
+    clientReference: 'V-19',
+    mainTransferId: null,
+    storedGroupPassengerCount: 8,
+    price: '40.00',
+  }])
+  const listed = await loadUpcomingRidesForDriver(transaction, driverId)
+  expect(listed[0]).toMatchObject({
+    passengerCount: 2,
+    clientReference: 'V-19',
+    groupRole: 'extra',
+    price: '0.00',
+    payment: 'cash',
+  })
+  expect(listed[1]).toMatchObject({
+    passengerCount: 3,
+    clientReference: 'V-19',
+    groupRole: 'main',
+    price: '40.00',
+  })
+  expect(listed[0]).not.toHaveProperty('storedGroupPassengerCount')
+  expect(listed[0]).not.toHaveProperty('groupPassengerCount')
+  expect(listed[0]).not.toHaveProperty('mainTransferId')
+  expect(listed.some(row => Object.values(row).includes(8))).toBe(false)
 })
 
 it('returns an empty list when this Driver has no upcoming Ride', async () => {

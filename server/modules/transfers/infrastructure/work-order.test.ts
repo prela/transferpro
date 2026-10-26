@@ -2,6 +2,7 @@ import type { SQL } from 'drizzle-orm'
 import type { JobQueue, TenantTransaction } from '../../../core/index'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { expect, it } from 'vitest'
+import { composeWorkOrder } from '../../../../shared'
 import { captureLogs } from '../../../core/testing'
 import { ResendTransportError } from '../../tenancy'
 import { deliverAssignedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
@@ -36,6 +37,8 @@ const order = {
   childSeatCount: 0,
   flightNumber: 'OU412',
   clientName: 'Agencija Mora',
+  clientReference: null,
+  groupRole: null,
   vehicleName: 'Mercedes Vito',
   vehiclePlate,
   note: 'Napomena',
@@ -169,6 +172,9 @@ it('reads the tenant locale from the row, and a database failure drops the guest
           childSeatCount: 0,
           flightNumber: 'OU412',
           clientId,
+          clientReference: null,
+          mainTransferId: null,
+          storedGroupPassengerCount: null,
           vehicleId,
           note: 'Napomena',
           payment: 'cash',
@@ -187,7 +193,11 @@ it('reads the tenant locale from the row, and a database failure drops the guest
   expect(snapshot.pickupAt.toISOString()).toBe(pickup.toISOString())
   expect(snapshot.pickupPlace).toBe('Zračna luka Dubrovnik (DBV)')
   expect(snapshot.dropOffPlace).toBe(dropOffPlace)
+  expect(snapshot.clientReference).toBeNull()
+  expect(snapshot.groupRole).toBeNull()
   expect(snapshot).not.toHaveProperty('phone')
+  expect(snapshot).not.toHaveProperty('storedGroupPassengerCount')
+  expect(snapshot).not.toHaveProperty('groupPassengerCount')
 
   const failing = {
     execute: async () => {
@@ -199,6 +209,114 @@ it('reads the tenant locale from the row, and a database failure drops the guest
   expect((error as Error).message).toBe('Work order read failed')
   expect((error as Error).message).not.toContain(guestName)
   expect((error as Error).message).not.toContain(email)
+})
+
+it('reads an extra vehicle and a main Transfer without the group passenger count', async () => {
+  const pickup = new Date('2026-10-15T22:30:00.000Z')
+  const clientId = 'a1a1a1a1-1111-4111-8111-111111111111'
+  const startLocationId = 'a2a2a2a2-2222-4222-8222-222222222222'
+  const endLocationId = 'a3a3a3a3-3333-4333-8333-333333333333'
+  const mainTransferId = 'a4a4a4a4-4444-4444-8444-444444444444'
+  const dialect = new PgDialect()
+  function transactionFor(group: { clientReference: string, mainTransferId: string | null, storedGroupPassengerCount: number | null, passengerCount: number, price: string }) {
+    return {
+      execute: async (query: SQL) => {
+        const text = dialect.sqlToQuery(query).sql
+        if (text.includes('from app.clients'))
+          return { rows: [{ id: clientId, name: 'Agencija Mora', kind: 'agency' }] }
+        if (text.includes('from app.locations')) {
+          const id = String(dialect.sqlToQuery(query).params[0])
+          const end = id === endLocationId
+          return {
+            rows: [{
+              id,
+              name: end ? dropOffPlace : pickupPlace,
+              kind: end ? 'hotel' : 'airport',
+              address: null,
+              iata: null,
+              placeProvider: null,
+              placeRef: null,
+              archivedAt: null,
+            }],
+          }
+        }
+        if (text.includes('from app.vehicles')) {
+          return {
+            rows: [{
+              id: vehicleId,
+              registrationPlate: vehiclePlate,
+              kind: 'fixed',
+              registrationExpiresOn: '2030-01-01',
+              technicalInspectionExpiresOn: '2030-01-01',
+              insuranceExpiresOn: '2030-01-01',
+              description: 'Mercedes Vito',
+              archivedAt: null,
+            }],
+          }
+        }
+        return {
+          rows: [{
+            driverId,
+            email,
+            pickupAt: pickup.toISOString(),
+            startLocationId,
+            endLocationId,
+            guestName,
+            tabla,
+            passengerCount: group.passengerCount,
+            luggageCount: 1,
+            childSeatCount: 0,
+            flightNumber: 'OU412',
+            clientId,
+            clientReference: group.clientReference,
+            mainTransferId: group.mainTransferId,
+            storedGroupPassengerCount: group.storedGroupPassengerCount,
+            vehicleId,
+            note: 'Napomena',
+            payment: 'cash',
+            price: group.price,
+            locale: 'hr',
+            timeZone: 'Europe/Zagreb',
+          }],
+        }
+      },
+    } as unknown as TenantTransaction
+  }
+
+  const extra = await readAssignedWorkOrder(transactionFor({
+    clientReference: 'V-19',
+    mainTransferId,
+    storedGroupPassengerCount: null,
+    passengerCount: 2,
+    price: '0.00',
+  }), rideId)
+  expect(extra.groupRole).toBe('extra')
+  expect(extra.passengerCount).toBe(2)
+  expect(extra.clientReference).toBe('V-19')
+  expect(extra).not.toHaveProperty('storedGroupPassengerCount')
+  const extraMail = composeWorkOrder(extra, 'assigned')
+  expect(extraMail.text).toContain('Putnici: 2')
+  expect(extraMail.text).toContain('Referenca naručitelja: V-19')
+  expect(extraMail.text).toContain('\nGrupa\n')
+  expect(extraMail.text).not.toContain('Cijena')
+  expect(extraMail.text).not.toContain('Plaćanje')
+  expect(extraMail.text).not.toContain('8')
+
+  const main = await readAssignedWorkOrder(transactionFor({
+    clientReference: 'V-19',
+    mainTransferId: null,
+    storedGroupPassengerCount: 8,
+    passengerCount: 3,
+    price: '40.00',
+  }), rideId)
+  expect(main.groupRole).toBe('main')
+  expect(main.passengerCount).toBe(3)
+  const mainMail = composeWorkOrder(main, 'changed')
+  expect(mainMail.text).toContain('Putnici: 3')
+  expect(mainMail.text).toContain('Cijena: 40,00')
+  expect(mainMail.text).toContain('\nGrupa\n')
+  expect(mainMail.text).not.toContain('Putnici: 8')
+  expect(mainMail.text).not.toMatch(/Naručeno/)
 })
 
 it('sends one idempotency key for the snapshot, and a new one when the words change', async () => {
@@ -312,6 +430,9 @@ it('reads whether a later work order replaced this one, and not the pickup', asy
           childSeatCount: 0,
           flightNumber: null,
           clientId: '33333333-3333-4333-8333-333333333333',
+          clientReference: null,
+          mainTransferId: null,
+          storedGroupPassengerCount: null,
           note: null,
           payment: 'cash',
           price: '10.00',

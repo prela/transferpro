@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canAddExtraVehicle, canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, officeGroupPassengerCount, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, TransferInputError } from './transfer'
+import { canAddExtraVehicle, canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, officeGroupPassengerCount, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, transferGroupRole, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -136,6 +136,17 @@ it('reads the stored group count for a main Transfer and none for an extra vehic
   expect(officeGroupPassengerCount(null, null, 2)).toBe(2)
   expect(officeGroupPassengerCount(null, 80, 2)).toBe(80)
   expect(officeGroupPassengerCount(mainTransferId, null, 2)).toBeNull()
+})
+
+it('marks a group from the stored link or the stored count, not from the office fill', () => {
+  // The office fill of an empty count is the vehicle's own count. That fill
+  // is not a group, or every Transfer would be marked.
+  expect(officeGroupPassengerCount(null, null, 2)).toBe(2)
+  expect(transferGroupRole(null, null)).toBeNull()
+  expect(transferGroupRole(null, 8)).toBe('main')
+  expect(transferGroupRole(mainTransferId, null)).toBe('extra')
+  // A link is an extra vehicle. Its ordered count stays empty.
+  expect(transferGroupRole(mainTransferId, 8)).toBe('extra')
 })
 
 it('requires an external id on a new Transfer and refuses it on a correction', () => {

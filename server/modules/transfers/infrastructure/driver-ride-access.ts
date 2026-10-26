@@ -119,6 +119,8 @@ export async function listUpcomingRides(headers: Headers): Promise<DriverUpcomin
           airportMark: row.airportMark,
           clientName: client.name,
           clientKind: client.kind,
+          clientReference: row.clientReference,
+          groupRole: row.groupRole,
           fromAddress: from.address,
           toAddress: to.address,
           fromMapsUrl: maps.navigationLink(from),

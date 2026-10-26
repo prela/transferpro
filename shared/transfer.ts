@@ -244,6 +244,26 @@ export function officeGroupPassengerCount(
   return stored ?? passengerCount
 }
 
+/** `main` carries the group's price. `extra` is a linked vehicle and hides it. */
+export type TransferGroupRole = 'main' | 'extra'
+
+/**
+ * The work order and the Driver card mark a group from the stored columns.
+ * An empty ordered count is not a group: the office read fills that empty
+ * with the vehicle's own count, and that fill would mark every Transfer.
+ * A link is an extra vehicle even though its ordered count is empty (ADR-0054).
+ */
+export function transferGroupRole(
+  mainTransferId: string | null,
+  storedGroupPassengerCount: number | null,
+): TransferGroupRole | null {
+  if (mainTransferId !== null)
+    return 'extra'
+  if (storedGroupPassengerCount !== null)
+    return 'main'
+  return null
+}
+
 /**
  * Decline is allowed from `assigned` only (ADR-0006). The copied flag does
  * not matter: a Ride that must be accepted, and one that need not, can both
