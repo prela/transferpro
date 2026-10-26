@@ -1,6 +1,6 @@
 import type { ContactPersonList } from '../../../../shared'
 import { parseContactPersonPatch, parseCreateContactPerson, parseRemoveContactPerson } from '../../../../shared'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
 import { ClientNotFoundError } from './clients'
 import { addContactPerson, ContactPersonNotFoundError, correctContactPerson, loadContactPersons, removeContactPerson } from './contact-persons'
 
@@ -28,8 +28,7 @@ export async function listContactPersons(headers: Headers, clientId: string): Pr
  * phone and email never opens a session. Adding sends no version.
  */
 export async function createContactPerson(headers: Headers, clientId: string, raw: unknown) {
-  const input = parseCreateContactPerson(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseCreateContactPerson, async ({ actor, transaction }, input) => {
     officeOnly(actor.role)
     return addContactPerson(transaction, actor.userId, clientId, input)
   })
@@ -40,8 +39,7 @@ export async function createContactPerson(headers: Headers, clientId: string, ra
  * A stale version is 409 `stale_save`. A patch that matches the row writes nothing.
  */
 export async function updateContactPerson(headers: Headers, clientId: string, contactPersonId: string, raw: unknown) {
-  const patch = parseContactPersonPatch(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseContactPersonPatch, async ({ actor, transaction }, patch) => {
     officeOnly(actor.role)
     return correctContactPerson(transaction, actor.userId, clientId, contactPersonId, patch)
   })
@@ -52,8 +50,7 @@ export async function updateContactPerson(headers: Headers, clientId: string, co
  * A mismatch is 409 `stale_save` and writes nothing.
  */
 export async function removeClientContactPerson(headers: Headers, clientId: string, contactPersonId: string, raw: unknown) {
-  const body = parseRemoveContactPerson(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseRemoveContactPerson, async ({ actor, transaction }, body) => {
     officeOnly(actor.role)
     return removeContactPerson(transaction, actor.userId, clientId, contactPersonId, body.version)
   })

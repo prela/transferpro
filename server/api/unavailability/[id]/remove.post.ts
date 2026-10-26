@@ -1,5 +1,6 @@
 import { defineEventHandler, getRouterParam, setResponseStatus, toWebRequest } from 'h3'
 import { removeUnavailability } from '../../../modules/transfers'
+import { readOfficeBody } from '../../tenant-changed'
 import { unavailabilityHttpError } from '../http'
 
 /**
@@ -10,7 +11,7 @@ import { unavailabilityHttpError } from '../http'
  */
 export default defineEventHandler(async (event) => {
   try {
-    await removeUnavailability(toWebRequest(event).headers, getRouterParam(event, 'id'))
+    await removeUnavailability(toWebRequest(event).headers, getRouterParam(event, 'id'), await readOfficeBody(event))
     setResponseStatus(event, 204)
     return null
   }

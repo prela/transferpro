@@ -3,12 +3,14 @@ import { z } from 'zod'
 import { parseIncludeArchivedQuery, PartnerInputError, QueryParamError } from '../../../shared'
 import { PartnerArchivedError, PartnerNotFoundError } from '../../modules/partners'
 import { TenantAccessError } from '../../modules/tenancy'
+import { rethrowTenantChanged } from '../tenant-changed'
 
 /**
  * Turn a Partner failure into an HTTP error. The message stays a fixed phrase
  * for the status. A phone, an email, or a note is not copied from the thrown error.
  */
 export function partnerHttpError(error: unknown): never {
+  rethrowTenantChanged(error)
   if (error instanceof PartnerInputError || error instanceof PartnerNotFoundError || error instanceof TenantAccessError)
     throw createError({ statusCode: error.statusCode })
   if (error instanceof PartnerArchivedError) {

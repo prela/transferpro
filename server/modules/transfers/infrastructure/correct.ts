@@ -10,7 +10,7 @@ import { appendAuditEntry } from '../../audit'
 import { correctionMovesWindow, lockTenantCapacity, tenantCapacityMinutes } from '../../capacity'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
-import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { mailerForApp, TenantAccessError, withOfficeWrite } from '../../tenancy'
 import { checkRideCapacity, transferFullyBooked } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
 import { ExtraVehicleCountError, ExtraVehiclePriceError, TransferNotCorrectableError, TransferNotFoundError } from './transfer-errors'
@@ -112,9 +112,8 @@ export async function correctTransfer(
   rawBody: unknown,
   delivery?: { mailer: Mailer, logger?: Logger },
 ): Promise<CorrectedTransferResult> {
-  const parsed = parseCorrect(rawId, rawBody)
   const queue = await mailOutboxQueue()
-  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
+  const saved = await withOfficeWrite(headers, rawBody, body => parseCorrect(rawId, body), async ({ actor, context, transaction }, parsed) => {
     officeOnly(actor.role)
     const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm, parsed.version, parsed.groupPassengerCount)
     // The snapshot needs a Driver. An unassigned correction has nobody to mail.

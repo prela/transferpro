@@ -1,6 +1,6 @@
 import type { ClientList } from '../../../../shared'
 import { parseClientPatch, parseCreateClient } from '../../../../shared'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
 import { addClient, ClientNotFoundError, correctClient, loadClientList } from './clients'
 
 export { ClientNotFoundError }
@@ -27,8 +27,7 @@ export async function listClients(headers: Headers): Promise<ClientList> {
  * opens a session. A driver is 403. The insert and `client.created` commit together.
  */
 export async function createClient(headers: Headers, raw: unknown) {
-  const input = parseCreateClient(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseCreateClient, async ({ actor, transaction }, input) => {
     officeOnly(actor.role)
     return addClient(transaction, actor.userId, input)
   })
@@ -40,8 +39,7 @@ export async function createClient(headers: Headers, raw: unknown) {
  * version is 409 `stale_save`. A patch that matches the row writes nothing.
  */
 export async function updateClient(headers: Headers, clientId: string, raw: unknown) {
-  const patch = parseClientPatch(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseClientPatch, async ({ actor, transaction }, patch) => {
     officeOnly(actor.role)
     return correctClient(transaction, actor.userId, clientId, patch)
   })

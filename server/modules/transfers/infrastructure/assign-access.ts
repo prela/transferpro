@@ -3,7 +3,7 @@ import type { Logger } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { parseAssignRide, parseRosterVehicleRead } from '../../../../shared'
 import { loadAppEnv } from '../../../core/index'
-import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { mailerForApp, TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
 import { assignUnassignedRide, suggestRosterVehicle } from './assign'
 import { mailOutboxQueue } from './mail-outbox-worker'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
@@ -29,9 +29,8 @@ export async function assignRide(
   raw: unknown,
   delivery?: { mailer: Mailer, logger?: Logger },
 ): Promise<AssignedRide> {
-  const input = parseAssignRide(raw)
   const queue = await mailOutboxQueue()
-  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
+  const saved = await withOfficeWrite(headers, raw, parseAssignRide, async ({ actor, context, transaction }, input) => {
     officeOnly(actor.role)
     const assigned = await assignUnassignedRide(transaction, actor.userId, input)
     const order = await readAssignedWorkOrder(transaction, assigned.ride.id)

@@ -7,7 +7,7 @@ import { canCloseHandedOffRide, canMarkRideDone, RIDE_ACCEPTED_FIELDS, rideState
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { loadDriverLinkedToMember } from '../../drivers'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { TenantAccessError, withOfficeWrite } from '../../tenancy'
 import { RideNotFoundError } from './assign'
 
 /** The body was not an empty object, or the path was not a Ride id. Nothing is written. */
@@ -196,8 +196,7 @@ async function closeHandedOffDone(
  * or an admin marks any Ride in the Tenant. No mail is sent.
  */
 export async function markRideDone(headers: Headers, rawRideId: unknown, rawBody: unknown): Promise<Ride> {
-  const rideId = parseMarkDone(rawRideId, rawBody)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, rawBody, body => parseMarkDone(rawRideId, body), async ({ actor, transaction }, rideId) => {
     if (actor.role === 'driver')
       return markOwnRideDone(transaction, actor.userId, rideId)
     if (actor.role === 'admin' || actor.role === 'dispatcher')

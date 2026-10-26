@@ -1,6 +1,7 @@
 import { defineEventHandler, getRouterParam, toWebRequest } from 'h3'
 import { vehicleSchema } from '../../../../shared'
 import { archiveVehicle } from '../../../modules/vehicles'
+import { readOfficeBody } from '../../tenant-changed'
 import { parseVehicleId, vehicleHttpError } from '../http'
 
 /**
@@ -11,7 +12,7 @@ import { parseVehicleId, vehicleHttpError } from '../http'
 export default defineEventHandler(async (event) => {
   const vehicleId = parseVehicleId(getRouterParam(event, 'id'))
   try {
-    return vehicleSchema.parse(await archiveVehicle(toWebRequest(event).headers, vehicleId))
+    return vehicleSchema.parse(await archiveVehicle(toWebRequest(event).headers, vehicleId, await readOfficeBody(event)))
   }
   catch (error) {
     vehicleHttpError(error)

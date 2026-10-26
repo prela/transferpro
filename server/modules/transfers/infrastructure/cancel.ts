@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { canCancelRide, RIDE_ACCEPTED_FIELDS, rideStateSchema } from '../../../../shared'
 import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
-import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { mailerForApp, TenantAccessError, withOfficeWrite } from '../../tenancy'
 import { RideNotFoundError } from './assign'
 import { mailOutboxQueue } from './mail-outbox-worker'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
@@ -147,9 +147,8 @@ export async function cancelRide(
   rawBody: unknown,
   delivery?: { mailer: Mailer, logger?: Logger },
 ): Promise<CancelledRideResult> {
-  const rideId = parseCancel(rawRideId, rawBody)
   const queue = await mailOutboxQueue()
-  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
+  const saved = await withOfficeWrite(headers, rawBody, body => parseCancel(rawRideId, body), async ({ actor, context, transaction }, rideId) => {
     if (actor.role !== 'admin' && actor.role !== 'dispatcher')
       throw new TenantAccessError(403)
     const rides = await cancelRideForOffice(transaction, actor.userId, rideId)

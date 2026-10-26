@@ -3,12 +3,14 @@ import { z } from 'zod'
 import { LocationInputError, parseIncludeArchivedQuery, QueryParamError } from '../../../shared'
 import { LocationArchivedError, LocationIataTakenError, LocationNotFoundError } from '../../modules/locations'
 import { TenantAccessError } from '../../modules/tenancy'
+import { rethrowTenantChanged } from '../tenant-changed'
 
 /**
  * Turn a Location failure into an HTTP error. The message stays a fixed phrase
  * for the status. An address is not copied from the thrown error.
  */
 export function locationHttpError(error: unknown): never {
+  rethrowTenantChanged(error)
   if (error instanceof LocationInputError || error instanceof LocationNotFoundError || error instanceof TenantAccessError) {
     throw createError({ statusCode: error.statusCode })
   }

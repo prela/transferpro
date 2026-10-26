@@ -1,5 +1,6 @@
 import { appendResponseHeader, defineEventHandler, getRouterParam, toWebRequest } from 'h3'
 import { repairInvitationRequest, revokePendingInvitation } from '../../../modules/tenancy'
+import { readOfficeBody } from '../../tenant-changed'
 import { invitationHttpError, parseInvitationId } from '../http'
 
 /**
@@ -11,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const request = await repairInvitationRequest(toWebRequest(event).headers)
   appendResponseHeader(event, 'set-cookie', request.clearShadow)
   try {
-    await revokePendingInvitation(request.headers, invitationId)
+    await revokePendingInvitation(request.headers, invitationId, await readOfficeBody(event))
     return { revoked: true }
   }
   catch (error) {

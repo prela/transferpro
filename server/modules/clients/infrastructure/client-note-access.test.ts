@@ -11,6 +11,15 @@ vi.mock('../../tenancy', async (importOriginal) => {
       actor: { role: 'billing', userId: 'user-1' },
       transaction: {},
     }),
+    withOfficeWrite: async (
+      _headers: Headers,
+      raw: unknown,
+      parse: (body: unknown) => unknown,
+      run: (scope: { actor: { role: string, userId: string }, transaction: object }, input: unknown) => Promise<unknown>,
+    ) => run({
+      actor: { role: 'billing', userId: 'user-1' },
+      transaction: {},
+    }, parse(raw)),
   }
 })
 

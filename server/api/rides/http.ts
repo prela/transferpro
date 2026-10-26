@@ -2,6 +2,7 @@ import { createError } from 'h3'
 import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
 import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, FullyBookedError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotHandedOffError, RideNotHandoffableError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
+import { rethrowTenantChanged } from '../tenant-changed'
 
 /**
  * Turn an assignment or accept failure into an HTTP error. The message stays
@@ -39,6 +40,7 @@ import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, Full
  * Ride. Each of those writes nothing.
  */
 export function rideHttpError(error: unknown): never {
+  rethrowTenantChanged(error)
   if (
     error instanceof AssignRideInputError
     || error instanceof RideCommandInputError

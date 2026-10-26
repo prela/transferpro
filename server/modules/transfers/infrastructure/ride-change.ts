@@ -9,7 +9,7 @@ import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { lockTenantCapacity } from '../../capacity'
 import { driverAssignState } from '../../drivers'
-import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { mailerForApp, TenantAccessError, withOfficeWrite } from '../../tenancy'
 import { vehiclePresenceForAssign } from '../../vehicles'
 import { RideDriverArchivedError, RideNotFoundError, RideVehicleArchivedError } from './assign'
 import { checkRideCapacity } from './capacity-check'
@@ -314,9 +314,8 @@ function officeOnly(role: string): void {
  * pending. Tests pass a mailer.
  */
 export async function changeVehicle(headers: Headers, raw: unknown, delivery?: Delivery): Promise<AssignedRide> {
-  const input = parseChangeRideVehicle(raw)
   const queue = await mailOutboxQueue()
-  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
+  const saved = await withOfficeWrite(headers, raw, parseChangeRideVehicle, async ({ actor, context, transaction }, input) => {
     officeOnly(actor.role)
     const changed = await changeRideVehicle(transaction, actor.userId, input)
     const order = await readAssignedWorkOrder(transaction, changed.ride.id)
@@ -335,9 +334,8 @@ export async function changeVehicle(headers: Headers, raw: unknown, delivery?: D
  * the entry pending. Tests pass a mailer.
  */
 export async function clearRide(headers: Headers, rawRideId: unknown, rawBody: unknown, delivery?: Delivery): Promise<AssignedRide> {
-  const parsed = parseClearRide(rawRideId, rawBody)
   const queue = await mailOutboxQueue()
-  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
+  const saved = await withOfficeWrite(headers, rawBody, body => parseClearRide(rawRideId, body), async ({ actor, context, transaction }, parsed) => {
     officeOnly(actor.role)
     const cleared = await clearAssignedRide(transaction, actor.userId, parsed.rideId, parsed.version)
     const order = await readAssignedWorkOrder(transaction, cleared.ride.id, cleared.released)
@@ -357,9 +355,8 @@ export async function clearRide(headers: Headers, rawRideId: unknown, rawBody: u
  * reassignment. Tests pass a mailer.
  */
 export async function reassignRide(headers: Headers, raw: unknown, delivery?: Delivery): Promise<AssignedRide> {
-  const input = parseReassignRide(raw)
   const queue = await mailOutboxQueue()
-  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
+  const saved = await withOfficeWrite(headers, raw, parseReassignRide, async ({ actor, context, transaction }, input) => {
     officeOnly(actor.role)
     const moved = await reassignAssignedRide(transaction, actor.userId, input)
     const nextOrder = await readAssignedWorkOrder(transaction, moved.ride.id)

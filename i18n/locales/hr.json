@@ -18,6 +18,7 @@
     "signingOut": "Odjava u tijeku",
     "signOutFailed": "Odjava nije uspjela. Pokušajte ponovno.",
     "switchFailed": "Tvrtka nije promijenjena. Pokušajte ponovno.",
+    "tenantChanged": "Aktivna tvrtka promijenjena je u drugoj kartici. Zaslon se ponovno učitava u aktivnu tvrtku.",
     "otherCompanies": "Druge tvrtke",
     "exampleTime": "Primjer vremena",
     "unavailable": "Zaslon se nije mogao učitati. Pokušajte ponovno.",

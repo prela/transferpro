@@ -14,6 +14,7 @@ useHead(computed(() => ({
 
 <template>
   <UApp :locale="uiLocale">
+    <TenantChangedNotice />
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
