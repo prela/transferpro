@@ -268,14 +268,17 @@ export function clearOfficeIdleEnd(storage: OfficeIdleStorage | null): void {
   }
 }
 
-function writeOfficeIdleRaw(storage: OfficeIdleStorage | null, key: string, value: string): void {
+/** False when there is no store or the write throws. The caller decides whether to broadcast. */
+function writeOfficeIdleRaw(storage: OfficeIdleStorage | null, key: string, value: string): boolean {
   if (storage === null)
-    return
+    return false
   try {
     storage.setItem(key, value)
+    return true
   }
   catch {
     // Quota or a blocked store. The caller still applies the mark on this tab.
+    return false
   }
 }
 
@@ -290,7 +293,9 @@ function postOfficeIdle(channel: OfficeIdleChannel, message: OfficeIdleMessage):
 
 /**
  * Share the mark, then hand it back so this tab can apply it.
- * The write is best-effort: a throw still returns `record`.
+ * The write is best-effort: a throw still returns `record` and still
+ * broadcasts. Other tabs of this sign-in keep one clock when storage is full.
+ * A mark from another sign-in does not come through here.
  */
 export function publishOfficeIdleMark(
   storage: OfficeIdleStorage | null,
@@ -324,8 +329,10 @@ export function laterOfficeIdleAt(
 
 /**
  * A visible key, click, or command moves this tab even when publishing fails.
- * `apply` is that local move. A hidden tab, an older stamp, and a different
- * sign-in leave the clock where it is.
+ * `apply` is that local move. A hidden tab and an older stamp leave the
+ * clock where it is. A stored mark from another sign-in is not broadcast:
+ * the other tabs may be on a later sign-in. An id that is not an instant
+ * is left unread and unsent.
  */
 export function noteOfficeIdleAction(
   storage: OfficeIdleStorage | null,
@@ -336,9 +343,24 @@ export function noteOfficeIdleAction(
   apply: (record: SharedOfficeIdle) => void,
 ): void {
   const stored = readOfficeIdleMark(storage)
-  const current = stored ?? local
-  if (current.signedInAt !== local.signedInAt)
+  if (stored !== null && stored.signedInAt !== local.signedInAt) {
+    const localMs = Date.parse(local.signedInAt)
+    const storedMs = Date.parse(stored.signedInAt)
+    // Opaque ids are not ordered. Do not replace the stored mark or tell other tabs.
+    if (!Number.isFinite(localMs) || !Number.isFinite(storedMs))
+      return
+    // An earlier tab must not replace a later mark.
+    if (localMs <= storedMs)
+      return
+    const next = sharedIdleAfterAction(local, at, visible)
+    if (next === null)
+      return
+    // The stored mark is an earlier sign-in. Move this tab, and do not broadcast.
+    writeOfficeIdleRaw(storage, OFFICE_IDLE_STORAGE_KEY, JSON.stringify(next))
+    apply(next)
     return
+  }
+  const current = stored ?? local
   const next = sharedIdleAfterAction(current, at, visible)
   if (next === null)
     return

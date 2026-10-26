@@ -212,6 +212,16 @@ export function isOwnTenantSwitch(data: unknown): boolean {
 }
 
 /**
+ * One POST for every sign-out in the app. ofetch omits Content-Type when
+ * there is no body. The auth route still gives that POST a body stream,
+ * and Better Auth answers 415. An empty object is application/json, which
+ * sign-out accepts.
+ */
+export async function postSignOut(): Promise<void> {
+  await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
+}
+
+/**
  * The one sign-out for every Tenant role (office menu, Driver menu, and the
  * pages that still have the button). Pending and the failure live in shared
  * state so the menu and the page alert are one action. A route change drops
@@ -234,31 +244,41 @@ export function useShellSignOut() {
     shellError.value = null
   })
 
-  async function signOut(destination?: unknown): Promise<boolean> {
-    // A click handler passes the event. Only a string is a destination.
-    const target = typeof destination === 'string' ? destination : '/'
+  /**
+   * `delete-draft` is the button. A failed POST keeps the shell and shows
+   * the failure. `keep-draft` is idle, the twelve-hour cap, and a session
+   * the server has already revoked: a failed POST is ignored and the shell
+   * still clears. The draft is removed only on the button, and only before
+   * the shell is cleared.
+   */
+  async function endMemberSession(choice: 'delete-draft' | 'keep-draft', destination: string): Promise<boolean> {
     pending.value = true
     shellError.value = null
     try {
-      // ofetch omits Content-Type when there is no body. The auth route still
-      // gives that POST a body stream, and Better Auth answers 415. An empty
-      // object is application/json, which sign-out accepts.
-      await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
-      const current = session.value
-      if (import.meta.client && current)
-        applyTransferDraftEvent(localStorage, current.userId, current.tenantId, 'sign-out')
+      if (choice === 'keep-draft')
+        await postSignOut().catch(() => undefined)
+      else
+        await postSignOut()
+      if (choice === 'delete-draft') {
+        const current = session.value
+        if (import.meta.client && current)
+          applyTransferDraftEvent(localStorage, current.userId, current.tenantId, 'sign-out')
+      }
       // The cookie is gone. Drop the shared shell before the next paint so
       // this page and the next one cannot render the previous Tenant. A
       // refetch would leave that Tenant up until the response arrived.
       clearSharedShell()
       await setLocale('hr')
-      if (route.fullPath !== target)
-        await navigateTo(target)
+      if (route.fullPath !== destination)
+        await navigateTo(destination)
       return true
     }
-    catch {
-      // A failed request keeps the shell. A throw after the shell was cleared
-      // (locale or navigation) is not the sign-out failure message.
+    catch (error) {
+      // A failed button request keeps the shell. A throw after the shell was
+      // cleared (locale or navigation) is not the sign-out failure message.
+      // A forced end does not swallow a throw from locale or navigation.
+      if (choice === 'keep-draft')
+        throw error
       if (session.value)
         shellError.value = 'shell.signOutFailed'
       return false
@@ -268,6 +288,12 @@ export function useShellSignOut() {
     }
   }
 
+  async function signOut(destination?: unknown): Promise<boolean> {
+    // A click handler passes the event. Only a string is a destination.
+    const target = typeof destination === 'string' ? destination : '/'
+    return endMemberSession('delete-draft', target)
+  }
+
   /**
    * The cookie ends. The active Tenant's draft stays, for an idle end,
    * the twelve-hour end, and a session the server has already revoked.
@@ -275,18 +301,7 @@ export function useShellSignOut() {
   async function endSessionKeepingDraft(): Promise<void> {
     if (pending.value)
       return
-    pending.value = true
-    shellError.value = null
-    try {
-      await $fetch('/api/auth/sign-out', { method: 'POST', body: {} }).catch(() => undefined)
-      clearSharedShell()
-      await setLocale('hr')
-      if (route.fullPath !== '/')
-        await navigateTo('/')
-    }
-    finally {
-      pending.value = false
-    }
+    await endMemberSession('keep-draft', '/')
   }
 
   return { pending, shellError, signOut, endSessionKeepingDraft, session }

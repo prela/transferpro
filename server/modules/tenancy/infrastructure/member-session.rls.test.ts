@@ -2,7 +2,7 @@ import { loadEnvFile } from 'node:process'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { chooseActiveTenant, closeTenantRuntime, readSessionShell, switchActiveTenant, TenantAccessError, updateUserLocale } from '..'
-import { instantFromWallClock, operationalDateInTimeZone } from '../../../../shared/date'
+import { pastPickupOnThisOperationalDay } from '../../../../shared/testing/past-pickup'
 import { parseAppEnv } from '../../../core/index'
 import { closeDriverHoldingRides, driverHasHoldingRide } from '../../transfers'
 import { insertCredentialMember, insertMembership } from '../testing'
@@ -152,18 +152,6 @@ async function withTenant<T>(tenantId: string, run: (client: pg.PoolClient) => P
   finally {
     client.release()
   }
-}
-
-/** A pickup already past, on the operational day that contains now. */
-function pastPickupOnThisOperationalDay(): Date {
-  const zone = 'Europe/Zagreb'
-  const now = new Date()
-  const day = operationalDateInTimeZone(zone, now, 5)
-  const start = instantFromWallClock(`${day}T05:00`, zone)
-  const candidate = new Date(Math.max(start.getTime() + 1000, now.getTime() - 60_000))
-  if (candidate.getTime() >= now.getTime())
-    return new Date(now.getTime() - 1000)
-  return candidate
 }
 
 async function seedAssignedRide(tenantId: string, userId: string, email: string, pickup: Date): Promise<string> {

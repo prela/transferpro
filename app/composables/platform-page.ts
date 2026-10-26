@@ -1,5 +1,6 @@
 import type { PlatformShell } from '../../shared'
 import { platformShellSchema } from '../../shared'
+import { postSignOut } from './session-shell'
 
 /**
  * The platform screens call `/api/platform/session` only.
@@ -34,10 +35,7 @@ export async function usePlatformPage() {
     pending.value = true
     shellError.value = null
     try {
-      // ofetch omits Content-Type when there is no body. The auth route still
-      // gives that POST a body stream, and Better Auth answers 415. An empty
-      // object is application/json, which sign-out accepts.
-      await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
+      await postSignOut()
       clearNuxtData()
       await navigateTo('/')
     }

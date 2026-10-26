@@ -1,6 +1,7 @@
 import type { APIResponse, Page } from '@playwright/test'
 import pg from 'pg'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone } from '../shared/date'
+import { pastPickupOnThisOperationalDay } from '../shared/testing/past-pickup'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
@@ -69,19 +70,6 @@ async function openTransfer(page: Page) {
   return dialog
 }
 
-/**
- * Pickup already past, and still on today's operational day.
- * Two hours ago is the previous day when the suite runs just after 05:00.
- */
-function pastPickupOnThisOperationalDay(): string {
-  const now = new Date()
-  const day = operationalDateInTimeZone('Europe/Zagreb', now, 5)
-  const start = instantFromWallClock(`${day}T05:00`, 'Europe/Zagreb').getTime()
-  const candidate = Math.max(start + 60_000, now.getTime() - 60 * 60 * 1000)
-  const pickup = candidate < now.getTime() ? candidate : now.getTime() - 1000
-  return new Date(pickup).toISOString()
-}
-
 async function assignHoldingRide(page: Page, driverUserId: string): Promise<string> {
   const driverId = await createdId(await page.request.post('/api/drivers', {
     data: {
@@ -114,7 +102,7 @@ async function assignHoldingRide(page: Page, driverUserId: string): Promise<stri
   const recorded = await recordTransfer(page.request, {
     data: {
       clientId,
-      pickupAt: pastPickupOnThisOperationalDay(),
+      pickupAt: pastPickupOnThisOperationalDay().toISOString(),
       startLocationId,
       endLocationId,
       passengerCount: 1,

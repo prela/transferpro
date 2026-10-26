@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { PasswordLengthLimits } from '../../shared'
 import { acceptErrorKey, invitationPreviewSchema, passwordLengthRule, signInErrorKey } from '../../shared'
+import { postSignOut } from '../composables/session-shell'
 
 const { t, setLocale } = useI18n()
 
@@ -133,10 +134,7 @@ async function signOut() {
   formError.value = null
   pending.value = true
   try {
-    // ofetch omits Content-Type when there is no body. The auth route still
-    // gives that POST a body stream, and Better Auth answers 415. An empty
-    // object is application/json, which sign-out accepts.
-    await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
+    await postSignOut()
     await loadPreview()
   }
   catch {
