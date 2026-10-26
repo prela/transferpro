@@ -2,7 +2,6 @@ import type { APIResponse, Page } from '@playwright/test'
 import { expect, test } from '@playwright/test'
 import pg from 'pg'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
-import { OFFICE_IDLE_MS } from '../shared/member-session'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { recordTransfer } from './fixtures/record-transfer'
 import { memberPassword, seedMember, seedTenant } from './fixtures/seed'
@@ -229,12 +228,13 @@ test.describe('@phone', () => {
     await dialog.getByLabel('Ime gosta').fill('Ana Sesija')
     await expect.poll(() => storedDrafts(page)).toContain('Ana Sesija')
 
-    // The board's refresh fires many times in this jump. It must not move the idle clock.
-    await page.clock.fastForward(OFFICE_IDLE_MS - 5_000)
-    await expect(page.getByRole('heading', { level: 1, name: 'Početna', exact: true })).toBeVisible()
+    // Ten refreshes fire in this jump. The last one must not start a new half hour.
+    // Recording a transfer leaves Home, so the open form is the proof they are still in.
+    await page.clock.fastForward(10 * 60 * 1000)
     await expect(dialog.getByLabel('Ime gosta')).toHaveValue('Ana Sesija')
+    await expect(page.getByLabel('E-pošta')).toHaveCount(0)
 
-    await page.clock.fastForward(10_000)
+    await page.clock.fastForward(25 * 60 * 1000)
     await expect(page.getByLabel('E-pošta')).toBeVisible()
     await expect.poll(() => storedDrafts(page)).toContain('Ana Sesija')
   })

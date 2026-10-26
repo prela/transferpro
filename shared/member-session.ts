@@ -99,6 +99,8 @@ export interface OfficeIdleClock {
   action: (at: number, visible: boolean) => void
   refresh: () => void
   due: (at: number) => boolean
+  /** Milliseconds until idle. Starting the timer over must use this, or a refresh grants another half hour. */
+  remaining: (at: number) => number
 }
 
 export function createOfficeIdleClock(startedAt: number): OfficeIdleClock {
@@ -114,6 +116,9 @@ export function createOfficeIdleClock(startedAt: number): OfficeIdleClock {
     },
     due(at) {
       return at - lastActionAt >= OFFICE_IDLE_MS
+    },
+    remaining(at) {
+      return Math.max(0, lastActionAt + OFFICE_IDLE_MS - at)
     },
   }
 }

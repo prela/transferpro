@@ -317,6 +317,25 @@ it('refuses a driver at twelve hours unless a Ride in this Tenant is holding, an
   await expect(readSessionShell(capped)).rejects.toMatchObject({ statusCode: 401 })
 })
 
+it('keeps a sole driver at sixteen hours when the row has no company, and two companies at twelve', async () => {
+  const home = await openTenant('sole-driver')
+  const driver = await openMember(home.tenantId, 'driver', 'sole')
+  await signIn(driver.email)
+  await authPool.query(
+    `update auth.session set active_organization_id = null where user_id = $1`,
+    [driver.userId],
+  )
+  expectHours(await sessionLife(driver.userId), 16)
+
+  const other = await openTenant('two-driver')
+  await insertMembership(authPool, other.tenantId, driver.userId, 'driver')
+  await authPool.query(
+    `update auth.session set active_organization_id = null where user_id = $1`,
+    [driver.userId],
+  )
+  expectHours(await sessionLife(driver.userId), 12)
+})
+
 it('ends the session when an office membership is opened after twelve hours', async () => {
   const driving = await openTenant('switch-drive')
   const office = await openTenant('switch-office')

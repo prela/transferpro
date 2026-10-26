@@ -89,8 +89,10 @@ it('resets the office idle clock on a visible action, and not on a refresh or a 
 
   clock.refresh()
   expect(clock.due(OFFICE_IDLE_MS)).toBe(true)
+  expect(clock.remaining(10 * 60 * 1000)).toBe(OFFICE_IDLE_MS - 10 * 60 * 1000)
 
   clock.action(5 * 60 * 1000, true)
+  expect(clock.remaining(5 * 60 * 1000)).toBe(OFFICE_IDLE_MS)
   expect(clock.due(5 * 60 * 1000 + OFFICE_IDLE_MS - 1)).toBe(false)
   expect(clock.due(5 * 60 * 1000 + OFFICE_IDLE_MS)).toBe(true)
 })

@@ -1,5 +1,5 @@
 import type { DriverSessionBanner, SessionShell } from '../../shared'
-import { createOfficeIdleClock, DRIVER_WARNING_LEAD_MS, driverSessionBanners, OFFICE_IDLE_MS, OFFICE_SESSION_MS, OFFICE_WARNING_LEAD_MS, officeSessionWarning, sessionShellSchema } from '../../shared'
+import { createOfficeIdleClock, DRIVER_WARNING_LEAD_MS, driverSessionBanners, OFFICE_SESSION_MS, OFFICE_WARNING_LEAD_MS, officeSessionWarning, sessionShellSchema } from '../../shared'
 import { isOfficeMember, sessionShellKey } from './session-shell'
 
 /**
@@ -15,9 +15,14 @@ export function useSessionLifetime() {
   const nowMs = ref(Date.now())
   const session = computed(() => readShell())
   const notices = computed(() => noticesFor(session.value, nowMs.value))
+  // Survives a new layout. A fresh clock would treat that mount as a person.
+  const idleMark = useState<number | null>('office-idle-at', () => null)
+  const idleSession = useState<string | null>('office-idle-session', () => null)
 
   if (import.meta.client) {
-    const idle = createOfficeIdleClock(Date.now())
+    if (idleMark.value === null)
+      idleMark.value = Date.now()
+    const idle = createOfficeIdleClock(idleMark.value)
     let cancelIdle: (() => void) | undefined
     let cancelEnd: (() => void) | undefined
     let cancelPoll: (() => void) | undefined
@@ -26,21 +31,27 @@ export function useSessionLifetime() {
 
     function armIdle() {
       cancelIdle?.()
+      // The wait is whatever is left of the half hour. A new timer of the
+      // full half hour would let a refresh, or this screen mounting again,
+      // push the sign-out out.
       const id = setTimeout(() => {
         nowMs.value = Date.now()
         if (idle.due(nowMs.value))
           void endSessionKeepingDraft()
         else
           armIdle()
-      }, OFFICE_IDLE_MS)
+      }, idle.remaining(Date.now()))
       cancelIdle = () => clearTimeout(id)
     }
 
     function onPersonAction() {
       const visible = document.visibilityState === 'visible'
-      idle.action(Date.now(), visible)
-      if (visible)
-        armIdle()
+      const at = Date.now()
+      idle.action(at, visible)
+      if (!visible)
+        return
+      idleMark.value = at
+      armIdle()
     }
 
     function startIdle() {
@@ -116,6 +127,13 @@ export function useSessionLifetime() {
         stopIdle()
         cancelEnd?.()
         return
+      }
+      // A new sign-in starts its own half hour. The same sign-in keeps the mark.
+      if (idleSession.value !== next.signedInAt) {
+        idleSession.value = next.signedInAt
+        const at = Date.now()
+        idleMark.value = at
+        idle.action(at, true)
       }
       armEnd(next)
       if (isOfficeMember(next.role))
