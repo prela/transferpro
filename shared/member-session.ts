@@ -268,14 +268,17 @@ export function clearOfficeIdleEnd(storage: OfficeIdleStorage | null): void {
   }
 }
 
-function writeOfficeIdleRaw(storage: OfficeIdleStorage | null, key: string, value: string): void {
+/** False when there is no store or the write throws. The caller decides whether to broadcast. */
+function writeOfficeIdleRaw(storage: OfficeIdleStorage | null, key: string, value: string): boolean {
   if (storage === null)
-    return
+    return false
   try {
     storage.setItem(key, value)
+    return true
   }
   catch {
     // Quota or a blocked store. The caller still applies the mark on this tab.
+    return false
   }
 }
 
@@ -291,14 +294,22 @@ function postOfficeIdle(channel: OfficeIdleChannel, message: OfficeIdleMessage):
 /**
  * Share the mark, then hand it back so this tab can apply it.
  * The write is best-effort: a throw still returns `record`.
+ * No store still broadcasts: the other tabs may have storage.
+ * A throw does not. Broadcasting then would hand this sign-in to tabs
+ * whose newer mark could not be written over the one still stored.
  */
 export function publishOfficeIdleMark(
   storage: OfficeIdleStorage | null,
   channel: OfficeIdleChannel,
   record: SharedOfficeIdle,
 ): SharedOfficeIdle {
-  writeOfficeIdleRaw(storage, OFFICE_IDLE_STORAGE_KEY, JSON.stringify(record))
-  postOfficeIdle(channel, { kind: 'action', signedInAt: record.signedInAt, lastActionAt: record.lastActionAt })
+  const message = { kind: 'action' as const, signedInAt: record.signedInAt, lastActionAt: record.lastActionAt }
+  if (storage === null) {
+    postOfficeIdle(channel, message)
+    return record
+  }
+  if (writeOfficeIdleRaw(storage, OFFICE_IDLE_STORAGE_KEY, JSON.stringify(record)))
+    postOfficeIdle(channel, message)
   return record
 }
 
@@ -324,8 +335,10 @@ export function laterOfficeIdleAt(
 
 /**
  * A visible key, click, or command moves this tab even when publishing fails.
- * `apply` is that local move. A hidden tab, an older stamp, and a different
- * sign-in leave the clock where it is.
+ * `apply` is that local move. A hidden tab and an older stamp leave the
+ * clock where it is. A stored mark from a later sign-in is left alone.
+ * An earlier mark that cannot be replaced still moves this tab, and is
+ * not broadcast.
  */
 export function noteOfficeIdleAction(
   storage: OfficeIdleStorage | null,
@@ -336,9 +349,19 @@ export function noteOfficeIdleAction(
   apply: (record: SharedOfficeIdle) => void,
 ): void {
   const stored = readOfficeIdleMark(storage)
-  const current = stored ?? local
-  if (current.signedInAt !== local.signedInAt)
+  if (stored !== null && stored.signedInAt !== local.signedInAt) {
+    const next = sharedIdleAfterAction(local, at, visible)
+    if (next === null)
+      return
+    // Sign-in ids are instants. An earlier tab must not replace a later mark.
+    const localMs = Date.parse(local.signedInAt)
+    const storedMs = Date.parse(stored.signedInAt)
+    if (Number.isFinite(localMs) && Number.isFinite(storedMs) && localMs <= storedMs)
+      return
+    apply(publishOfficeIdleMark(storage, channel, next))
     return
+  }
+  const current = stored ?? local
   const next = sharedIdleAfterAction(current, at, visible)
   if (next === null)
     return

@@ -22,7 +22,7 @@ The cap that applies is the cap of the active membership, measured from this sig
 
 An Admin or a Dispatcher session ends 12 hours after sign-in. It also ends after 30 minutes without a person's action. Typing, a click, or a command resets that idle clock. A live refresh does not. Whichever end comes first signs them out.
 
-The absolute end is enforced on the session. The idle end is enforced in the browser, so a board left refreshing still signs out. The clock is one for every tab of that sign-in: a person's action in any visible tab resets it for all of them, and the end signs every one of those tabs out. A hidden tab does not count as a person's action.
+The absolute end is enforced on the session. The idle end is enforced in the browser, so a board left refreshing still signs out. The clock is one for every tab of that sign-in: a person's action in any visible tab resets it for all of them, and the end signs every one of those tabs out. There is one shared idle clock for all tabs, but when the shared write throws, or storage and BroadcastChannel are both blocked, each tab keeps its own clock. A hidden tab does not count as a person's action.
 
 About 15 minutes before the 12-hour end, the office is warned. The warning does not sign them out, and they keep working until the cap.
 

@@ -1,4 +1,4 @@
-import type { OfficeIdleStorage } from './member-session'
+import type { OfficeIdleChannel, OfficeIdleStorage } from './member-session'
 import { expect, it } from 'vitest'
 import { instantFromWallClock } from './date'
 import { clearOfficeIdleEnd, createOfficeIdleClock, DRIVER_HELD_SESSION_MS, DRIVER_WARNING_LEAD_MS, driverSessionBanners, finishOfficeIdle, laterOfficeIdleAt, memberSessionCapMs, noteOfficeIdleAction, OFFICE_IDLE_MS, OFFICE_SESSION_MS, OFFICE_WARNING_LEAD_MS, officeSessionWarning, openOfficeIdleChannel, parseOfficeIdleMessage, readOfficeIdleEndMark, readOfficeIdleMark, readSharedOfficeIdle, readSharedOfficeIdleEnd, rideHoldsDriverSession, sharedIdleAfterAction, sharedIdleForSession } from './member-session'
@@ -104,6 +104,35 @@ it('resets the office idle clock on a visible action, and a hidden tab does not 
   expect(clock.due(OFFICE_IDLE_MS)).toBe(true)
 })
 
+function quotaStorage(stored: string): OfficeIdleStorage {
+  return {
+    getItem: () => stored,
+    setItem: () => {
+      throw new Error('QuotaExceededError')
+    },
+    removeItem: () => {
+      throw new Error('QuotaExceededError')
+    },
+  }
+}
+
+function recordingChannel(posted: unknown[]): OfficeIdleChannel {
+  return {
+    postMessage(message) {
+      posted.push(message)
+    },
+    addEventListener() {
+      // This test only watches what this tab sends.
+    },
+    removeEventListener() {
+      // Nothing was subscribed.
+    },
+    close() {
+      // Nothing was opened.
+    },
+  }
+}
+
 function blockedStorage(): OfficeIdleStorage {
   const blocked = (): never => {
     throw new Error('SecurityError')
@@ -137,17 +166,49 @@ it('shares the idle mark when storage accepts the write', () => {
   expect(readOfficeIdleEndMark(storage)).toEqual({ signedInAt: 'sign-in-1' })
 })
 
-it('keeps a visible action when the old mark is still readable and the write throws', () => {
-  const stored = JSON.stringify({ signedInAt: 'sign-in-1', lastActionAt: 0 })
+it('resets this tab when a stale mark is readable and the write throws, without broadcasting', () => {
+  const earlier = '2026-10-26T08:00:00.000Z'
+  const stored = JSON.stringify({ signedInAt: earlier, lastActionAt: 0 })
+  const storage = quotaStorage(stored)
+  const posted: unknown[] = []
+  const clock = createOfficeIdleClock(0)
+  noteOfficeIdleAction(storage, recordingChannel(posted), { signedInAt: '2026-10-26T09:00:00.000Z', lastActionAt: 0 }, 60_000, true, (record) => {
+    clock.reset(record.lastActionAt)
+  })
+  expect(posted).toEqual([])
+  expect(readOfficeIdleMark(storage)).toEqual({ signedInAt: earlier, lastActionAt: 0 })
+  // The stale stamp stays in storage. This tab still measures idle from the action.
+  expect(clock.due(OFFICE_IDLE_MS)).toBe(false)
+  expect(clock.remaining(60_000)).toBe(OFFICE_IDLE_MS)
+  expect(clock.due(60_000 + OFFICE_IDLE_MS)).toBe(true)
+})
+
+it('does not replace a newer sign-in mark from an earlier tab', () => {
+  const newer = JSON.stringify({ signedInAt: '2026-10-26T10:00:00.000Z', lastActionAt: 5_000 })
+  let written = false
   const storage: OfficeIdleStorage = {
-    getItem: () => stored,
+    getItem: () => newer,
     setItem: () => {
-      throw new Error('QuotaExceededError')
+      written = true
     },
     removeItem: () => {
-      throw new Error('QuotaExceededError')
+      written = true
     },
   }
+  const posted: unknown[] = []
+  const clock = createOfficeIdleClock(0)
+  noteOfficeIdleAction(storage, recordingChannel(posted), { signedInAt: '2026-10-26T09:00:00.000Z', lastActionAt: 0 }, 60_000, true, (record) => {
+    clock.reset(record.lastActionAt)
+  })
+  expect(written).toBe(false)
+  expect(posted).toEqual([])
+  expect(readOfficeIdleMark(storage)).toEqual({ signedInAt: '2026-10-26T10:00:00.000Z', lastActionAt: 5_000 })
+  expect(clock.due(OFFICE_IDLE_MS)).toBe(true)
+})
+
+it('keeps a visible action when the old mark is still readable and the write throws', () => {
+  const stored = JSON.stringify({ signedInAt: 'sign-in-1', lastActionAt: 0 })
+  const storage = quotaStorage(stored)
   const channel = openOfficeIdleChannel(undefined)
   const clock = createOfficeIdleClock(0)
   noteOfficeIdleAction(storage, channel, { signedInAt: 'sign-in-1', lastActionAt: 0 }, 60_000, true, (record) => {
