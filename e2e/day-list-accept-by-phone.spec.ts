@@ -204,7 +204,10 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   await dialog.getByRole('button', { name: 'Record acceptance', exact: true }).click()
   const response = await acceptedResponse
   expect(response.status()).toBe(200)
-  expect(response.request().postDataJSON()).toEqual({})
+  // The dialog has no fields. The only JSON key is the company the screen was opened for.
+  const acceptBody = response.request().postDataJSON() as { expectedTenantId?: string }
+  expect(Object.keys(acceptBody).sort()).toEqual(['expectedTenantId'])
+  expect(acceptBody.expectedTenantId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   expect(acceptPosts).toBe(1)
   expect(mail).toEqual([])
 
