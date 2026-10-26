@@ -101,6 +101,8 @@ export interface OfficeIdleClock {
   due: (at: number) => boolean
   /** Milliseconds until idle. Starting the timer over must use this, or a refresh grants another half hour. */
   remaining: (at: number) => number
+  /** Replace the mark. A shared stamp from another tab may be earlier or later. */
+  reset: (at: number) => void
 }
 
 export function createOfficeIdleClock(startedAt: number): OfficeIdleClock {
@@ -120,5 +122,100 @@ export function createOfficeIdleClock(startedAt: number): OfficeIdleClock {
     remaining(at) {
       return Math.max(0, lastActionAt + OFFICE_IDLE_MS - at)
     },
+    reset(at) {
+      lastActionAt = at
+    },
   }
+}
+
+/** One idle mark for every tab of this browser (ADR-0057). */
+export const OFFICE_IDLE_STORAGE_KEY = 'transferpro-office-idle'
+
+/** Written when idle signs the browser out, so the other tabs follow. */
+export const OFFICE_IDLE_END_KEY = 'transferpro-office-idle-end'
+
+/** Same-origin tabs hear a mark or an end without waiting for a poll. */
+export const OFFICE_IDLE_CHANNEL = 'transferpro-office-idle'
+
+export interface SharedOfficeIdle {
+  readonly signedInAt: string
+  readonly lastActionAt: number
+}
+
+export interface SharedOfficeIdleEnd {
+  readonly signedInAt: string
+}
+
+export type OfficeIdleMessage
+  = | { kind: 'action', signedInAt: string, lastActionAt: number }
+    | { kind: 'end', signedInAt: string }
+
+function idleStamp(value: unknown): { signedInAt: string, lastActionAt?: number } | null {
+  if (typeof value !== 'object' || value === null)
+    return null
+  if (!('signedInAt' in value) || typeof value.signedInAt !== 'string' || value.signedInAt === '')
+    return null
+  if (!('lastActionAt' in value))
+    return { signedInAt: value.signedInAt }
+  if (typeof value.lastActionAt !== 'number' || !Number.isFinite(value.lastActionAt))
+    return null
+  return { signedInAt: value.signedInAt, lastActionAt: value.lastActionAt }
+}
+
+export function readSharedOfficeIdle(raw: string | null): SharedOfficeIdle | null {
+  if (raw === null)
+    return null
+  try {
+    const parsed = idleStamp(JSON.parse(raw))
+    if (parsed?.lastActionAt === undefined)
+      return null
+    return { signedInAt: parsed.signedInAt, lastActionAt: parsed.lastActionAt }
+  }
+  catch {
+    return null
+  }
+}
+
+export function readSharedOfficeIdleEnd(raw: string | null): SharedOfficeIdleEnd | null {
+  if (raw === null)
+    return null
+  try {
+    const parsed = idleStamp(JSON.parse(raw))
+    if (parsed === null)
+      return null
+    return { signedInAt: parsed.signedInAt }
+  }
+  catch {
+    return null
+  }
+}
+
+/**
+ * Opening another tab keeps the mark for this sign-in.
+ * A different sign-in starts at `at`. That start is not a person's action.
+ */
+export function sharedIdleForSession(current: SharedOfficeIdle | null, signedInAt: string, at: number): SharedOfficeIdle {
+  if (current?.signedInAt === signedInAt)
+    return current
+  return { signedInAt, lastActionAt: at }
+}
+
+/**
+ * A visible key, click, or command moves the shared mark forward.
+ * A hidden tab, a live refresh, and an older stamp do not.
+ * Null means the caller must not write.
+ */
+export function sharedIdleAfterAction(current: SharedOfficeIdle, at: number, visible: boolean): SharedOfficeIdle | null {
+  if (!visible || at <= current.lastActionAt)
+    return null
+  return { signedInAt: current.signedInAt, lastActionAt: at }
+}
+
+export function parseOfficeIdleMessage(value: unknown): OfficeIdleMessage | null {
+  const parsed = idleStamp(value)
+  if (parsed === null)
+    return null
+  if (parsed.lastActionAt === undefined)
+    return { kind: 'end', signedInAt: parsed.signedInAt }
+  return { kind: 'action', signedInAt: parsed.signedInAt, lastActionAt: parsed.lastActionAt }
 }

@@ -238,6 +238,52 @@ test.describe('@phone', () => {
     await expect(page.getByLabel('E-pošta')).toBeVisible()
     await expect.poll(() => storedDrafts(page)).toContain('Ana Sesija')
   })
+
+  test('an action in one tab keeps the other tab signed in', async ({ browser }) => {
+    test.setTimeout(120_000)
+    const tenant = await seedTenant('session-idle-tabs')
+    const context = await browser.newContext()
+    const start = new Date()
+    const pageA = await context.newPage()
+    const pageB = await context.newPage()
+    await pageA.clock.install({ time: start })
+    await pageB.clock.install({ time: start })
+    await useTheme(pageA, 'light')
+    await useTheme(pageB, 'light')
+    await signIn(pageA, tenant.adminEmail, tenant.password, tenant.name)
+    await pageB.goto('/')
+    await expect(pageB.getByRole('heading', { level: 1, name: 'Početna', exact: true })).toBeVisible()
+    await hydrated(pageA)
+    await hydrated(pageB)
+    await expectNoAxeViolations(pageA)
+
+    await switchTheme(pageA, 'dark')
+    await switchTheme(pageB, 'dark')
+    await expectNoAxeViolations(pageA)
+
+    // One jump moves both pages: this context shares the fake clock.
+    // Twenty minutes with no action is still inside the half hour.
+    await pageB.clock.fastForward(20 * 60 * 1000)
+    await expect(pageA.getByLabel('E-pošta')).toHaveCount(0)
+    await expect(pageB.getByLabel('E-pošta')).toHaveCount(0)
+
+    // A key in tab A only. Tab B does not act.
+    const dialog = await openTransfer(pageA)
+    await dialog.getByLabel('Ime gosta').fill('idle-draft')
+    await expect.poll(() => storedDrafts(pageA)).toContain('idle-draft')
+
+    // Forty minutes since the tabs opened, twenty since the key in A.
+    await pageB.clock.fastForward(20 * 60 * 1000)
+    await expect(pageA.getByLabel('E-pošta')).toHaveCount(0)
+    await expect(pageB.getByLabel('E-pošta')).toHaveCount(0)
+    await expect(dialog.getByLabel('Ime gosta')).toHaveValue('idle-draft')
+
+    await pageB.clock.fastForward(15 * 60 * 1000)
+    await expect(pageB.getByLabel('E-pošta')).toBeVisible({ timeout: 20_000 })
+    await expect(pageA.getByLabel('E-pošta')).toBeVisible({ timeout: 20_000 })
+    await expect.poll(() => storedDrafts(pageA)).toContain('idle-draft')
+    await context.close()
+  })
 })
 
 test('a click in a hidden tab does not keep the office session', async ({ page }) => {

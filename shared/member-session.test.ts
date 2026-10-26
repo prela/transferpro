@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { instantFromWallClock } from './date'
-import { createOfficeIdleClock, DRIVER_HELD_SESSION_MS, DRIVER_WARNING_LEAD_MS, driverSessionBanners, memberSessionCapMs, OFFICE_IDLE_MS, OFFICE_SESSION_MS, OFFICE_WARNING_LEAD_MS, officeSessionWarning, rideHoldsDriverSession } from './member-session'
+import { createOfficeIdleClock, DRIVER_HELD_SESSION_MS, DRIVER_WARNING_LEAD_MS, driverSessionBanners, memberSessionCapMs, OFFICE_IDLE_MS, OFFICE_SESSION_MS, OFFICE_WARNING_LEAD_MS, officeSessionWarning, parseOfficeIdleMessage, readSharedOfficeIdle, readSharedOfficeIdleEnd, rideHoldsDriverSession, sharedIdleAfterAction, sharedIdleForSession } from './member-session'
 
 const signedIn = new Date('2026-10-25T06:00:00.000Z')
 
@@ -95,4 +95,38 @@ it('resets the office idle clock on a visible action, and not on a refresh or a 
   expect(clock.remaining(5 * 60 * 1000)).toBe(OFFICE_IDLE_MS)
   expect(clock.due(5 * 60 * 1000 + OFFICE_IDLE_MS - 1)).toBe(false)
   expect(clock.due(5 * 60 * 1000 + OFFICE_IDLE_MS)).toBe(true)
+
+  clock.reset(0)
+  expect(clock.due(OFFICE_IDLE_MS)).toBe(true)
+})
+
+it('keeps one idle mark for every tab of a sign-in', () => {
+  const started = sharedIdleForSession(null, 'sign-in-1', 0)
+  expect(sharedIdleAfterAction(started, 5_000, false)).toBeNull()
+  const typed = sharedIdleAfterAction(started, 5_000, true)
+  expect(typed).toEqual({ signedInAt: 'sign-in-1', lastActionAt: 5_000 })
+  if (typed === null)
+    throw new Error('visible action did not move the idle mark')
+
+  // Another tab opening later must not move the mark to its own clock.
+  expect(sharedIdleForSession(typed, 'sign-in-1', 40 * 60 * 1000)).toEqual(typed)
+  expect(sharedIdleAfterAction(typed, 1_000, true)).toBeNull()
+
+  const again = sharedIdleForSession(typed, 'sign-in-2', 9_000)
+  expect(again).toEqual({ signedInAt: 'sign-in-2', lastActionAt: 9_000 })
+
+  const raw = JSON.stringify(typed)
+  expect(readSharedOfficeIdle(raw)).toEqual(typed)
+  expect(readSharedOfficeIdle('nope')).toBeNull()
+  expect(readSharedOfficeIdleEnd(JSON.stringify({ signedInAt: 'sign-in-1' }))).toEqual({ signedInAt: 'sign-in-1' })
+  expect(parseOfficeIdleMessage({ kind: 'action', signedInAt: 'sign-in-1', lastActionAt: 5_000 })).toEqual({
+    kind: 'action',
+    signedInAt: 'sign-in-1',
+    lastActionAt: 5_000,
+  })
+  expect(parseOfficeIdleMessage({ kind: 'end', signedInAt: 'sign-in-1' })).toEqual({
+    kind: 'end',
+    signedInAt: 'sign-in-1',
+  })
+  expect(parseOfficeIdleMessage({ kind: 'end' })).toBeNull()
 })
