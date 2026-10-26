@@ -1505,17 +1505,17 @@ test('a group card shows the client reference and the group mark, and an extra v
     return await recorded.json() as { transfer: { id: string }, ride: { id: string } }
   }
 
-  async function assign(rideId: string) {
+  async function assign(rideId: string, version: number) {
     const response = await page.request.post(`/api/rides/${rideId}/assign`, {
-      data: { version: 0, driverId: ownDriverId, vehicleId },
+      data: { version, driverId: ownDriverId, vehicleId },
     })
     if (!response.ok())
       throw new Error(`${response.status()} ${await response.text()}`)
   }
 
   const main = await record('Nika Glavni', mainAt, 'cash', 3, 40)
-  // The group count is stored on the main Transfer before any assign, so the
-  // opened version is still 0. Assign bumps that version.
+  // Storing the ordered count corrects the main Transfer and raises its
+  // version before anyone is assigned. The extra vehicles stay at 0.
   const extraCash = await record('Nika Dodatna', cashAt, 'cash', 1, 0, {
     mainTransferId: main.transfer.id,
     groupPassengerCount: 8,
@@ -1524,9 +1524,9 @@ test('a group card shows the client reference and the group mark, and an extra v
   const extraCard = await record('Nika Plastika', cardAt, 'card', 2, 0, {
     mainTransferId: main.transfer.id,
   })
-  await assign(main.ride.id)
-  await assign(extraCash.ride.id)
-  await assign(extraCard.ride.id)
+  await assign(main.ride.id, 1)
+  await assign(extraCash.ride.id, 0)
+  await assign(extraCard.ride.id, 0)
 
   await signOut(page)
   await signIn(page, driver.email, driver.password, tenant.name)
@@ -1541,10 +1541,10 @@ test('a group card shows the client reference and the group mark, and an extra v
   await expect(mainCard.getByText('8', { exact: true })).toHaveCount(0)
 
   const closedExtra = page.locator('article').filter({ hasText: 'Nika Dodatna' })
-  await expect(closedExtra.getByText('Grupa', { exact: true })).toBeVisible()
+  await expect(closedExtra.locator('button').getByText('Grupa', { exact: true })).toBeVisible()
   await expect(closedExtra.getByText('Referenca naručitelja')).toHaveCount(0)
   const cashCard = await showRide(page, 'Nika Dodatna')
-  await expect(cashCard.getByText('Grupa', { exact: true })).toBeVisible()
+  await expect(cashCard.locator('p').getByText('Grupa', { exact: true })).toBeVisible()
   await expect(cashCard.getByText('Referenca naručitelja')).toBeVisible()
   await expect(cashCard.getByText('V-19')).toBeVisible()
   await expect(cashCard.locator('div').filter({ hasText: /^Putnici/ }).locator('dd')).toHaveText('1')
@@ -1554,7 +1554,7 @@ test('a group card shows the client reference and the group mark, and an extra v
   await expect(cashCard.getByText('8', { exact: true })).toHaveCount(0)
 
   const cardRide = await showRide(page, 'Nika Plastika')
-  await expect(cardRide.getByText('Grupa', { exact: true })).toBeVisible()
+  await expect(cardRide.locator('p').getByText('Grupa', { exact: true })).toBeVisible()
   await expect(cardRide.getByText('V-19')).toBeVisible()
   await expect(cardRide.locator('div').filter({ hasText: /^Putnici/ }).locator('dd')).toHaveText('2')
   await expect(cardRide.getByText('Cijena', { exact: true })).toHaveCount(0)
@@ -1566,11 +1566,11 @@ test('a group card shows the client reference and the group mark, and an extra v
   await showRide(page, 'Nika Glavni')
   await showRide(page, 'Nika Dodatna')
   await showRide(page, 'Nika Plastika')
-  await expect(mainCard.getByText('Group', { exact: true })).toBeVisible()
+  await expect(mainCard.locator('p').getByText('Group', { exact: true })).toBeVisible()
   await expect(mainCard.getByText('Client reference')).toBeVisible()
   await expect(mainCard.getByText('Cash')).toBeVisible()
   await expect(mainCard.getByText('40.00 EUR')).toBeVisible()
-  await expect(cashCard.getByText('Group', { exact: true })).toBeVisible()
+  await expect(cashCard.locator('p').getByText('Group', { exact: true })).toBeVisible()
   await expect(cashCard.getByText('Client reference')).toBeVisible()
   await expect(cashCard.getByText('Price', { exact: true })).toHaveCount(0)
   await expect(cashCard.getByText('Cash')).toHaveCount(0)
@@ -1580,7 +1580,11 @@ test('a group card shows the client reference and the group mark, and an extra v
   await switchTheme(page, 'dark')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(mainCard.getByText('V-19')).toBeVisible()
-  await expect(cashCard.getByText('Group', { exact: true })).toBeVisible()
-  await expect(cashCard.getByText('Price', { exact: true })).toHaveCount(0)
-  await expect(cardRide.getByText('V-19')).toBeVisible()
+  // A theme change closes a later Ride. The mark stays on the row, and the
+  // open panel still hides the fare.
+  const cashDark = await showRide(page, 'Nika Dodatna')
+  await expect(cashDark.locator('p').getByText('Group', { exact: true })).toBeVisible()
+  await expect(cashDark.getByText('Price', { exact: true })).toHaveCount(0)
+  const cardDark = await showRide(page, 'Nika Plastika')
+  await expect(cardDark.getByText('V-19')).toBeVisible()
 })
