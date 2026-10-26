@@ -63,15 +63,19 @@ function requestPath(url: string): string {
   return (url.startsWith('http://') || url.startsWith('https://') ? new URL(url).pathname : url.split('?')[0]) ?? ''
 }
 
-function matches(rules: ReadonlyArray<{ readonly method: string, readonly pattern: RegExp }>, method: string, url: string): boolean {
+function findRule<T extends { readonly method: string, readonly pattern: RegExp }>(
+  rules: ReadonlyArray<T>,
+  method: string,
+  url: string,
+): T | undefined {
   const path = requestPath(url)
   const verb = method.toUpperCase()
-  return rules.some(rule => rule.method === verb && rule.pattern.test(path))
+  return rules.find(rule => rule.method === verb && rule.pattern.test(path))
 }
 
 /** True when this request is an office write that must name its screen Tenant. */
 export function isOfficeWrite(method: string, url: string): boolean {
-  return matches(officeWrites, method, url)
+  return findRule(officeWrites, method, url) !== undefined
 }
 
 /**
@@ -80,9 +84,7 @@ export function isOfficeWrite(method: string, url: string): boolean {
  * the other for every handler file.
  */
 export function officeWriteExemption(method: string, url: string): string | undefined {
-  const path = requestPath(url)
-  const verb = method.toUpperCase()
-  return officeWriteExemptions.find(rule => rule.method === verb && rule.pattern.test(path))?.reason
+  return findRule(officeWriteExemptions, method, url)?.reason
 }
 
 export interface OfficeClaimRequest {

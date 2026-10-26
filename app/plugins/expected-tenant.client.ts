@@ -7,11 +7,13 @@ import { sessionShellKey } from '../composables/session-shell'
  * A later poll can see a company switched in another tab. The form must
  * still name the company it was opened for (issue #506).
  *
- * `$fetch.create` adds the claim before ofetch serialises the body. The
- * fetch function is read at call time, so the tenant-switch hold (which
- * replaces `window.fetch` only while a switch is in progress) still
- * applies. Nothing patches `window.fetch` at startup, and there is no
- * inline script for a Content-Security-Policy to block.
+ * `$fetch.create` adds the claim before ofetch serialises the body. Nuxt's
+ * generated fetch module would keep the previous function, so
+ * `office-fetch-live` makes that export call the current `globalThis.$fetch`.
+ * This plugin replaces it. The fetch function is read at call time, so the
+ * tenant-switch hold (which replaces `window.fetch` only while a switch is
+ * in progress) still applies. Nothing patches `window.fetch` at startup,
+ * and there is no inline script for a Content-Security-Policy to block.
  */
 
 const reloadKey = 'transferpro-tenant-changed'
