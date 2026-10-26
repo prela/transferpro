@@ -619,6 +619,8 @@ it('emails an assigned work order in the tenant locale, and a rejected send leav
   expect(sent[0]?.text).toContain('Napomena: Napomena za vozača')
   expect(sent[0]?.text).toContain('Cijena: 77,50')
   expect(sent[0]?.text).toContain('Plaćanje: Gotovina')
+  expect(sent[0]?.text).not.toContain('Grupa')
+  expect(sent[0]?.text).not.toContain('Referenca')
   expect(sent[0]?.html).not.toContain('href=')
   expect(sent[0]?.text.toLowerCase()).not.toContain('prihvat')
   const audits = await assignmentAudits(world.tenantId)
@@ -673,6 +675,103 @@ it('emails an assigned work order in the tenant locale, and a rejected send leav
   expect(text).not.toContain(plate)
   expect(text).not.toContain('77.50')
   expect(text).not.toContain('77,50')
+})
+
+it('emails each vehicle of a group its own count and reference, and an extra vehicle has no price', async () => {
+  const world = await office('hasg-group-order')
+  const address = 'ana-group@example.test'
+  const driver = await createDriver(world.dispatcher, {
+    ...driverBody,
+    name: 'Ana Grupa',
+    phone: '+385911114670',
+    email: address,
+  })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG467AA'))
+  const sent: Array<{ to: string, subject: string, text: string }> = []
+  const mailer = {
+    async sendInvitation() {},
+    async sendWorkOrder(mail: { to: string, subject: string, text: string }) {
+      sent.push(mail)
+    },
+    async notifyArrivalMoved() {},
+    async notifyFlightWillNotArrive() {},
+    async sendPasswordChanged() {},
+    async sendPasswordReset() {},
+  }
+  const main = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-15T08:00:00.000Z'),
+    guestName: 'Iva Glavni',
+    passengerCount: 3,
+    price: 40,
+    payment: 'cash',
+    clientReference: 'V-19',
+  })
+  const extraCash = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-15T12:00:00.000Z'),
+    guestName: 'Iva Dodatna',
+    passengerCount: 2,
+    price: 0,
+    payment: 'cash',
+    clientReference: 'V-19',
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 8,
+    mainVersion: 0,
+  })
+  const extraCard = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-15T16:00:00.000Z'),
+    guestName: 'Iva Plastika',
+    passengerCount: 1,
+    price: 0,
+    payment: 'card',
+    clientReference: 'V-19',
+    mainTransferId: main.transfer.id,
+  })
+  const extraInvoice = await createTransfer(world.dispatcher, {
+    ...transferBody(world, '2026-10-15T20:00:00.000Z'),
+    guestName: 'Iva Racun',
+    passengerCount: 4,
+    price: 0,
+    payment: 'invoice_to_agency',
+    clientReference: 'V-19',
+    mainTransferId: main.transfer.id,
+  })
+
+  async function mailed(recorded: { ride: { id: string } }) {
+    const assigned = await assignRide(world.dispatcher, {
+      rideId: recorded.ride.id,
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+    }, { mailer })
+    expect(assigned.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+    expect(JSON.stringify(assigned)).not.toContain(address)
+    const text = sent.at(-1)?.text ?? ''
+    expect(text).toContain('Referenca naručitelja: V-19')
+    expect(text).toContain('\nGrupa\n')
+    expect(text).not.toContain('Putnici: 8')
+    expect(text).not.toContain('Naručeno')
+    return text
+  }
+
+  const mainText = await mailed(main)
+  expect(mainText).toContain('Putnici: 3')
+  expect(mainText).toContain('Cijena: 40,00')
+  expect(mainText).toContain('Plaćanje: Gotovina')
+  const cashText = await mailed(extraCash)
+  expect(cashText).toContain('Putnici: 2')
+  expect(cashText).not.toContain('Cijena')
+  expect(cashText).not.toContain('Plaćanje')
+  expect(cashText).not.toContain('Gotovina')
+  expect(cashText).not.toContain('0,00')
+  const cardText = await mailed(extraCard)
+  expect(cardText).toContain('Putnici: 1')
+  expect(cardText).not.toContain('Cijena')
+  expect(cardText).not.toContain('Plaćanje')
+  expect(cardText).not.toContain('Kartica')
+  const invoiceText = await mailed(extraInvoice)
+  expect(invoiceText).toContain('Putnici: 4')
+  expect(invoiceText).not.toContain('Cijena')
+  expect(invoiceText).not.toContain('Plaćanje')
+  expect(invoiceText).not.toContain('Račun')
 })
 
 it('emails a changed work order with the cash price, and a rejected send leaves the Vehicle', async () => {

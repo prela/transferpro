@@ -1532,9 +1532,12 @@ it('emails one changed work order for each mailed fact, and a quiet save sends n
   expect(sent).toHaveLength(beforeSeveral + 1)
 
   const referenceOnly = await correct({ clientReference: 'V-19' })
-  expect(referenceOnly.workOrders).toEqual([])
+  // ADR-0054: a Client reference change is a changed work order.
+  expect(referenceOnly.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
   expect(referenceOnly.transfer.clientReference).toBe('V-19')
-  expect(sent).toHaveLength(beforeSeveral + 1)
+  expect(sent).toHaveLength(beforeSeveral + 2)
+  expect(sent.at(-1)?.text.startsWith('Promijenjeno\n')).toBe(true)
+  expect(sent.at(-1)?.text).toContain('Referenca naručitelja: V-19')
 
   const previous = sent.at(-1)?.text
   const marked = await correct({ airportMark: false })

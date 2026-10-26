@@ -102,7 +102,8 @@ function officeOnly(role: string): void {
  * writes nothing unless `confirm` is set. A tight gap is returned and does
  * not refuse. After the booking commits, the current Driver is mailed one
  * work order with status changed when a mailed fact changed. A price change
- * mails only while payment is cash. A Ride with no Driver sends nothing. A
+ * mails only while payment is cash. A Client reference change mails. The
+ * group's ordered passenger count does not. A Ride with no Driver sends nothing. A
  * rejected send leaves the correction. Tests pass a mailer. The address
  * is not on the result.
  */
@@ -234,12 +235,10 @@ export async function correctTransferForOffice(
       transfer: presentTransfer(current.id, input, current.mainTransferId, nextGroup),
       ride,
     },
-    // A mailed fact is the list in ADR-0026. The price mails only while the
-    // Driver collects cash. The Client reference is stored and is not mailed:
-    // the work order does not state it, and a save that changes only that
-    // number sends nothing. The group's ordered passenger count is not a
-    // work-order fact (ADR-0054).
-    notify: fields.some(field => field !== 'clientReference' && field !== 'groupPassengerCount' && (field !== 'price' || input.payment === 'cash')),
+    // A mailed fact is the list in ADR-0026, plus a Client reference change
+    // (ADR-0054). The price mails only while the Driver collects cash. The
+    // group's ordered passenger count is not a work-order fact (ADR-0054).
+    notify: fields.some(field => field !== 'groupPassengerCount' && (field !== 'price' || input.payment === 'cash')),
     relocationWarnings,
     fullyBooked,
   }

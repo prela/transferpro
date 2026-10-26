@@ -306,6 +306,8 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(cardCard.getByText('Arhivirano')).toHaveCount(0)
   await expect(cashCard.getByText('42,50 EUR')).toBeVisible()
   await expect(cashCard.getByText('Gotovina')).toBeVisible()
+  await expect(cashCard.getByText('Grupa', { exact: true })).toHaveCount(0)
+  await expect(cashCard.getByText('Referenca naručitelja')).toHaveCount(0)
   await expect(cardCard.getByText('Cijena', { exact: true })).toHaveCount(0)
   await expect(cardCard.getByText('99,00 EUR')).toHaveCount(0)
   await expect(cardCard.getByText('Gotovina')).toHaveCount(0)
@@ -333,6 +335,8 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
   await expect(invoiceCard.getByRole('link', { name: 'Open in maps' })).toHaveCount(2)
   await expect(cashCard.getByText('Cash')).toBeVisible()
   await expect(cashCard.getByText('42.50 EUR')).toBeVisible()
+  await expect(cashCard.getByText('Group', { exact: true })).toHaveCount(0)
+  await expect(cashCard.getByText('Client reference')).toHaveCount(0)
   await expect(cashCard.getByText('Airport')).toBeVisible()
   await expect(cashCard.getByText('Client')).toBeVisible()
   await expect(cashCard.getByText('Agency')).toBeVisible()
@@ -1432,3 +1436,151 @@ async function setTabVisibility(page: Page, state: 'visible' | 'hidden') {
     document.dispatchEvent(new Event('visibilitychange'))
   }, state)
 }
+
+test('a group card shows the client reference and the group mark, and an extra vehicle shows no fare', async ({ page }) => {
+  const tenant = await seedTenant('driver-group')
+  const driver = await seedMember(tenant.tenantId, 'driver', 'Grupa')
+  const day = calendarDateInTimeZone('Europe/Zagreb', new Date())
+  const mainAt = instantFromWallClock(`${day}T09:00`, 'Europe/Zagreb')
+  const cashAt = instantFromWallClock(`${day}T15:00`, 'Europe/Zagreb')
+  const cardAt = instantFromWallClock(`${day}T18:00`, 'Europe/Zagreb')
+
+  await useTheme(page, 'light')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+
+  const licence = '2031-01-01'
+  const ownDriverId = await createdId(await page.request.post('/api/drivers', {
+    data: {
+      name: 'Marko Grupa',
+      kind: 'own',
+      phone: '+385914670010',
+      drivingLicenceExpiresOn: licence,
+      transportLicenceExpiresOn: licence,
+      memberUserId: driver.userId,
+    },
+  }))
+  const vehicleId = await createdId(await page.request.post('/api/vehicles', {
+    data: {
+      registrationPlate: 'DU467AA',
+      kind: 'fixed',
+      registrationExpiresOn: licence,
+      technicalInspectionExpiresOn: licence,
+      insuranceExpiresOn: licence,
+    },
+  }))
+  const clientId = await createdId(await page.request.post('/api/clients', {
+    data: { name: 'Klijent Grupa', kind: 'agency' },
+  }))
+  const startLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Polazak Grupa', kind: 'address' },
+  }))
+  const endLocationId = await createdId(await page.request.post('/api/locations', {
+    data: { name: 'Dolazak Grupa', kind: 'hotel' },
+  }))
+
+  async function record(guest: string, pickupAt: Date, payment: 'cash' | 'card', passengerCount: number, price: number, link?: { mainTransferId: string, groupPassengerCount?: number, mainVersion?: number }) {
+    const recorded = await recordTransfer(page.request, {
+      data: {
+        clientId,
+        pickupAt: pickupAt.toISOString(),
+        startLocationId,
+        endLocationId,
+        passengerCount,
+        guestName: guest,
+        flightNumber: null,
+        price,
+        payment,
+        airportMark: false,
+        luggageCount: 0,
+        childSeatCount: 0,
+        note: null,
+        tabla: '',
+        clientReference: 'V-19',
+        ...(link ?? {}),
+      },
+    })
+    if (!recorded.ok())
+      throw new Error(`${recorded.status()} ${await recorded.text()}`)
+    return await recorded.json() as { transfer: { id: string }, ride: { id: string } }
+  }
+
+  async function assign(rideId: string) {
+    const response = await page.request.post(`/api/rides/${rideId}/assign`, {
+      data: { version: 0, driverId: ownDriverId, vehicleId },
+    })
+    if (!response.ok())
+      throw new Error(`${response.status()} ${await response.text()}`)
+  }
+
+  const main = await record('Nika Glavni', mainAt, 'cash', 3, 40)
+  // The group count is stored on the main Transfer before any assign, so the
+  // opened version is still 0. Assign bumps that version.
+  const extraCash = await record('Nika Dodatna', cashAt, 'cash', 1, 0, {
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 8,
+    mainVersion: 0,
+  })
+  const extraCard = await record('Nika Plastika', cardAt, 'card', 2, 0, {
+    mainTransferId: main.transfer.id,
+  })
+  await assign(main.ride.id)
+  await assign(extraCash.ride.id)
+  await assign(extraCard.ride.id)
+
+  await signOut(page)
+  await signIn(page, driver.email, driver.password, tenant.name)
+
+  const mainCard = await showRide(page, 'Nika Glavni')
+  await expect(mainCard.getByText('Grupa', { exact: true })).toBeVisible()
+  await expect(mainCard.getByText('Referenca naručitelja')).toBeVisible()
+  await expect(mainCard.getByText('V-19')).toBeVisible()
+  await expect(mainCard.locator('div').filter({ hasText: /^Putnici/ }).locator('dd')).toHaveText('3')
+  await expect(mainCard.getByText('40,00 EUR')).toBeVisible()
+  await expect(mainCard.getByText('Gotovina')).toBeVisible()
+  await expect(mainCard.getByText('8', { exact: true })).toHaveCount(0)
+
+  const closedExtra = page.locator('article').filter({ hasText: 'Nika Dodatna' })
+  await expect(closedExtra.getByText('Grupa', { exact: true })).toBeVisible()
+  await expect(closedExtra.getByText('Referenca naručitelja')).toHaveCount(0)
+  const cashCard = await showRide(page, 'Nika Dodatna')
+  await expect(cashCard.getByText('Grupa', { exact: true })).toBeVisible()
+  await expect(cashCard.getByText('Referenca naručitelja')).toBeVisible()
+  await expect(cashCard.getByText('V-19')).toBeVisible()
+  await expect(cashCard.locator('div').filter({ hasText: /^Putnici/ }).locator('dd')).toHaveText('1')
+  await expect(cashCard.getByText('Cijena', { exact: true })).toHaveCount(0)
+  await expect(cashCard.getByText('Gotovina')).toHaveCount(0)
+  await expect(cashCard.getByText('0,00 EUR')).toHaveCount(0)
+  await expect(cashCard.getByText('8', { exact: true })).toHaveCount(0)
+
+  const cardRide = await showRide(page, 'Nika Plastika')
+  await expect(cardRide.getByText('Grupa', { exact: true })).toBeVisible()
+  await expect(cardRide.getByText('V-19')).toBeVisible()
+  await expect(cardRide.locator('div').filter({ hasText: /^Putnici/ }).locator('dd')).toHaveText('2')
+  await expect(cardRide.getByText('Cijena', { exact: true })).toHaveCount(0)
+  await expect(cardRide.getByText('Kartica')).toHaveCount(0)
+  await expect(cardRide.getByText('Gotovina')).toHaveCount(0)
+  await expectNoAxeViolations(page)
+
+  await switchLocale(page, 'en')
+  await showRide(page, 'Nika Glavni')
+  await showRide(page, 'Nika Dodatna')
+  await showRide(page, 'Nika Plastika')
+  await expect(mainCard.getByText('Group', { exact: true })).toBeVisible()
+  await expect(mainCard.getByText('Client reference')).toBeVisible()
+  await expect(mainCard.getByText('Cash')).toBeVisible()
+  await expect(mainCard.getByText('40.00 EUR')).toBeVisible()
+  await expect(cashCard.getByText('Group', { exact: true })).toBeVisible()
+  await expect(cashCard.getByText('Client reference')).toBeVisible()
+  await expect(cashCard.getByText('Price', { exact: true })).toHaveCount(0)
+  await expect(cashCard.getByText('Cash')).toHaveCount(0)
+  await expect(cardRide.getByText('Price', { exact: true })).toHaveCount(0)
+  await expect(cardRide.getByText('Card')).toHaveCount(0)
+
+  await switchTheme(page, 'dark')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(mainCard.getByText('V-19')).toBeVisible()
+  await expect(cashCard.getByText('Group', { exact: true })).toBeVisible()
+  await expect(cashCard.getByText('Price', { exact: true })).toHaveCount(0)
+  await expect(cardRide.getByText('V-19')).toBeVisible()
+})

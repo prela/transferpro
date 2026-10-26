@@ -1,8 +1,8 @@
-import type { PaymentMethod } from '../../../../shared'
+import type { PaymentMethod, TransferGroupRole } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { paymentMethodSchema, transferPriceSchema } from '../../../../shared'
+import { paymentMethodSchema, transferGroupRole, transferPriceSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 
 /**
@@ -21,6 +21,9 @@ export interface UpcomingRideRow {
   readonly expectedArrival: string | null
   readonly airportMark: boolean
   readonly clientId: string
+  /** Stored reference. The phone drops a blank. The group's ordered count is not here. */
+  readonly clientReference: string | null
+  readonly groupRole: TransferGroupRole | null
   readonly luggageCount: number
   readonly childSeatCount: number
   readonly note: string | null
@@ -45,6 +48,10 @@ const upcomingRowSchema = z.object({
   expectedArrival: z.unknown().nullish(),
   airportMark: z.boolean(),
   clientId: z.uuid(),
+  clientReference: z.string().nullable(),
+  mainTransferId: z.uuid().nullable(),
+  // The stored ordered count. It classifies a main Transfer and is not returned.
+  storedGroupPassengerCount: z.number().int().nullable(),
   luggageCount: z.number().int(),
   childSeatCount: z.number().int(),
   note: z.string().nullable(),
@@ -84,6 +91,9 @@ export async function loadUpcomingRidesForDriver(
         t.expected_arrival_at as "expectedArrival",
         t.airport_mark as "airportMark",
         t.client_id as "clientId",
+        t.client_reference as "clientReference",
+        t.link as "mainTransferId",
+        t.group_passenger_count as "storedGroupPassengerCount",
         t.luggage_count as "luggageCount",
         t.child_seat_count as "childSeatCount",
         t.note,
@@ -117,6 +127,8 @@ function toUpcomingRide(row: z.infer<typeof upcomingRowSchema>): UpcomingRideRow
     expectedArrival: row.expectedArrival == null ? null : toInstant(row.expectedArrival),
     airportMark: row.airportMark,
     clientId: row.clientId,
+    clientReference: row.clientReference,
+    groupRole: transferGroupRole(row.mainTransferId, row.storedGroupPassengerCount),
     luggageCount: row.luggageCount,
     childSeatCount: row.childSeatCount,
     note: row.note,

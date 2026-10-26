@@ -144,6 +144,11 @@ const showLanding = computed(() => props.ride.airportMark && canRecordLandingTim
     >
       <span class="shrink-0 font-semibold tabular-nums">{{ pickupLabel(ride.pickupAt) }}</span>
       <span class="min-w-0 flex-1 truncate">{{ ride.guestName }} · {{ ride.passengerCount }}</span>
+      <!-- The closed row still marks a group. The count is this vehicle's. -->
+      <span
+        v-if="ride.inGroup"
+        class="shrink-0"
+      >{{ t('driverRides.group') }}</span>
       <span class="shrink-0">{{ stateLabel }}</span>
     </button>
     <div
@@ -175,6 +180,16 @@ const showLanding = computed(() => props.ride.airportMark && canRecordLandingTim
       >
         {{ ride.guestName }}
       </h3>
+      <!--
+        A main Transfer and an extra vehicle both carry the mark. The
+        group's ordered passenger count is not stated (ADR-0054).
+      -->
+      <p
+        v-if="ride.inGroup"
+        class="mt-1"
+      >
+        {{ t('driverRides.group') }}
+      </p>
       <!--
         An airport pickup names the flight with the landed time, or the
         expected time when nobody has recorded a landing (ADR-0038).
@@ -270,6 +285,14 @@ const showLanding = computed(() => props.ride.airportMark && canRecordLandingTim
           </dt>
           <dd>{{ t(`clients.kinds.${ride.clientKind}`) }}</dd>
         </div>
+        <div v-if="ride.clientReference">
+          <dt class="text-sm text-muted">
+            {{ t('transfers.clientReference') }}
+          </dt>
+          <dd class="break-words">
+            {{ ride.clientReference }}
+          </dd>
+        </div>
         <div>
           <dt class="text-sm text-muted">
             {{ t('driverRides.passengers') }}
@@ -330,8 +353,10 @@ const showLanding = computed(() => props.ride.airportMark && canRecordLandingTim
           </dd>
         </div>
         <!--
-          Cash only. Card and invoice to agency render neither the price
-          nor a method, including as hidden text (ADR-0009, ADR-0020).
+          Cash only, and never on an extra vehicle. The phone payload
+          already drops the price and the method, so this row is absent
+          for card, invoice to agency, and an extra vehicle (ADR-0009,
+          ADR-0020, ADR-0054).
         -->
         <div v-if="ride.payment === 'cash' && ride.price">
           <dt class="text-sm text-muted">

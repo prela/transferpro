@@ -1,18 +1,21 @@
-import type { PaymentMethod } from './transfer'
+import type { PaymentMethod, TransferGroupRole } from './transfer'
 import { z } from 'zod'
 import { clientKindSchema, clientNameSchema } from './client'
 import { LOCATION_ADDRESS_MAX_LENGTH } from './location'
 import { waitMinutesSchema } from './tenant-settings'
-import { CHILD_SEAT_COUNT_MAX, CHILD_SEAT_COUNT_MIN, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, LUGGAGE_COUNT_MIN, NOTE_MAX_LENGTH, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, TABLA_MAX_LENGTH, transferPriceSchema } from './transfer'
+import { CHILD_SEAT_COUNT_MAX, CHILD_SEAT_COUNT_MIN, CLIENT_REFERENCE_MAX_LENGTH, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, LUGGAGE_COUNT_MIN, NOTE_MAX_LENGTH, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, TABLA_MAX_LENGTH, transferPriceSchema } from './transfer'
 import { VEHICLE_PLATE_MAX_LENGTH } from './vehicle'
 
 /**
  * One Ride on the Driver's phone. The price and the method are present only
- * for cash. Card and invoice to agency carry neither (ADR-0009, ADR-0020).
- * A null pair is how the payload says "not cash" without naming the method.
- * The Client, both addresses, the counts, the note, the tabla, and the plate
- * stay on a card Ride and on an invoice Ride. An empty address, note, or
- * tabla is null. A count of zero stays a number.
+ * for cash, and never for an extra vehicle (ADR-0009, ADR-0020, ADR-0054).
+ * A null pair is how the payload says "no fare" without naming the method.
+ * The Client, the Client reference when one is set, both addresses, the
+ * counts, the note, the tabla, and the plate stay on a card Ride and on an
+ * invoice Ride. `passengerCount` is this vehicle's count. The group's
+ * ordered count is not on the phone. `inGroup` marks a main Transfer or an
+ * extra vehicle. An empty address, note, tabla, or Client reference is null.
+ * A count of zero stays a number.
  * `state` is only `assigned` or `accepted`: finished Rides are not on this
  * list. `mustAccept` is the copy taken at assignment. An accepted Ride
  * always requires acceptance, the same pair the table check stores.
@@ -30,6 +33,8 @@ export const driverUpcomingRideSchema = z.object({
   airportMark: z.boolean(),
   clientName: clientNameSchema,
   clientKind: clientKindSchema,
+  clientReference: z.string().trim().min(1).max(CLIENT_REFERENCE_MAX_LENGTH).nullable(),
+  inGroup: z.boolean(),
   fromAddress: z.string().trim().min(1).max(LOCATION_ADDRESS_MAX_LENGTH).nullable(),
   toAddress: z.string().trim().min(1).max(LOCATION_ADDRESS_MAX_LENGTH).nullable(),
   luggageCount: z.number().int().min(LUGGAGE_COUNT_MIN).max(LUGGAGE_COUNT_MAX),
@@ -87,6 +92,13 @@ export interface DriverRideSource {
   readonly airportMark: boolean
   readonly clientName: string
   readonly clientKind: 'agency' | 'hotel' | 'individual'
+  /** Stored Client reference. Blank becomes null on the phone. */
+  readonly clientReference: string | null
+  /**
+   * `extra` drops the price and the method even when payment is cash.
+   * `main` keeps a cash price and is still a group. Null is not a group.
+   */
+  readonly groupRole: TransferGroupRole | null
   readonly fromAddress: string | null
   readonly toAddress: string | null
   readonly luggageCount: number
@@ -107,8 +119,9 @@ export interface DriverRideSource {
 }
 
 /**
- * Cash keeps the price and the word cash. Card and invoice to agency drop
- * both, so a card fare cannot be read off the response.
+ * Cash keeps the price and the word cash, except on an extra vehicle, which
+ * drops both whatever its payment. Card and invoice to agency drop both, so
+ * a card fare cannot be read off the response.
  */
 /**
  * A blank line is absent. The stored tabla is '' when the Transfer has no
@@ -140,7 +153,7 @@ export function leadDriverRide(rides: readonly DriverUpcomingRide[]): {
 }
 
 export function presentDriverRide(source: DriverRideSource): DriverUpcomingRide {
-  const cash = source.payment === 'cash'
+  const showsCash = source.payment === 'cash' && source.groupRole !== 'extra'
   return driverUpcomingRideSchema.parse({
     rideId: source.rideId,
     pickupAt: source.pickupAt,
@@ -154,6 +167,8 @@ export function presentDriverRide(source: DriverRideSource): DriverUpcomingRide 
     airportMark: source.airportMark,
     clientName: source.clientName,
     clientKind: source.clientKind,
+    clientReference: absentLine(source.clientReference),
+    inGroup: source.groupRole !== null,
     fromAddress: absentLine(source.fromAddress),
     toAddress: absentLine(source.toAddress),
     luggageCount: source.luggageCount,
@@ -161,8 +176,8 @@ export function presentDriverRide(source: DriverRideSource): DriverUpcomingRide 
     note: absentLine(source.note),
     tabla: absentLine(source.tabla),
     registrationPlate: source.registrationPlate,
-    price: cash ? source.price : null,
-    payment: cash ? 'cash' : null,
+    price: showsCash ? source.price : null,
+    payment: showsCash ? 'cash' : null,
     state: source.state,
     mustAccept: source.mustAccept,
     fromMapsUrl: source.fromMapsUrl,

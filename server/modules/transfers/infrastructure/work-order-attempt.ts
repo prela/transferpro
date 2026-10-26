@@ -3,7 +3,7 @@ import type { TenantTransaction } from '../../../core/index'
 import type { LoadedWorkOrderEntry, OutboxAttemptStore, WorkOrderCurrentFacts } from '../../mail'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { composeWorkOrder, locationLabel, paymentMethodSchema } from '../../../../shared'
+import { composeWorkOrder, locationLabel, paymentMethodSchema, transferGroupRole } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadLocation } from '../../locations'
@@ -39,6 +39,10 @@ const attemptRows = z.object({
     childSeatCount: z.number().int(),
     flightNumber: z.string().nullable(),
     clientId: z.uuid(),
+    clientReference: z.string().nullable(),
+    mainTransferId: z.uuid().nullable(),
+    // The stored ordered count classifies a main Transfer. It is not mailed.
+    storedGroupPassengerCount: z.number().int().nullable(),
     note: z.string().nullable(),
     payment: paymentMethodSchema,
     price: z.union([z.string(), z.number()]),
@@ -93,6 +97,9 @@ export async function loadOutboxAttempt(
         t.child_seat_count as "childSeatCount",
         t.flight_number as "flightNumber",
         t.client_id as "clientId",
+        t.client_reference as "clientReference",
+        t.link as "mainTransferId",
+        t.group_passenger_count as "storedGroupPassengerCount",
         t.note,
         t.payment,
         t.price,
@@ -241,6 +248,8 @@ async function composeAttempt(
     childSeatCount: row.childSeatCount,
     flightNumber: row.flightNumber,
     clientName: client.name,
+    clientReference: row.clientReference,
+    groupRole: transferGroupRole(row.mainTransferId, row.storedGroupPassengerCount),
     vehicleName: vehicle.description,
     vehiclePlate: vehicle.registrationPlate,
     note: row.note,

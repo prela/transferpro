@@ -1,9 +1,9 @@
-import type { DisplayLocale, PaymentMethod, WorkOrderNotice, WorkOrderStatus } from '../../../../shared'
+import type { AssignedWorkOrderFacts, WorkOrderNotice, WorkOrderStatus } from '../../../../shared'
 import type { JobQueue, Logger, TenantContext, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { composeWorkOrder, locationLabel, paymentMethodSchema } from '../../../../shared'
+import { composeWorkOrder, locationLabel, paymentMethodSchema, transferGroupRole } from '../../../../shared'
 import { getLogger, hideDatabaseError } from '../../../core/index'
 import { loadClient } from '../../clients'
 import { loadLocation } from '../../locations'
@@ -18,29 +18,12 @@ import { readWorkOrderCurrentFacts } from './work-order-attempt'
  * transaction. `locale` and `timeZone` are the Tenant settings. The
  * member's UI locale is not selected. `email` is the Driver column.
  */
-export interface AssignedWorkOrder {
+export interface AssignedWorkOrder extends AssignedWorkOrderFacts {
   readonly rideId: string
   readonly driverId: string
   /** The Vehicle the mail names. For "no longer yours" this is the one just released. */
   readonly vehicleId: string
   readonly email: string | null
-  readonly locale: DisplayLocale
-  readonly timeZone: string
-  readonly pickupAt: Date
-  readonly pickupPlace: string
-  readonly dropOffPlace: string
-  readonly guestName: string
-  readonly tabla: string
-  readonly passengerCount: number
-  readonly luggageCount: number
-  readonly childSeatCount: number
-  readonly flightNumber: string | null
-  readonly clientName: string
-  readonly vehicleName: string | null
-  readonly vehiclePlate: string
-  readonly note: string | null
-  readonly payment: PaymentMethod
-  readonly price: string
 }
 
 const snapshotRows = z.object({
@@ -57,6 +40,10 @@ const snapshotRows = z.object({
     childSeatCount: z.number().int(),
     flightNumber: z.string().nullable(),
     clientId: z.uuid(),
+    clientReference: z.string().nullable(),
+    mainTransferId: z.uuid().nullable(),
+    // The stored ordered count classifies a main Transfer. It is not mailed.
+    storedGroupPassengerCount: z.number().int().nullable(),
     vehicleId: z.uuid(),
     note: z.string().nullable(),
     payment: paymentMethodSchema,
@@ -96,6 +83,9 @@ export async function readAssignedWorkOrder(
         t.child_seat_count as "childSeatCount",
         t.flight_number as "flightNumber",
         t.client_id as "clientId",
+        t.client_reference as "clientReference",
+        t.link as "mainTransferId",
+        t.group_passenger_count as "storedGroupPassengerCount",
         coalesce(${vehicleId}::uuid, r.vehicle_id) as "vehicleId",
         t.note,
         t.payment,
@@ -140,6 +130,8 @@ export async function readAssignedWorkOrder(
     childSeatCount: selected.childSeatCount,
     flightNumber: selected.flightNumber,
     clientName: client.name,
+    clientReference: selected.clientReference,
+    groupRole: transferGroupRole(selected.mainTransferId, selected.storedGroupPassengerCount),
     vehicleName: vehicle.description,
     vehiclePlate: vehicle.registrationPlate,
     note: selected.note,

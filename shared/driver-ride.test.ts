@@ -14,6 +14,8 @@ const ride = {
   airportMark: true,
   clientName: 'Agencija Mora',
   clientKind: 'agency' as const,
+  clientReference: null,
+  groupRole: null,
   fromAddress: null,
   toAddress: 'Masarykov put 1',
   luggageCount: 2,
@@ -45,6 +47,8 @@ it('shows the price and cash when the Ride is cash, and does not include a Drive
     airportMark: true,
     clientName: 'Agencija Mora',
     clientKind: 'agency',
+    clientReference: null,
+    inGroup: false,
     fromAddress: null,
     toAddress: 'Masarykov put 1',
     luggageCount: 2,
@@ -140,6 +144,50 @@ it('hides the price and the method when the Ride is invoiced to the agency', () 
   expect(invoiced.payment).toBeNull()
   expect(JSON.stringify(invoiced)).not.toContain('80.00')
   expect(JSON.stringify(invoiced)).not.toContain('invoice_to_agency')
+})
+
+it('states the client reference and marks a main Transfer, and still shows a cash price', () => {
+  const main = presentDriverRide({
+    ...ride,
+    passengerCount: 3,
+    clientReference: '  V-19  ',
+    groupRole: 'main',
+    price: '40.00',
+  })
+  expect(main.clientReference).toBe('V-19')
+  expect(main.inGroup).toBe(true)
+  expect(main.passengerCount).toBe(3)
+  expect(main.price).toBe('40.00')
+  expect(main.payment).toBe('cash')
+  expect(main).not.toHaveProperty('groupPassengerCount')
+  expect(main).not.toHaveProperty('groupRole')
+})
+
+it('hides the fare of an extra vehicle for cash, card, and invoice, and keeps its own passenger count', () => {
+  for (const payment of ['cash', 'card', 'invoice_to_agency'] as const) {
+    const extra = presentDriverRide({
+      ...ride,
+      passengerCount: 2,
+      clientReference: 'V-19',
+      groupRole: 'extra',
+      price: '0.00',
+      payment,
+    })
+    expect(extra.passengerCount).toBe(2)
+    expect(extra.clientReference).toBe('V-19')
+    expect(extra.inGroup).toBe(true)
+    expect(extra.price).toBeNull()
+    expect(extra.payment).toBeNull()
+    expect(JSON.stringify(extra)).not.toContain(`"price":"0.00"`)
+    expect(JSON.stringify(extra)).not.toContain(`"payment":"${payment}"`)
+    expect(extra).not.toHaveProperty('groupPassengerCount')
+  }
+})
+
+it('omits a blank client reference and does not mark a Ride that is not in a group', () => {
+  const shown = presentDriverRide({ ...ride, clientReference: '   ', groupRole: null })
+  expect(shown.clientReference).toBeNull()
+  expect(shown.inGroup).toBe(false)
 })
 
 function shown(rideId: string, pickupAt: string) {

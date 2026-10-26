@@ -20,6 +20,8 @@ const facts = {
   childSeatCount: 1,
   flightNumber: 'OU412',
   clientName: 'Agencija Mora',
+  clientReference: null,
+  groupRole: null,
   vehicleName: 'Mercedes Vito',
   vehiclePlate: 'DU100AA',
   note: 'Čekaj na izlazu',
@@ -161,4 +163,93 @@ it('omits the payment line for invoice to agency and a blank flight', () => {
   expect(message.text).not.toContain('77')
   expect(message.text).not.toContain('Plaćanje')
   expect(message.text).not.toContain('Cijena')
+  expect(message.text).not.toContain('Grupa')
+  expect(message.text).not.toContain('Referenca')
+})
+
+it('states a client reference on a Ride that is not in a group, and escapes it', () => {
+  const message = composeAssignedWorkOrder({
+    ...facts,
+    clientReference: 'V&19',
+    groupRole: null,
+  })
+  expect(message.text).toContain('Referenca naručitelja: V&19')
+  expect(message.text).not.toContain('Grupa')
+  expect(message.text).toContain('Cijena: 42,50')
+  expect(message.html).toContain('Referenca naručitelja: V&amp;19')
+  expect(message.text.match(/Putnici: \d+/g)).toEqual(['Putnici: 3'])
+})
+
+it('omits a blank client reference', () => {
+  const message = composeAssignedWorkOrder({ ...facts, clientReference: '   ' })
+  expect(message.text).not.toContain('Referenca')
+  expect(message.text).not.toContain('Client reference')
+})
+
+it('keeps the cash price on the main Transfer of a group', () => {
+  const message = composeWorkOrder({
+    ...facts,
+    passengerCount: 3,
+    clientReference: 'V-19',
+    groupRole: 'main',
+  }, 'changed')
+  expect(message.text).toContain('Referenca naručitelja: V-19')
+  expect(message.text).toContain('\nGrupa\n')
+  expect(message.text).toContain('Cijena: 42,50')
+  expect(message.text).toContain('Plaćanje: Gotovina')
+  // This vehicle's count. The group's ordered count is not a second line.
+  expect(message.text.match(/Putnici: \d+/g)).toEqual(['Putnici: 3'])
+})
+
+it('hides the price and the payment of an extra vehicle for cash, card, and invoice', () => {
+  for (const payment of ['cash', 'card', 'invoice_to_agency'] as const) {
+    const message = composeWorkOrder({
+      ...facts,
+      payment,
+      price: '42.50',
+      passengerCount: 2,
+      clientReference: 'V-19',
+      groupRole: 'extra',
+    }, 'assigned')
+    expect(message.text).toContain('Referenca naručitelja: V-19')
+    expect(message.text).toContain('\nGrupa\n')
+    expect(message.text).toContain('Putnici: 2')
+    expect(message.text).not.toContain('Cijena')
+    expect(message.text).not.toContain('Plaćanje')
+    expect(message.text).not.toContain('Gotovina')
+    expect(message.text).not.toContain('42')
+  }
+  const changed = composeWorkOrder({
+    ...facts,
+    locale: 'en',
+    timeZone: 'UTC',
+    payment: 'cash',
+    price: '42.50',
+    passengerCount: 2,
+    clientReference: 'V-19',
+    groupRole: 'extra',
+  }, 'changed')
+  expect(changed.text).toContain('Client reference: V-19')
+  expect(changed.text).toContain('\nGroup\n')
+  expect(changed.text).toContain('Passengers: 2')
+  expect(changed.text).not.toContain('Price')
+  expect(changed.text).not.toContain('Payment')
+  expect(changed.text).not.toContain('Cash')
+  expect(changed.text).not.toContain('42.50')
+})
+
+it('keeps the reference and the group mark when an extra vehicle is cancelled or no longer yours', () => {
+  for (const status of ['cancelled', 'no_longer_yours'] as const) {
+    const message = composeWorkOrder({
+      ...facts,
+      clientReference: 'V-19',
+      groupRole: 'extra',
+      passengerCount: 2,
+    }, status)
+    expect(message.text).toContain('Referenca naručitelja: V-19')
+    expect(message.text).toContain('\nGrupa\n')
+    expect(message.text).toContain('Putnici: 2')
+    expect(message.text).not.toContain('Cijena')
+    expect(message.text).not.toContain('Plaćanje')
+  }
 })

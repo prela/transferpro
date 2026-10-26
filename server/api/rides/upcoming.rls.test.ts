@@ -397,6 +397,8 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
     airportMark: true,
     clientName: 'Agencija Mora',
     clientKind: 'agency',
+    clientReference: null,
+    inGroup: false,
     luggageCount: 2,
     childSeatCount: 1,
     note: null,
@@ -561,4 +563,117 @@ it('does not carry a contact person or the Client note', async () => {
   // The phone still names the Client. The office contact stays off it.
   expect(listed.rides[0]?.clientName).toBe('Agencija Kontakti')
   expect(listed.rides[0]?.note).toBeNull()
+})
+
+it('shows each Driver their own count, the client reference, and the group mark, and an extra vehicle has no fare', async () => {
+  const created = await tenant('hdrv-group')
+  const driverUserId = await addMember(created.tenantId, 'hdrv-group-driver@example.test', 'Marko Vozač', 'driver')
+  const admin = await signIn('hdrv-group-admin@example.test')
+  const driver = await signIn('hdrv-group-driver@example.test')
+  const client = await createClient(admin, { name: 'Agencija Grupa', kind: 'agency' })
+  const start = await createLocation(admin, { name: 'Polazak Grupa', kind: 'address' })
+  const end = await createLocation(admin, { name: 'Dolazak Grupa', kind: 'hotel' })
+  const linked = await createDriver(admin, {
+    ...driverFields,
+    name: 'Marko Vozač',
+    phone: '+385914670001',
+    memberUserId: driverUserId,
+  })
+  const vehicle = await createVehicle(admin, {
+    registrationPlate: 'DU467AA',
+    kind: 'fixed',
+    registrationExpiresOn: '2030-01-01',
+    technicalInspectionExpiresOn: '2030-01-01',
+    insuranceExpiresOn: '2030-01-01',
+  })
+  const day = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 2)
+  const at = (wall: string) => instantFromWallClock(`${day}T${wall}`, 'Europe/Zagreb').toISOString()
+  const main = await createTransfer(admin, {
+    externalId: crypto.randomUUID(),
+    clientId: client.id,
+    pickupAt: at('10:00'),
+    startLocationId: start.id,
+    endLocationId: end.id,
+    passengerCount: 3,
+    guestName: 'Iva Glavni',
+    price: 40,
+    payment: 'cash',
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 0,
+    clientReference: 'V-19',
+  })
+  const extraCash = await createTransfer(admin, {
+    externalId: crypto.randomUUID(),
+    clientId: client.id,
+    pickupAt: at('14:00'),
+    startLocationId: start.id,
+    endLocationId: end.id,
+    passengerCount: 2,
+    guestName: 'Iva Dodatna',
+    price: 0,
+    payment: 'cash',
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 0,
+    clientReference: 'V-19',
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 8,
+    mainVersion: 0,
+  })
+  const extraCard = await createTransfer(admin, {
+    externalId: crypto.randomUUID(),
+    clientId: client.id,
+    pickupAt: at('18:00'),
+    startLocationId: start.id,
+    endLocationId: end.id,
+    passengerCount: 1,
+    guestName: 'Iva Plastika',
+    price: 0,
+    payment: 'card',
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 0,
+    clientReference: 'V-19',
+    mainTransferId: main.transfer.id,
+  })
+  // Storing the group count corrects the main Transfer and raises its version.
+  await assignRide(admin, { rideId: main.ride.id, driverId: linked.id, vehicleId: vehicle.id, version: 1 })
+  await assignRide(admin, { rideId: extraCash.ride.id, driverId: linked.id, vehicleId: vehicle.id, version: 0 })
+  await assignRide(admin, { rideId: extraCard.ride.id, driverId: linked.id, vehicleId: vehicle.id, version: 0 })
+
+  const response = await call(driver)
+  expect(response.status).toBe(200)
+  const raw = await response.text()
+  expect(raw).not.toContain('groupPassengerCount')
+  expect(raw).not.toContain('"passengerCount":8')
+  const listed = driverUpcomingListSchema.parse(JSON.parse(raw))
+  expect(listed.rides.map(row => row.guestName)).toEqual(['Iva Glavni', 'Iva Dodatna', 'Iva Plastika'])
+  expect(listed.rides.find(row => row.guestName === 'Iva Glavni')).toMatchObject({
+    passengerCount: 3,
+    clientReference: 'V-19',
+    inGroup: true,
+    price: '40.00',
+    payment: 'cash',
+  })
+  const cash = listed.rides.find(row => row.guestName === 'Iva Dodatna')
+  expect(cash).toMatchObject({
+    passengerCount: 2,
+    clientReference: 'V-19',
+    inGroup: true,
+    price: null,
+    payment: null,
+  })
+  expect(JSON.stringify(cash)).not.toContain('"price":"0.00"')
+  expect(JSON.stringify(cash)).not.toContain('"payment":"cash"')
+  const card = listed.rides.find(row => row.guestName === 'Iva Plastika')
+  expect(card).toMatchObject({
+    passengerCount: 1,
+    clientReference: 'V-19',
+    inGroup: true,
+    price: null,
+    payment: null,
+  })
+  expect(JSON.stringify(card)).not.toContain('card')
+  expect(listed.rides.every(row => !Object.hasOwn(row, 'groupPassengerCount'))).toBe(true)
 })

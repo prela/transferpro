@@ -59,6 +59,8 @@ function staged(pickupAt: Date) {
       childSeatCount: 0,
       flightNumber: 'OU412',
       clientName: 'Agencija Mora',
+      clientReference: null,
+      groupRole: null,
       vehicleName: 'Mercedes Vito',
       vehiclePlate: 'DU9SECRET',
       note: null,
