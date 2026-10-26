@@ -4,7 +4,7 @@ import { TENANT_NAME_MAX_LENGTH, tenantNameSchema } from './tenant-name'
 
 /**
  * Eight hours, from the moment the session row is created.
- * A Tenant member keeps Better Auth's seven-day session.
+ * A Tenant member is no longer the seven-day session (ADR-0057).
  * The database trigger uses the same eight hours (`interval '8 hours'`).
  * There is no second factor for a superadmin in v1 (ADR-0019).
  */

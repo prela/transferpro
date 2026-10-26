@@ -136,6 +136,7 @@ function toFrameLink(link: OfficeNavLink) {
     <template #menu>
       <OfficeUserMenu />
     </template>
+    <SessionLifetime />
     <slot />
   </AppFrame>
   <OfficeCommandPalette

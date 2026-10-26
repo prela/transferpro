@@ -6,12 +6,13 @@ import { hydrated, useTheme } from './fixtures/ui'
 
 /**
  * The selected theme control is `bg-inverted` at 90% while the pointer
- * hovers it, which fails contrast. A tap on the heading moves that hover
- * off the control before axe reads the colours.
+ * hovers it, which fails contrast. The pointer rests on the heading, away
+ * from that control. The top-left corner is the control itself on a wide page.
  */
 async function axeGate(page: Page) {
-  await page.getByRole('heading', { name: 'Odaberite tvrtku' }).click()
-  await page.mouse.move(8, 700)
+  const heading = page.getByRole('heading', { name: 'Odaberite tvrtku' })
+  await heading.hover()
+  await expect.poll(() => page.locator('.bg-inverted:hover').count()).toBe(0)
   await expectNoAxeViolations(page)
 }
 

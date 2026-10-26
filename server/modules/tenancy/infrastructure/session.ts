@@ -6,10 +6,11 @@ import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
-import { inviteLink, inviteResultSchema, memberListSchema, operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantChoiceListSchema, tenantRoleSchema } from '../../../../shared'
+import { inviteLink, inviteResultSchema, memberListSchema, memberSessionCapMs, operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantChoiceListSchema, tenantRoleSchema } from '../../../../shared'
 import { getLogger, loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
+import { askHoldingRide } from './holding-ride'
 import { acceptInvitation, createInvitation, parseInviteInput, previewInvitation, listPendingInvitations as readPendingInvitations, repairInvitationCookies, revokePendingInvitation as revokePendingInvitationImpl } from './invitation'
 import { mailerForApp, ResendTransportError } from './mailer'
 import { changeMemberRole as changeMemberRoleImpl, parseChangeMemberRole, removeMember as removeMemberImpl } from './member-management'
@@ -47,6 +48,8 @@ export class TenantAccessError extends Error {
 const sessionSchema = z.object({
   user: z.object({ id: z.string().min(1) }),
   session: z.object({
+    id: z.string().min(1),
+    createdAt: z.coerce.date(),
     activeOrganizationId: z.string().nullish(),
   }),
 })
@@ -73,6 +76,13 @@ export interface Actor {
   readonly context: TenantContext
   readonly userId: string
   readonly role: TenantRole
+  /**
+   * Present when this actor was read from a session. A constructed actor
+   * used by a command does not carry the clock.
+   */
+  readonly signedInAt?: Date
+  readonly sessionEndsAt?: Date
+  readonly holdingRide?: boolean
 }
 
 let runtime: Runtime | undefined
@@ -149,7 +159,7 @@ export async function readSessionShell(headers: Headers): Promise<SessionShell> 
   const userLocale = await handle.userLocale(parsed.data.user.id)
   const memberships = await handle.memberships(parsed.data.user.id)
 
-  return withTenantFromSession(headers, async ({ context, transaction }) => {
+  return withTenantFromSession(headers, async ({ context, transaction, actor }) => {
     const selected = settingsRows.parse(await transaction.execute(sql`
       select default_locale, time_zone, operational_day_start_hour from app.tenant_settings
     `))
@@ -161,6 +171,8 @@ export async function readSessionShell(headers: Headers): Promise<SessionShell> 
     const role = tenantRoleSchema.safeParse(membership?.role)
     if (!role.success)
       throw new TenantAccessError(403)
+    if (!actor.signedInAt || !actor.sessionEndsAt || actor.holdingRide === undefined)
+      throw new TenantAccessError(401, actor.userId)
 
     // Name and email stay out of logs. They exist so the profile menu can
     // name the signed-in account (ADR-0038).
@@ -175,6 +187,9 @@ export async function readSessionShell(headers: Headers): Promise<SessionShell> 
       timeZone: settings.time_zone,
       operationalDayStartHour: operationalDayStartHourSchema.parse(settings.operational_day_start_hour),
       role: role.data,
+      signedInAt: actor.signedInAt.toISOString(),
+      sessionEndsAt: actor.sessionEndsAt.toISOString(),
+      holdingRide: actor.holdingRide,
     })
   })
 }
@@ -322,12 +337,22 @@ export async function revokePendingInvitation(headers: Headers, invitationId: st
 }
 
 export async function previewMemberInvitation(raw: unknown, headers: Headers) {
-  return previewInvitation(tenantRuntime().handle, raw, headers)
+  const { handle } = tenantRuntime()
+  // A stale driver cookie must not count as the invited account.
+  // The preview stays public: the row is gone, so this read is signed out.
+  await refuseStaleMember(handle, headers).catch((error: unknown) => {
+    if (error instanceof TenantAccessError && error.statusCode === 401)
+      return
+    throw error
+  })
+  return previewInvitation(handle, raw, headers)
 }
 
 /** `key` is the client address. The limiter is the sign-in rule. */
 export async function acceptMemberInvitation(raw: unknown, headers: Headers, key: string) {
-  return acceptInvitation(tenantRuntime().handle, raw, headers, { key })
+  const { handle } = tenantRuntime()
+  await refuseStaleMember(handle, headers)
+  return acceptInvitation(handle, raw, headers, { key })
 }
 
 /**
@@ -459,11 +484,8 @@ export async function removeTenantMember(
  */
 export async function updateUserLocale(headers: Headers, locale: DisplayLocale): Promise<void> {
   const { handle } = tenantRuntime()
-  const result = await handle.auth.api.getSession({ headers })
-  const parsed = sessionSchema.safeParse(result)
-  if (!parsed.success)
-    throw new TenantAccessError(401)
-  await handle.setUserLocale(parsed.data.user.id, locale)
+  const userId = await liveUserId(handle, headers)
+  await handle.setUserLocale(userId, locale)
 }
 
 /**
@@ -473,11 +495,7 @@ export async function updateUserLocale(headers: Headers, locale: DisplayLocale):
  */
 export async function platformActorFromSession(headers: Headers): Promise<PlatformActor> {
   const { handle } = tenantRuntime()
-  const result = await handle.auth.api.getSession({ headers })
-  const parsed = sessionSchema.safeParse(result)
-  if (!parsed.success)
-    throw new TenantAccessError(401)
-  const userId = parsed.data.user.id
+  const userId = await liveUserId(handle, headers)
   if (!await handle.isSuperadmin(userId))
     throw new TenantAccessError(403, userId)
   return { userId }
@@ -568,8 +586,14 @@ async function activateWorkingTenant(
     })
   }
   catch {
+    const still = await handle.auth.api.getSession({ headers }).catch(() => null)
+    if (!sessionSchema.safeParse(still).success)
+      throw new TenantAccessError(401, userId)
     throw new TenantAccessError(403, userId)
   }
+  // Switching into an office membership after twelve hours ends the session.
+  // actorFromSession deletes the row when the new cap is already past.
+  await actorFromSession(handle, headers)
 }
 
 async function signedInUserId(handle: Runtime['handle'], headers: Headers): Promise<string> {
@@ -584,10 +608,67 @@ async function signedInSession(
   const parsed = sessionSchema.safeParse(result)
   if (!parsed.success)
     throw new TenantAccessError(401)
+  await liveOrDelete(handle, parsed.data)
   return {
     userId: parsed.data.user.id,
     activeOrganizationId: parsed.data.session.activeOrganizationId,
   }
+}
+
+/**
+ * No session stays no session. A member past the active cap is deleted,
+ * so the next read is signed out. A platform owner is left to the
+ * eight-hour row.
+ */
+async function refuseStaleMember(handle: Runtime['handle'], headers: Headers): Promise<void> {
+  const result = await handle.auth.api.getSession({ headers })
+  const parsed = sessionSchema.safeParse(result)
+  if (!parsed.success)
+    return
+  await liveOrDelete(handle, parsed.data)
+}
+
+/** The signed-in user, after the member cap. No session is 401. */
+async function liveUserId(handle: Runtime['handle'], headers: Headers): Promise<string> {
+  const result = await handle.auth.api.getSession({ headers })
+  const parsed = sessionSchema.safeParse(result)
+  if (!parsed.success)
+    throw new TenantAccessError(401)
+  await liveOrDelete(handle, parsed.data)
+  return parsed.data.user.id
+}
+
+async function liveOrDelete(
+  handle: Runtime['handle'],
+  session: { user: { id: string }, session: { id: string, createdAt: Date, activeOrganizationId?: string | null } },
+): Promise<void> {
+  if (await handle.isSuperadmin(session.user.id))
+    return
+  const cap = await roleForCap(handle, session.user.id, session.session.activeOrganizationId)
+  await memberLifetime(handle, session.user.id, cap.role, cap.tenantId, session.session)
+}
+
+/**
+ * The cap is the active membership. One company and none active uses that
+ * role, so a sole Driver is still asked about a holding Ride. No company,
+ * or two and none active, is the twelve-hour office cap: the row already
+ * expires then.
+ */
+async function roleForCap(
+  handle: Runtime['handle'],
+  userId: string,
+  activeOrganizationId: string | null | undefined,
+): Promise<{ role: TenantRole, tenantId: string }> {
+  const memberships = await readableMemberships(handle, userId)
+  const active = activeOrganizationId
+    ? memberships.find(membership => membership.organizationId === activeOrganizationId)
+    : undefined
+  if (active)
+    return { role: active.role, tenantId: active.organizationId }
+  const only = !activeOrganizationId && memberships.length === 1 ? memberships[0] : undefined
+  if (only)
+    return { role: only.role, tenantId: only.organizationId }
+  return { role: 'admin', tenantId: activeOrganizationId ?? '' }
 }
 
 async function actorFromSession(handle: Runtime['handle'], headers: Headers): Promise<Actor> {
@@ -598,7 +679,37 @@ async function actorFromSession(handle: Runtime['handle'], headers: Headers): Pr
 
   const userId = parsed.data.user.id
   const membership = await resolveMembership(handle, userId, parsed.data.session.activeOrganizationId)
-  return { context: { tenantId: membership.organizationId }, userId, role: membership.role }
+  const lifetime = await memberLifetime(handle, userId, membership.role, membership.organizationId, parsed.data.session)
+  return {
+    context: { tenantId: membership.organizationId },
+    userId,
+    role: membership.role,
+    ...lifetime,
+  }
+}
+
+/**
+ * The active membership's cap, from this sign-in. A Driver past twelve
+ * hours stays only while a Ride in this Tenant holds the session, and
+ * never past sixteen. The row is deleted so the next read is signed out.
+ */
+async function memberLifetime(
+  handle: Runtime['handle'],
+  userId: string,
+  role: TenantRole,
+  tenantId: string,
+  session: { id: string, createdAt: Date },
+): Promise<{ signedInAt: Date, sessionEndsAt: Date, holdingRide: boolean }> {
+  const now = new Date()
+  const holdingRide = role === 'driver'
+    ? await askHoldingRide({ tenantId, userId, now })
+    : false
+  const sessionEndsAt = new Date(session.createdAt.getTime() + memberSessionCapMs(role, holdingRide))
+  if (now.getTime() >= sessionEndsAt.getTime()) {
+    await handle.deleteSession(session.id)
+    throw new TenantAccessError(401, userId)
+  }
+  return { signedInAt: session.createdAt, sessionEndsAt, holdingRide }
 }
 
 /**

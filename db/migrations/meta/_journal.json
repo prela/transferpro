@@ -435,6 +435,13 @@
       "when": 1791400051000,
       "tag": "0061_extra_vehicle_link",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1791400052000,
+      "tag": "0062_member_session_cap",
+      "breakpoints": true
     }
   ]
 }
