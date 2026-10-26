@@ -277,7 +277,7 @@ async function insertRide(client: PoolClient, picture: DemoPicture, row: DemoRid
        passenger_count, guest_name, flight_number, landing_at, price, payment,
        airport_mark, luggage_count, child_seat_count, note, tabla, external_id
      )
-     values ($1, $2, $3, $4, $5, $6, 2, $7, $8, $9, $10, $11, $12, 1, 0, $13, $14, $2)`,
+     values ($1, $2, $3, $4, $5, $6, 2, $7, $8, $9, $10, $11, $12, 1, 0, $13, $14, $15)`,
     [
       picture.tenantId,
       row.transferId,
@@ -293,6 +293,8 @@ async function insertRide(client: PoolClient, picture: DemoPicture, row: DemoRid
       row.airportMark,
       row.note,
       row.tabla,
+      // external_id is text. The id column is uuid. One parameter cannot be both.
+      row.transferId,
     ],
   )
   await client.query(

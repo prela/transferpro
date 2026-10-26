@@ -9,8 +9,9 @@ import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, localDay
  * ZZZ is not a scheduled airport, and flight text is not a designator,
  * so a later status ask has nothing to call.
  * The airport and the hotel store public Google place ids so a preview
- * map resolves. Those ids are not the fictional address text. The
- * address-kind Location has none (ADR-0052).
+ * map resolves. Those ids are not the fictional address text. Every
+ * address-kind Location has none (ADR-0052), including the long name
+ * used to check a 360px row. The picture stores no coordinates.
  */
 
 export const DEMO_SLUG = 'demo'
@@ -23,8 +24,8 @@ const DOCUMENT_VALID_DAYS = 400
 export type DemoMemberKey = 'admin' | 'dispatcher' | 'driver-a' | 'driver-b' | 'driver-c'
 export type DemoDriverKey = 'a' | 'b' | 'c'
 export type DemoVehicleKey = 'valid' | 'expired' | 'archived' | 'gap'
-export type DemoClientKey = 'agency' | 'hotel' | 'individual'
-export type DemoLocationKey = 'airport' | 'hotel' | 'address'
+export type DemoClientKey = 'agency' | 'hotel' | 'individual' | 'long'
+export type DemoLocationKey = 'airport' | 'hotel' | 'address' | 'long'
 
 export interface DemoMember {
   readonly key: DemoMemberKey
@@ -43,14 +44,16 @@ export interface DemoClient {
   readonly key: DemoClientKey
   readonly id: string
   readonly name: string
-  readonly kind: DemoClientKey
+  /** A stored Client kind. The `long` key is still an agency. */
+  readonly kind: 'agency' | 'hotel' | 'individual'
 }
 
 export interface DemoLocation {
   readonly key: DemoLocationKey
   readonly id: string
   readonly name: string
-  readonly kind: DemoLocationKey
+  /** A stored Location kind. The `long` key is still an address. */
+  readonly kind: 'airport' | 'hotel' | 'address'
   readonly address: string
   readonly iata: string | null
   /** A public Google place, or null. Never set on an address-kind Location. */
@@ -161,6 +164,8 @@ const clients: readonly DemoClient[] = [
   { key: 'agency', id: demoId(101), name: 'Agencija Izmišljena', kind: 'agency' },
   { key: 'hotel', id: demoId(102), name: 'Hotel Izmišljeni', kind: 'hotel' },
   { key: 'individual', id: demoId(103), name: 'Osoba Izmišljena', kind: 'individual' },
+  // One unbroken name, about 80 characters, so the office client column can overflow.
+  { key: 'long', id: demoId(104), name: 'Izmišljeniklijentdugačkanazivbezrazmakaodaklejeredprelijevatelefonu360pxizmišlje', kind: 'agency' },
 ]
 
 const locations: readonly DemoLocation[] = [
@@ -190,6 +195,18 @@ const locations: readonly DemoLocation[] = [
     name: 'Kuća Izmišljena',
     kind: 'address',
     address: 'Trg Izmišljeni 2',
+    iata: null,
+    place: null,
+  },
+  {
+    // Address kind keeps place null (ADR-0052). No coordinates: the map
+    // uses a stored place id, and this row has none. The name and the
+    // address are one run each so a 360px row cannot wrap them.
+    key: 'long',
+    id: demoId(204),
+    name: 'Izmišljenalokacijadugačkanazivbezrazmakaodaklejeredprelijevatelefonu360pxizmišlj',
+    kind: 'address',
+    address: 'Izmišljenaulicadugačkaadresabezrazmakaodaklejeredprelijevatelefonu360pxizmišljen',
     iata: null,
     place: null,
   },
@@ -537,6 +554,25 @@ export function buildDemoPicture(now: Date): DemoPicture {
       driver: null,
       vehicle: null,
       mustAccept: null,
+    }),
+    // Still inside today's operational day, assigned, so the office day
+    // list and driver A's phone list both show the long place and client.
+    ride(19, {
+      client: 'long',
+      pickupAt: new Date(Math.min(now.getTime() + 40 * MINUTE, bounds.end.getTime() - MINUTE)),
+      start: 'long',
+      end: 'hotel',
+      guestName: 'Gost Dugački',
+      flightNumber: null,
+      landingAt: null,
+      price: '20.00',
+      payment: 'cash',
+      note: null,
+      tabla: '',
+      state: 'assigned',
+      driver: 'a',
+      vehicle: 'valid',
+      mustAccept: false,
     }),
   ]
 
