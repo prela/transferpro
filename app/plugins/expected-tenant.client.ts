@@ -112,6 +112,9 @@ export default defineNuxtPlugin({
           showTenantChanged()
       },
     }, {
+      // Raw fetch on purpose: this function is the transport of the claimed
+      // `$fetch`. The claim is already on the request. Do not route it
+      // back through `$fetch`, or the call recurses.
       fetch: (input, init) => globalThis.fetch(input, init),
     })
 

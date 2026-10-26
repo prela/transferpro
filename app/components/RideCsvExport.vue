@@ -53,6 +53,8 @@ async function download() {
   pending.value = true
   try {
     const params = new URLSearchParams({ from: from.value, to: to.value })
+    // Raw fetch: the response is a blob plus a content-disposition filename.
+    // This GET writes nothing, so it does not send the office Tenant claim.
     const response = await fetch(`/api/transfers/export?${params}`)
     if (!response.ok) {
       errorKey.value = response.status === 400 ? 'transfers.exportRange' : 'transfers.exportFailed'
