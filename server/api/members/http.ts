@@ -1,6 +1,7 @@
 import { createError } from 'h3'
 import { z } from 'zod'
 import { MemberAccessError, TenantAccessError } from '../../modules/tenancy'
+import { rethrowTenantChanged } from '../tenant-changed'
 
 /**
  * Turn MemberAccessError and TenantAccessError into HTTP errors.
@@ -8,6 +9,7 @@ import { MemberAccessError, TenantAccessError } from '../../modules/tenancy'
  * The message is a fixed phrase.
  */
 export function memberHttpError(error: unknown, defaultStatus = 500): never {
+  rethrowTenantChanged(error)
   if (error instanceof MemberAccessError) {
     const message = error.statusCode === 400 ? 'Bad request' : error.message
     throw createError({

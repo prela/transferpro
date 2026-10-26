@@ -1,6 +1,6 @@
 import type { RosterDay, SetRosterResult } from '../../../../shared'
 import { parseRosterDate, parseSetRoster } from '../../../../shared'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
 import { loadRosterDay, setRosterVehicle } from './roster'
 
 function officeOnly(role: string): void {
@@ -26,8 +26,7 @@ export async function listRosterDay(headers: Headers, rawDate: unknown): Promise
  * The write and its audit entry commit together. A driver is 403.
  */
 export async function setRosterDay(headers: Headers, raw: unknown): Promise<SetRosterResult> {
-  const input = parseSetRoster(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseSetRoster, async ({ actor, transaction }, input) => {
     officeOnly(actor.role)
     return { assignment: await setRosterVehicle(transaction, actor.userId, input) }
   })

@@ -1,6 +1,7 @@
 import { defineEventHandler, getRouterParam, toWebRequest } from 'h3'
 import { partnerSchema } from '../../../../shared'
 import { archivePartner } from '../../../modules/partners'
+import { readOfficeBody } from '../../tenant-changed'
 import { parsePartnerId, partnerHttpError } from '../http'
 
 /**
@@ -11,7 +12,7 @@ import { parsePartnerId, partnerHttpError } from '../http'
 export default defineEventHandler(async (event) => {
   const partnerId = parsePartnerId(getRouterParam(event, 'id'))
   try {
-    return partnerSchema.parse(await archivePartner(toWebRequest(event).headers, partnerId))
+    return partnerSchema.parse(await archivePartner(toWebRequest(event).headers, partnerId, await readOfficeBody(event)))
   }
   catch (error) {
     partnerHttpError(error)

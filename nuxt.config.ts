@@ -37,6 +37,20 @@ export default defineNuxtConfig({
         { name: 'apple-mobile-web-app-title', content: 'Transferpro' },
         { name: 'theme-color', content: '#0f766e' },
       ],
+      // Inline and classic so it runs before the module bundle captures fetch.
+      script: [
+        {
+          innerHTML: `(() => {
+            const native = window.fetch.bind(window)
+            window.fetch = (input, init) => {
+              const hook = window.__transferproFetch
+              if (typeof hook === 'function')
+                return hook(input, init, native)
+              return native(input, init)
+            }
+          })()`,
+        },
+      ],
     },
   },
   // The manifest must be served as a manifest. The worker is not cached, so

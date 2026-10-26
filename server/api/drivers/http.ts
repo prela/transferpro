@@ -3,12 +3,14 @@ import { z } from 'zod'
 import { DriverInputError, parseIncludeArchivedQuery, QueryParamError } from '../../../shared'
 import { DriverArchivedError, DriverNotFoundError } from '../../modules/drivers'
 import { TenantAccessError } from '../../modules/tenancy'
+import { rethrowTenantChanged } from '../tenant-changed'
 
 /**
  * Turn a Driver failure into an HTTP error. The message stays a fixed phrase
  * for the status. A phone number is not copied from the thrown error.
  */
 export function driverHttpError(error: unknown): never {
+  rethrowTenantChanged(error)
   if (error instanceof DriverInputError || error instanceof DriverNotFoundError || error instanceof TenantAccessError)
     throw createError({ statusCode: error.statusCode })
   if (error instanceof DriverArchivedError) {

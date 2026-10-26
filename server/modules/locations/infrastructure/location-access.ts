@@ -2,7 +2,7 @@ import type { Location, OfficeLocation, OfficeLocationList } from '../../../../s
 import type { TenantTransaction } from '../../../core/index'
 import { officeLocationSchema, parseCreateLocation, parseLocationPatch, parseSuggestAddresses, resolveDisplayLocale, suggestAddressesResponseSchema } from '../../../../shared'
 import { loadAppEnv } from '../../../core/index'
-import { loadTenantDefaultLocale, readUserLocale, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { loadTenantDefaultLocale, readUserLocale, TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
 import { addLocation, archiveStoredLocation, correctLocation, loadLocations, LocationArchivedError, LocationIataTakenError, LocationNotFoundError } from './locations'
 import { mapsForApp } from './maps'
 
@@ -29,8 +29,7 @@ export async function listLocations(headers: Headers, includeArchived: boolean):
  * opens a session. A driver is 403. The insert and `location.created` commit together.
  */
 export async function createLocation(headers: Headers, raw: unknown): Promise<OfficeLocation> {
-  const input = parseCreateLocation(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseCreateLocation, async ({ actor, transaction }, input) => {
     officeOnly(actor.role)
     return withEmbedUrl(transaction, actor.userId, await addLocation(transaction, actor.userId, input))
   })
@@ -41,8 +40,7 @@ export async function createLocation(headers: Headers, raw: unknown): Promise<Of
  * is 404. A patch that matches the row writes nothing.
  */
 export async function updateLocation(headers: Headers, locationId: string, raw: unknown): Promise<OfficeLocation> {
-  const patch = parseLocationPatch(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseLocationPatch, async ({ actor, transaction }, patch) => {
     officeOnly(actor.role)
     return withEmbedUrl(transaction, actor.userId, await correctLocation(transaction, actor.userId, locationId, patch))
   })
@@ -52,8 +50,8 @@ export async function updateLocation(headers: Headers, locationId: string, raw: 
  * Archive a Location. It leaves the default list. There is no delete.
  * A second archive writes nothing.
  */
-export async function archiveLocation(headers: Headers, locationId: string): Promise<OfficeLocation> {
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+export async function archiveLocation(headers: Headers, locationId: string, raw?: unknown): Promise<OfficeLocation> {
+  return withOfficeWrite(headers, raw, () => undefined, async ({ actor, transaction }) => {
     officeOnly(actor.role)
     return withEmbedUrl(transaction, actor.userId, await archiveStoredLocation(transaction, actor.userId, locationId))
   })

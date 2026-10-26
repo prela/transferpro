@@ -18,6 +18,7 @@
     "signingOut": "Signing out",
     "signOutFailed": "Sign-out failed. Try again.",
     "switchFailed": "The company was not changed. Try again.",
+    "tenantChanged": "The active company changed in another tab. The screen reloads into the active company.",
     "otherCompanies": "Other companies",
     "exampleTime": "Example time",
     "unavailable": "The screen could not be loaded. Try again.",

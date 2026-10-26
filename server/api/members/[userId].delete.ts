@@ -1,5 +1,6 @@
 import { defineEventHandler, getRouterParam, toWebRequest } from 'h3'
 import { removeTenantMember } from '../../modules/tenancy'
+import { readOfficeBody } from '../tenant-changed'
 import { memberHttpError, parseMemberUserId } from './http'
 
 /**
@@ -11,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const userId = parseMemberUserId(getRouterParam(event, 'userId'))
 
   try {
-    await removeTenantMember(toWebRequest(event).headers, userId)
+    await removeTenantMember(toWebRequest(event).headers, userId, await readOfficeBody(event))
     return { removed: true }
   }
   catch (error) {

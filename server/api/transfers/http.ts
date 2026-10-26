@@ -5,6 +5,7 @@ import { LocationArchivedError, LocationNotFoundError } from '../../modules/loca
 import { PartnerNotFoundError } from '../../modules/partners'
 import { TenantAccessError } from '../../modules/tenancy'
 import { ExtraVehicleCountError, ExtraVehiclePriceError, RideOverlapError, RideUnavailableError, StaleSaveError, TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from '../../modules/transfers'
+import { rethrowTenantChanged } from '../tenant-changed'
 
 /**
  * Turn a Transfer failure into an HTTP error. The message stays a fixed phrase
@@ -15,6 +16,7 @@ import { ExtraVehicleCountError, ExtraVehiclePriceError, RideOverlapError, RideU
  * `stale_save` is a version the form no longer holds. Nothing was written.
  */
 export function transferHttpError(error: unknown): never {
+  rethrowTenantChanged(error)
   if (
     error instanceof TransferInputError
     || error instanceof QueryParamError

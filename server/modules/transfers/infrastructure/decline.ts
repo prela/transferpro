@@ -7,7 +7,7 @@ import { canDeclineRide, RIDE_ASSIGNMENT_FIELDS, rideStateSchema } from '../../.
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { loadDriverLinkedToMember } from '../../drivers'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { TenantAccessError, withOfficeWrite } from '../../tenancy'
 import { RideNotFoundError } from './assign'
 
 /** The body was not an empty object, or the path was not a Ride id. Nothing is written. */
@@ -117,8 +117,7 @@ async function declineOwnRide(
  * the office takes a Ride back with clear, not with decline. No mail.
  */
 export async function declineRide(headers: Headers, rawRideId: unknown, rawBody: unknown): Promise<Ride> {
-  const rideId = parseDecline(rawRideId, rawBody)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, rawBody, body => parseDecline(rawRideId, body), async ({ actor, transaction }, rideId) => {
     if (actor.role !== 'driver')
       throw new TenantAccessError(403)
     return declineOwnRide(transaction, actor.userId, rideId)

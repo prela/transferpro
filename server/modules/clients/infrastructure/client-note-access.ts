@@ -1,6 +1,6 @@
 import type { ClientNote } from '../../../../shared'
 import { parseClientNoteSave } from '../../../../shared'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
 import { loadClientNote, saveClientNote } from './client-notes'
 
 function officeOnly(role: string): void {
@@ -27,8 +27,7 @@ export async function readClientNote(headers: Headers, clientId: string): Promis
  * 409 `stale_save`.
  */
 export async function writeClientNote(headers: Headers, clientId: string, raw: unknown) {
-  const input = parseClientNoteSave(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseClientNoteSave, async ({ actor, transaction }, input) => {
     officeOnly(actor.role)
     return saveClientNote(transaction, actor.userId, clientId, input)
   })

@@ -19,7 +19,7 @@ import {
   removeUnavailability as removeWindow,
   unavailabilityPorts,
 } from '../../capacity'
-import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { loadTenantSettings, TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
 import { rideOccupation } from './occupation-port'
 
 /*
@@ -41,22 +41,19 @@ function ports(transaction: TenantTransaction, actorUserId: string) {
 
 /** Add a window for one Driver or one Vehicle. Answers the window and the Rides it now covers. */
 export async function addUnavailability(headers: Headers, raw: unknown): Promise<UnavailabilitySaved> {
-  const input = parseRecordUnavailability(raw)
-  return withTenantFromSession(headers, ({ actor, transaction }) =>
+  return withOfficeWrite(headers, raw, parseRecordUnavailability, ({ actor, transaction }, input) =>
     recordUnavailability(ports(transaction, actor.userId), actor.role, input))
 }
 
 /** Move a window's instants. Answers the window and the Rides it now covers. */
 export async function changeUnavailability(headers: Headers, rawWindowId: unknown, raw: unknown): Promise<UnavailabilitySaved> {
-  const input = parseChangeUnavailability(rawWindowId, raw)
-  return withTenantFromSession(headers, ({ actor, transaction }) =>
+  return withOfficeWrite(headers, raw, body => parseChangeUnavailability(rawWindowId, body), ({ actor, transaction }, input) =>
     changeWindow(ports(transaction, actor.userId), actor.role, input))
 }
 
 /** Mark a window removed. It no longer counts. */
-export async function removeUnavailability(headers: Headers, rawWindowId: unknown): Promise<void> {
-  const windowId = parseUnavailabilityId(rawWindowId)
-  await withTenantFromSession(headers, ({ actor, transaction }) =>
+export async function removeUnavailability(headers: Headers, rawWindowId: unknown, raw?: unknown): Promise<void> {
+  await withOfficeWrite(headers, raw, () => parseUnavailabilityId(rawWindowId), ({ actor, transaction }, windowId) =>
     removeWindow(ports(transaction, actor.userId), actor.role, windowId))
 }
 

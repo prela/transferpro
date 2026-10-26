@@ -1,6 +1,7 @@
 import { defineEventHandler, getRouterParam, toWebRequest } from 'h3'
 import { driverSchema } from '../../../../shared'
 import { archiveDriver } from '../../../modules/drivers'
+import { readOfficeBody } from '../../tenant-changed'
 import { driverHttpError, parseDriverId } from '../http'
 
 /**
@@ -11,7 +12,7 @@ import { driverHttpError, parseDriverId } from '../http'
 export default defineEventHandler(async (event) => {
   const driverId = parseDriverId(getRouterParam(event, 'id'))
   try {
-    return driverSchema.parse(await archiveDriver(toWebRequest(event).headers, driverId))
+    return driverSchema.parse(await archiveDriver(toWebRequest(event).headers, driverId, await readOfficeBody(event)))
   }
   catch (error) {
     driverHttpError(error)

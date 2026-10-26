@@ -1,6 +1,6 @@
 import type { VehicleList } from '../../../../shared'
 import { parseCreateVehicle, parseVehiclePatch } from '../../../../shared'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
 import { addVehicle, archiveStoredVehicle, correctVehicle, loadVehicles, VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError } from './vehicles'
 
 export { VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError }
@@ -24,8 +24,7 @@ export async function listVehicles(headers: Headers, includeArchived: boolean): 
  * opens a session. A driver is 403. The insert and `vehicle.created` commit together.
  */
 export async function createVehicle(headers: Headers, raw: unknown) {
-  const input = parseCreateVehicle(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseCreateVehicle, async ({ actor, transaction }, input) => {
     officeOnly(actor.role)
     return addVehicle(transaction, actor.userId, input)
   })
@@ -36,8 +35,7 @@ export async function createVehicle(headers: Headers, raw: unknown) {
  * is 404. A patch that matches the row writes nothing.
  */
 export async function updateVehicle(headers: Headers, vehicleId: string, raw: unknown) {
-  const patch = parseVehiclePatch(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseVehiclePatch, async ({ actor, transaction }, patch) => {
     officeOnly(actor.role)
     return correctVehicle(transaction, actor.userId, vehicleId, patch)
   })
@@ -47,8 +45,8 @@ export async function updateVehicle(headers: Headers, vehicleId: string, raw: un
  * Archive a Vehicle. It leaves the default list. There is no delete.
  * A second archive writes nothing.
  */
-export async function archiveVehicle(headers: Headers, vehicleId: string) {
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+export async function archiveVehicle(headers: Headers, vehicleId: string, raw?: unknown) {
+  return withOfficeWrite(headers, raw, () => undefined, async ({ actor, transaction }) => {
     officeOnly(actor.role)
     return archiveStoredVehicle(transaction, actor.userId, vehicleId)
   })

@@ -7,7 +7,7 @@ import { canRecordLandingTime, landingTimeInFuture, recordedLandingSchema, RIDE_
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { loadDriverLinkedToMember } from '../../drivers'
-import { TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { TenantAccessError, withOfficeWrite } from '../../tenancy'
 import { RideNotFoundError } from './assign'
 import { LandingTimeClosedError, LandingTimeInFutureError, recordLandingTime } from './flight-landing'
 
@@ -230,15 +230,19 @@ async function recordForOffice(
  * No mail is sent.
  */
 export async function recordRideLanding(headers: Headers, rawRideId: unknown, rawBody: unknown): Promise<RecordedLanding> {
-  const request = parseLanding(rawRideId, rawBody)
-  const now = new Date()
-  if (request.landingAt !== null && landingTimeInFuture(request.landingAt, now))
-    throw new RideLandingInFutureError()
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, rawBody, (body) => {
+    const request = parseLanding(rawRideId, body)
+    const now = new Date()
+    // A future instant is refused before the tenant transaction. The claim
+    // was already compared when the screen named a Tenant.
+    if (request.landingAt !== null && landingTimeInFuture(request.landingAt, now))
+      throw new RideLandingInFutureError()
+    return { request, now }
+  }, async ({ actor, transaction }, parsed) => {
     if (actor.role === 'driver')
-      return recordForDriver(transaction, actor.userId, request, now)
+      return recordForDriver(transaction, actor.userId, parsed.request, parsed.now)
     if (actor.role === 'admin' || actor.role === 'dispatcher')
-      return recordForOffice(transaction, actor.userId, request, now)
+      return recordForOffice(transaction, actor.userId, parsed.request, parsed.now)
     throw new TenantAccessError(403)
   })
 }

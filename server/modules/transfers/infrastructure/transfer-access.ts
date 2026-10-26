@@ -2,7 +2,7 @@ import type { RecordedCreate, TransferDay } from '../../../../shared'
 import { operationalDateInTimeZone, parseRecordTransfer, parseTransferDay } from '../../../../shared'
 import { loadClientOfficeBriefs } from '../../clients'
 import { loadPartnerOfficeContacts } from '../../partners'
-import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { loadTenantSettings, TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
 import { applyBoardWarnings } from './board-warnings'
 import { transferFullyBooked } from './capacity-check'
 import { loadDeclineAlertsForDay, loadRidesForDay, recordTransfer } from './transfers'
@@ -24,8 +24,7 @@ function officeOnly(role: string): void {
  * `alreadyRecorded: false`. Both are the caller's HTTP 200.
  */
 export async function createTransfer(headers: Headers, raw: unknown): Promise<RecordedCreate> {
-  const parsed = parseRecordTransfer(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseRecordTransfer, async ({ actor, transaction }, parsed) => {
     officeOnly(actor.role)
     const recorded = await recordTransfer(
       transaction,

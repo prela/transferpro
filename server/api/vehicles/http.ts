@@ -3,12 +3,14 @@ import { z } from 'zod'
 import { parseIncludeArchivedQuery, QueryParamError, VehicleInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
 import { VehicleArchivedError, VehicleArchivedPlateError, VehicleNotFoundError, VehiclePlateTakenError } from '../../modules/vehicles'
+import { rethrowTenantChanged } from '../tenant-changed'
 
 /**
  * Turn a Vehicle failure into an HTTP error. The message stays a fixed phrase
  * for the status. A plate is not copied from the thrown error.
  */
 export function vehicleHttpError(error: unknown): never {
+  rethrowTenantChanged(error)
   if (error instanceof VehicleInputError || error instanceof VehicleNotFoundError || error instanceof TenantAccessError) {
     throw createError({ statusCode: error.statusCode })
   }

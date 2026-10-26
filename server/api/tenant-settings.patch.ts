@@ -1,6 +1,7 @@
 import { createError, defineEventHandler, readBody, toWebRequest } from 'h3'
 import { TenantSettingsError, tenantSettingsResponseSchema } from '../../shared'
 import { TenantAccessError, updateTenantSettings } from '../modules/tenancy'
+import { rethrowTenantChanged } from './tenant-changed'
 
 /**
  * PATCH /api/tenant-settings
@@ -14,6 +15,7 @@ export default defineEventHandler(async (event) => {
     return tenantSettingsResponseSchema.parse(await updateTenantSettings(toWebRequest(event).headers, await readBody(event)))
   }
   catch (error) {
+    rethrowTenantChanged(error)
     if (error instanceof TenantSettingsError)
       throw createError({ statusCode: error.statusCode })
     if (error instanceof TenantAccessError)

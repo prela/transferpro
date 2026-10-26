@@ -7,7 +7,7 @@ import { canCloseHandedOffRide, canMarkNoShow, noShowWaitElapsed, RIDE_ACCEPTED_
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { loadDriverLinkedToMember } from '../../drivers'
-import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { loadTenantSettings, TenantAccessError, withOfficeWrite } from '../../tenancy'
 import { RideNotFoundError } from './assign'
 
 /** The body was not an empty object, or the path was not a Ride id. Nothing is written. */
@@ -226,8 +226,7 @@ async function closeHandedOffNoShow(
  * including before the wait. No fee is stored. No mail is sent.
  */
 export async function markNoShow(headers: Headers, rawRideId: unknown, rawBody: unknown): Promise<Ride> {
-  const rideId = parseMarkNoShow(rawRideId, rawBody)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, rawBody, body => parseMarkNoShow(rawRideId, body), async ({ actor, transaction }, rideId) => {
     const now = new Date()
     if (actor.role === 'driver')
       return markOwnNoShow(transaction, actor.userId, rideId, now)

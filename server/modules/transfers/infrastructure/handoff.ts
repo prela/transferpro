@@ -9,7 +9,7 @@ import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { lockTenantCapacity } from '../../capacity'
 import { partnerPresenceForHandoff } from '../../partners'
-import { mailerForApp, TenantAccessError, withTenantFromSession } from '../../tenancy'
+import { mailerForApp, TenantAccessError, withOfficeWrite } from '../../tenancy'
 import { RideNotFoundError } from './assign'
 import { checkPartnerCapacity } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
@@ -113,9 +113,8 @@ export async function handOffRide(
   rawBody: unknown,
   delivery?: Delivery,
 ): Promise<HandedOffRideResult> {
-  const input = parseHandOffRide(rawRideId, rawBody)
   const queue = await mailOutboxQueue()
-  const saved = await withTenantFromSession(headers, async ({ actor, context, transaction }) => {
+  const saved = await withOfficeWrite(headers, rawBody, body => parseHandOffRide(rawRideId, body), async ({ actor, context, transaction }, input) => {
     officeOnly(actor.role)
     const handed = await handOffRideForOffice(transaction, actor.userId, input)
     if (handed.released === null)
@@ -140,8 +139,7 @@ export async function changeRidePartner(
   rawRideId: unknown,
   rawBody: unknown,
 ): Promise<HandedOffRideResult> {
-  const input = parseChangeRidePartner(rawRideId, rawBody)
-  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
+  const saved = await withOfficeWrite(headers, rawBody, body => parseChangeRidePartner(rawRideId, body), async ({ actor, transaction }, input) => {
     officeOnly(actor.role)
     return changeRidePartnerForOffice(transaction, actor.userId, input)
   })
@@ -158,8 +156,7 @@ export async function takeBackRide(
   rawRideId: unknown,
   rawBody: unknown,
 ): Promise<HandedOffRideResult> {
-  const input = parseTakeBackRide(rawRideId, rawBody)
-  const saved = await withTenantFromSession(headers, async ({ actor, transaction }) => {
+  const saved = await withOfficeWrite(headers, rawBody, body => parseTakeBackRide(rawRideId, body), async ({ actor, transaction }, input) => {
     officeOnly(actor.role)
     return takeBackRideForOffice(transaction, actor.userId, input.rideId, input.version)
   })

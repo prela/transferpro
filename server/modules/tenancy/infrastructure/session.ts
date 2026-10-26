@@ -2,11 +2,12 @@ import type { AuditEntryList, DisplayLocale, InvitationMailOutcome, InviteResult
 import type { TenantContext, TenantTransaction } from '../../../core/index'
 import type { Membership } from './auth'
 import type { InvitationMail } from './mailer'
+import process from 'node:process'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
 import { z } from 'zod'
-import { inviteLink, inviteResultSchema, memberListSchema, memberSessionCapMs, operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, tenantChoiceListSchema, tenantRoleSchema } from '../../../../shared'
+import { inviteLink, inviteResultSchema, memberListSchema, memberSessionCapMs, operationalDayStartHourSchema, parseTenantSettingsPatch, resolveDisplayLocale, sessionShellSchema, TENANT_CHANGED, tenantChoiceListSchema, tenantRoleSchema } from '../../../../shared'
 import { getLogger, loadAppEnv, openTenantSession } from '../../../core/index'
 import { listAuditEntries } from '../../audit'
 import { createAuth } from './auth'
@@ -28,6 +29,98 @@ import { changeTenantSettings, loadTenantSettings, TenantSettingsMissingError } 
  * chooses. Nothing here stores a last Tenant. Callers do not pass a tenant id
  * except that choice.
  */
+/**
+ * The office screen was opened for a different Tenant than the one this
+ * session now has, or the screen did not say which Tenant it was opened for.
+ * Nothing is written: the throw happens before the tenant transaction.
+ * `data.code` is what the HTTP error handler copies into the JSON body.
+ */
+export class TenantChangedError extends Error {
+  readonly statusCode = 409
+  readonly code = TENANT_CHANGED
+  readonly data = { code: TENANT_CHANGED }
+
+  constructor() {
+    super('Conflict')
+    this.name = 'TenantChangedError'
+  }
+}
+
+/**
+ * Vitest and the e2e server omit the claim on fixture writes. That claim
+ * means "the session's own Tenant", which is the only Tenant those callers
+ * can see. Production never uses it. A screen that forgot the claim is a
+ * mismatch, not this.
+ */
+const sessionTenantClaim = Symbol('session-tenant')
+
+export interface OfficeWriteClaim {
+  readonly expectedTenantId: unknown
+  /**
+   * The body had `expectedTenantId`, or the request set `x-expected-tenant-id`.
+   * An explicit claim is compared before the body is parsed, so a stale
+   * screen is 409 even when the rest of the body would have been 400.
+   */
+  readonly explicit: boolean
+  /** The body with `expectedTenantId` removed, so a strict schema still parses. */
+  readonly body: unknown
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Vite replaces a direct `process.env.NODE_ENV` with `"production"` in the
+ * built server. The e2e server still sets NODE_ENV to test at process start,
+ * so the hatch has to read the variable at call time.
+ */
+function currentNodeEnv(): string {
+  const key = 'NODE_ENV'
+  return process.env[key] ?? ''
+}
+
+/**
+ * The Tenant the office screen was opened for.
+ * The JSON field wins. The header is the same claim for a route whose body
+ * is not the form, and for a test that sets the header to empty to mean
+ * "the screen sent nothing". Under `NODE_ENV=test` only, neither one means
+ * the session Tenant. Any other environment treats that as a missing claim.
+ */
+export function officeWriteClaim(headers: Headers, raw: unknown, nodeEnv: string = currentNodeEnv()): OfficeWriteClaim {
+  const record = isRecord(raw) ? raw : undefined
+  const present = record !== undefined && 'expectedTenantId' in record
+  const body = present
+    ? Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'expectedTenantId'))
+    : raw
+  const header = headers.get('x-expected-tenant-id')
+  const explicit = present || header !== null
+  if (present)
+    return { expectedTenantId: record.expectedTenantId, explicit, body }
+  if (header !== null)
+    return { expectedTenantId: header, explicit, body }
+  if (nodeEnv === 'test')
+    return { expectedTenantId: sessionTenantClaim, explicit: false, body }
+  return { expectedTenantId: undefined, explicit: false, body }
+}
+
+/**
+ * Refuse before any tenant transaction. A missing claim and a claim for
+ * another Tenant are the same 409. The session Tenant is the one just read
+ * from the cookie, not a tenant id in the body.
+ */
+export function assertExpectedTenant(activeTenantId: string, expectedTenantId: unknown): void {
+  const expected = expectedTenantId === sessionTenantClaim ? activeTenantId : expectedTenantId
+  const parsed = z.uuid().safeParse(expected)
+  if (!parsed.success || parsed.data !== activeTenantId)
+    throw new TenantChangedError()
+}
+
+async function refuseStaleTenant(headers: Headers, claim: OfficeWriteClaim): Promise<void> {
+  const actor = await actorFromSession(tenantRuntime().handle, headers)
+  assertExpectedTenant(actor.context.tenantId, claim.expectedTenantId)
+}
+
 export class TenantAccessError extends Error {
   readonly statusCode: 401 | 403 | 409
 
@@ -125,12 +218,37 @@ export function handleAuthRequest(request: Request): Promise<Response> {
 export async function withTenantFromSession<T>(
   headers: Headers,
   run: (scope: { context: TenantContext, transaction: TenantTransaction, actor: Actor }) => Promise<T>,
+  claim?: Pick<OfficeWriteClaim, 'expectedTenantId'>,
 ): Promise<T> {
   const { handle, db } = tenantRuntime()
   const actor = await actorFromSession(handle, headers)
+  // Reads omit the claim. A write passes one, and a mismatch throws here,
+  // before the transaction that would insert a row or an audit entry.
+  if (claim)
+    assertExpectedTenant(actor.context.tenantId, claim.expectedTenantId)
   return db.transaction(async (transaction) => {
     return openTenantSession(transaction, actor.context, () => run({ context: actor.context, transaction, actor }))
   })
+}
+
+/**
+ * One office write. An explicit claim is compared before `parse`, so a stale
+ * screen does not depend on the rest of the body being valid. `parse` still
+ * runs before the tenant transaction when the claim is not explicit, which
+ * is how an invalid fixture body stays 400 without a session. The transaction
+ * then compares again, so a write cannot skip the check.
+ */
+export async function withOfficeWrite<I, T>(
+  headers: Headers,
+  raw: unknown,
+  parse: (body: unknown) => I,
+  run: (scope: { context: TenantContext, transaction: TenantTransaction, actor: Actor }, input: I) => Promise<T>,
+): Promise<T> {
+  const office = officeWriteClaim(headers, raw)
+  if (office.explicit)
+    await refuseStaleTenant(headers, office)
+  const input = parse(office.body)
+  return withTenantFromSession(headers, scope => run(scope, input), office)
 }
 
 /**
@@ -223,9 +341,8 @@ export interface InvitationMailPort {
  * after Better Auth commits. The link is always returned.
  */
 export async function inviteMember(headers: Headers, raw: unknown, outbox: InvitationMailPort): Promise<InviteResult> {
-  const input = parseInviteInput(raw)
   const { handle, db } = tenantRuntime()
-  const context = await withTenantFromSession(headers, async ({ context, actor, transaction }) => {
+  const prepared = await withOfficeWrite(headers, raw, parseInviteInput, async ({ context, actor, transaction }, input) => {
     if (actor.role !== 'admin')
       throw new TenantAccessError(403, actor.userId)
     // Every attempt composes in the Tenant default locale. A Tenant with no
@@ -235,8 +352,9 @@ export async function inviteMember(headers: Headers, raw: unknown, outbox: Invit
     `))
     if (selected.rows.length !== 1)
       throw new TenantSettingsMissingError()
-    return context
+    return { context, input }
   })
+  const { context, input } = prepared
   const invitationId = await createInvitation(handle, headers, {
     email: input.email,
     role: input.role,
@@ -328,9 +446,11 @@ export async function listPendingInvitations(headers: Headers) {
  * Revoke one pending invitation of the session's Tenant. Admin only.
  * Another Tenant's id is 404, the same as an id that is not there.
  */
-export async function revokePendingInvitation(headers: Headers, invitationId: string): Promise<void> {
+export async function revokePendingInvitation(headers: Headers, invitationId: string, raw?: unknown): Promise<void> {
+  const office = officeWriteClaim(headers, raw)
   const { handle } = tenantRuntime()
   const actor = await actorFromSession(handle, headers)
+  assertExpectedTenant(actor.context.tenantId, office.expectedTenantId)
   if (actor.role !== 'admin')
     throw new TenantAccessError(403)
   await revokePendingInvitationImpl(handle, headers, actor.context.tenantId, actor.userId, invitationId)
@@ -426,8 +546,7 @@ export async function readTenantSettings(headers: Headers): Promise<TenantSettin
  * Each field that does change appends one audit entry in this transaction.
  */
 export async function updateTenantSettings(headers: Headers, raw: unknown): Promise<TenantSettings> {
-  const patch = parseTenantSettingsPatch(raw)
-  return withTenantFromSession(headers, async ({ actor, transaction }) => {
+  return withOfficeWrite(headers, raw, parseTenantSettingsPatch, async ({ actor, transaction }, patch) => {
     if (actor.role !== 'admin')
       throw new TenantAccessError(403)
     return changeTenantSettings(transaction, actor.userId, patch)
@@ -457,9 +576,13 @@ export async function changeMemberRole(
   targetUserId: string,
   raw: unknown,
 ): Promise<void> {
+  const office = officeWriteClaim(headers, raw)
+  if (office.explicit)
+    await refuseStaleTenant(headers, office)
+  const { role } = parseChangeMemberRole(office.body)
   const { handle } = tenantRuntime()
-  const { role } = parseChangeMemberRole(raw)
   const actor = await actorFromSession(handle, headers)
+  assertExpectedTenant(actor.context.tenantId, office.expectedTenantId)
   await changeMemberRoleImpl(handle, actor, actor.context.tenantId, targetUserId, role)
 }
 
@@ -471,9 +594,12 @@ export async function changeMemberRole(
 export async function removeTenantMember(
   headers: Headers,
   targetUserId: string,
+  raw?: unknown,
 ): Promise<void> {
+  const office = officeWriteClaim(headers, raw)
   const { handle } = tenantRuntime()
   const actor = await actorFromSession(handle, headers)
+  assertExpectedTenant(actor.context.tenantId, office.expectedTenantId)
   await removeMemberImpl(handle, actor, actor.context.tenantId, targetUserId)
 }
 
