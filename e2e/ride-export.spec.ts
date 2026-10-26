@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures/playwright'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn, switchLocale, switchTheme } from './fixtures/ui'
 

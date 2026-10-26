@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures/playwright'
 import { plantOperationalRows, seedSuperadmin, seedTenant } from './fixtures/seed'
 import { signOut } from './fixtures/ui'
 

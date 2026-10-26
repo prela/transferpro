@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
-import { expect, test } from '@playwright/test'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { expect, test } from './fixtures/playwright'
 import { seedMembership, seedTenant } from './fixtures/seed'
 import { hydrated, openUserMenu, signOut, switchTheme, useTheme } from './fixtures/ui'
 

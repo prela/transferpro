@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test'
 import { calendarDateInTimeZone, operationalDateInTimeZone } from '../shared/date'
 import { operationalNow, pinOperationalClock } from './fixtures/operational-clock'
+import { expect, test } from './fixtures/playwright'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { signIn } from './fixtures/ui'
 

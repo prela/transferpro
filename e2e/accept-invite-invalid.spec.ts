@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures/playwright'
 
 test('an invite without an id, or with an unknown id, is refused', async ({ page }) => {
   await page.goto('/accept-invite')

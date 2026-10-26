@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test'
-import { expect, test } from '@playwright/test'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
+import { expect, test } from './fixtures/playwright'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, hydrated, openListbox, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
 

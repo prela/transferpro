@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures/playwright'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { chooseOption, expectNoInvitationCookie, invite, openAudit, signIn } from './fixtures/ui'
 

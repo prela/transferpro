@@ -1,7 +1,7 @@
-import { expect, test } from '@playwright/test'
 import pg from 'pg'
 import { instantFromWallClock } from '../shared/date'
 import { operationalDay, pinOperationalClock, previousOperationalNoon } from './fixtures/operational-clock'
+import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
 import { openUserMenu, signIn, switchLocale, switchTheme } from './fixtures/ui'
