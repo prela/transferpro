@@ -1,5 +1,6 @@
 import type { APIRequestContext, Page } from '@playwright/test'
-import { instantFromWallClock } from '../shared/date'
+import { addCalendarDays, instantFromWallClock } from '../shared/date'
+import { formatCalendarDate } from '../shared/format-instant'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
@@ -10,7 +11,7 @@ import { hydrated, openRideMenu, signIn, switchLocale } from './fixtures/ui'
  * Adding an extra vehicle (issue #466, ADR-0054). The form copies the main
  * Transfer, hides the Price, and asks for the group count only the first
  * time. Desktop opens it from the row and from the detail. The phone opens
- * it from the detail, then adds another vehicle from the extra vehicle.
+ * it from the row menu, then adds another vehicle from the extra vehicle.
  */
 
 test.beforeEach(async ({ page }) => {
@@ -127,7 +128,7 @@ test('the detail adds an extra vehicle and an extra vehicle offers no duplicate'
 })
 
 test.describe('@phone', () => {
-  test('a phone adds an extra vehicle from the detail and another from that vehicle', async ({ page }) => {
+  test('a phone adds an extra vehicle from the row menu and another from that vehicle', async ({ page }) => {
     test.setTimeout(120_000)
     await page.setViewportSize({ width: 390, height: 844 })
     const tenant = await seedTenant('extra-vehicle-phone')
@@ -135,10 +136,13 @@ test.describe('@phone', () => {
     await switchLocale(page, 'en')
     const places = await seedBooking(page, 'Phone')
     const day = operationalDay(page)
+    // 02:00 the next calendar morning is still this operational day, and the
+    // row has to name that date without giving the guest name nothing to draw.
+    const dated = addCalendarDays(day, 1)
     const recorded = await recordTransfer(page.request, {
       data: {
         ...places,
-        pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
+        pickupAt: instantFromWallClock(`${dated}T02:00`, 'Europe/Zagreb').toISOString(),
         passengerCount: 3,
         guestName: 'Iva Phone',
         flightNumber: 'OU100',
@@ -157,11 +161,28 @@ test.describe('@phone', () => {
 
     await page.goto(`/transfers?day=${day}`)
     await hydrated(page)
-    // The new-transfer button covers the row menu, and the dated clock
-    // squeezes the guest name to nothing. The time opens the detail.
-    await openPhoneCard(page, 'Iva Phone')
-    const detail = page.getByRole('dialog')
-    await detail.getByRole('button', { name: 'More', exact: true }).click()
+    const row = page.getByRole('listitem').filter({ hasText: 'Iva Phone' })
+    await expect(row.getByRole('time')).toHaveText(/^\d{2}:\d{2}$/)
+    await expect(row).toContainText(formatCalendarDate(dated, 'en'))
+    const name = await row.getByText('Iva Phone', { exact: true }).boundingBox()
+    expect(name).not.toBeNull()
+    expect(name!.width).toBeGreaterThanOrEqual(96)
+    await scrollDayListToEnd(page)
+    const menu = page.getByRole('button', { name: 'Actions: Iva Phone' })
+    const menuBox = await menu.boundingBox()
+    const fabBox = await page.getByRole('button', { name: 'New transfer', exact: true }).boundingBox()
+    expect(menuBox).not.toBeNull()
+    expect(fabBox).not.toBeNull()
+    expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(fabBox!.y + 1)
+    // The day toolbar fills a 390px phone, so this row is the bottom row.
+    // A point on the menu has to hit the menu, not the floating button.
+    const menuHit = await menu.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+      return top !== null && element.contains(top)
+    })
+    expect(menuHit).toBe(true)
+    await openRideMenu(page, 'Iva Phone')
     await page.getByRole('menuitem', { name: 'Extra vehicle', exact: true }).click()
 
     const form = page.getByRole('region', { name: 'Extra vehicle' })
@@ -225,11 +246,15 @@ interface DayRide {
   airportMark: boolean
 }
 
-/** The phone card sits under the day filters. Its guest name can shrink to zero width. */
-async function openPhoneCard(page: Page, guest: string) {
-  const time = page.getByRole('listitem').filter({ hasText: guest }).getByRole('time')
-  await time.evaluate(element => element.scrollIntoView({ block: 'center' }))
-  await time.click()
+/** The panel scrolls under the phone bar. The end is where the floating button sits. */
+async function scrollDayListToEnd(page: Page) {
+  await page.evaluate(() => {
+    for (const node of document.querySelectorAll('*')) {
+      const overflow = getComputedStyle(node).overflowY
+      if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight + 1)
+        node.scrollTop = node.scrollHeight
+    }
+  })
 }
 
 async function dayRides(page: Page, day: string): Promise<DayRide[]> {
