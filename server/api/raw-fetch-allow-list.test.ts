@@ -21,15 +21,15 @@ function sourceFiles(directory: string): string[] {
     const full = join(directory, entry)
     if (statSync(full).isDirectory())
       found.push(...sourceFiles(full))
-    else if (/\.(?:vue|[cm]?[jt]s)$/.test(entry) && !/\.test\.[cm]?[jt]s$/.test(entry))
+    else if (/\.(?:vue|[cm]?[jt]s)$/.test(entry))
       found.push(full)
   }
   return found
 }
 
 function hasRawFetch(source: string): boolean {
-  // `$fetch(` and `useFetch(` contain the letters but are not raw fetch.
-  const stripped = source.replaceAll('$fetch', '').replaceAll('useFetch', '')
+  // `$fetch(` contains these letters. `useFetch(` does not match `\bfetch(`.
+  const stripped = source.replaceAll('$fetch', '')
   return /\bfetch\(/.test(stripped)
 }
 

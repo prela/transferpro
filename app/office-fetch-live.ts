@@ -21,13 +21,14 @@ export const $fetch = officeFetchCaller`
  * Nuxt's virtual plugin resolves the template to `virtual:nuxt:` plus the
  * path of `fetch.mjs` inside the build directory. That directory is `.nuxt`
  * or `node_modules/.cache/nuxt/.nuxt`. Either path ends in this suffix.
- * A query string from Vite is ignored. Any other id, including one that
- * merely contains "fetch", is left alone.
+ * A query string from Vite is ignored. A leading NUL is Vite's mark for
+ * a virtual module. Backslashes are the Windows form of the same path.
+ * Any other id, including one that merely contains "fetch", is left alone.
  */
 const generatedFetchSuffix = '/.nuxt/fetch.mjs'
 const virtualPrefix = 'virtual:nuxt:'
 
-interface OfficeFetchBuild {
+interface OfficeFetchPluginContext {
   environment?: { name?: string }
 }
 
@@ -44,7 +45,7 @@ function isGeneratedFetchModuleId(id: string): boolean {
   return normalized === '.nuxt/fetch.mjs' || normalized.endsWith(generatedFetchSuffix)
 }
 
-function environmentName(context: OfficeFetchBuild): string {
+function environmentName(context: OfficeFetchPluginContext): string {
   return context.environment?.name ?? 'client'
 }
 
@@ -67,7 +68,7 @@ export function officeFetchLivePlugin() {
   return {
     name: 'office-fetch-live',
     enforce: 'pre' as const,
-    transform(this: OfficeFetchBuild, code: string, id: string) {
+    transform(this: OfficeFetchPluginContext, code: string, id: string) {
       if (!isGeneratedFetchModuleId(id))
         return
       const next = liveDollarFetchExport(code)
@@ -78,7 +79,7 @@ export function officeFetchLivePlugin() {
       rewritten.add(environmentName(this))
       return next
     },
-    buildEnd(this: OfficeFetchBuild) {
+    buildEnd(this: OfficeFetchPluginContext) {
       const name = environmentName(this)
       if (name !== 'client')
         return
