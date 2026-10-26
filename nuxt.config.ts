@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import process from 'node:process'
-import { liveDollarFetchExport } from './app/office-fetch-live'
+import { officeFetchLivePlugin } from './app/office-fetch-live'
 
 const require = createRequire(import.meta.url)
 
@@ -83,20 +83,10 @@ export default defineNuxtConfig({
   },
   vite: {
     plugins: [
-      {
-        name: 'office-fetch-live',
-        enforce: 'pre' as const,
-        transform(code: string, id: string) {
-          // Only the generated fetch module. A later plugin replaces
-          // globalThis.$fetch; this export has to follow that replacement.
-          if (!id.includes('fetch'))
-            return
-          const next = liveDollarFetchExport(code)
-          if (next === undefined)
-            return
-          return next
-        },
-      },
+      // Rewrites Nuxt's generated fetch module so auto-imported `$fetch`
+      // calls the current global. A client build fails when that rewrite
+      // does not happen.
+      officeFetchLivePlugin(),
     ],
   },
   nitro: {
