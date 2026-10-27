@@ -1,6 +1,6 @@
 # Re-acceptance after the pickup, the places, or the flight change
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0058
 
 ## Context
 

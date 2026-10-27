@@ -1,6 +1,6 @@
 # Unclosed mark follows the occupied end
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0058
 
 Accepted on 23 October 2026 in the unclosed-mark grill. Nikša asked for the mark 60 minutes after the planned end, and the same grill retired the landing alarm. This supersedes ADR-0030 and partially supersedes ADR-0027, ADR-0028, ADR-0038, ADR-0039, and ADR-0048; the sentences are named below. ADR-0054 stands: each member of a group is its own Transfer and its own Ride.
 
