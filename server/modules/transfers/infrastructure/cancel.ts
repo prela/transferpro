@@ -9,6 +9,7 @@ import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { mailerForApp, TenantAccessError, withOfficeWrite } from '../../tenancy'
 import { RideNotFoundError } from './assign'
+import { cancellableRideStatesSql } from './cancellable-ride-states'
 import { mailOutboxQueue } from './mail-outbox-worker'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
@@ -152,20 +153,22 @@ export async function cancelRide(
     if (actor.role !== 'admin' && actor.role !== 'dispatcher')
       throw new TenantAccessError(403)
     const rides = await cancelRideForOffice(transaction, actor.userId, rideId)
-    const staged: Array<{ ride: Ride, staged: Awaited<ReturnType<typeof stageWorkOrder>> | null }> = []
+    // The array is the cancelled Rides. `staged` on each row is the outbox
+    // entry, or null when that Ride has no Driver to mail.
+    const stagedCancels: Array<{ ride: Ride, staged: Awaited<ReturnType<typeof stageWorkOrder>> | null }> = []
     for (const ride of rides) {
       // An unassigned or handed-off cancel has nobody to mail. The snapshot needs a Driver.
       if (ride.driverId === null) {
-        staged.push({ ride, staged: null })
+        stagedCancels.push({ ride, staged: null })
         continue
       }
       const order = await readAssignedWorkOrder(transaction, ride.id)
-      staged.push({
+      stagedCancels.push({
         ride,
         staged: await stageWorkOrder(transaction, order, 'cancelled', { queue, context }),
       })
     }
-    return staged
+    return stagedCancels
   })
   const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
   const members: NonNullable<CancelledRideResult['cancelled']> = []
@@ -185,6 +188,18 @@ export async function cancelRide(
   return { ride: named.ride, workOrders: named.workOrders, cancelled: members }
 }
 
+/** Both cancel locks return this list. The filters differ; the columns do not. */
+const lockedCancelColumns = sql`
+  r.id,
+  t.id as "transferId",
+  t.link as "mainTransferId",
+  r.state,
+  r.driver_id as "driverId",
+  r.vehicle_id as "vehicleId",
+  r.must_accept as "mustAccept",
+  r.partner_id as "partnerId"
+`
+
 /**
  * The Transfer and its Ride, Transfer first. A correction and a handoff
  * lock in that order, so a cancel cannot deadlock with them. Missing
@@ -192,14 +207,7 @@ export async function cancelRide(
  */
 async function lockRideForCancel(transaction: TenantTransaction, rideId: string) {
   return lockedRows.parse(await runCancelStep(transaction, sql`
-    select r.id,
-           t.id as "transferId",
-           t.link as "mainTransferId",
-           r.state,
-           r.driver_id as "driverId",
-           r.vehicle_id as "vehicleId",
-           r.must_accept as "mustAccept",
-           r.partner_id as "partnerId"
+    select ${lockedCancelColumns}
     from app.transfers as t
     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
     where r.id = ${rideId}
@@ -214,18 +222,11 @@ async function lockRideForCancel(transaction: TenantTransaction, rideId: string)
  */
 async function lockUnfinishedExtras(transaction: TenantTransaction, mainTransferId: string): Promise<LockedCancel[]> {
   return lockedRows.parse(await runCancelStep(transaction, sql`
-    select r.id,
-           t.id as "transferId",
-           t.link as "mainTransferId",
-           r.state,
-           r.driver_id as "driverId",
-           r.vehicle_id as "vehicleId",
-           r.must_accept as "mustAccept",
-           r.partner_id as "partnerId"
+    select ${lockedCancelColumns}
     from app.transfers as t
     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
     where t.link = ${mainTransferId}
-      and r.state in ('unassigned', 'assigned', 'accepted', 'handed_off')
+      and r.state in (${cancellableRideStatesSql})
     order by t.id
     for update of t, r
   `)).rows
@@ -257,11 +258,10 @@ async function cancelLocked(
 }
 
 /**
- * Sets `cancelled` only while the Ride is still `unassigned`, `assigned`,
- * `accepted`, or `handed_off`. The Driver, the Vehicle, and the flag are
- * not rewritten. `partner_id` is cleared: the other states already have it
- * null, and `handed_off` must drop it or the check fails. Zero rows means
- * a concurrent command won.
+ * Sets `cancelled` only while the Ride is still cancellable. The Driver,
+ * the Vehicle, and the flag are not rewritten. `partner_id` is cleared:
+ * the other states already have it null, and `handed_off` must drop it
+ * or the check fails. Zero rows means a concurrent command won.
  */
 async function writeCancelledRide(
   transaction: TenantTransaction,
@@ -272,7 +272,7 @@ async function writeCancelledRide(
     set state = 'cancelled',
         partner_id = null
     where id = ${rideId}
-      and state in ('unassigned', 'assigned', 'accepted', 'handed_off')
+      and state in (${cancellableRideStatesSql})
     returning
       id,
       transfer_id as "transferId",
