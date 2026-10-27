@@ -105,16 +105,17 @@ async function confirmCancelRide() {
     // One Ride uses the named result. A group lists every cancelled Ride,
     // each with its own Driver. A Ride with no Driver shares one toast.
     const members = cancelled.cancelled ?? [{ ride: cancelled.ride, workOrders: cancelled.workOrders }]
-    let quiet = false
+    // One toast when any cancelled Ride had no Driver notice. The others still present their own.
+    let hadNoDriverNotice = false
     for (const member of members) {
       const notice = member.workOrders[0]
       if (notice === undefined) {
-        quiet = true
+        hadNoDriverNotice = true
         continue
       }
       present(member.ride.id, notice.outcome, driverLabel(notice.driverId), t('ride.cancelled'))
     }
-    if (quiet) {
+    if (hadNoDriverNotice) {
       // `role` is not on the toast prop type. A fresh literal would drop
       // the status announcement the board already relies on.
       const savedNotice = { title: t('ride.cancelled'), color: 'success' as const, role: 'status' as const }

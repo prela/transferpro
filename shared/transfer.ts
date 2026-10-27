@@ -114,12 +114,15 @@ export function canMarkRideDone(state: RideState, mustAccept: boolean | null): b
 
 /**
  * ADR-0005, extended by ADR-0048. A dispatcher or an admin may cancel from
- * `unassigned`, `assigned`, `accepted`, or `handed_off`. The copied flag
- * does not matter. `done`, `no-show`, and a second cancel are terminal
- * and are refused.
+ * these states. The copied flag does not matter. `done`, `no-show`, and a
+ * second cancel are terminal and are refused. SQL that locks or writes a
+ * cancel uses this same list, so a new cancellable state is one edit.
  */
+export const CANCELLABLE_RIDE_STATES = ['unassigned', 'assigned', 'accepted', 'handed_off'] as const satisfies readonly RideState[]
+
 export function canCancelRide(state: RideState): boolean {
-  return state === 'unassigned' || state === 'assigned' || state === 'accepted' || state === 'handed_off'
+  // The tuple is a subset of RideState. `includes` needs the wider array type.
+  return (CANCELLABLE_RIDE_STATES as readonly RideState[]).includes(state)
 }
 
 /**

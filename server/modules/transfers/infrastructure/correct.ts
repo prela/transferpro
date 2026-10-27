@@ -11,6 +11,7 @@ import { correctionMovesWindow, lockTenantCapacity, tenantCapacityMinutes } from
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
 import { mailerForApp, TenantAccessError, withOfficeWrite } from '../../tenancy'
+import { cancellableRideStatesSql } from './cancellable-ride-states'
 import { checkRideCapacity, transferFullyBooked } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
 import { ExtraVehicleCountError, ExtraVehiclePriceError, TransferNotCorrectableError, TransferNotFoundError } from './transfer-errors'
@@ -256,8 +257,9 @@ export async function correctTransferForOffice(
 
 /**
  * Unfinished extra vehicles of this main Transfer, on any day. Done,
- * no-show, and cancelled are finished and are not counted. An extra
- * vehicle has none of its own.
+ * no-show, and cancelled are finished and are not counted. That is the
+ * cancellable set (ADR-0005, ADR-0048), the same filter as the day list.
+ * An extra vehicle has none of its own.
  */
 async function countUnfinishedExtraVehicles(transaction: TenantTransaction, transferId: string): Promise<number> {
   const counted = z.object({
@@ -270,7 +272,7 @@ async function countUnfinishedExtraVehicles(transaction: TenantTransaction, tran
      and extra_ride.tenant_id = extra.tenant_id
     where extra.link = ${transferId}
       and extra.tenant_id = (select tenant_id from app.transfers where id = ${transferId})
-      and extra_ride.state in ('unassigned', 'assigned', 'accepted', 'handed_off')
+      and extra_ride.state in (${cancellableRideStatesSql})
   `))
   return counted.rows[0]?.count ?? 0
 }
