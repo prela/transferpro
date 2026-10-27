@@ -1,34 +1,45 @@
 minimumReleaseAgeExcludePrune: true
-# 1.7.12 is younger than the release-age gate. Drop each line once that version installs without an exclude.
+# 1.7.14 is younger than the release-age gate. Drop each line once that version installs without an exclude.
 minimumReleaseAgeExclude:
-  - '@better-auth/core@1.7.12'
-  - '@better-auth/drizzle-adapter@1.7.12'
-  - '@better-auth/kysely-adapter@1.7.12'
-  - '@better-auth/memory-adapter@1.7.12'
-  - '@better-auth/mongo-adapter@1.7.12'
-  - '@better-auth/prisma-adapter@1.7.12'
-  - '@better-auth/telemetry@1.7.12'
-  - better-auth@1.7.12
-  # pnpm 12.15.0 is younger than the release-age gate. Drop these lines once that version installs without an exclude.
-  - '@pnpm/exe.android-arm64@12.15.0'
-  - '@pnpm/exe.android-x64@12.15.0'
-  - '@pnpm/exe.darwin-arm64@12.15.0'
-  - '@pnpm/exe.darwin-x64@12.15.0'
-  - '@pnpm/exe.freebsd-x64@12.15.0'
-  - '@pnpm/exe.linux-arm64-musl@12.15.0'
-  - '@pnpm/exe.linux-arm64@12.15.0'
-  - '@pnpm/exe.linux-ppc64@12.15.0'
-  - '@pnpm/exe.linux-riscv64@12.15.0'
-  - '@pnpm/exe.linux-s390x@12.15.0'
-  - '@pnpm/exe.linux-x64-musl@12.15.0'
-  - '@pnpm/exe.linux-x64@12.15.0'
-  - '@pnpm/exe.win32-arm64@12.15.0'
-  - '@pnpm/exe.win32-x64@12.15.0'
-  - pnpm@12.15.0
+  - '@better-auth/core@1.7.14'
+  - '@better-auth/drizzle-adapter@1.7.14'
+  - '@better-auth/kysely-adapter@1.7.14'
+  - '@better-auth/memory-adapter@1.7.14'
+  - '@better-auth/mongo-adapter@1.7.14'
+  - '@better-auth/prisma-adapter@1.7.14'
+  - '@better-auth/telemetry@1.7.14'
+  - better-auth@1.7.14
+  # pnpm 12.16.0 is younger than the release-age gate. Drop these lines once that version installs without an exclude.
+  - '@pnpm/exe.android-arm64@12.16.0'
+  - '@pnpm/exe.android-x64@12.16.0'
+  - '@pnpm/exe.darwin-arm64@12.16.0'
+  - '@pnpm/exe.darwin-x64@12.16.0'
+  - '@pnpm/exe.freebsd-x64@12.16.0'
+  - '@pnpm/exe.linux-arm64-musl@12.16.0'
+  - '@pnpm/exe.linux-arm64@12.16.0'
+  - '@pnpm/exe.linux-ppc64@12.16.0'
+  - '@pnpm/exe.linux-riscv64@12.16.0'
+  - '@pnpm/exe.linux-s390x@12.16.0'
+  - '@pnpm/exe.linux-x64-musl@12.16.0'
+  - '@pnpm/exe.linux-x64@12.16.0'
+  - '@pnpm/exe.win32-arm64@12.16.0'
+  - '@pnpm/exe.win32-x64@12.16.0'
+  - pnpm@12.16.0
+  # 4.6.3 is younger than the release-age gate. Drop these lines once that version installs without an exclude.
+  - '@nuxt/kit@4.6.3'
+  - '@nuxt/nitro-server@4.6.3'
+  - '@nuxt/schema@4.6.3'
+  - '@nuxt/vite-builder@4.6.3'
+  - '@nuxt/vite-server@4.6.3'
+  - nuxt@4.6.3
 # Babel still depends on semver 6.3.1, which this policy flags as a trust downgrade.
+# @nuxt/vite-builder 4.6.3 requires seroval ^1.7.2. 1.7.0 and 1.7.1 were
+# trusted-publisher + provenance; 1.7.2 is the same maintainer as the lockfile's
+# 1.6.11, without that evidence. Drop once Nuxt depends on a trusted seroval.
 trustPolicy: no-downgrade
 trustPolicyExclude:
   - semver
+  - seroval@1.7.2
 
 shellEmulator: true
 
