@@ -1,6 +1,6 @@
 # No-show
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0058
 
 ## Context
 

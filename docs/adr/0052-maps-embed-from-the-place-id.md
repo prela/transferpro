@@ -1,6 +1,6 @@
 # Maps Embed from the stored place id
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0058
 
 Damir accepted this on 22 October 2026, in the step 22 grill of #206. It is the later decision on a map view that ADR-0031 asks for, and it partially supersedes ADR-0031; the sentences are named below. ADR-0012, ADR-0014, and ADR-0018 stand. The finding behind it is the comment "Findings" on #226 (research: storing Google Maps POI data).
 
