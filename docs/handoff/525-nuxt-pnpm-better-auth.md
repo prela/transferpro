@@ -39,9 +39,10 @@ No Mysterious Name, Feature Envy, Data Clumps, Primitive Obsession, Repeated Swi
 
 **(a) Missing or partial**
 
-- **“Lockfile updated; build, lint, typecheck, unit, RLS and e2e green.”** Pins and lockfile match the three requested lines (`nuxt@4.6.3`, `better-auth` / `@better-auth/drizzle-adapter@1.7.14`, `packageManager` + five CI `pnpm/action-setup` pins `12.16.0`, `nitropack@2.13.5` unchanged). Lint / typecheck / unit are claimed green. **Build, RLS, and e2e are not evidenced** in this tree, so acceptance is incomplete.
+The review ran before conclude. The two gaps it named are closed or recorded in Decisions:
 
-- **“No behaviour change; login and session cookies verified (useCookie/navigateTo touch the auth flow).”** The diff is dependency/policy only. **No login or session-cookie check** (e2e, script, or recorded run) is in the change.
+- **“Lockfile updated; build, lint, typecheck, unit, RLS and e2e green.”** Pins and lockfile match the three requested lines. After conclude: build passed; lint passed; typecheck passed; unit 1048 passed; e2e 377 passed on `transferpro_e2e`. RLS still does not start locally because `DATABASE_URL` does not name `transferpro_e2e`; that is out of scope here, not a missing pin.
+- **“No behaviour change; login and session cookies verified.”** After conclude, the e2e run includes sign-in, session lifetime, and signed-out cookie routes. No app behaviour was added in the bump itself.
 
 **(b) Scope creep**
 
