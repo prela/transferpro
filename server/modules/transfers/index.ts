@@ -53,6 +53,10 @@
  * number. Today and later come first, earliest pickup first. Past
  * operational days follow, newest first. It is office-only. The query
  * text is not logged and not audited.
+ * The group read lists every member of one group, including a pickup on
+ * another day. Each member keeps that Transfer's own pickup. Admin and
+ * dispatcher may read it. A driver is 403. Another Tenant is 404. It
+ * writes no audit.
  * CSV export reads every Ride whose pickup falls on the chosen calendar
  * days. It is office-only. The log names the member, the range, and the
  * row count. It does not name a person or a place, and it writes no audit.
@@ -89,6 +93,7 @@ export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDrive
 export { exportRides } from './infrastructure/ride-export'
 export { listClientRideHistory, listPartnerRideHistory } from './infrastructure/ride-history'
 export { createTransfer, listTransferDay } from './infrastructure/transfer-access'
+export { readTransferGroup } from './infrastructure/transfer-group'
 export { searchTransfers } from './infrastructure/transfer-search'
 export { StaleSaveError } from './infrastructure/transfer-version'
 export { addUnavailability, changeUnavailability, listDriverUnavailability, listPartnerUnavailability, listUnavailabilityWeek, listVehicleUnavailability, removeUnavailability } from './infrastructure/unavailability-access'

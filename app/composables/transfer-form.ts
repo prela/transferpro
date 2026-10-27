@@ -202,6 +202,19 @@ export function useTransferForm(options: {
     })
   }
 
+  /**
+   * A route change of the main Transfer that was not copied onto its extra
+   * vehicles. The count is zero unless that notice applies.
+   */
+  function warnIfGroupRouteLeft(count: number) {
+    if (count < 1)
+      return
+    toast.add({
+      title: t(count === 1 ? 'transfers.groupRouteLeftOne' : 'transfers.groupRouteLeftOther', { count }),
+      color: 'warning',
+    })
+  }
+
   function failureKey(error: unknown): TransferFailure {
     if (errorCode(error) === 'location_archived')
       return 'transfers.locationArchived'
@@ -662,8 +675,12 @@ export function useTransferForm(options: {
     editingVersion.value = ride.version
     mainTransferId.value = null
     mainVersion.value = null
-    asksGroupCount.value = false
-    groupPassengers.value = ''
+    // Only a main Transfer that already stores the group's ordered count.
+    // An empty column is this vehicle's own count, and sending it would
+    // store a group that was never booked.
+    const correctsGroup = ride.mainTransferId === null && ride.groupPassengerCountStored && ride.groupPassengerCount !== null
+    asksGroupCount.value = correctsGroup
+    groupPassengers.value = correctsGroup ? String(ride.groupPassengerCount) : ''
     clientId.value = ride.clientId
     pickupWall.value = wallClockInTimeZone(options.timeZone(), new Date(ride.pickupAt))
     startLocationId.value = ride.startLocationId
@@ -727,12 +744,14 @@ export function useTransferForm(options: {
           ...bookingBody(),
           version,
           ...(confirm ? { confirm: true } : {}),
+          ...(asksGroupCount.value ? { groupPassengerCount: Number(groupPassengers.value) } : {}),
         },
       }))
       refusalOpen.value = false
       options.corrected.value = true
       notifyAuditChanged()
       warnIfFullyBooked(correction.fullyBooked)
+      warnIfGroupRouteLeft(correction.unfinishedExtraVehicleCount)
       if (correction.relocationWarnings.length > 0) {
         toast.add({
           title: t('ride.tightGap'),

@@ -220,7 +220,11 @@ export type CancelledRideResult = z.infer<typeof cancelledRideResultSchema>
  * group's ordered passenger count is not. One entry when the current Driver
  * was mailed changed. `relocationWarnings` names a tight gap. It is empty when the
  * correction was not judged or the gap is enough. A true overlap is a 409
- * and is not in this list. The address is not on this object.
+ * and is not in this list. `unfinishedExtraVehicleCount` is how many
+ * unfinished extra vehicles a route change of the main Transfer left
+ * untouched. It is zero when the change is not a route change, the Transfer
+ * is an extra vehicle, the group has none left, or the same fields were
+ * applied to those extra vehicles. The address is not on this object.
  */
 export const correctedTransferResultSchema = z.object({
   transfer: transferSchema,
@@ -230,6 +234,7 @@ export const correctedTransferResultSchema = z.object({
   // True when the saved window has no free Driver with a free Vehicle and
   // no free Partner. The correction still stands (ADR-0034).
   fullyBooked: z.boolean(),
+  unfinishedExtraVehicleCount: z.number().int().nonnegative(),
 })
 
 export type CorrectedTransferResult = z.infer<typeof correctedTransferResultSchema>
