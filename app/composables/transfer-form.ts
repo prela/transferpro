@@ -133,7 +133,7 @@ export function useTransferForm(options: {
   // The version the correction was opened with. A refresh must not replace it.
   const editingVersion = ref<number | null>(null)
   // The route the correction was opened with. The extra-vehicle offer
-  // compares the live pickup, places, and flight with this snapshot.
+  // compares the live pickup, start and end Locations, and flight with this snapshot.
   const openedRoute = ref<{ pickup: string, start: string, end: string, flight: string } | null>(null)
   // Unfinished extra vehicles of the main Transfer being corrected. Zero
   // on an extra vehicle and on a new Transfer.
@@ -141,7 +141,7 @@ export function useTransferForm(options: {
   const applyToExtraVehicles = ref(false)
   /**
    * A main Transfer with unfinished extra vehicles, while the pickup, a
-   * place, or the flight differs from the opened route. A guest-only
+   * start or end Location, or the flight differs from the opened route. A guest-only
    * change does not offer it. Stops are not this list (ADR-0054, ADR-0058).
    */
   const offerApplyToExtraVehicles = computed(() => {

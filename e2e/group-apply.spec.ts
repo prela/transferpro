@@ -7,7 +7,7 @@ import { hydrated, signIn } from './fixtures/ui'
 
 /**
  * Applying a main-Transfer correction to its extra vehicles (issue #468, ADR-0054).
- * The offer appears when the pickup, a place, or the flight changes.
+ * The offer appears when the pickup, a start or end Location, or the flight changes.
  * Ticked, the extra vehicle receives those fields and not the guest.
  * Left off stays covered by the group-list spec.
  */

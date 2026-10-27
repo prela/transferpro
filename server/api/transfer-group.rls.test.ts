@@ -22,8 +22,8 @@ import getTransferGroup from './transfers/[id]/group.get'
  * day. A route change of the main Transfer reports unfinished extra
  * vehicles and does not write them. A guest change and an extra vehicle's
  * own route change report zero. Applying the change copies the pickup,
- * places, and flight onto unfinished extra vehicles, and a refusal writes
- * nothing for any member.
+ * the start and end Locations, and the flight onto unfinished extra vehicles,
+ * and a refusal writes nothing for any Transfer in the group.
  */
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
@@ -625,7 +625,7 @@ it('applies a main Transfer route correction to unfinished extra vehicles and wr
   })
   expect(saved.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
 
-  const rows = await memberRows([main.transfer.id, accepted.transfer.id, handed.transfer.id, finished.transfer.id])
+  const rows = await transferRows([main.transfer.id, accepted.transfer.id, handed.transfer.id, finished.transfer.id])
   const acceptedRow = rows.find(row => row.id === accepted.transfer.id)
   const handedRow = rows.find(row => row.id === handed.transfer.id)
   const finishedRow = rows.find(row => row.id === finished.transfer.id)
@@ -693,18 +693,18 @@ it('applies a main Transfer route correction to unfinished extra vehicles and wr
 })
 
 async function groupSnapshot(tenantId: string, transferIds: string[]) {
-  const members = await memberRows(transferIds)
+  const transfers = await transferRows(transferIds)
   const audits = await correctionAudits(tenantId)
   const outbox = await outboxRows(tenantId)
   return {
-    members,
+    transfers,
     audits,
     outbox,
-    versions: Object.fromEntries(members.map(row => [row.id, row.version])),
+    versions: Object.fromEntries(transfers.map(row => [row.id, row.version])),
   }
 }
 
-async function memberRows(transferIds: string[]) {
+async function transferRows(transferIds: string[]) {
   const result = await ownerPool.query<{
     id: string
     version: number

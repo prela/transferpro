@@ -4,7 +4,7 @@ import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { canCorrectTransfer, changedTransferFields, correctionChangesRoute, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, officeGroupPassengerCount, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
+import { canCorrectTransfer, changedTransferFields, correctionChangesRoute, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, officeGroupPassengerCount, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, ROUTE_TRANSFER_FIELDS, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
 import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { correctionMovesWindow, lockTenantCapacity, tenantCapacityMinutes } from '../../capacity'
@@ -53,11 +53,10 @@ const lockedRows = z.object({
 
 type LockedTransfer = z.infer<typeof lockedRows>['rows'][number]
 
-/** One unfinished extra vehicle this correction changed. Mail follows `notify`. */
+/** One unfinished extra vehicle this correction changed. A null Driver sends no work order. */
 interface ExtraVehicleNotice {
   readonly rideId: string
   readonly driverId: string | null
-  readonly notify: boolean
 }
 
 /** A locked extra vehicle whose route fields differ from the main Transfer. */
@@ -125,10 +124,10 @@ function officeOnly(role: string): void {
  * rejected send leaves the correction. Tests pass a mailer. The address
  * is not on the result.
  *
- * `applyToExtraVehicles` copies the changed pickup, places, and flight onto
- * every unfinished extra vehicle in the same transaction. Each one is
- * corrected as its own Transfer. One `confirm` covers the whole group.
- * A refusal writes nothing for any member (ADR-0054).
+ * `applyToExtraVehicles` copies the changed pickup, start and end Locations,
+ * and flight onto every unfinished extra vehicle in the same transaction.
+ * Each one is corrected as its own Transfer. One `confirm` covers the whole
+ * group. A refusal writes nothing for any Transfer in the group (ADR-0054).
  */
 export async function correctTransfer(
   headers: Headers,
@@ -143,14 +142,14 @@ export async function correctTransfer(
     // The main Transfer first, then each extra vehicle a route copy changed.
     // An unassigned or handed-off Ride has nobody to mail.
     const staged: Array<Awaited<ReturnType<typeof stageWorkOrder>>> = []
-    const members = [
-      { rideId: corrected.recorded.ride.id, driverId: corrected.recorded.ride.driverId, notify: corrected.notify },
-      ...corrected.extraNotices,
+    const mailed = [
+      ...(corrected.notify && corrected.recorded.ride.driverId !== null
+        ? [{ rideId: corrected.recorded.ride.id, driverId: corrected.recorded.ride.driverId }]
+        : []),
+      ...corrected.extraNotices.filter(extra => extra.driverId !== null),
     ]
-    for (const member of members) {
-      if (!member.notify || member.driverId === null)
-        continue
-      const order = await readAssignedWorkOrder(transaction, member.rideId)
+    for (const ride of mailed) {
+      const order = await readAssignedWorkOrder(transaction, ride.rideId)
       staged.push(await stageWorkOrder(transaction, order, 'changed', { queue, context }))
     }
     return { recorded: corrected.recorded, staged, relocationWarnings: corrected.relocationWarnings, fullyBooked: corrected.fullyBooked, unfinishedExtraVehicleCount: corrected.unfinishedExtraVehicleCount }
@@ -341,8 +340,6 @@ export async function correctTransferForOffice(
     extraNotices.push({
       rideId: extraRide.id,
       driverId: extraRide.driverId,
-      // The copied fields are pickup, places, and flight. Each is a mailed fact.
-      notify: true,
     })
   }
 
@@ -485,15 +482,22 @@ async function lockUnfinishedExtraTransfers(transaction: TenantTransaction, main
   `)).rows
 }
 
-/** The pickup, places, and flight the main Transfer changed. Every other field stays the extra vehicle's. */
+/** The pickup, start and end Locations, and flight the main Transfer changed. Every other field stays the extra vehicle's. */
 function applyRouteFields(extra: CreateTransfer, main: CreateTransfer, changed: readonly string[]): CreateTransfer {
-  return {
-    ...extra,
-    ...(changed.includes('pickupAt') ? { pickupAt: main.pickupAt } : {}),
-    ...(changed.includes('startLocationId') ? { startLocationId: main.startLocationId } : {}),
-    ...(changed.includes('endLocationId') ? { endLocationId: main.endLocationId } : {}),
-    ...(changed.includes('flightNumber') ? { flightNumber: main.flightNumber } : {}),
+  const next = { ...extra }
+  for (const field of ROUTE_TRANSFER_FIELDS) {
+    if (changed.includes(field))
+      copyRouteField(next, main, field)
   }
+  return next
+}
+
+function copyRouteField<Field extends (typeof ROUTE_TRANSFER_FIELDS)[number]>(
+  target: CreateTransfer,
+  source: CreateTransfer,
+  field: Field,
+): void {
+  target[field] = source[field]
 }
 
 function toBooking(row: LockedTransfer): CreateTransfer {

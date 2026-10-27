@@ -15,7 +15,7 @@ import { transferHttpError } from '../transfers/http'
  * mailed fact changed. The body is `{ transfer, ride, workOrders, relocationWarnings, fullyBooked, unfinishedExtraVehicleCount }`.
  * `unfinishedExtraVehicleCount` is how many unfinished extra vehicles a route
  * change of the main Transfer left untouched. It is zero when the body sets
- * `applyToExtraVehicles`, which copies the changed pickup, places, and flight
+ * `applyToExtraVehicles`, which copies the changed pickup, start and end Locations, and flight
  * onto those extra vehicles in the same save. It is zero otherwise.
  * `workOrders` has one notice per Driver this save mailed. The address is not
  * on it. A rejected send leaves the correction.
