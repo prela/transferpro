@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { nodeEnv } from '../../../core/index'
-import { FAKE_PLACE_REF, lastTestMapsQuery, lastTestPlaceReference, mapsForApp, setTestMapsEmbedOff, setTestMapsUnavailable, setTestPlaceReferenceCheck } from './maps'
+import { FAKE_PLACE_REF, lastTestMapsQuery, lastTestPlaceReference, mapsForApp, setTestMapsEmbedOff, setTestMapsUnavailable, setTestPlaceReferenceCheck, TEST_SUGGESTIONS_UNAVAILABLE_COOKIE, testSuggestionsForcedOff } from './maps'
 import { createNoneMaps } from './none-maps'
 
 const text = 'Villa Rosa 12'
@@ -152,6 +152,23 @@ it('returns the place-reference check the test set, and records the reference', 
   }
   finally {
     setTestPlaceReferenceCheck({ outcome: 'unavailable' })
+    restoreNodeEnv(previous)
+  }
+})
+
+it('reads the suggestions-off cookie only in test, and only for that caller', () => {
+  const previous = process.env.NODE_ENV
+  const mark = `${TEST_SUGGESTIONS_UNAVAILABLE_COOKIE}=1`
+  process.env.NODE_ENV = 'test'
+  try {
+    expect(testSuggestionsForcedOff(null)).toBe(false)
+    expect(testSuggestionsForcedOff('better-auth.session_token=abc')).toBe(false)
+    expect(testSuggestionsForcedOff(`better-auth.session_token=abc; ${mark}`)).toBe(true)
+    expect(testSuggestionsForcedOff(`${TEST_SUGGESTIONS_UNAVAILABLE_COOKIE}=0`)).toBe(false)
+  }
+  finally {
+    process.env.NODE_ENV = 'production'
+    expect(testSuggestionsForcedOff(mark)).toBe(false)
     restoreNodeEnv(previous)
   }
 })

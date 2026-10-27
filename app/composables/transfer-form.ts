@@ -132,6 +132,27 @@ export function useTransferForm(options: {
   const editingRideId = ref<string | null>(null)
   // The version the correction was opened with. A refresh must not replace it.
   const editingVersion = ref<number | null>(null)
+  // The route the correction was opened with. The extra-vehicle offer
+  // compares the live pickup, start and end Locations, and flight with this snapshot.
+  const openedRoute = ref<{ pickup: string, start: string, end: string, flight: string } | null>(null)
+  // Unfinished extra vehicles of the main Transfer being corrected. Zero
+  // on an extra vehicle and on a new Transfer.
+  const unfinishedExtras = ref(0)
+  const applyToExtraVehicles = ref(false)
+  /**
+   * A main Transfer with unfinished extra vehicles, while the pickup, a
+   * start or end Location, or the flight differs from the opened route. A guest-only
+   * change does not offer it. Stops are not this list (ADR-0054, ADR-0058).
+   */
+  const offerApplyToExtraVehicles = computed(() => {
+    const opened = openedRoute.value
+    if (formMode.value !== 'edit' || unfinishedExtras.value < 1 || opened === null)
+      return false
+    return pickupWall.value.slice(0, 16) !== opened.pickup
+      || startLocationId.value !== opened.start
+      || endLocationId.value !== opened.end
+      || flight.value.trim() !== opened.flight
+  })
   const formErrorKey = ref<TransferFailure | null>(null)
   const guestErrorKey = ref<'transfers.guestEmpty' | 'transfers.guestTooLong' | null>(null)
   const tablaErrorKey = ref<'transfers.tablaTooLong' | null>(null)
@@ -519,6 +540,9 @@ export function useTransferForm(options: {
     editingTransferId.value = null
     editingRideId.value = null
     editingVersion.value = null
+    openedRoute.value = null
+    unfinishedExtras.value = 0
+    applyToExtraVehicles.value = false
     mainTransferId.value = null
     mainVersion.value = null
     asksGroupCount.value = false
@@ -673,6 +697,8 @@ export function useTransferForm(options: {
     editingTransferId.value = ride.transferId
     editingRideId.value = ride.rideId
     editingVersion.value = ride.version
+    unfinishedExtras.value = ride.mainTransferId === null ? ride.unfinishedExtraVehicleCount : 0
+    applyToExtraVehicles.value = false
     mainTransferId.value = null
     mainVersion.value = null
     // Only a main Transfer that already stores the group's ordered count.
@@ -690,6 +716,12 @@ export function useTransferForm(options: {
     tabla.value = ride.tabla
     clientReference.value = ride.clientReference ?? ''
     flight.value = ride.flightNumber ?? ''
+    openedRoute.value = {
+      pickup: pickupWall.value.slice(0, 16),
+      start: ride.startLocationId,
+      end: ride.endLocationId,
+      flight: (ride.flightNumber ?? '').trim(),
+    }
     price.value = priceForForm(ride.price)
     payment.value = ride.payment
     airportMark.value = ride.airportMark
@@ -744,6 +776,7 @@ export function useTransferForm(options: {
           ...bookingBody(),
           version,
           ...(confirm ? { confirm: true } : {}),
+          ...(offerApplyToExtraVehicles.value && applyToExtraVehicles.value ? { applyToExtraVehicles: true } : {}),
           ...(asksGroupCount.value ? { groupPassengerCount: Number(groupPassengers.value) } : {}),
         },
       }))
@@ -940,6 +973,8 @@ export function useTransferForm(options: {
     extraVehicle,
     asksGroupCount,
     groupPassengers,
+    offerApplyToExtraVehicles,
+    applyToExtraVehicles,
     mainTransferId,
     staleNotice,
     staleChangedByName,

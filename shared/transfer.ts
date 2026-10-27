@@ -744,18 +744,21 @@ function toCreateTransfer(parsed: BookingBody): CreateTransfer {
  * ExternalRef. `confirm` is optional and only means the office has already
  * seen a true overlap. The record route does not accept it. `externalId`
  * is an unknown field and is 400: a correction cannot change the key.
+ * `applyToExtraVehicles` copies the changed pickup, start and end Locations, and flight onto
+ * unfinished extra vehicles. Absent is left off (ADR-0054).
  */
 const correctionEnvelopeSchema = z.object({
   confirm: z.boolean().optional(),
+  applyToExtraVehicles: z.boolean().optional(),
   // The version the form was opened with. Missing is the same 400 as a bad booking.
   version: z.number().int().nonnegative(),
 }).passthrough()
 
-export function parseCorrectTransfer(raw: unknown, now: Date = new Date()): { input: CreateTransfer, confirm: boolean, version: number, groupPassengerCount: number | null } {
+export function parseCorrectTransfer(raw: unknown, now: Date = new Date()): { input: CreateTransfer, confirm: boolean, version: number, groupPassengerCount: number | null, applyToExtraVehicles: boolean } {
   const envelope = correctionEnvelopeSchema.safeParse(raw)
   if (!envelope.success)
     throw new TransferInputError()
-  const { confirm, version, ...booking } = envelope.data
+  const { confirm, version, applyToExtraVehicles, ...booking } = envelope.data
   // The booking schema has no key. A body that sends one fails here.
   // A link is not a correction field. The group count is, and null means
   // the body left it out: a correction does not clear it.
@@ -765,6 +768,7 @@ export function parseCorrectTransfer(raw: unknown, now: Date = new Date()): { in
     confirm: confirm === true,
     version,
     groupPassengerCount: parsed.groupPassengerCount ?? null,
+    applyToExtraVehicles: applyToExtraVehicles === true,
   }
 }
 

@@ -15,9 +15,29 @@ let embedOff = false
 let placeReferenceCheck: PlaceReferenceCheck = { outcome: 'unavailable' }
 const checkedPlaceRefs: string[] = []
 
-/** E2E flips this. Production never reaches the fake. */
+/**
+ * Unit tests flip this. Production never reaches the fake.
+ * E2E must not: every worker shares this process, so one spec would
+ * turn suggestions back on while another still expects them off.
+ * That switch is `TEST_SUGGESTIONS_UNAVAILABLE_COOKIE` on the caller.
+ */
 export function setTestMapsUnavailable(value: boolean): void {
   unavailable = value
+}
+
+/** Cookie the suggestions-mode route sets. Read only while `NODE_ENV` is test. */
+export const TEST_SUGGESTIONS_UNAVAILABLE_COOKIE = 'tp-test-suggestions-unavailable'
+
+/**
+ * True when this caller's cookie asks the fake to answer unavailable.
+ * Absent, or any environment other than test, leaves the lookup alone,
+ * so a browser cannot switch a real provider by sending the cookie.
+ */
+export function testSuggestionsForcedOff(cookieHeader: string | null): boolean {
+  if (nodeEnv() !== 'test' || cookieHeader === null)
+    return false
+  const mark = `${TEST_SUGGESTIONS_UNAVAILABLE_COOKIE}=1`
+  return cookieHeader.split(';').some(part => part.trim() === mark)
 }
 
 /**

@@ -4,13 +4,14 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { FAKE_PLACE_REF, lastTestMapsQuery, setTestMapsEmbedOff, setTestMapsUnavailable } from '../modules/locations'
+import { FAKE_PLACE_REF, lastTestMapsQuery, setTestMapsEmbedOff, setTestMapsUnavailable, TEST_SUGGESTIONS_UNAVAILABLE_COOKIE } from '../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
 import getLocations from './locations.get'
 import postLocation from './locations.post'
 import patchLocation from './locations/[id].patch'
 import archiveLocation from './locations/[id]/archive.post'
 import postEmbedMode from './locations/embed-mode.post'
+import postSuggestionsMode from './locations/suggestions-mode.post'
 import postSuggestions from './locations/suggestions.post'
 
 /**
@@ -54,6 +55,8 @@ app.use('/api/locations', (event) => {
   }
   if (rest === 'suggestions')
     return postSuggestions(event)
+  if (rest === 'suggestions-mode')
+    return postSuggestionsMode(event)
   if (rest === 'embed-mode')
     return postEmbedMode(event)
   const [id, action] = rest.split('/')
@@ -654,6 +657,29 @@ it('stamps a pick, keeps the time when the reference stays, and clears it on a h
   expect(clearedBody.place).toBeNull()
   expect(clearedBody.address).toBe('Put 6')
   expect(await checkedAt(row.id)).toBeNull()
+})
+
+it('hides suggestions for the caller that turned them off, and not for another caller', async () => {
+  setTestMapsUnavailable(false)
+  const created = await tenant('hlc-cookie', 'Cookie Admin')
+  const admin = await signIn('hlc-cookie-admin@example.test')
+  const mode = await call('POST', '/api/locations/suggestions-mode', undefined, { unavailable: true })
+  expect(mode.status).toBe(200)
+  const switched = mode.headers.getSetCookie().map(part => part.split(';')[0]).join('; ')
+  expect(switched).toContain(`${TEST_SUGGESTIONS_UNAVAILABLE_COOKIE}=1`)
+  const caller = new Headers(admin)
+  caller.set('cookie', `${admin.get('cookie')}; ${switched}`)
+  const body = {
+    text: 'Put 4',
+    sessionToken: 'c1b2c3d4-5555-4555-8555-555555555556',
+  }
+  const hidden = await call('POST', '/api/locations/suggestions', caller, body)
+  expect(hidden.status).toBe(200)
+  expect(await hidden.json()).toEqual({ available: false, suggestions: [], attribution: null })
+  const open = await call('POST', '/api/locations/suggestions', admin, body)
+  expect(open.status).toBe(200)
+  expect(await open.json()).toMatchObject({ available: true })
+  expect(created.tenantId).toBeTruthy()
 })
 
 it('saves a typed address as plain text when suggestions are off', async () => {

@@ -67,10 +67,14 @@ it('accepts confirm on a correction and refuses it on a new Transfer', () => {
   expect(parseCorrectTransfer({ ...body, confirm: true, version: 2 }, now)).toMatchObject({
     confirm: true,
     version: 2,
+    applyToExtraVehicles: false,
     input: { guestName: guest, pickupAt: '2026-10-06T22:30:00.000Z' },
   })
   expect(parseCorrectTransfer({ ...body, version: 0 }, now).confirm).toBe(false)
+  expect(parseCorrectTransfer({ ...body, version: 0, applyToExtraVehicles: true }, now).applyToExtraVehicles).toBe(true)
+  expect(parseCorrectTransfer({ ...body, version: 0, applyToExtraVehicles: false }, now).applyToExtraVehicles).toBe(false)
   expect(() => parseCorrectTransfer({ ...body, confirm: 'yes', version: 0 }, now)).toThrow(TransferInputError)
+  expect(() => parseCorrectTransfer({ ...body, version: 0, applyToExtraVehicles: 'yes' }, now)).toThrow(TransferInputError)
   expect(() => parseCorrectTransfer({ ...body, confirm: true, version: 0, plate: 'ZG1' }, now)).toThrow(TransferInputError)
   expect(() => parseCorrectTransfer(body, now)).toThrow(TransferInputError)
   expect(() => parseCorrectTransfer({ ...body, version: -1 }, now)).toThrow(TransferInputError)
