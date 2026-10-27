@@ -548,6 +548,7 @@
     "group": "Grupa",
     "groupRouteLeftOne": "Grupa ima još 1 nedovršeno dodatno vozilo. Promjena nije primijenjena na njega.",
     "groupRouteLeftOther": "Grupa ima još {count} nedovršenih dodatnih vozila. Promjena nije primijenjena na njih.",
+    "applyToExtraVehicles": "Primijeni i na dodatna vozila",
     "groupLoadFailed": "Grupa se nije mogla učitati. Pokušajte ponovno.",
     "printDay": "Ispiši dan",
     "exportCsv": "Izvoz CSV",

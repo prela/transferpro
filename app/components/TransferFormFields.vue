@@ -34,6 +34,8 @@ const {
   extraVehicle,
   asksGroupCount,
   groupPassengers,
+  offerApplyToExtraVehicles,
+  applyToExtraVehicles,
   airportMark,
   luggage,
   childSeats,
@@ -875,6 +877,17 @@ onUnmounted(() => {
       </div>
     </fieldset>
   </form>
+  <!-- A route change of a main Transfer can copy onto unfinished extra vehicles.
+       Left off, the save stays on this Transfer and the notice from G3 remains. -->
+  <UCheckbox
+    v-if="offerApplyToExtraVehicles"
+    id="transfer-apply-extras"
+    v-model="applyToExtraVehicles"
+    name="applyToExtraVehicles"
+    :size="controlSize"
+    class="mt-4"
+    :label="t('transfers.applyToExtraVehicles')"
+  />
   <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
     <UButton
       type="button"

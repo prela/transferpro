@@ -6,9 +6,13 @@ import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { addCalendarDays, calendarDateInTimeZone, correctedTransferResultSchema, instantFromWallClock, transferGroupSchema } from '../../shared'
 import { createClient } from '../modules/clients'
+import { createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
+import { createPartner } from '../modules/partners'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
-import { cancelRide, correctTransfer, createTransfer, readTransferGroup } from '../modules/transfers'
+import { acceptRide, assignRide, cancelRide, correctTransfer, createTransfer, handOffRide, readTransferGroup } from '../modules/transfers'
+import { createVehicle } from '../modules/vehicles'
+import patchTransfer from './transfers/[id].patch'
 import getTransferGroup from './transfers/[id]/group.get'
 
 /**
@@ -17,7 +21,9 @@ import getTransferGroup from './transfers/[id]/group.get'
  * Tenant is 404. Members keep their own pickup, including one on another
  * day. A route change of the main Transfer reports unfinished extra
  * vehicles and does not write them. A guest change and an extra vehicle's
- * own route change report zero.
+ * own route change report zero. Applying the change copies the pickup,
+ * places, and flight onto unfinished extra vehicles, and a refusal writes
+ * nothing for any member.
  */
 loadEnvFile('.env')
 loadEnvFile('.env.migrate')
@@ -45,6 +51,10 @@ app.use('/api/transfers', (event) => {
     ? pathOnly.slice(pathOnly.indexOf(marker) + marker.length)
     : pathOnly.replace(/^\//, '')
   const [id, action] = relative.split('/')
+  if (!action && event.method === 'PATCH') {
+    event.context.params = { id: id ?? '' }
+    return patchTransfer(event)
+  }
   if (action === 'group' && event.method === 'GET') {
     event.context.params = { id: id ?? '' }
     return getTransferGroup(event)
@@ -113,7 +123,7 @@ async function tenant(slug: string, adminName: string) {
   })
 }
 
-async function addMember(tenantId: string, email: string, name: string, role: TenantRole): Promise<void> {
+async function addMember(tenantId: string, email: string, name: string, role: TenantRole): Promise<string> {
   const userId = crypto.randomUUID()
   await authPool.query(
     `insert into auth."user" (id, name, email, email_verified, created_at, updated_at)
@@ -130,6 +140,7 @@ async function addMember(tenantId: string, email: string, name: string, role: Te
      values ($1, $2, $3, $4, now())`,
     [crypto.randomUUID(), tenantId, userId, role],
   )
+  return userId
 }
 
 async function signIn(email: string): Promise<Headers> {
@@ -147,6 +158,16 @@ function call(session: Headers | undefined, id: string) {
   return callGroup(new Request(`http://localhost/api/transfers/${id}/group`, {
     method: 'GET',
     headers: session,
+  }))
+}
+
+function callPatch(session: Headers, id: string, body: unknown) {
+  const headers = new Headers(session)
+  headers.set('content-type', 'application/json')
+  return callGroup(new Request(`http://localhost/api/transfers/${id}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(body),
   }))
 }
 
@@ -423,3 +444,330 @@ it('reports unfinished extra vehicles only for a route change of the main Transf
   expect(listed.members.find(member => member.transferId === extra.transfer.id)?.groupPassengerCount).toBeNull()
   expect(created.tenantId).toBeTruthy()
 })
+
+it('applies a main Transfer route correction to unfinished extra vehicles and writes nothing when refused', async () => {
+  const created = await tenant('tgr-apply', 'Hana Admin')
+  const admin = await signIn('tgr-apply-admin@example.test')
+  const driverUserId = await addMember(created.tenantId, 'tgr-apply-driver@example.test', 'Drago Vozač', 'driver')
+  const driverSession = await signIn('tgr-apply-driver@example.test')
+  const client = await createClient(admin, { name: 'Agencija Primjena', kind: 'agency' })
+  const start = await createLocation(admin, { name: 'Polazak Primjene', kind: 'airport' })
+  const end = await createLocation(admin, { name: 'Dolazak Primjene', kind: 'hotel' })
+  const otherEnd = await createLocation(admin, { name: 'Drugi Primjene', kind: 'address' })
+  const partner = await createPartner(admin, { name: 'Partner Primjena' })
+  const driver = await createDriver(admin, {
+    name: 'Drago Vozač',
+    kind: 'own',
+    phone: '+385911114681',
+    drivingLicenceExpiresOn: '2031-01-01',
+    transportLicenceExpiresOn: '2031-01-01',
+    memberUserId: driverUserId,
+  })
+  await updateDriver(admin, driver.id, { mustAccept: true })
+  const vehicle = await createVehicle(admin, {
+    registrationPlate: 'ZG4681AA',
+    kind: 'fixed',
+    registrationExpiresOn: '2031-01-01',
+    technicalInspectionExpiresOn: '2031-01-01',
+    insuranceExpiresOn: '2031-01-01',
+  })
+  const day = calendarDateInTimeZone(zone, new Date())
+  const at = (hour: string) => instantFromWallClock(`${day}T${hour}`, zone).toISOString()
+  const shared = {
+    clientId: client.id,
+    startLocationId: start.id,
+    endLocationId: end.id,
+    flightNumber: 'OU384',
+    payment: 'cash' as const,
+    airportMark: true,
+    luggageCount: 1,
+    childSeatCount: 0,
+    tabla: 'ANA',
+    clientReference: 'G-1',
+  }
+  const blocker = await createTransfer(admin, {
+    ...shared,
+    externalId: crypto.randomUUID(),
+    pickupAt: at('10:00'),
+    passengerCount: 1,
+    guestName: 'Blok Vozač',
+    price: 20,
+    note: 'Drži vozilo',
+  })
+  const main = await createTransfer(admin, {
+    ...shared,
+    externalId: crypto.randomUUID(),
+    pickupAt: at('12:00'),
+    passengerCount: 4,
+    guestName: 'Ana Grupno',
+    price: 40,
+    note: 'Glavni',
+  })
+  const accepted = await createTransfer(admin, {
+    ...shared,
+    externalId: crypto.randomUUID(),
+    pickupAt: at('14:00'),
+    passengerCount: 2,
+    guestName: 'Iva Dodatna',
+    price: 0,
+    payment: 'card',
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 1,
+    tabla: 'IVA',
+    clientReference: 'G-1',
+    note: 'Samo dodatno',
+    mainTransferId: main.transfer.id,
+    groupPassengerCount: 9,
+    mainVersion: 0,
+  })
+  const handed = await createTransfer(admin, {
+    ...shared,
+    externalId: crypto.randomUUID(),
+    pickupAt: at('15:00'),
+    passengerCount: 1,
+    guestName: 'Lea Predana',
+    price: 0,
+    note: 'Predano',
+    tabla: 'LEA',
+    mainTransferId: main.transfer.id,
+  })
+  const finished = await createTransfer(admin, {
+    ...shared,
+    externalId: crypto.randomUUID(),
+    pickupAt: at('16:00'),
+    passengerCount: 1,
+    guestName: 'Mia Završena',
+    price: 0,
+    note: 'Gotovo',
+    tabla: 'MIA',
+    mainTransferId: main.transfer.id,
+  })
+  await assignRide(admin, { rideId: blocker.ride.id, driverId: driver.id, vehicleId: vehicle.id, version: await versionOf(blocker.transfer.id) })
+  await assignRide(admin, { rideId: accepted.ride.id, driverId: driver.id, vehicleId: vehicle.id, version: await versionOf(accepted.transfer.id) })
+  await acceptRide(driverSession, accepted.ride.id, {})
+  await handOffRide(admin, handed.ride.id, { partnerId: partner.id, version: await versionOf(handed.transfer.id) })
+  await cancelRide(admin, finished.ride.id, {})
+  const landed = at('14:05')
+  await ownerPool.query(
+    `update app.transfers
+     set landing_at = $2,
+         expected_arrival_at = $2,
+         expected_arrival_basis_at = $2,
+         flight_will_not_arrive = true,
+         flight_will_not_arrive_handed = true
+     where id = $1`,
+    [accepted.transfer.id, landed],
+  )
+
+  const mainBody = {
+    ...shared,
+    pickupAt: at('12:00'),
+    passengerCount: 4,
+    guestName: 'Ana Grupno',
+    price: 40,
+    note: 'Glavni',
+  }
+  const before = await groupSnapshot(created.tenantId, [
+    main.transfer.id,
+    accepted.transfer.id,
+    handed.transfer.id,
+    finished.transfer.id,
+    blocker.transfer.id,
+  ])
+
+  const stale = await callPatch(admin, main.transfer.id, {
+    ...mainBody,
+    pickupAt: at('10:30'),
+    applyToExtraVehicles: true,
+    version: (await versionOf(main.transfer.id)) + 9,
+  })
+  expect(stale.status).toBe(409)
+  expect(await stale.text()).toContain('stale_save')
+  expect(await groupSnapshot(created.tenantId, [
+    main.transfer.id,
+    accepted.transfer.id,
+    handed.transfer.id,
+    finished.transfer.id,
+    blocker.transfer.id,
+  ])).toEqual(before)
+
+  const refused = await callPatch(admin, main.transfer.id, {
+    ...mainBody,
+    pickupAt: at('10:30'),
+    applyToExtraVehicles: true,
+    version: await versionOf(main.transfer.id),
+  })
+  expect(refused.status).toBe(409)
+  expect(await refused.text()).toContain('ride_overlap')
+  expect(await groupSnapshot(created.tenantId, [
+    main.transfer.id,
+    accepted.transfer.id,
+    handed.transfer.id,
+    finished.transfer.id,
+    blocker.transfer.id,
+  ])).toEqual(before)
+
+  const saved = correctedTransferResultSchema.parse(await (await callPatch(admin, main.transfer.id, {
+    ...mainBody,
+    guestName: 'Ana Nova',
+    endLocationId: otherEnd.id,
+    flightNumber: 'OU392',
+    applyToExtraVehicles: true,
+    version: await versionOf(main.transfer.id),
+  })).json())
+  expect(saved.unfinishedExtraVehicleCount).toBe(0)
+  expect(saved.transfer).toMatchObject({
+    guestName: 'Ana Nova',
+    endLocationId: otherEnd.id,
+    flightNumber: 'OU392',
+    pickupAt: at('12:00'),
+  })
+  expect(saved.workOrders).toEqual([{ driverId: driver.id, outcome: 'sent' }])
+
+  const rows = await memberRows([main.transfer.id, accepted.transfer.id, handed.transfer.id, finished.transfer.id])
+  const acceptedRow = rows.find(row => row.id === accepted.transfer.id)
+  const handedRow = rows.find(row => row.id === handed.transfer.id)
+  const finishedRow = rows.find(row => row.id === finished.transfer.id)
+  const mainRow = rows.find(row => row.id === main.transfer.id)
+  expect(acceptedRow).toMatchObject({
+    guest_name: 'Iva Dodatna',
+    note: 'Samo dodatno',
+    passenger_count: 2,
+    price: '0.00',
+    payment: 'card',
+    airport_mark: false,
+    luggage_count: 0,
+    child_seat_count: 1,
+    tabla: 'IVA',
+    client_reference: 'G-1',
+    start_location_id: start.id,
+    end_location_id: otherEnd.id,
+    flight_number: 'OU392',
+    pickup_at: new Date(at('14:00')),
+    landing_at: null,
+    expected_arrival_at: null,
+    flight_will_not_arrive: false,
+    state: 'assigned',
+    version: before.versions[accepted.transfer.id]! + 1,
+  })
+  expect(handedRow).toMatchObject({
+    guest_name: 'Lea Predana',
+    note: 'Predano',
+    tabla: 'LEA',
+    end_location_id: otherEnd.id,
+    flight_number: 'OU392',
+    pickup_at: new Date(at('15:00')),
+    state: 'handed_off',
+    version: before.versions[handed.transfer.id]! + 1,
+  })
+  expect(finishedRow).toMatchObject({
+    guest_name: 'Mia Završena',
+    note: 'Gotovo',
+    tabla: 'MIA',
+    end_location_id: end.id,
+    flight_number: 'OU384',
+    state: 'cancelled',
+    version: before.versions[finished.transfer.id],
+  })
+  expect(mainRow?.version).toBe(before.versions[main.transfer.id]! + 1)
+  expect(before.versions[blocker.transfer.id]).toBe(await versionOf(blocker.transfer.id))
+
+  const audits = await correctionAudits(created.tenantId)
+  const corrected = audits.filter(row => row.action === 'transfer.corrected')
+  expect(corrected.filter(row => row.transfer_id === accepted.transfer.id)).toEqual([
+    expect.objectContaining({ fields: ['endLocationId', 'flightNumber'] }),
+  ])
+  expect(corrected.filter(row => row.transfer_id === handed.transfer.id)).toEqual([
+    expect.objectContaining({ fields: ['endLocationId', 'flightNumber'] }),
+  ])
+  expect(corrected.filter(row => row.transfer_id === finished.transfer.id)).toEqual([])
+  expect(corrected.filter(row => row.transfer_id === main.transfer.id && row.fields.includes('flightNumber'))).toEqual([
+    expect.objectContaining({ fields: ['endLocationId', 'guestName', 'flightNumber'] }),
+  ])
+  expect(audits.filter(row => row.action === 'ride.returned_to_assigned').map(row => row.ride_id)).toEqual([accepted.ride.id])
+
+  const changedMail = (await outboxRows(created.tenantId)).filter(row => row.work_order_status === 'changed')
+  expect(changedMail).toEqual([{ ride_id: accepted.ride.id, work_order_status: 'changed' }])
+  expect(created.tenantId).not.toBe('')
+})
+
+async function groupSnapshot(tenantId: string, transferIds: string[]) {
+  const members = await memberRows(transferIds)
+  const audits = await correctionAudits(tenantId)
+  const outbox = await outboxRows(tenantId)
+  return {
+    members,
+    audits,
+    outbox,
+    versions: Object.fromEntries(members.map(row => [row.id, row.version])),
+  }
+}
+
+async function memberRows(transferIds: string[]) {
+  const result = await ownerPool.query<{
+    id: string
+    version: number
+    guest_name: string
+    note: string | null
+    passenger_count: number
+    price: string
+    payment: string
+    airport_mark: boolean
+    luggage_count: number
+    child_seat_count: number
+    tabla: string
+    client_reference: string | null
+    start_location_id: string
+    end_location_id: string
+    flight_number: string | null
+    pickup_at: Date
+    landing_at: Date | null
+    expected_arrival_at: Date | null
+    flight_will_not_arrive: boolean
+    state: string
+  }>(
+    `select t.id, t.version, t.guest_name, t.note, t.passenger_count, t.price::text as price,
+            t.payment, t.airport_mark, t.luggage_count, t.child_seat_count, t.tabla,
+            t.client_reference, t.start_location_id, t.end_location_id, t.flight_number,
+            t.pickup_at, t.landing_at, t.expected_arrival_at, t.flight_will_not_arrive,
+            r.state
+     from app.transfers as t
+     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
+     where t.id = any($1::uuid[])
+     order by t.id`,
+    [transferIds],
+  )
+  return result.rows
+}
+
+async function correctionAudits(tenantId: string) {
+  const result = await ownerPool.query<{
+    action: string
+    transfer_id: string | null
+    ride_id: string | null
+    fields: string[]
+  }>(
+    `select action::text as action,
+            data->>'transferId' as transfer_id,
+            data->>'rideId' as ride_id,
+            array(select jsonb_array_elements_text(data->'fields')) as fields
+     from app.audit_entry
+     where tenant_id = $1
+       and action::text in ('transfer.corrected', 'ride.returned_to_assigned')
+     order by occurred_at, id`,
+    [tenantId],
+  )
+  return result.rows
+}
+
+async function outboxRows(tenantId: string) {
+  const result = await ownerPool.query<{ ride_id: string | null, work_order_status: string | null }>(
+    `select ride_id, work_order_status
+     from app.mail_outbox
+     where tenant_id = $1
+     order by created_at, id`,
+    [tenantId],
+  )
+  return result.rows
+}

@@ -53,6 +53,22 @@ const lockedRows = z.object({
 
 type LockedTransfer = z.infer<typeof lockedRows>['rows'][number]
 
+/** One unfinished extra vehicle this correction changed. Mail follows `notify`. */
+interface ExtraVehicleNotice {
+  readonly rideId: string
+  readonly driverId: string | null
+  readonly notify: boolean
+}
+
+/** A locked extra vehicle whose route fields differ from the main Transfer. */
+interface PlannedExtra {
+  readonly row: LockedTransfer
+  readonly input: CreateTransfer
+  readonly fields: TransferCorrectionField[]
+  readonly clearLanding: boolean
+  readonly occupation: { driverId: string, vehicleId: string } | null
+}
+
 const writtenRows = z.object({
   rows: z.array(z.object({
     id: z.uuid(),
@@ -70,7 +86,7 @@ const writtenRows = z.object({
  * a session. `confirm` is only for a true overlap the office has already seen.
  * The record route does not accept it.
  */
-function parseCorrect(transferId: unknown, body: unknown): { id: string, input: CreateTransfer, confirm: boolean, version: number, groupPassengerCount: number | null } {
+function parseCorrect(transferId: unknown, body: unknown): { id: string, input: CreateTransfer, confirm: boolean, version: number, groupPassengerCount: number | null, applyToExtraVehicles: boolean } {
   const id = z.uuid().safeParse(transferId)
   if (!id.success)
     throw new TransferInputError()
@@ -81,6 +97,7 @@ function parseCorrect(transferId: unknown, body: unknown): { id: string, input: 
     confirm: parsed.confirm,
     version: parsed.version,
     groupPassengerCount: parsed.groupPassengerCount,
+    applyToExtraVehicles: parsed.applyToExtraVehicles,
   }
 }
 
@@ -107,6 +124,11 @@ function officeOnly(role: string): void {
  * group's ordered passenger count does not. A Ride with no Driver sends nothing. A
  * rejected send leaves the correction. Tests pass a mailer. The address
  * is not on the result.
+ *
+ * `applyToExtraVehicles` copies the changed pickup, places, and flight onto
+ * every unfinished extra vehicle in the same transaction. Each one is
+ * corrected as its own Transfer. One `confirm` covers the whole group.
+ * A refusal writes nothing for any member (ADR-0054).
  */
 export async function correctTransfer(
   headers: Headers,
@@ -117,19 +139,27 @@ export async function correctTransfer(
   const queue = await mailOutboxQueue()
   const saved = await withOfficeWrite(headers, rawBody, body => parseCorrect(rawId, body), async ({ actor, context, transaction }, parsed) => {
     officeOnly(actor.role)
-    const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm, parsed.version, parsed.groupPassengerCount)
-    // The snapshot needs a Driver. An unassigned correction has nobody to mail.
-    if (!corrected.notify || corrected.recorded.ride.driverId === null)
-      return { recorded: corrected.recorded, staged: null, relocationWarnings: corrected.relocationWarnings, fullyBooked: corrected.fullyBooked, unfinishedExtraVehicleCount: corrected.unfinishedExtraVehicleCount }
-    const order = await readAssignedWorkOrder(transaction, corrected.recorded.ride.id)
-    const staged = await stageWorkOrder(transaction, order, 'changed', { queue, context })
+    const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm, parsed.version, parsed.groupPassengerCount, parsed.applyToExtraVehicles)
+    // The main Transfer first, then each extra vehicle a route copy changed.
+    // An unassigned or handed-off Ride has nobody to mail.
+    const staged: Array<Awaited<ReturnType<typeof stageWorkOrder>>> = []
+    const members = [
+      { rideId: corrected.recorded.ride.id, driverId: corrected.recorded.ride.driverId, notify: corrected.notify },
+      ...corrected.extraNotices,
+    ]
+    for (const member of members) {
+      if (!member.notify || member.driverId === null)
+        continue
+      const order = await readAssignedWorkOrder(transaction, member.rideId)
+      staged.push(await stageWorkOrder(transaction, order, 'changed', { queue, context }))
+    }
     return { recorded: corrected.recorded, staged, relocationWarnings: corrected.relocationWarnings, fullyBooked: corrected.fullyBooked, unfinishedExtraVehicleCount: corrected.unfinishedExtraVehicleCount }
   })
-  if (saved.staged === null)
-    return { ...saved.recorded, workOrders: [], relocationWarnings: saved.relocationWarnings, fullyBooked: saved.fullyBooked, unfinishedExtraVehicleCount: saved.unfinishedExtraVehicleCount }
   const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
-  const notice = await deliverStagedWorkOrder(headers, saved.staged, mailer, delivery?.logger)
-  return { ...saved.recorded, workOrders: [notice], relocationWarnings: saved.relocationWarnings, fullyBooked: saved.fullyBooked, unfinishedExtraVehicleCount: saved.unfinishedExtraVehicleCount }
+  const workOrders = []
+  for (const staged of saved.staged)
+    workOrders.push(await deliverStagedWorkOrder(headers, staged, mailer, delivery?.logger))
+  return { ...saved.recorded, workOrders, relocationWarnings: saved.relocationWarnings, fullyBooked: saved.fullyBooked, unfinishedExtraVehicleCount: saved.unfinishedExtraVehicleCount }
 }
 
 /**
@@ -138,7 +168,9 @@ export async function correctTransfer(
  * when the current Driver should receive one changed work order after commit.
  * `relocationWarnings` is empty when the occupied window did not move.
  * `unfinishedExtraVehicleCount` is the notice for a route change of a main
- * Transfer that was not copied onto its extra vehicles. It is zero otherwise.
+ * Transfer that was not copied onto its extra vehicles. It is zero when
+ * the office applied that change, and zero otherwise.
+ * `extraNotices` are the unfinished extra vehicles this save changed.
  */
 export async function correctTransferForOffice(
   transaction: TenantTransaction,
@@ -148,7 +180,8 @@ export async function correctTransferForOffice(
   confirm: boolean,
   version: number,
   groupPassengerCount: number | null,
-): Promise<{ recorded: RecordedTransfer, notify: boolean, relocationWarnings: ScheduleClash[], fullyBooked: boolean, unfinishedExtraVehicleCount: number }> {
+  applyToExtraVehicles: boolean,
+): Promise<{ recorded: RecordedTransfer, notify: boolean, relocationWarnings: ScheduleClash[], fullyBooked: boolean, unfinishedExtraVehicleCount: number, extraNotices: ExtraVehicleNotice[] }> {
   const current = await lockTransfer(transaction, transferId)
   if (!current)
     throw new TransferNotFoundError()
@@ -175,18 +208,41 @@ export async function correctTransferForOffice(
   const fields = TRANSFER_CORRECTION_FIELDS.filter(field => changed.includes(field) || (groupChanged && field === 'groupPassengerCount'))
   const nextGroup = groupPassengerCount ?? current.groupPassengerCount
   if (fields.length === 0)
-    return { recorded: toRecorded(current, stored), notify: false, relocationWarnings: [], fullyBooked: false, unfinishedExtraVehicleCount: 0 }
+    return { recorded: toRecorded(current, stored), notify: false, relocationWarnings: [], fullyBooked: false, unfinishedExtraVehicleCount: 0, extraNotices: [] }
 
   // A different designator throws away the landing, the expected arrival,
   // and the will-not-arrive memory (ADR-0028). The occupation check reads
   // the row after this write, so a 409 rolls the clear back with the booking.
   const clearLanding = flightNumberChangeClearsLanding(stored.flightNumber, input.flightNumber)
+  // Lock unfinished extra vehicles after the main Transfer and before the
+  // Tenant capacity lock. A finished extra vehicle is not in this read.
+  // The flag on an extra vehicle, or on a save that does not change the
+  // route, locks nothing (ADR-0054).
+  const applyRoute = current.mainTransferId === null && applyToExtraVehicles && correctionChangesRoute(changed)
+  const lockedExtras = applyRoute ? await lockUnfinishedExtraTransfers(transaction, current.id) : []
+  const planned: PlannedExtra[] = []
+  for (const extra of lockedExtras) {
+    const extraStored = toBooking(extra)
+    const next = applyRouteFields(extraStored, input, changed)
+    const extraFields = changedTransferFields(extraStored, next)
+    // Already holding these values. The version stays, and there is no audit row.
+    if (extraFields.length === 0)
+      continue
+    const extraClear = flightNumberChangeClearsLanding(extraStored.flightNumber, next.flightNumber)
+    planned.push({
+      row: extra,
+      input: next,
+      fields: extraFields,
+      clearLanding: extraClear,
+      occupation: await occupiedWindowMoves(transaction, extra, next, extraClear),
+    })
+  }
   const occupation = await occupiedWindowMoves(transaction, current, input, clearLanding)
   // ADR-0034: only a judged correction is a capacity write. The lock comes
-  // after the Transfer lock and the refusals above, before another Ride is read.
-  if (occupation)
+  // after the Transfer locks and the refusals above, before another Ride is read.
+  if (occupation || planned.some(extra => extra.occupation !== null))
     await lockTenantCapacity(transaction)
-  await writeTransfer(transaction, transferId, input, clearLanding, version, actorUserId, nextGroup)
+  await writeTransfer(transaction, transferId, input, clearLanding, version, actorUserId, nextGroup, true)
   const capacity = occupation
     ? await checkRideCapacity(transaction, {
         rideId: current.rideId,
@@ -197,8 +253,8 @@ export async function correctTransferForOffice(
         blockFullyBooked: false,
       })
     : null
-  const relocationWarnings = capacity?.relocationWarnings ?? []
-  const fullyBooked = capacity !== null
+  let relocationWarnings = capacity?.relocationWarnings ?? []
+  let fullyBooked = capacity !== null
     ? capacity.fullyBooked
     : await transferFullyBooked(transaction, {
         rideId: current.rideId,
@@ -233,10 +289,67 @@ export async function correctTransferForOffice(
   if (returned && ride.driverId)
     await appendReturned(transaction, actorUserId, ride.id, ride.driverId)
 
+  const extraNotices: ExtraVehicleNotice[] = []
+  for (const extra of planned) {
+    // The extra vehicle's opened version is not compared. The row lock is
+    // the claim, and the version still rises (ADR-0046, ADR-0054).
+    await writeTransfer(transaction, extra.row.id, extra.input, extra.clearLanding, extra.row.version, actorUserId, extra.row.groupPassengerCount, false)
+    if (extra.occupation) {
+      const extraCapacity = await checkRideCapacity(transaction, {
+        rideId: extra.row.rideId,
+        driverId: extra.occupation.driverId,
+        vehicleId: extra.occupation.vehicleId,
+        confirm,
+        blockFullyBooked: false,
+      })
+      relocationWarnings = [...relocationWarnings, ...extraCapacity.relocationWarnings]
+      fullyBooked = fullyBooked || extraCapacity.fullyBooked
+    }
+    else {
+      fullyBooked = fullyBooked || await transferFullyBooked(transaction, {
+        rideId: extra.row.rideId,
+        pickupAt: new Date(extra.input.pickupAt),
+        landingAt: extra.clearLanding || extra.row.landingAt == null ? null : new Date(toInstant(extra.row.landingAt)),
+        driverId: extra.row.driverId,
+        vehicleId: extra.row.vehicleId,
+      })
+    }
+    const extraReturned = correctionReturnsAcceptedRide(extra.row.state, extra.fields, {
+      before: extra.row.flightNumber,
+      after: extra.input.flightNumber,
+    })
+    const extraRide = extraReturned
+      ? await returnAcceptedRide(transaction, extra.row.rideId)
+      : {
+          id: extra.row.rideId,
+          transferId: extra.row.id,
+          state: extra.row.state,
+          driverId: extra.row.driverId,
+          vehicleId: extra.row.vehicleId,
+          mustAccept: extra.row.mustAccept,
+        }
+    await appendCorrected(transaction, actorUserId, {
+      transferId: extra.row.id,
+      rideId: extraRide.id,
+      clientId: extra.input.clientId,
+      startLocationId: extra.input.startLocationId,
+      endLocationId: extra.input.endLocationId,
+      fields: extra.fields,
+    })
+    if (extraReturned && extraRide.driverId)
+      await appendReturned(transaction, actorUserId, extraRide.id, extraRide.driverId)
+    extraNotices.push({
+      rideId: extraRide.id,
+      driverId: extraRide.driverId,
+      // The copied fields are pickup, places, and flight. Each is a mailed fact.
+      notify: true,
+    })
+  }
+
   // Left off, a route change reaches only this Transfer. The count is the
   // unfinished extra vehicles that still have the previous route. Applying
-  // the same fields to them is a later command and reports zero instead.
-  const unfinishedExtraVehicleCount = current.mainTransferId === null && correctionChangesRoute(changed)
+  // the same fields reports zero: the office asked for the copy.
+  const unfinishedExtraVehicleCount = !applyRoute && current.mainTransferId === null && correctionChangesRoute(changed)
     ? await countUnfinishedExtraVehicles(transaction, current.id)
     : 0
 
@@ -252,6 +365,7 @@ export async function correctTransferForOffice(
     relocationWarnings,
     fullyBooked,
     unfinishedExtraVehicleCount,
+    extraNotices,
   }
 }
 
@@ -316,38 +430,70 @@ async function requireLiveBooking(transaction: TenantTransaction, input: CreateT
     throw new LocationArchivedError()
 }
 
+const lockedTransferColumns = sql`
+  t.id,
+  t.client_id as "clientId",
+  t.pickup_at as "pickupAt",
+  t.start_location_id as "startLocationId",
+  t.end_location_id as "endLocationId",
+  t.passenger_count as "passengerCount",
+  t.guest_name as "guestName",
+  t.flight_number as "flightNumber",
+  t.price,
+  t.payment,
+  t.airport_mark as "airportMark",
+  t.luggage_count as "luggageCount",
+  t.child_seat_count as "childSeatCount",
+  t.note,
+  t.tabla,
+  t.client_reference as "clientReference",
+  t.link as "mainTransferId",
+  t.group_passenger_count as "groupPassengerCount",
+  r.id as "rideId",
+  r.state,
+  r.driver_id as "driverId",
+  r.vehicle_id as "vehicleId",
+  r.must_accept as "mustAccept",
+  t.landing_at as "landingAt",
+  t.version
+`
+
 async function lockTransfer(transaction: TenantTransaction, transferId: string): Promise<LockedTransfer | undefined> {
   return lockedRows.parse(await runStep(transaction, sql`
-    select t.id,
-           t.client_id as "clientId",
-           t.pickup_at as "pickupAt",
-           t.start_location_id as "startLocationId",
-           t.end_location_id as "endLocationId",
-           t.passenger_count as "passengerCount",
-           t.guest_name as "guestName",
-           t.flight_number as "flightNumber",
-           t.price,
-           t.payment,
-           t.airport_mark as "airportMark",
-           t.luggage_count as "luggageCount",
-           t.child_seat_count as "childSeatCount",
-           t.note,
-           t.tabla,
-           t.client_reference as "clientReference",
-           t.link as "mainTransferId",
-           t.group_passenger_count as "groupPassengerCount",
-           r.id as "rideId",
-           r.state,
-           r.driver_id as "driverId",
-           r.vehicle_id as "vehicleId",
-           r.must_accept as "mustAccept",
-           t.landing_at as "landingAt",
-           t.version
+    select ${lockedTransferColumns}
     from app.transfers as t
     join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
     where t.id = ${transferId}
     for update
   `)).rows[0]
+}
+
+/**
+ * Unfinished extra vehicles of this main Transfer, locked by Transfer id.
+ * The main Transfer is already locked. Done, no-show, and cancelled are
+ * not in this read, so they are not locked and not written.
+ */
+async function lockUnfinishedExtraTransfers(transaction: TenantTransaction, mainTransferId: string): Promise<LockedTransfer[]> {
+  return lockedRows.parse(await runStep(transaction, sql`
+    select ${lockedTransferColumns}
+    from app.transfers as t
+    join app.rides as r on r.transfer_id = t.id and r.tenant_id = t.tenant_id
+    where t.link = ${mainTransferId}
+      and r.state in (${cancellableRideStatesSql})
+    order by t.id
+    for update of t, r
+  `)).rows
+}
+
+/** The pickup, places, and flight the main Transfer changed. Every other field stays the extra vehicle's. */
+function applyRouteFields(extra: CreateTransfer, main: CreateTransfer, changed: readonly string[]): CreateTransfer {
+  return {
+    ...extra,
+    ...(changed.includes('pickupAt') ? { pickupAt: main.pickupAt } : {}),
+    ...(changed.includes('startLocationId') ? { startLocationId: main.startLocationId } : {}),
+    ...(changed.includes('endLocationId') ? { endLocationId: main.endLocationId } : {}),
+    ...(changed.includes('flightNumber') ? { flightNumber: main.flightNumber } : {}),
+  }
 }
 
 function toBooking(row: LockedTransfer): CreateTransfer {
@@ -406,9 +552,13 @@ async function writeTransfer(
   version: number,
   actorUserId: string,
   groupPassengerCount: number | null,
+  compareVersion: boolean,
 ): Promise<void> {
-  // The version predicate is the compare-and-swap. The booking and the bump
-  // are one update, so a concurrent correction cannot both pass. ADR-0046.
+  // The version predicate is the compare-and-swap on the Transfer the form
+  // was opened for. An extra vehicle copied from the main Transfer is
+  // already locked and is not compared (ADR-0046, ADR-0054). The booking
+  // and the bump are one update.
+  const versionPredicate = compareVersion ? sql`and version = ${version}` : sql``
   const written = z.object({ rows: z.array(z.object({ id: z.uuid() })) }).parse(await runStep(transaction, sql`
     update app.transfers
     set client_id = ${input.clientId},
@@ -436,11 +586,11 @@ async function writeTransfer(
         data_changed_at = now(),
         data_changed_by = ${actorUserId}
     where id = ${transferId}
-      and version = ${version}
+      ${versionPredicate}
     returning id
   `))
   if (!written.rows[0])
-    throw new StaleSaveError()
+    throw compareVersion ? new StaleSaveError() : new TransferNotFoundError()
 }
 
 /**
