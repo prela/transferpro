@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, DisplayLocale, Driver, Location, Partner, RideAttentionItem, TransferDayRide, Vehicle } from '../../shared'
-import { calendarDateInTimeZone, canAddExtraVehicle, canCorrectTransfer, canRecordLandingTime, classifyRideAttention, clockLabel, formatCalendarDate, formatInstant, locationLabel, pickupNeedsCalendarDate, rideStateMark } from '../../shared'
+import { calendarDateInTimeZone, canAddExtraVehicle, canCorrectTransfer, canRecordLandingTime, classifyRideAttention, clockLabel, formatCalendarDate, formatInstant, locationLabel, pickupNeedsCalendarDate, rideStateMark, transferGroupRole } from '../../shared'
 import { driverDisplayName } from '../transfer-day-labels'
 import { canCallOff, canChangeAssignment, canChangePartner, canHandOff, canNoShow, canTakeBack } from '../transfer-ride-guards'
 
@@ -146,6 +146,17 @@ function crewText(): string {
   return plate === '' ? name : `${name} · ${plate}`
 }
 
+/** A main Transfer with a stored count, or an extra vehicle. An ordinary Transfer is not a group. */
+function inGroup(): boolean {
+  const ride = props.ride
+  if (!ride)
+    return false
+  return transferGroupRole(
+    ride.mainTransferId,
+    ride.groupPassengerCountStored ? ride.groupPassengerCount : null,
+  ) !== null
+}
+
 function clientName(): string {
   const ride = props.ride
   if (!ride)
@@ -217,6 +228,16 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
       </span>
       <!-- min-w-24 is the floor. flex-1 still truncates a long name. -->
       <span class="min-w-24 flex-1 truncate font-medium">{{ ride.guestName }}</span>
+      <UBadge
+        v-if="inGroup()"
+        color="neutral"
+        variant="subtle"
+        size="sm"
+        class="shrink-0"
+        style="color: var(--ui-text)"
+      >
+        {{ t('transfers.group') }}
+      </UBadge>
       <span class="shrink-0 text-xs text-muted">{{ t('transfers.passengersCount', { count: ride.passengerCount }) }}</span>
       <span class="shrink-0">
         <UBadge
@@ -282,6 +303,16 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     v-else-if="cell === 'guest' && ride"
     class="block"
   >
+    <UBadge
+      v-if="inGroup()"
+      color="neutral"
+      variant="subtle"
+      size="sm"
+      class="me-1 align-middle"
+      style="color: var(--ui-text)"
+    >
+      {{ t('transfers.group') }}
+    </UBadge>
     <span>{{ ride.guestName }}</span>
     <span class="ms-1 text-xs text-muted">{{ t('transfers.passengersCount', { count: ride.passengerCount }) }}</span>
     <UIcon

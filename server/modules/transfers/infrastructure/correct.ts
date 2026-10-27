@@ -4,13 +4,14 @@ import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { canCorrectTransfer, changedTransferFields, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, officeGroupPassengerCount, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
+import { canCorrectTransfer, changedTransferFields, correctionChangesRoute, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, officeGroupPassengerCount, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
 import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { correctionMovesWindow, lockTenantCapacity, tenantCapacityMinutes } from '../../capacity'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
 import { mailerForApp, TenantAccessError, withOfficeWrite } from '../../tenancy'
+import { cancellableRideStatesSql } from './cancellable-ride-states'
 import { checkRideCapacity, transferFullyBooked } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
 import { ExtraVehicleCountError, ExtraVehiclePriceError, TransferNotCorrectableError, TransferNotFoundError } from './transfer-errors'
@@ -119,16 +120,16 @@ export async function correctTransfer(
     const corrected = await correctTransferForOffice(transaction, actor.userId, parsed.id, parsed.input, parsed.confirm, parsed.version, parsed.groupPassengerCount)
     // The snapshot needs a Driver. An unassigned correction has nobody to mail.
     if (!corrected.notify || corrected.recorded.ride.driverId === null)
-      return { recorded: corrected.recorded, staged: null, relocationWarnings: corrected.relocationWarnings, fullyBooked: corrected.fullyBooked }
+      return { recorded: corrected.recorded, staged: null, relocationWarnings: corrected.relocationWarnings, fullyBooked: corrected.fullyBooked, unfinishedExtraVehicleCount: corrected.unfinishedExtraVehicleCount }
     const order = await readAssignedWorkOrder(transaction, corrected.recorded.ride.id)
     const staged = await stageWorkOrder(transaction, order, 'changed', { queue, context })
-    return { recorded: corrected.recorded, staged, relocationWarnings: corrected.relocationWarnings, fullyBooked: corrected.fullyBooked }
+    return { recorded: corrected.recorded, staged, relocationWarnings: corrected.relocationWarnings, fullyBooked: corrected.fullyBooked, unfinishedExtraVehicleCount: corrected.unfinishedExtraVehicleCount }
   })
   if (saved.staged === null)
-    return { ...saved.recorded, workOrders: [], relocationWarnings: saved.relocationWarnings, fullyBooked: saved.fullyBooked }
+    return { ...saved.recorded, workOrders: [], relocationWarnings: saved.relocationWarnings, fullyBooked: saved.fullyBooked, unfinishedExtraVehicleCount: saved.unfinishedExtraVehicleCount }
   const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
   const notice = await deliverStagedWorkOrder(headers, saved.staged, mailer, delivery?.logger)
-  return { ...saved.recorded, workOrders: [notice], relocationWarnings: saved.relocationWarnings, fullyBooked: saved.fullyBooked }
+  return { ...saved.recorded, workOrders: [notice], relocationWarnings: saved.relocationWarnings, fullyBooked: saved.fullyBooked, unfinishedExtraVehicleCount: saved.unfinishedExtraVehicleCount }
 }
 
 /**
@@ -136,6 +137,8 @@ export async function correctTransfer(
  * has already run. The audit rows commit with the writes. `notify` is true
  * when the current Driver should receive one changed work order after commit.
  * `relocationWarnings` is empty when the occupied window did not move.
+ * `unfinishedExtraVehicleCount` is the notice for a route change of a main
+ * Transfer that was not copied onto its extra vehicles. It is zero otherwise.
  */
 export async function correctTransferForOffice(
   transaction: TenantTransaction,
@@ -145,7 +148,7 @@ export async function correctTransferForOffice(
   confirm: boolean,
   version: number,
   groupPassengerCount: number | null,
-): Promise<{ recorded: RecordedTransfer, notify: boolean, relocationWarnings: ScheduleClash[], fullyBooked: boolean }> {
+): Promise<{ recorded: RecordedTransfer, notify: boolean, relocationWarnings: ScheduleClash[], fullyBooked: boolean, unfinishedExtraVehicleCount: number }> {
   const current = await lockTransfer(transaction, transferId)
   if (!current)
     throw new TransferNotFoundError()
@@ -172,7 +175,7 @@ export async function correctTransferForOffice(
   const fields = TRANSFER_CORRECTION_FIELDS.filter(field => changed.includes(field) || (groupChanged && field === 'groupPassengerCount'))
   const nextGroup = groupPassengerCount ?? current.groupPassengerCount
   if (fields.length === 0)
-    return { recorded: toRecorded(current, stored), notify: false, relocationWarnings: [], fullyBooked: false }
+    return { recorded: toRecorded(current, stored), notify: false, relocationWarnings: [], fullyBooked: false, unfinishedExtraVehicleCount: 0 }
 
   // A different designator throws away the landing, the expected arrival,
   // and the will-not-arrive memory (ADR-0028). The occupation check reads
@@ -230,6 +233,13 @@ export async function correctTransferForOffice(
   if (returned && ride.driverId)
     await appendReturned(transaction, actorUserId, ride.id, ride.driverId)
 
+  // Left off, a route change reaches only this Transfer. The count is the
+  // unfinished extra vehicles that still have the previous route. Applying
+  // the same fields to them is a later command and reports zero instead.
+  const unfinishedExtraVehicleCount = current.mainTransferId === null && correctionChangesRoute(changed)
+    ? await countUnfinishedExtraVehicles(transaction, current.id)
+    : 0
+
   return {
     recorded: {
       transfer: presentTransfer(current.id, input, current.mainTransferId, nextGroup),
@@ -241,7 +251,30 @@ export async function correctTransferForOffice(
     notify: fields.some(field => field !== 'groupPassengerCount' && (field !== 'price' || input.payment === 'cash')),
     relocationWarnings,
     fullyBooked,
+    unfinishedExtraVehicleCount,
   }
+}
+
+/**
+ * Unfinished extra vehicles of this main Transfer, on any day. Done,
+ * no-show, and cancelled are finished and are not counted. That is the
+ * cancellable set (ADR-0005, ADR-0048), the same filter as the day list.
+ * An extra vehicle has none of its own.
+ */
+async function countUnfinishedExtraVehicles(transaction: TenantTransaction, transferId: string): Promise<number> {
+  const counted = z.object({
+    rows: z.array(z.object({ count: z.number().int().nonnegative() })),
+  }).parse(await runStep(transaction, sql`
+    select count(*)::int as count
+    from app.transfers as extra
+    join app.rides as extra_ride
+      on extra_ride.transfer_id = extra.id
+     and extra_ride.tenant_id = extra.tenant_id
+    where extra.link = ${transferId}
+      and extra.tenant_id = (select tenant_id from app.transfers where id = ${transferId})
+      and extra_ride.state in (${cancellableRideStatesSql})
+  `))
+  return counted.rows[0]?.count ?? 0
 }
 
 /**

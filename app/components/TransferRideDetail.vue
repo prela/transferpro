@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
-import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, OfficeLocation, Partner, PartnerOfficeContact, TransferDayRide, Vehicle } from '../../shared'
+import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, OfficeLocation, Partner, PartnerOfficeContact, TransferDayRide, TransferGroupMember, Vehicle } from '../../shared'
 import type { RideDetailCommand } from '../ride-detail'
-import { canAddExtraVehicle, canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel, rideDetailEmbedUrls, rideDetailMapOpen } from '../../shared'
+import { canAddExtraVehicle, canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel, rideDetailEmbedUrls, rideDetailMapOpen, transferGroupRole, transferGroupSchema } from '../../shared'
 import { useKeptWorkOrders } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, rideFormStamp } from '../ride-detail'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -309,6 +309,70 @@ function runPrimary() {
     emit('done')
 }
 
+const groupMembers = ref<TransferGroupMember[] | null>(null)
+const groupError = ref(false)
+let groupRequest = 0
+
+/**
+ * Members can pick up on another day, so the day list is not the group.
+ * Each row below uses that member's own pickup. The ordered count is the
+ * main Transfer's, read from that member, not copied onto the others.
+ */
+function loadGroup() {
+  if (!import.meta.client)
+    return
+  const ride = props.ride
+  const role = transferGroupRole(
+    ride.mainTransferId,
+    ride.groupPassengerCountStored ? ride.groupPassengerCount : null,
+  )
+  const token = ++groupRequest
+  if (role === null) {
+    groupMembers.value = null
+    groupError.value = false
+    return
+  }
+  groupError.value = false
+  void $fetch(`/api/transfers/${ride.transferId}/group`)
+    .then((body) => {
+      if (token !== groupRequest)
+        return
+      const members = transferGroupSchema.parse(body).members
+      groupMembers.value = members.length > 0 ? members : null
+    })
+    .catch(() => {
+      if (token !== groupRequest)
+        return
+      groupMembers.value = null
+      groupError.value = true
+    })
+}
+
+watch(
+  () => [props.ride.transferId, props.ride.version, props.ride.mainTransferId, props.ride.groupPassengerCount, props.ride.groupPassengerCountStored] as const,
+  () => {
+    loadGroup()
+  },
+  { immediate: true },
+)
+
+const groupOrderedCount = computed(() =>
+  groupMembers.value?.find(member => member.mainTransferId === null)?.groupPassengerCount ?? null,
+)
+
+function memberPlace(id: string): string {
+  const found = locations.value.find(location => location.id === id)
+  return found ? locationLabel(found) : t('transfers.unknownPlace')
+}
+
+function memberCrew(member: TransferGroupMember): string {
+  if (member.state === 'handed_off')
+    return partnerLabel(member.partnerId)
+  if (member.driverId === null)
+    return t('transfers.unassignedCrew')
+  return driverDisplayName(props.drivers, member.driverId, t('ride.unknownDriver'))
+}
+
 const primaryLabel = computed(() => {
   if (primary.value === 'assign')
     return t('ride.assign')
@@ -595,6 +659,46 @@ const primaryLabel = computed(() => {
         </dd>
       </template>
     </dl>
+
+    <section
+      v-if="groupError || (groupMembers && groupMembers.length > 0)"
+      v-show="!command"
+      class="mb-4 text-sm"
+      :aria-label="t('transfers.group')"
+    >
+      <h3 class="font-medium">
+        {{ t('transfers.group') }}
+      </h3>
+      <p
+        v-if="groupError"
+        class="mt-2"
+        role="alert"
+      >
+        {{ t('transfers.groupLoadFailed') }}
+      </p>
+      <template v-else-if="groupMembers">
+        <p
+          v-if="groupOrderedCount !== null"
+          class="mt-2 tabular-nums"
+        >
+          {{ t('transfers.groupPassengers') }}: {{ groupOrderedCount }}
+        </p>
+        <ul class="mt-2 flex flex-col gap-2">
+          <li
+            v-for="member in groupMembers"
+            :key="member.rideId"
+          >
+            <span class="font-medium">{{ member.guestName }}</span>
+            <time
+              class="ms-2 tabular-nums"
+              :datetime="member.pickupAt"
+            >{{ clock(member.pickupAt) }}</time>
+            <span class="mt-0.5 block">{{ memberPlace(member.startLocationId) }} → {{ memberPlace(member.endLocationId) }}</span>
+            <span class="block text-muted">{{ memberCrew(member) }} · {{ t(`transfers.states.${member.state}`) }}</span>
+          </li>
+        </ul>
+      </template>
+    </section>
 
     <RideAssign
       v-if="command === 'assign'"

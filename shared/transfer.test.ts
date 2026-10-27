@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canAddExtraVehicle, canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, officeGroupPassengerCount, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, sameLocationError, transferGroupRole, TransferInputError } from './transfer'
+import { canAddExtraVehicle, canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionChangesRoute, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, officeGroupPassengerCount, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, ROUTE_TRANSFER_FIELDS, sameLocationError, transferGroupMemberSchema, transferGroupRole, transferGroupSchema, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -136,6 +136,67 @@ it('reads the stored group count for a main Transfer and none for an extra vehic
   expect(officeGroupPassengerCount(null, null, 2)).toBe(2)
   expect(officeGroupPassengerCount(null, 80, 2)).toBe(80)
   expect(officeGroupPassengerCount(mainTransferId, null, 2)).toBeNull()
+})
+
+it('names a route change from the pickup, a place, or the flight, and nothing else', () => {
+  expect(ROUTE_TRANSFER_FIELDS).toEqual(['pickupAt', 'startLocationId', 'endLocationId', 'flightNumber'])
+  expect(correctionChangesRoute([])).toBe(false)
+  expect(correctionChangesRoute(['guestName'])).toBe(false)
+  expect(correctionChangesRoute(['groupPassengerCount'])).toBe(false)
+  expect(correctionChangesRoute(['clientReference'])).toBe(false)
+  expect(correctionChangesRoute(['pickupAt'])).toBe(true)
+  expect(correctionChangesRoute(['startLocationId'])).toBe(true)
+  expect(correctionChangesRoute(['endLocationId'])).toBe(true)
+  expect(correctionChangesRoute(['flightNumber'])).toBe(true)
+  expect(correctionChangesRoute(['guestName', 'endLocationId'])).toBe(true)
+  // Spacing of the same designator is a stored flight change, so it is a
+  // route change. It still does not return an accepted Ride to assigned.
+  const stored = parseCreateTransfer(withEntryKey({ ...body, flightNumber: flight }), now)
+  const spaced = changedTransferFields(stored, { ...stored, flightNumber: 'ou384' })
+  expect(spaced).toEqual(['flightNumber'])
+  expect(correctionChangesRoute(spaced)).toBe(true)
+  expect(correctionReturnsAcceptedRide('accepted', spaced, { before: flight, after: 'ou384' })).toBe(false)
+})
+
+it('reads each group member as a day-row subset and keeps that member pickup', () => {
+  const mainPickup = '2026-10-08T10:00:00.000Z'
+  const extraPickup = '2026-10-09T08:30:00.000Z'
+  const rideId = 'e5e5e5e5-5555-4555-8555-555555555555'
+  const transferId = 'f6f6f6f6-6666-4666-8666-666666666666'
+  const extraRideId = 'a7a7a7a7-7777-4777-8777-777777777777'
+  const extraTransferId = 'b8b8b8b8-8888-4888-8888-888888888888'
+  const member = {
+    rideId,
+    transferId,
+    guestName: guest,
+    pickupAt: mainPickup,
+    startLocationId,
+    endLocationId,
+    state: 'unassigned' as const,
+    driverId: null,
+    partnerId: null,
+    mainTransferId: null,
+    groupPassengerCount: 8,
+  }
+  const parsed = transferGroupSchema.parse({
+    members: [
+      member,
+      {
+        ...member,
+        rideId: extraRideId,
+        transferId: extraTransferId,
+        guestName: 'Iva Dodatna',
+        pickupAt: extraPickup,
+        mainTransferId: transferId,
+        groupPassengerCount: null,
+      },
+    ],
+  })
+  expect(parsed.members.map(row => row.pickupAt)).toEqual([mainPickup, extraPickup])
+  expect(parsed.members[0]?.groupPassengerCount).toBe(8)
+  expect(parsed.members[1]?.groupPassengerCount).toBeNull()
+  expect(transferGroupMemberSchema.safeParse({ groupPickupAt: mainPickup }).success).toBe(false)
+  expect(transferGroupSchema.parse({ members: [] }).members).toEqual([])
 })
 
 it('marks a group from the stored link or the stored count, not from the office fill', () => {

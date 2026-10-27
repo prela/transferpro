@@ -182,10 +182,24 @@ export const transferCorrectionFieldSchema = z.enum(TRANSFER_CORRECTION_FIELDS)
 export type TransferCorrectionField = z.infer<typeof transferCorrectionFieldSchema>
 
 /**
- * The four facts the Driver accepted. Any other booking field leaves an
- * accepted Ride accepted (ADR-0010).
+ * Pickup, the two places, and the flight number.
+ * An accepted Ride returns to assigned only when one of these changes,
+ * apart from a flight whose designator spelling is unchanged (ADR-0010).
+ * A main-Transfer correction that changes one of these, and is not applied
+ * to the group, tells the office how many unfinished extra vehicles it has.
+ * Copying those fields onto extra vehicles uses this same list (ADR-0054).
  */
-const MATERIAL_TRANSFER_FIELDS = ['pickupAt', 'startLocationId', 'endLocationId', 'flightNumber'] as const
+export const ROUTE_TRANSFER_FIELDS = ['pickupAt', 'startLocationId', 'endLocationId', 'flightNumber'] as const
+
+/**
+ * A correction changes the route when the pickup, a place, or the flight
+ * number is among the changed fields. Spacing of the same designator is
+ * still a route change: the stored flight number changed. Whether an
+ * accepted Ride returns to assigned is {@link correctionReturnsAcceptedRide}.
+ */
+export function correctionChangesRoute(changed: readonly string[]): boolean {
+  return changed.some(field => (ROUTE_TRANSFER_FIELDS as readonly string[]).includes(field))
+}
 
 /**
  * Names that differ between the stored booking and the correction.
@@ -213,7 +227,7 @@ export function correctionReturnsAcceptedRide(
   return changed.some((field) => {
     if (field === 'flightNumber')
       return !sameDesignatorSpelling(flight.before, flight.after)
-    return (MATERIAL_TRANSFER_FIELDS as readonly string[]).includes(field)
+    return (ROUTE_TRANSFER_FIELDS as readonly string[]).includes(field)
   })
 }
 
@@ -456,6 +470,34 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
 })
 
 export type TransferDayRide = z.infer<typeof transferDayRideSchema>
+
+/**
+ * One member of a group. A subset of the day row, so a later day-row field
+ * is not invented here. The pickup is this member's own Transfer, never a
+ * pickup copied from the main Transfer (ADR-0054).
+ */
+export const transferGroupMemberSchema = transferDayRideSchema.pick({
+  rideId: true,
+  transferId: true,
+  guestName: true,
+  pickupAt: true,
+  startLocationId: true,
+  endLocationId: true,
+  state: true,
+  driverId: true,
+  partnerId: true,
+  mainTransferId: true,
+  groupPassengerCount: true,
+})
+
+export type TransferGroupMember = z.infer<typeof transferGroupMemberSchema>
+
+/** The whole group. `members` is empty when this Transfer is not in one. */
+export const transferGroupSchema = z.object({
+  members: z.array(transferGroupMemberSchema),
+})
+
+export type TransferGroup = z.infer<typeof transferGroupSchema>
 
 /**
  * A decline the board shows for a Ride on this day. The name is joined from
