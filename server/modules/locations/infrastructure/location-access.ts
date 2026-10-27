@@ -4,7 +4,7 @@ import { officeLocationSchema, parseCreateLocation, parseLocationPatch, parseSug
 import { loadAppEnv } from '../../../core/index'
 import { loadTenantDefaultLocale, readUserLocale, TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
 import { addLocation, archiveStoredLocation, correctLocation, loadLocations, LocationArchivedError, LocationIataTakenError, LocationNotFoundError } from './locations'
-import { mapsForApp } from './maps'
+import { mapsForApp, testSuggestionsForcedOff } from './maps'
 
 export { LocationArchivedError, LocationIataTakenError, LocationNotFoundError }
 
@@ -104,6 +104,9 @@ export async function suggestAddresses(headers: Headers, raw: unknown) {
   const input = parseSuggestAddresses(raw)
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
+    // The caller's cookie, not the process flag. Parallel e2e specs share this server.
+    if (testSuggestionsForcedOff(headers.get('cookie')))
+      return unavailable
     const language = await loadTenantDefaultLocale(transaction)
     try {
       const result = await mapsForApp(loadAppEnv()).suggestAddresses({
