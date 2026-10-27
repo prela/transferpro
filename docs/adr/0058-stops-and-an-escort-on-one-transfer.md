@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Damir accepted this on 27 October 2026, in the multi-pickup grill, with NEO. Damir decided the scope questions himself: stops belong to one booking, and a stop is a place where guests board or alight. NEO answered the rest in his name. It partially supersedes ADR-0007, ADR-0010, ADR-0026, ADR-0029, ADR-0034, ADR-0038, ADR-0052, and ADR-0055; the sentences are named below. ADR-0005 stands: every Transfer has exactly one Ride. ADR-0036 stands: the Transfer is the order. ADR-0054 stands: a group too large for one Vehicle is a main Transfer and its extra vehicles. ADR-0028 and ADR-0051 stand unchanged.
+Damir accepted this on 27 October 2026, in the multi-pickup grill. Damir decided the scope questions: stops belong to one booking, and a stop is a place where guests board or alight. The remaining questions were resolved by the product owner. It partially supersedes ADR-0007, ADR-0010, ADR-0026, ADR-0029, ADR-0034, ADR-0038, ADR-0052, and ADR-0055; the sentences are named below. ADR-0005 stands: every Transfer has exactly one Ride. ADR-0036 stands: the Transfer is the order. ADR-0054 stands: a group too large for one Vehicle is a main Transfer and its extra vehicles. ADR-0028 and ADR-0051 stand unchanged.
 
 This is a post-v1 feature. It is not everyday work, and no ticket exists yet. The superseded sentences take effect when the first slice lands. A Transfer with no stops and no escort behaves under the new sentences exactly as under the old ones.
 
