@@ -8,6 +8,7 @@ import { getLogger } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
 import { loadLocation, LocationArchivedError } from '../../locations'
+import { cancellableRideStatesSql } from './cancellable-ride-states'
 import { TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from './transfer-errors'
 
 const transferRowSchema = z.object({
@@ -432,7 +433,7 @@ export async function loadRidesForDay(
          and extra_ride.tenant_id = extra.tenant_id
         where extra.tenant_id = t.tenant_id
           and extra.link = t.id
-          and extra_ride.state in ('unassigned', 'assigned', 'accepted', 'handed_off')
+          and extra_ride.state in (${cancellableRideStatesSql})
       ) as "unfinishedExtraVehicleCount",
       t.landing_at as "landingAt",
       t.expected_arrival_at as "expectedArrival",
