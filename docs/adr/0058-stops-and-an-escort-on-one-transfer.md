@@ -171,4 +171,4 @@ A departing group is planned vehicle by vehicle. A main Transfer's stops never r
 
 The Partner learns of the stops and the escort only from the day print or from the office, as for every other fact of a handed-off Ride.
 
-The start and the end being the same Location is today refused only by the form (`sameLocationError` in `app/composables/transfer-form.ts`); the API accepts it. Rule 2 above puts that check in the shared schema at the API boundary. That fix is its own ticket.
+The shared schema at the API boundary already refuses the same start and end; rule 2 keeps that with stops.
