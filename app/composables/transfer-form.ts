@@ -1,6 +1,6 @@
 import type { InjectionKey } from 'vue'
 import type { Client, ClientKind, DisplayLocale, Driver, LocationKind, LocationPlace, OfficeLocation, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
-import { h, inject } from 'vue'
+import { inject } from 'vue'
 import { z } from 'zod'
 import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, groupPassengerCountError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, luggageCountError, noteError, officeLocationSchema, operationalDateInTimeZone, optionalCountFromInput, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
@@ -37,10 +37,10 @@ const LEGACY_DRAFT_KEY = 'transferpro-transfer-form'
 export const transferFormKey: InjectionKey<ReturnType<typeof useTransferForm>> = Symbol('transferForm')
 
 /**
- * Opens the Ride detail on the group list. The day board provides it.
- * The save notice calls it for a same-tab click; a new tab uses the address.
+ * The day board shows the route-left notice. The form only reports the
+ * count and the Ride. The link stays on the board (issue #348).
  */
-export const openTransferGroupKey: InjectionKey<(rideId: string) => void> = Symbol('openTransferGroup')
+export const groupRouteLeftKey: InjectionKey<(count: number, rideId: string) => void> = Symbol('groupRouteLeft')
 
 export function useTransferForm(options: {
   timeZone: () => string
@@ -76,7 +76,7 @@ export function useTransferForm(options: {
 }) {
   const { t } = useI18n()
   const toast = useToast()
-  const openTransferGroup = inject(openTransferGroupKey, null)
+  const noteGroupRouteLeft = inject(groupRouteLeftKey, null)
   const { present } = useWorkOrderPresenter()
   const { notifyAuditChanged } = useAuditRefresh()
 
@@ -235,50 +235,17 @@ export function useTransferForm(options: {
   }
 
   /**
-   * Address of this Ride's detail, at the group list. A new tab loads it.
-   * A same-tab click opens it in place, because a router push of `ride`
-   * while this screen owns the query is dropped (issue #348).
-   */
-  function groupListHref(rideId: string): string {
-    const params = new URLSearchParams({
-      day: options.day.value,
-      ride: rideId,
-    })
-    return `/transfers?${params.toString()}#transfer-group`
-  }
-
-  /**
    * A route change of the main Transfer that was not copied onto its extra
-   * vehicles. The count is zero unless that notice applies. The link opens
-   * the group list so each member can be reached from there.
+   * vehicles. The count is zero unless that notice applies. The board
+   * shows it as an alert with a link to the group list.
    */
   function warnIfGroupRouteLeft(count: number) {
     if (count < 1)
       return
     const rideId = editingRideId.value
-    // No countdown bar: at duration 0 it sits at partial opacity and fails contrast.
-    // The notice stays until the office dismisses it or opens the group.
-    const notice = toast.add({
-      title: t(count === 1 ? 'transfers.groupRouteLeftOne' : 'transfers.groupRouteLeftOther', { count }),
-      description: rideId === null
-        ? undefined
-        : h('a', {
-            href: groupListHref(rideId),
-            class: 'underline',
-            onClick: (event: MouseEvent) => {
-              if (openTransferGroup === null)
-                return
-              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-                return
-              event.preventDefault()
-              toast.remove(notice.id)
-              openTransferGroup(rideId)
-            },
-          }, t('transfers.openGroup')),
-      color: 'warning',
-      duration: 0,
-      progress: false,
-    })
+    if (rideId === null || noteGroupRouteLeft === null)
+      return
+    noteGroupRouteLeft(count, rideId)
   }
 
   function failureKey(error: unknown): TransferFailure {

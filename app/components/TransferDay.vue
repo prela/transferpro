@@ -4,7 +4,7 @@ import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
 import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
-import { openTransferGroupKey } from '../composables/transfer-form'
+import { groupRouteLeftKey } from '../composables/transfer-form'
 import { rideDetailLayout } from '../ride-detail'
 import { assignButtonId } from '../transfer-ride-buttons'
 import { workOrderNotice } from '../work-order-notice'
@@ -26,6 +26,8 @@ const corrected = ref(false)
 const openRideId = ref<string | null>(queryText(route.query.ride) || null)
 // The save notice asks the open detail to scroll to the group list.
 const revealGroup = ref(false)
+// A route change left on the main Transfer. The alert links to the group.
+const groupRouteLeft = ref<{ count: number, rideId: string } | null>(null)
 const adding = ref(false)
 const command = ref<RideDetailCommand | null>(null)
 const layout = ref<RideDetailLayout>('overlay')
@@ -537,7 +539,35 @@ function openTransferGroup(rideId: string) {
   openRideId.value = rideId
 }
 
-provide(openTransferGroupKey, openTransferGroup)
+function noteGroupRouteLeft(count: number, rideId: string) {
+  groupRouteLeft.value = { count, rideId }
+}
+
+provide(groupRouteLeftKey, noteGroupRouteLeft)
+
+function groupListHref(rideId: string): string {
+  const params = new URLSearchParams({
+    day: day.value,
+    ride: rideId,
+  })
+  return `/transfers?${params.toString()}#transfer-group`
+}
+
+function dismissGroupRouteLeft() {
+  groupRouteLeft.value = null
+}
+
+function openGroupFromNotice(event: MouseEvent) {
+  const notice = groupRouteLeft.value
+  if (notice === null)
+    return
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+    return
+  event.preventDefault()
+  const rideId = notice.rideId
+  dismissGroupRouteLeft()
+  openTransferGroup(rideId)
+}
 
 function backFromDetail() {
   closeForm()
@@ -775,6 +805,29 @@ onUnmounted(() => {
       :description="t('transfers.corrected')"
       :ui="{ description: '!text-default !opacity-100' }"
     />
+    <!-- A toast would dismiss the link. The office has to open the group. -->
+    <UAlert
+      v-if="groupRouteLeft"
+      color="warning"
+      variant="subtle"
+      role="status"
+      class="mb-4"
+      :title="t(groupRouteLeft.count === 1 ? 'transfers.groupRouteLeftOne' : 'transfers.groupRouteLeftOther', { count: groupRouteLeft.count })"
+      :close="true"
+      :ui="{ title: '!text-default !opacity-100', description: '!text-default !opacity-100' }"
+      @update:open="(open: boolean) => { if (!open) dismissGroupRouteLeft() }"
+    >
+      <template #description>
+        <UButton
+          :to="groupListHref(groupRouteLeft.rideId)"
+          variant="link"
+          color="neutral"
+          class="px-0"
+          :label="t('transfers.openGroup')"
+          @click="openGroupFromNotice"
+        />
+      </template>
+    </UAlert>
 
     <UAlert
       v-if="loadError"
