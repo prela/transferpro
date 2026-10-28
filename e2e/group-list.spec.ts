@@ -124,6 +124,7 @@ test('the day list marks the group, the detail lists each pickup, and a route ch
   const again = page.getByRole('region', { name: 'Ispravi ovaj transfer' })
   await expect(again.getByLabel('Naručeno putnika (grupa)')).toHaveValue('11')
   await again.getByLabel('Broj leta').fill('OU392')
+  await again.getByRole('checkbox', { name: 'Primijeni i na dodatna vozila' }).uncheck()
   await again.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Notifications (F8)' })).toContainText('Grupa ima još 1 nedovršeno dodatno vozilo. Promjena nije primijenjena na njega.')
 
@@ -162,6 +163,7 @@ test.describe('@phone', () => {
     await page.getByRole('menuitem', { name: 'Correct transfer', exact: true }).click()
     const form = page.getByRole('region', { name: 'Correct this transfer' })
     await form.getByLabel('Flight number').fill('OU392')
+    await form.getByRole('checkbox', { name: 'Also apply to the extra vehicles' }).uncheck()
     await form.getByRole('button', { name: 'Save correction', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Notifications (F8)' })).toContainText('The group still has 1 unfinished extra vehicle. This change was not applied to it.')
   })

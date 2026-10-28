@@ -8,8 +8,8 @@ import { hydrated, signIn } from './fixtures/ui'
 /**
  * Applying a main-Transfer correction to its extra vehicles (issue #468, ADR-0054).
  * The offer appears when the pickup, a start or end Location, or the flight changes.
- * Ticked, the extra vehicle receives those fields and not the guest.
- * Left off stays covered by the group-list spec.
+ * It starts ticked (issue #543). Ticked, the extra vehicle receives those
+ * fields and not the guest. Left off stays covered by the group-list spec.
  */
 
 test.beforeEach(async ({ page }) => {
@@ -77,8 +77,7 @@ test('a ticked route correction copies the flight onto the extra vehicle and lea
   await expect(form.getByRole('checkbox', { name: 'Primijeni i na dodatna vozila' })).toHaveCount(0)
   await form.getByLabel('Broj leta').fill('OU392')
   const apply = form.getByRole('checkbox', { name: 'Primijeni i na dodatna vozila' })
-  await expect(apply).not.toBeChecked()
-  await apply.check()
+  await expect(apply).toBeChecked()
   await form.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
   await expect(page.getByText('Ispravljeno.')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Notifications (F8)' })).not.toContainText('nije primijenjena')

@@ -1,5 +1,6 @@
 import type { InjectionKey } from 'vue'
 import type { Client, ClientKind, DisplayLocale, Driver, LocationKind, LocationPlace, OfficeLocation, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
+import { h, inject } from 'vue'
 import { z } from 'zod'
 import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, groupPassengerCountError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, luggageCountError, noteError, officeLocationSchema, operationalDateInTimeZone, optionalCountFromInput, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
@@ -35,6 +36,12 @@ const LEGACY_DRAFT_KEY = 'transferpro-transfer-form'
  */
 export const transferFormKey: InjectionKey<ReturnType<typeof useTransferForm>> = Symbol('transferForm')
 
+/**
+ * Opens the Ride detail on the group list. The day board provides it.
+ * The save notice calls it for a same-tab click; a new tab uses the address.
+ */
+export const openTransferGroupKey: InjectionKey<(rideId: string) => void> = Symbol('openTransferGroup')
+
 export function useTransferForm(options: {
   timeZone: () => string
   locale: () => DisplayLocale
@@ -69,6 +76,7 @@ export function useTransferForm(options: {
 }) {
   const { t } = useI18n()
   const toast = useToast()
+  const openTransferGroup = inject(openTransferGroupKey, null)
   const { present } = useWorkOrderPresenter()
   const { notifyAuditChanged } = useAuditRefresh()
 
@@ -139,6 +147,8 @@ export function useTransferForm(options: {
   // Unfinished extra vehicles of the main Transfer being corrected. Zero
   // on an extra vehicle and on a new Transfer.
   const unfinishedExtras = ref(0)
+  // Starts on when this correction has unfinished extra vehicles (ADR-0054
+  // amendment, #543). The office can still leave a one-off change off.
   const applyToExtraVehicles = ref(false)
   /**
    * A main Transfer with unfinished extra vehicles, while the pickup, a
@@ -225,15 +235,49 @@ export function useTransferForm(options: {
   }
 
   /**
+   * Address of this Ride's detail, at the group list. A new tab loads it.
+   * A same-tab click opens it in place, because a router push of `ride`
+   * while this screen owns the query is dropped (issue #348).
+   */
+  function groupListHref(rideId: string): string {
+    const params = new URLSearchParams({
+      day: options.day.value,
+      ride: rideId,
+    })
+    return `/transfers?${params.toString()}#transfer-group`
+  }
+
+  /**
    * A route change of the main Transfer that was not copied onto its extra
-   * vehicles. The count is zero unless that notice applies.
+   * vehicles. The count is zero unless that notice applies. The link opens
+   * the group list so each member can be reached from there.
    */
   function warnIfGroupRouteLeft(count: number) {
     if (count < 1)
       return
-    toast.add({
+    const rideId = editingRideId.value
+    // No countdown bar: at duration 0 it sits at partial opacity and fails contrast.
+    // The notice stays until the office dismisses it or opens the group.
+    const notice = toast.add({
       title: t(count === 1 ? 'transfers.groupRouteLeftOne' : 'transfers.groupRouteLeftOther', { count }),
+      description: rideId === null
+        ? undefined
+        : h('a', {
+            href: groupListHref(rideId),
+            class: 'underline',
+            onClick: (event: MouseEvent) => {
+              if (openTransferGroup === null)
+                return
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+                return
+              event.preventDefault()
+              toast.remove(notice.id)
+              openTransferGroup(rideId)
+            },
+          }, t('transfers.openGroup')),
       color: 'warning',
+      duration: 0,
+      progress: false,
     })
   }
 
@@ -700,7 +744,7 @@ export function useTransferForm(options: {
     editingRideId.value = ride.rideId
     editingVersion.value = ride.version
     unfinishedExtras.value = ride.mainTransferId === null ? ride.unfinishedExtraVehicleCount : 0
-    applyToExtraVehicles.value = false
+    applyToExtraVehicles.value = unfinishedExtras.value > 0
     mainTransferId.value = null
     mainVersion.value = null
     // Only a main Transfer that already stores the group's ordered count.

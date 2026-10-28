@@ -81,3 +81,7 @@ A correction left on the main Transfer does not reach its extra vehicles, so the
 A main Transfer cancelled by mistake takes its group with it, and none of it can be revived (ADR-0005). If the main Transfer's Ride ends as a No-show while an extra vehicle is done, nothing is invoiced; the office corrects that by hand.
 
 If groups turn out to be frequent, several Rides per Transfer can still replace this link with its own ADR.
+
+## Amendment (2026-10-28, #543)
+
+The offer "Primijeni i na dodatna vozila" starts ticked when the main Transfer has unfinished extra vehicles. The office can still leave it off, and then only the main Transfer changes. The save notice that names those extra vehicles links to the group list on that Ride's detail. Nothing else in this decision changes.

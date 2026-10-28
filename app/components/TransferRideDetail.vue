@@ -35,6 +35,11 @@ const props = defineProps<{
   operationalDayStartHour: number
   tenantId: string
   userId: string
+  /**
+   * The correction notice set this. Scroll the group list into view once
+   * it has loaded. A full page load uses the `#transfer-group` hash instead.
+   */
+  revealGroup?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -50,6 +55,7 @@ const emit = defineEmits<{
   returnJourney: []
   extraVehicle: []
   saved: []
+  groupRevealed: []
 }>()
 const day = defineModel<string>('day', { required: true })
 const saved = defineModel<boolean>('saved', { required: true })
@@ -60,6 +66,7 @@ const endMapOpen = ref(false)
 const clients = defineModel<Client[]>('clients', { required: true })
 
 const { t } = useI18n()
+const route = useRoute()
 const { dismiss, kept } = useKeptWorkOrders()
 const titleId = useId()
 const snapshot = ref<TransferDayRide | null>(null)
@@ -311,7 +318,9 @@ function runPrimary() {
 
 const groupMembers = ref<TransferGroupMember[] | null>(null)
 const groupError = ref(false)
+const groupSection = ref<HTMLElement | null>(null)
 let groupRequest = 0
+let groupRevealed = false
 
 /**
  * Members can pick up on another day, so the day list is not the group.
@@ -354,6 +363,35 @@ watch(
     loadGroup()
   },
   { immediate: true },
+)
+
+watch(() => props.ride.rideId, () => {
+  groupRevealed = false
+})
+
+/**
+ * The notice and a `#transfer-group` load both land on this list. Wait
+ * until the members (or the load error) are on screen, then scroll once.
+ */
+watch(
+  [groupMembers, groupError, () => props.revealGroup, () => route.hash],
+  () => {
+    const asked = props.revealGroup === true || route.hash === '#transfer-group'
+    if (!asked || groupRevealed)
+      return
+    if (groupMembers.value === null && !groupError.value)
+      return
+    groupRevealed = true
+    void nextTick(() => {
+      const section = groupSection.value
+      if (!section)
+        return
+      section.scrollIntoView({ block: 'start' })
+      section.focus()
+      if (props.revealGroup)
+        emit('groupRevealed')
+    })
+  },
 )
 
 const groupOrderedCount = computed(() =>
@@ -663,7 +701,10 @@ const primaryLabel = computed(() => {
     <section
       v-if="groupError || (groupMembers && groupMembers.length > 0)"
       v-show="!command"
-      class="mb-4 text-sm"
+      id="transfer-group"
+      ref="groupSection"
+      tabindex="-1"
+      class="mb-4 text-sm outline-none"
       :aria-label="t('transfers.group')"
     >
       <h3 class="font-medium">

@@ -4,6 +4,7 @@ import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
 import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
+import { openTransferGroupKey } from '../composables/transfer-form'
 import { rideDetailLayout } from '../ride-detail'
 import { assignButtonId } from '../transfer-ride-buttons'
 import { workOrderNotice } from '../work-order-notice'
@@ -23,6 +24,8 @@ const router = useRouter()
 const saved = ref(false)
 const corrected = ref(false)
 const openRideId = ref<string | null>(queryText(route.query.ride) || null)
+// The save notice asks the open detail to scroll to the group list.
+const revealGroup = ref(false)
 const adding = ref(false)
 const command = ref<RideDetailCommand | null>(null)
 const layout = ref<RideDetailLayout>('overlay')
@@ -519,8 +522,22 @@ function restorePhoneScroll() {
 function closeDetail() {
   closeForm()
   command.value = null
+  revealGroup.value = false
   openRideId.value = null
 }
+
+/**
+ * The correction notice opens this Ride at its group list. Setting the id
+ * here, rather than pushing `?ride=`, keeps the navigation the screen owns
+ * (issue #348). A new tab still uses the address on the link.
+ */
+function openTransferGroup(rideId: string) {
+  command.value = null
+  revealGroup.value = true
+  openRideId.value = rideId
+}
+
+provide(openTransferGroupKey, openTransferGroup)
 
 function backFromDetail() {
   closeForm()
@@ -532,6 +549,7 @@ let openTimer = 0
 
 function showRide(ride: TransferDayRide, next: RideDetailCommand | null) {
   rememberPhoneScroll()
+  revealGroup.value = false
   closeForm()
   window.clearTimeout(openTimer)
   // The row menu closes on the next tick and returns focus. A detail opened
@@ -755,6 +773,7 @@ onUnmounted(() => {
       role="status"
       class="mb-4"
       :description="t('transfers.corrected')"
+      :ui="{ description: '!text-default !opacity-100' }"
     />
 
     <UAlert
@@ -888,9 +907,11 @@ onUnmounted(() => {
               :tenant-id="tenantId"
               :user-id="userId"
               :load-day="() => loadDay()"
+              :reveal-group="revealGroup"
               @command="onCommand"
               @close="closeDetail"
               @back="backFromDetail"
+              @group-revealed="revealGroup = false"
               @done="commands?.openMarkDone(openRide)"
               @no-show="commands?.openMarkNoShow(openRide)"
               @cancel-ride="commands?.openCancelRide(openRide)"
@@ -967,9 +988,11 @@ onUnmounted(() => {
           :tenant-id="tenantId"
           :user-id="userId"
           :load-day="() => loadDay()"
+          :reveal-group="revealGroup"
           @command="onCommand"
           @close="closeDetail"
           @back="backFromDetail"
+          @group-revealed="revealGroup = false"
           @done="commands?.openMarkDone(openRide)"
           @no-show="commands?.openMarkNoShow(openRide)"
           @clear="commands?.openClear(openRide)"

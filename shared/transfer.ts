@@ -745,7 +745,8 @@ function toCreateTransfer(parsed: BookingBody): CreateTransfer {
  * seen a true overlap. The record route does not accept it. `externalId`
  * is an unknown field and is 400: a correction cannot change the key.
  * `applyToExtraVehicles` copies the changed pickup, start and end Locations, and flight onto
- * unfinished extra vehicles. Absent is left off (ADR-0054).
+ * unfinished extra vehicles. Absent is left off. The correction form starts
+ * ticked and sends true (ADR-0054 amendment, #543).
  */
 const correctionEnvelopeSchema = z.object({
   confirm: z.boolean().optional(),
