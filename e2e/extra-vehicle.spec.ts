@@ -127,6 +127,67 @@ test('the detail adds an extra vehicle and an extra vehicle offers no duplicate'
   await expect(page.getByRole('menuitem', { name: 'Povratni transfer', exact: true })).toHaveCount(0)
 })
 
+test('an extra vehicle saves blank luggage and child seats as none and still requires passengers', async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const tenant = await seedTenant('extra-vehicle-blank-counts')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const places = await seedBooking(page, 'Prazno')
+  const day = operationalDay(page)
+  const recorded = await recordTransfer(page.request, {
+    data: {
+      ...places,
+      pickupAt: instantFromWallClock(`${day}T14:00`, 'Europe/Zagreb').toISOString(),
+      passengerCount: 3,
+      guestName: 'Mia Prazno',
+      flightNumber: 'OU200',
+      price: 30,
+      payment: 'cash',
+      airportMark: false,
+      luggageCount: 1,
+      childSeatCount: 1,
+      tabla: 'MIA',
+      clientReference: 'P-0',
+      note: 'Glavni',
+    },
+  })
+  expect(recorded.ok()).toBeTruthy()
+  const mainId = (await recorded.json() as { transfer: { id: string } }).transfer.id
+
+  await page.goto(`/transfers?day=${day}`)
+  await hydrated(page)
+  await page.getByRole('row', { name: 'Mia Prazno' }).click()
+  await page.getByRole('button', { name: 'Više', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Dodatno vozilo', exact: true }).click()
+
+  const form = page.getByRole('region', { name: 'Dodatno vozilo' })
+  await expect(form.getByLabel('Prtljaga')).toHaveValue('')
+  await expect(form.getByLabel('Dječje sjedalice')).toHaveValue('')
+  await form.getByLabel('Ime gosta').fill('Mia Vozilo')
+  await form.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  // Passengers stay required. Blank luggage and child seats are none, so they draw no error.
+  await expect(form.locator('#transfer-form-summary li')).toHaveText('Unesite cijeli broj u rasponu.')
+  await expect(form.locator('#transfer-passengers')).toHaveAttribute('aria-invalid', 'true')
+  await expect(form.locator('#transfer-luggage')).not.toHaveAttribute('aria-invalid', 'true')
+  await expect(form.locator('#transfer-seats')).not.toHaveAttribute('aria-invalid', 'true')
+  await expect(form).toBeVisible()
+
+  await form.getByLabel('Putnici').fill('2')
+  await form.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Notifications (F8)' }).getByText('Zabilježeno.')).toBeVisible()
+
+  const rides = await dayRides(page, day)
+  const extra = rides.find(ride => ride.transferId !== mainId)
+  expect(extra).toMatchObject({
+    mainTransferId: mainId,
+    guestName: 'Mia Vozilo',
+    passengerCount: 2,
+    luggageCount: 0,
+    childSeatCount: 0,
+    price: '0.00',
+  })
+})
+
 test.describe('@phone', () => {
   test('a phone adds an extra vehicle from the row menu and another from that vehicle', async ({ page }) => {
     test.setTimeout(120_000)

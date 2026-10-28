@@ -1,7 +1,7 @@
 import type { InjectionKey } from 'vue'
 import type { Client, ClientKind, DisplayLocale, Driver, LocationKind, LocationPlace, OfficeLocation, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
 import { z } from 'zod'
-import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, groupPassengerCountError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, luggageCountError, noteError, officeLocationSchema, operationalDateInTimeZone, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
+import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, groupPassengerCountError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, luggageCountError, noteError, officeLocationSchema, operationalDateInTimeZone, optionalCountFromInput, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -93,6 +93,7 @@ export function useTransferForm(options: {
   // Set for an extra vehicle. The Price stays 0 and is not shown. The
   // group count is asked only while the main Transfer has not stored one.
   const mainTransferId = ref<string | null>(null)
+  const extraVehicle = computed(() => mainTransferId.value !== null)
   const mainVersion = ref<number | null>(null)
   const asksGroupCount = ref(false)
   const groupPassengers = ref('')
@@ -353,8 +354,11 @@ export function useTransferForm(options: {
     noteErrorKey.value = noteError(note.value) ? 'transfers.noteTooLong' : null
     priceErrorKey.value = priceError(price.value) ? 'transfers.priceInvalid' : null
     passengerErrorKey.value = passengerCountError(passengers.value) ? 'transfers.countInvalid' : null
-    luggageErrorKey.value = luggageCountError(luggage.value) ? 'transfers.countInvalid' : null
-    seatErrorKey.value = childSeatCountError(childSeats.value) ? 'transfers.countInvalid' : null
+    // An extra vehicle leaves luggage and child seats blank when unknown.
+    // That blank is none. The ordinary form still requires a typed count.
+    const blankIsNone = extraVehicle.value
+    luggageErrorKey.value = luggageCountError(luggage.value, blankIsNone) ? 'transfers.countInvalid' : null
+    seatErrorKey.value = childSeatCountError(childSeats.value, blankIsNone) ? 'transfers.countInvalid' : null
     groupErrorKey.value = asksGroupCount.value && groupPassengerCountError(groupPassengers.value)
       ? 'transfers.countInvalid'
       : null
@@ -495,8 +499,6 @@ export function useTransferForm(options: {
         closeForm()
     },
   })
-
-  const extraVehicle = computed(() => mainTransferId.value !== null)
 
   const formTitle = computed(() => {
     if (formMode.value === 'edit')
@@ -752,8 +754,8 @@ export function useTransferForm(options: {
       price: mainTransferId.value !== null ? 0 : priceFromInput(price.value),
       payment: payment.value,
       airportMark: airportMark.value,
-      luggageCount: Number(luggage.value),
-      childSeatCount: Number(childSeats.value),
+      luggageCount: optionalCountFromInput(luggage.value),
+      childSeatCount: optionalCountFromInput(childSeats.value),
       note: note.value,
     }
   }

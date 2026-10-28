@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canAddExtraVehicle, canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, CLIENT_REFERENCE_MAX_LENGTH, correctionChangesRoute, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, NOTE_MAX_LENGTH, officeGroupPassengerCount, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, pickupAtError, priceError, ROUTE_TRANSFER_FIELDS, sameLocationError, transferGroupMemberSchema, transferGroupRole, transferGroupSchema, TransferInputError } from './transfer'
+import { canAddExtraVehicle, canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, childSeatCountError, CLIENT_REFERENCE_MAX_LENGTH, correctionChangesRoute, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, luggageCountError, NOTE_MAX_LENGTH, officeGroupPassengerCount, optionalCountFromInput, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, passengerCountError, pickupAtError, priceError, ROUTE_TRANSFER_FIELDS, sameLocationError, transferGroupMemberSchema, transferGroupRole, transferGroupSchema, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -308,6 +308,29 @@ it('leaves a missing day for the operational-day default and refuses a day that 
   expect(() => parseTransferDay('')).toThrow(QueryParamError)
   expect(() => parseTransferDay('2026-02-31')).toThrow(QueryParamError)
   expect(() => parseTransferDay('06.10.2026')).toThrow(QueryParamError)
+})
+
+it('treats a blank luggage or child-seat count as none and still refuses a bad one', () => {
+  // The ordinary form omits the blank-is-none flag, so a cleared field stays invalid.
+  expect(luggageCountError('')).toBe('invalid')
+  expect(childSeatCountError('')).toBe('invalid')
+  expect(luggageCountError('', true)).toBeNull()
+  expect(childSeatCountError('   ', true)).toBeNull()
+  expect(luggageCountError('0', true)).toBeNull()
+  expect(childSeatCountError('0', true)).toBeNull()
+  expect(luggageCountError('2', true)).toBeNull()
+  expect(childSeatCountError(String(CHILD_SEAT_COUNT_MAX), true)).toBeNull()
+  expect(luggageCountError('no', true)).toBe('invalid')
+  expect(childSeatCountError('1.5', true)).toBe('invalid')
+  expect(luggageCountError(String(LUGGAGE_COUNT_MAX + 1), true)).toBe('invalid')
+  expect(childSeatCountError(String(CHILD_SEAT_COUNT_MAX + 1), true)).toBe('invalid')
+  // Blank is the same 0 the server stores. A passenger count stays required.
+  expect(optionalCountFromInput('')).toBe(0)
+  expect(optionalCountFromInput('  ')).toBe(0)
+  expect(optionalCountFromInput('0')).toBe(0)
+  expect(optionalCountFromInput('4')).toBe(4)
+  expect(passengerCountError('')).toBe('invalid')
+  expect(passengerCountError('2')).toBeNull()
 })
 
 it('accepts a comma as a decimal mark and refuses a third digit', () => {
