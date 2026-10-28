@@ -878,7 +878,8 @@ onUnmounted(() => {
     </fieldset>
   </form>
   <!-- A route change of a main Transfer can copy onto unfinished extra vehicles.
-       Left off, the save stays on this Transfer and the notice from G3 remains. -->
+       The box starts on. Left off, the save stays on this Transfer and the
+       notice links to the group list. -->
   <UCheckbox
     v-if="offerApplyToExtraVehicles"
     id="transfer-apply-extras"

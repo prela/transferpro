@@ -4,6 +4,7 @@ import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
 import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
+import { groupRouteLeftKey } from '../composables/transfer-form'
 import { rideDetailLayout } from '../ride-detail'
 import { assignButtonId } from '../transfer-ride-buttons'
 import { workOrderNotice } from '../work-order-notice'
@@ -23,6 +24,10 @@ const router = useRouter()
 const saved = ref(false)
 const corrected = ref(false)
 const openRideId = ref<string | null>(queryText(route.query.ride) || null)
+// The save notice asks the open detail to scroll to the group list.
+const revealGroup = ref(false)
+// A route change left on the main Transfer. The alert links to the group.
+const groupRouteLeft = ref<{ count: number, rideId: string } | null>(null)
 const adding = ref(false)
 const command = ref<RideDetailCommand | null>(null)
 const layout = ref<RideDetailLayout>('overlay')
@@ -519,7 +524,49 @@ function restorePhoneScroll() {
 function closeDetail() {
   closeForm()
   command.value = null
+  revealGroup.value = false
   openRideId.value = null
+}
+
+/**
+ * The correction notice opens this Ride at its group list. Setting the id
+ * here, rather than pushing `?ride=`, keeps the navigation the screen owns
+ * (issue #348). A new tab still uses the address on the link.
+ */
+function openTransferGroup(rideId: string) {
+  command.value = null
+  revealGroup.value = true
+  openRideId.value = rideId
+}
+
+function noteGroupRouteLeft(count: number, rideId: string) {
+  groupRouteLeft.value = { count, rideId }
+}
+
+provide(groupRouteLeftKey, noteGroupRouteLeft)
+
+function groupListHref(rideId: string): string {
+  const params = new URLSearchParams({
+    day: day.value,
+    ride: rideId,
+  })
+  return `/transfers?${params.toString()}#transfer-group`
+}
+
+function dismissGroupRouteLeft() {
+  groupRouteLeft.value = null
+}
+
+function openGroupFromNotice(event: MouseEvent) {
+  const notice = groupRouteLeft.value
+  if (notice === null)
+    return
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+    return
+  event.preventDefault()
+  const rideId = notice.rideId
+  dismissGroupRouteLeft()
+  openTransferGroup(rideId)
 }
 
 function backFromDetail() {
@@ -532,6 +579,7 @@ let openTimer = 0
 
 function showRide(ride: TransferDayRide, next: RideDetailCommand | null) {
   rememberPhoneScroll()
+  revealGroup.value = false
   closeForm()
   window.clearTimeout(openTimer)
   // The row menu closes on the next tick and returns focus. A detail opened
@@ -755,7 +803,31 @@ onUnmounted(() => {
       role="status"
       class="mb-4"
       :description="t('transfers.corrected')"
+      :ui="{ description: '!text-default !opacity-100' }"
     />
+    <!-- A toast would dismiss the link. The office has to open the group. -->
+    <UAlert
+      v-if="groupRouteLeft"
+      color="warning"
+      variant="subtle"
+      role="status"
+      class="mb-4"
+      :title="t(groupRouteLeft.count === 1 ? 'transfers.groupRouteLeftOne' : 'transfers.groupRouteLeftOther', { count: groupRouteLeft.count })"
+      :close="true"
+      :ui="{ title: '!text-default !opacity-100', description: '!text-default !opacity-100' }"
+      @update:open="(open: boolean) => { if (!open) dismissGroupRouteLeft() }"
+    >
+      <template #description>
+        <UButton
+          :to="groupListHref(groupRouteLeft.rideId)"
+          variant="link"
+          color="neutral"
+          class="px-0"
+          :label="t('transfers.openGroup')"
+          @click="openGroupFromNotice"
+        />
+      </template>
+    </UAlert>
 
     <UAlert
       v-if="loadError"
@@ -888,9 +960,11 @@ onUnmounted(() => {
               :tenant-id="tenantId"
               :user-id="userId"
               :load-day="() => loadDay()"
+              :reveal-group="revealGroup"
               @command="onCommand"
               @close="closeDetail"
               @back="backFromDetail"
+              @group-revealed="revealGroup = false"
               @done="commands?.openMarkDone(openRide)"
               @no-show="commands?.openMarkNoShow(openRide)"
               @cancel-ride="commands?.openCancelRide(openRide)"
@@ -967,9 +1041,11 @@ onUnmounted(() => {
           :tenant-id="tenantId"
           :user-id="userId"
           :load-day="() => loadDay()"
+          :reveal-group="revealGroup"
           @command="onCommand"
           @close="closeDetail"
           @back="backFromDetail"
+          @group-revealed="revealGroup = false"
           @done="commands?.openMarkDone(openRide)"
           @no-show="commands?.openMarkNoShow(openRide)"
           @clear="commands?.openClear(openRide)"

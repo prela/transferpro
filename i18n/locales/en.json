@@ -546,6 +546,7 @@
     "extraVehicle": "Extra vehicle",
     "groupPassengers": "Passengers ordered (group)",
     "group": "Group",
+    "openGroup": "Open the group",
     "groupRouteLeftOne": "The group still has 1 unfinished extra vehicle. This change was not applied to it.",
     "groupRouteLeftOther": "The group still has {count} unfinished extra vehicles. This change was not applied to them.",
     "applyToExtraVehicles": "Also apply to the extra vehicles",

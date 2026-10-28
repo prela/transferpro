@@ -546,6 +546,7 @@
     "extraVehicle": "Dodatno vozilo",
     "groupPassengers": "Naručeno putnika (grupa)",
     "group": "Grupa",
+    "openGroup": "Otvori grupu",
     "groupRouteLeftOne": "Grupa ima još 1 nedovršeno dodatno vozilo. Promjena nije primijenjena na njega.",
     "groupRouteLeftOther": "Grupa ima još {count} nedovršenih dodatnih vozila. Promjena nije primijenjena na njih.",
     "applyToExtraVehicles": "Primijeni i na dodatna vozila",
