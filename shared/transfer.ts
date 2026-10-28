@@ -849,12 +849,33 @@ export function groupPassengerCountError(value: string): CountError | null {
   return countError(value, GROUP_PASSENGER_COUNT_MIN, GROUP_PASSENGER_COUNT_MAX)
 }
 
-export function luggageCountError(value: string): CountError | null {
-  return countError(value, LUGGAGE_COUNT_MIN, LUGGAGE_COUNT_MAX)
+/** A luggage or child-seat field the office left empty. That empty means none. */
+function blankCount(value: string): boolean {
+  return value.trim() === ''
 }
 
-export function childSeatCountError(value: string): CountError | null {
-  return countError(value, CHILD_SEAT_COUNT_MIN, CHILD_SEAT_COUNT_MAX)
+/**
+ * Luggage and child seats can be unknown on an extra vehicle. Pass `blankIsNone`
+ * there: a blank field means none. The ordinary form omits it, so a cleared
+ * count there stays invalid.
+ */
+function blankableCountError(value: string, min: number, max: number, blankIsNone = false): CountError | null {
+  if (blankIsNone && blankCount(value))
+    return null
+  return countError(value, min, max)
+}
+
+export function luggageCountError(value: string, blankIsNone = false): CountError | null {
+  return blankableCountError(value, LUGGAGE_COUNT_MIN, LUGGAGE_COUNT_MAX, blankIsNone)
+}
+
+export function childSeatCountError(value: string, blankIsNone = false): CountError | null {
+  return blankableCountError(value, CHILD_SEAT_COUNT_MIN, CHILD_SEAT_COUNT_MAX, blankIsNone)
+}
+
+/** The number a luggage or child-seat field sends. Blank is 0, the same as none. */
+export function optionalCountFromInput(value: string): number {
+  return blankCount(value) ? 0 : Number(value.trim())
 }
 
 /**
