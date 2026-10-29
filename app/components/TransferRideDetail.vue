@@ -269,7 +269,7 @@ function readInvoiceError(error: unknown): { code: string | null, clientId: stri
 /**
  * Issue or retry, then reload the day until the job has stored a result.
  * The response itself is only the requested row. The number arrives with
- * the job.
+ * the job, which can wait out this tenant's ten-second spacing.
  */
 async function postInvoice(path: string) {
   if (invoicePending.value)
@@ -279,11 +279,14 @@ async function postInvoice(path: string) {
   invoiceClientId.value = null
   try {
     await $fetch(path, { method: 'POST', body: {} })
-    for (let attempt = 0; attempt < 8; attempt += 1) {
+    // The number is written by the job, which waits out this tenant's
+    // ten-second spacing and can sit in the queue. Keep the day current
+    // until that row leaves "requested".
+    for (let attempt = 0; attempt < 24; attempt += 1) {
       await props.loadDay()
       if (props.ride.invoice?.state !== 'requested')
         return
-      await new Promise(resolve => setTimeout(resolve, 250))
+      await new Promise(resolve => setTimeout(resolve, 500))
     }
   }
   catch (error) {

@@ -133,7 +133,7 @@ test.describe('@phone', () => {
         : page.getByRole('row', { name: 'Iva Račun' })
       await openPriced.locator('time').first().click()
       await page.getByRole('button', { name: 'Izdaj račun', exact: true }).click()
-      await expect(page.locator('#transfer-invoice')).toContainText(/F-\d+/)
+      await expect(page.locator('#transfer-invoice')).toContainText(/F-\d+/, { timeout: 20_000 })
       await expect(page.getByRole('link', { name: 'Otvori račun', exact: true })).toBeVisible()
       await expectNoAxeViolations(page)
 
