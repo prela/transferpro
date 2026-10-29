@@ -164,6 +164,7 @@ async function replaceApp(client: PoolClient, picture: DemoPicture): Promise<voi
   await client.query('delete from app.drivers where tenant_id = $1', [tenantId])
   await client.query('delete from app.vehicles where tenant_id = $1', [tenantId])
   await client.query('delete from app.locations where tenant_id = $1', [tenantId])
+  await client.query('delete from app.client_billing_details where tenant_id = $1', [tenantId])
   await client.query('delete from app.clients where tenant_id = $1', [tenantId])
   // Audit is append-only, including for the owner. This command writes none
   // and does not disable the trigger. Rows from a real session stay.

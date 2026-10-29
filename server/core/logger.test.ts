@@ -43,6 +43,11 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
   const logs = captureLogs()
   logs.logger.info({
     guest_name: 'Iva Kovač',
+    legalName: 'Hotel Jadran d.o.o.',
+    oib: '12345678903',
+    vatId: 'HR12345678903',
+    country: 'HR',
+    guestNameOnInvoice: true,
     phoneNumber: '+385911110000',
     flight_number: 'OU392',
     address: 'Ilica 1, Zagreb',
@@ -60,6 +65,11 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
   const [line] = logs.lines()
   expect(line).toMatchObject({
     guest_name: '[Redacted]',
+    legalName: '[Redacted]',
+    oib: '[Redacted]',
+    vatId: '[Redacted]',
+    country: '[Redacted]',
+    guestNameOnInvoice: '[Redacted]',
     phoneNumber: '[Redacted]',
     flight_number: '[Redacted]',
     address: '[Redacted]',
@@ -74,6 +84,9 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
     user_id: '6b1e0c3a-1111-4111-8111-111111111111',
   })
   const text = JSON.stringify(line)
+  expect(text).not.toContain('Hotel Jadran d.o.o.')
+  expect(text).not.toContain('12345678903')
+  expect(text).not.toContain('HR12345678903')
   expect(text).not.toContain('OU392')
   expect(text).not.toContain('postgres://app:secret')
   expect(text).not.toContain('allergic to nuts')

@@ -1,6 +1,6 @@
 import { createError } from 'h3'
 import { z } from 'zod'
-import { ClientInputError, ClientNoteInputError, ContactPersonInputError, StaleSaveError } from '../../../shared'
+import { ClientBillingInputError, ClientInputError, ClientNoteInputError, ContactPersonInputError, StaleSaveError } from '../../../shared'
 import { ClientNotFoundError, ContactPersonNotFoundError } from '../../modules/clients'
 import { TenantAccessError } from '../../modules/tenancy'
 import { rethrowTenantChanged } from '../tenant-changed'
@@ -13,7 +13,7 @@ import { rethrowTenantChanged } from '../tenant-changed'
  */
 export function clientHttpError(error: unknown): never {
   rethrowTenantChanged(error)
-  if (error instanceof ClientInputError || error instanceof ClientNoteInputError || error instanceof ContactPersonInputError || error instanceof ClientNotFoundError || error instanceof ContactPersonNotFoundError || error instanceof TenantAccessError)
+  if (error instanceof ClientInputError || error instanceof ClientNoteInputError || error instanceof ClientBillingInputError || error instanceof ContactPersonInputError || error instanceof ClientNotFoundError || error instanceof ContactPersonNotFoundError || error instanceof TenantAccessError)
     throw createError({ statusCode: error.statusCode })
   if (error instanceof StaleSaveError)
     throw createError({ statusCode: error.statusCode, data: { code: error.code } })

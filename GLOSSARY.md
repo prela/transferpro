@@ -208,7 +208,7 @@ An agency, hotel, or individual who books a Transfer. An invoice for a Transfer 
 _Avoid_: partner, customer
 
 **Client card**:
-What the office keeps and sees about one Client: its name and kind, its contact persons, its Client note, and its Ride history. It has no pipeline, no offers, and no communication history.
+What the office keeps and sees about one Client: its name and kind, its contact persons, its Client note, its billing details when it is an agency or a hotel, and its Ride history. It has no pipeline, no offers, and no communication history.
 _Avoid_: CRM, profile
 
 **Contact person**:

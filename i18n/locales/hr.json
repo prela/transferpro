@@ -270,6 +270,9 @@
       "client_note": {
         "saved": "Napomena naručitelja spremljena"
       },
+      "billing_details": {
+        "saved": "Podaci za račun spremljeni"
+      },
       "partner": {
         "created": "Podizvođač dodan",
         "changed": "Podizvođač ispravljen",
@@ -337,6 +340,7 @@
       "data": "Podaci",
       "contacts": "Kontakti",
       "note": "Napomena",
+      "billing": "Podaci za račun",
       "rides": "Vožnje"
     },
     "contacts": {
@@ -390,6 +394,39 @@
       "saveFailed": "Napomena nije spremljena. Pokušajte ponovno.",
       "fields": {
         "note": "Napomena"
+      }
+    },
+    "billing": {
+      "legalName": "Pravni naziv",
+      "country": "Država",
+      "oib": "OIB",
+      "vatId": "PDV ID",
+      "address": "Adresa",
+      "guestName": "Ime gosta na računu",
+      "legalNameEmpty": "Unesite pravni naziv.",
+      "legalNameTooLong": "Pravni naziv može imati najviše 200 znakova.",
+      "countryInvalid": "Odaberite državu.",
+      "oibRequired": "Za Hrvatsku unesite OIB.",
+      "oibInvalid": "OIB mora imati 11 znamenki i ispravnu kontrolnu znamenku.",
+      "vatTooLong": "PDV ID može imati najviše 20 znakova.",
+      "addressEmpty": "Unesite adresu.",
+      "addressTooLong": "Adresa može imati najviše 300 znakova.",
+      "save": "Spremi",
+      "saving": "Spremanje",
+      "loading": "Učitavanje podataka za račun",
+      "loadFailed": "Podatke za račun nije bilo moguće učitati. Pokušajte ponovno.",
+      "rejected": "Podaci za račun nisu prihvaćeni.",
+      "notFound": "Taj naručitelj više nije na popisu.",
+      "forbidden": "Vozač ne može mijenjati podatke za račun.",
+      "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
+      "saveFailed": "Podaci za račun nisu spremljeni. Pokušajte ponovno.",
+      "fields": {
+        "legalName": "Pravni naziv",
+        "country": "Država",
+        "oib": "OIB",
+        "vatId": "PDV ID",
+        "address": "Adresa",
+        "guestNameOnInvoice": "Ime gosta na računu"
       }
     },
     "rides": {

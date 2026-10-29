@@ -182,6 +182,13 @@ it('the table refuses data that does not match its action, for every writer', as
     ['client_note.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["text"]}'],
     ['client_note.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":[]}'],
     ['client_note.saved', subject, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["note"]}'],
+    // Billing details record the Client id and field names. Never a legal name, an OIB, a VAT id, or an address.
+    ['billing_details.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["legalName","country","address"],"legalName":"Hotel Jadran d.o.o."}'],
+    ['billing_details.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["oib"],"oib":"12345678903"}'],
+    ['billing_details.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["address"],"address":"Obala 1, Split"}'],
+    ['billing_details.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["country","legalName"]}'],
+    ['billing_details.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":[]}'],
+    ['billing_details.saved', subject, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["legalName"]}'],
     // A Partner records the id and field names. Never the name, the phone, the email, or the note.
     ['partner.created', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["name"],"name":"Mora Transfer"}'],
     ['partner.created', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["name","phone"],"phone":"+385911110379"}'],
@@ -521,6 +528,22 @@ it('append_entry accepts a Client note save with the Client id and the field nam
     { tenant_id: tenant, action: 'client_note.saved', actor_user_id: actor, subject_user_id: null, data: saved },
   ])
   expect(JSON.stringify(await entriesOf(tenant))).not.toContain('Gosti se čekaju na izlazu.')
+})
+
+it('append_entry accepts a billing-details save with the Client id and the field names only', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const append = `select audit.append_entry($1, $2, null, $3::jsonb)`
+  const saved = { clientId, fields: ['legalName', 'country', 'oib', 'address'] }
+  await inSession(appPool, tenant, client => client.query(append, ['billing_details.saved', actor, JSON.stringify(saved)]))
+  expect(await entriesOf(tenant)).toEqual([
+    { tenant_id: tenant, action: 'billing_details.saved', actor_user_id: actor, subject_user_id: null, data: saved },
+  ])
+  const text = JSON.stringify(await entriesOf(tenant))
+  expect(text).not.toContain('Hotel Jadran d.o.o.')
+  expect(text).not.toContain('12345678903')
+  expect(text).not.toContain('Obala 1')
 })
 
 it('append_entry accepts a Partner create, change, archive, and restore with the id and field names only', async () => {

@@ -836,6 +836,37 @@ it('records a Client note by the Client id and the field name, never the text', 
   expect(auditFactSchema.safeParse({ ...saved, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records billing details by the Client id and the field names, never a value', () => {
+  const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
+  const saved = {
+    action: 'billing_details.saved' as const,
+    subjectUserId: null,
+    data: { clientId, fields: ['legalName', 'country', 'oib', 'address'] as const },
+  }
+  expect(auditFactSchema.parse(saved)).toEqual(saved)
+  expect(auditFactSchema.safeParse({
+    ...saved,
+    data: { ...saved.data, legalName: 'Hotel Jadran d.o.o.' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...saved,
+    data: { ...saved.data, oib: '12345678903' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...saved,
+    data: { ...saved.data, address: 'Obala 1, Split' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...saved,
+    data: { ...saved.data, fields: ['country', 'legalName'] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...saved,
+    data: { ...saved.data, fields: [] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...saved, subjectUserId: memberId }).success).toBe(false)
+})
+
 it('records a Partner by id and field names, and refuses the name, the phone, the email, and the note', () => {
   const partnerId = '2e3d4c5b-7777-4777-8777-777777777777'
   const created = {

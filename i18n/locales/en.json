@@ -270,6 +270,9 @@
       "client_note": {
         "saved": "Client note saved"
       },
+      "billing_details": {
+        "saved": "Billing details saved"
+      },
       "partner": {
         "created": "Subcontractor added",
         "changed": "Subcontractor corrected",
@@ -337,6 +340,7 @@
       "data": "Details",
       "contacts": "Contacts",
       "note": "Note",
+      "billing": "Billing details",
       "rides": "Rides"
     },
     "contacts": {
@@ -390,6 +394,39 @@
       "saveFailed": "The note was not saved. Try again.",
       "fields": {
         "note": "Note"
+      }
+    },
+    "billing": {
+      "legalName": "Legal name",
+      "country": "Country",
+      "oib": "OIB",
+      "vatId": "VAT id",
+      "address": "Address",
+      "guestName": "Guest name on the invoice",
+      "legalNameEmpty": "Enter the legal name.",
+      "legalNameTooLong": "The legal name can be at most 200 characters.",
+      "countryInvalid": "Choose a country.",
+      "oibRequired": "Enter the OIB for Croatia.",
+      "oibInvalid": "The OIB must be 11 digits with a valid check digit.",
+      "vatTooLong": "The VAT id can be at most 20 characters.",
+      "addressEmpty": "Enter the address.",
+      "addressTooLong": "The address can be at most 300 characters.",
+      "save": "Save",
+      "saving": "Saving",
+      "loading": "Loading billing details",
+      "loadFailed": "Billing details could not be loaded. Try again.",
+      "rejected": "Billing details were not accepted.",
+      "notFound": "That client is no longer on the list.",
+      "forbidden": "A driver cannot change billing details.",
+      "signedOut": "You are signed out. Sign in and try again.",
+      "saveFailed": "Billing details were not saved. Try again.",
+      "fields": {
+        "legalName": "Legal name",
+        "country": "Country",
+        "oib": "OIB",
+        "vatId": "VAT id",
+        "address": "Address",
+        "guestNameOnInvoice": "Guest name on the invoice"
       }
     },
     "rides": {
