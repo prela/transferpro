@@ -3,7 +3,7 @@ import { formatInstant } from '../shared/format-instant'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { expect, test } from './fixtures/playwright'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
+import { hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
 
 /**
  * Billing details on the Client card (ADR-0051). Enter, correct, and a
@@ -63,7 +63,13 @@ async function fillBilling(page: Page, panel: ReturnType<typeof card>, locale: L
   const text = copy[locale]
   const form = panel.locator('#client-billing-form')
   await form.getByLabel(text.legalName).fill(legalName)
-  await chooseOption(page, form.getByRole('combobox', { name: text.country }), text.countryName)
+  // The country control is a button. Its list is virtual, so the search
+  // narrows it to the one country before the option is on screen.
+  const country = form.getByRole('button', { name: text.country })
+  await country.click()
+  await page.getByRole('combobox', { name: text.country }).fill(text.countryName)
+  await page.getByRole('option', { name: text.countryName, exact: true }).click()
+  await expect(country).toContainText(text.countryName)
   await form.getByLabel(text.oib).fill('12345678903')
   await form.getByLabel(text.address).fill(address)
   return form
