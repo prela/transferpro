@@ -135,14 +135,14 @@ onMounted(loadSettings)
         class="mb-4"
         :description="t('settings.saveFailed')"
       />
-      <UAlert
+      <!-- A success alert's description is `opacity-90` and fails contrast on the light theme. -->
+      <p
         v-else-if="saved"
-        color="success"
-        variant="subtle"
         role="status"
-        class="mb-4"
-        :description="t('settings.saved')"
-      />
+        class="mb-4 text-sm"
+      >
+        {{ t('settings.saved') }}
+      </p>
       <p
         v-if="tokenSet && tokenLastFour"
         class="mb-4 text-sm"
