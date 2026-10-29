@@ -189,6 +189,13 @@ it('the table refuses data that does not match its action, for every writer', as
     ['billing_details.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["country","legalName"]}'],
     ['billing_details.saved', null, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":[]}'],
     ['billing_details.saved', subject, '{"clientId":"9e4b3f6d-5555-4555-8555-555555555555","fields":["legalName"]}'],
+    // Invoicing settings record field names. Never a due-day count, a rate, a line, or a token.
+    ['invoicing_settings.changed', null, '{"fields":["dueDays","token"],"token":"current-tool-token-9911"}'],
+    ['invoicing_settings.changed', null, '{"fields":["dueDays"],"dueDays":10}'],
+    ['invoicing_settings.changed', null, '{"fields":["lineText"],"lineText":"Airport"}'],
+    ['invoicing_settings.changed', null, '{"fields":["token","dueDays"]}'],
+    ['invoicing_settings.changed', null, '{"fields":[]}'],
+    ['invoicing_settings.changed', subject, '{"fields":["token"]}'],
     // A Partner records the id and field names. Never the name, the phone, the email, or the note.
     ['partner.created', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["name"],"name":"Mora Transfer"}'],
     ['partner.created', null, '{"partnerId":"2e3d4c5b-7777-4777-8777-777777777777","fields":["name","phone"],"phone":"+385911110379"}'],
@@ -544,6 +551,20 @@ it('append_entry accepts a billing-details save with the Client id and the field
   expect(text).not.toContain('Hotel Jadran d.o.o.')
   expect(text).not.toContain('12345678903')
   expect(text).not.toContain('Obala 1')
+})
+
+it('append_entry accepts an invoicing settings change with the field names only', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const append = `select audit.append_entry($1, $2, null, $3::jsonb)`
+  const changed = { fields: ['dueDays', 'vatRate', 'lineText', 'token'] }
+  await inSession(appPool, tenant, client => client.query(append, ['invoicing_settings.changed', actor, JSON.stringify(changed)]))
+  expect(await entriesOf(tenant)).toEqual([
+    { tenant_id: tenant, action: 'invoicing_settings.changed', actor_user_id: actor, subject_user_id: null, data: changed },
+  ])
+  const text = JSON.stringify(await entriesOf(tenant))
+  expect(text).not.toContain('current-tool-token-9911')
+  expect(text).not.toContain('Airport')
 })
 
 it('append_entry accepts a Partner create, change, archive, and restore with the id and field names only', async () => {

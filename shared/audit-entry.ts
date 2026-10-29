@@ -3,6 +3,7 @@ import { billingDetailsFieldsSchema } from './billing-details'
 import { clientKindSchema } from './client'
 import { contactPersonAddedFieldsSchema, contactPersonChangedFieldsSchema } from './contact-person'
 import { driverFieldSchema } from './driver'
+import { invoicingSettingsFieldsSchema } from './invoicing-settings'
 import { locationFieldSchema } from './location'
 import { partnerChangedFieldsSchema, partnerCreatedFieldsSchema } from './partner'
 import { RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideAssignmentFieldSchema, rideVehicleChangeFieldSchema } from './ride-assignment'
@@ -79,6 +80,7 @@ export const auditActions = [
   'partner.restored',
   'client_note.saved',
   'billing_details.saved',
+  'invoicing_settings.changed',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -767,6 +769,19 @@ const billingDetailsSaved = z.object({
 })
 
 /*
+ * An invoicing settings change (ADR-0051) records the field names only.
+ * The token is the field name `token`. Due days, the VAT rate, the line
+ * text, and the token value are not on the row.
+ */
+const invoicingSettingsChanged = z.object({
+  action: z.literal('invoicing_settings.changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    fields: invoicingSettingsFieldsSchema,
+  }),
+})
+
+/*
  * A handoff names the Ride and the Partner. When it cleared a Driver, it
  * also names that Driver and the Vehicle. The field order is the constant
  * in ride-handoff.ts. A name, a contact, a plate, or a guest is not a key
@@ -880,6 +895,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   partnerRestored,
   clientNoteSaved,
   billingDetailsSaved,
+  invoicingSettingsChanged,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -1032,6 +1048,7 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   partnerRestored.extend(listed),
   clientNoteSaved.extend(listed),
   billingDetailsSaved.extend(listed),
+  invoicingSettingsChanged.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

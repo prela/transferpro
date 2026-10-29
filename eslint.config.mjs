@@ -325,7 +325,7 @@ const transfersCatalogDeepImport = {
     type: 'problem',
     schema: [],
     messages: {
-      banned: 'Transfers reach Clients, Locations, Vehicles, and Partners through their index.ts only (ADR-0018).',
+      banned: 'Transfers reach Clients, Locations, Vehicles, Partners, and Invoicing through their index.ts only (ADR-0018).',
     },
   },
   create(context) {
@@ -334,12 +334,59 @@ const transfersCatalogDeepImport = {
      * @param {unknown} source
      */
     function check(node, source) {
-      if (typeof source !== 'string' || !/(?:^|\/)(?:clients|locations|vehicles|partners)\/infrastructure(?:\/|$)/.test(source))
+      if (typeof source !== 'string' || !/(?:^|\/)(?:clients|locations|vehicles|partners|invoicing)\/infrastructure(?:\/|$)/.test(source))
         return
       const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
       if (!filename.includes('/server/modules/transfers/'))
         return
       context.report({ node, messageId: 'banned' })
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ImportExpression(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source?.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+      ExportAllDeclaration(node) {
+        if (node.source.type === 'Literal')
+          check(node.source, node.source.value)
+      },
+    }
+  },
+}
+
+const invoicingBoundaryImport = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      transfers: 'The invoicing module does not import the transfers module (ADR-0018, ADR-0036).',
+      deep: 'Invoicing reaches Clients through their index.ts only (ADR-0018).',
+    },
+  },
+  create(context) {
+    /**
+     * @param {import('estree').Node} node
+     * @param {unknown} source
+     */
+    function check(node, source) {
+      if (typeof source !== 'string')
+        return
+      const filename = `/${(context.filename ?? '').replaceAll('\\', '/')}`.replaceAll(/\/+/g, '/')
+      if (!filename.includes('/server/modules/invoicing/'))
+        return
+      if (/(?:^|\/)transfers(?:\/|$)/.test(source))
+        context.report({ node, messageId: 'transfers' })
+      if (/(?:^|\/)clients\/infrastructure(?:\/|$)/.test(source))
+        context.report({ node, messageId: 'deep' })
     }
 
     return {
@@ -1088,6 +1135,7 @@ export default antfu(
           'no-vehicles-transfers-import': vehiclesTransfersImport,
           'no-locations-transfers-import': locationsTransfersImport,
           'no-clients-transfers-import': clientsTransfersImport,
+          'invoicing-boundary-import': invoicingBoundaryImport,
           'no-partners-transfers-import': partnersTransfersImport,
           'no-transfers-catalog-deep-import': transfersCatalogDeepImport,
           'no-roster-transfers-import': rosterTransfersImport,
@@ -1106,6 +1154,7 @@ export default antfu(
       'transferpro/no-vehicles-transfers-import': 'error',
       'transferpro/no-locations-transfers-import': 'error',
       'transferpro/no-clients-transfers-import': 'error',
+      'transferpro/invoicing-boundary-import': 'error',
       'transferpro/no-partners-transfers-import': 'error',
       'transferpro/no-transfers-catalog-deep-import': 'error',
       'transferpro/no-roster-transfers-import': 'error',
@@ -1145,6 +1194,30 @@ export default antfu(
     ignores: ['**/*.test.ts'],
     rules: {
       'no-restricted-imports': ['error', capacityCoreImports],
+    },
+  },
+  {
+    // ADR-0051: invoicing's domain and application tiers know the port and
+    // the cipher, not Drizzle, Nuxt, or the queue.
+    files: ['server/modules/invoicing/domain/**/*.ts', 'server/modules/invoicing/application/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [
+          ...driverImports.paths,
+          ...['drizzle-orm', 'nuxt', '#app', '#imports', 'h3'].map(name => ({
+            name,
+            message: `Invoicing's domain and application do not import ${name}; use a port (ADR-0051).`,
+          })),
+        ],
+        patterns: [
+          ...driverImports.patterns,
+          {
+            group: ['drizzle-orm/*', 'nuxt/*', 'pg-boss', 'pg-boss/*'],
+            message: 'Invoicing\'s domain and application do not import Drizzle, Nuxt, or the queue; use a port (ADR-0051).',
+          },
+        ],
+      }],
     },
   },
   {

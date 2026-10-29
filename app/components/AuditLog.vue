@@ -198,6 +198,9 @@ function detailText(entry: AuditEntry): string {
     case 'billing_details.saved':
       // Field names only. The legal name, the OIB, the VAT id, and the address stay on the billing row (ADR-0051).
       return entry.data.fields.map(field => t(`clients.billing.fields.${field}`)).join(', ')
+    case 'invoicing_settings.changed':
+      // Field names only. Due days, the VAT rate, the line, and the token stay off the row (ADR-0051).
+      return entry.data.fields.map(field => t(`settings.invoicing.fields.${field}`)).join(', ')
     case 'partner.created':
     case 'partner.changed':
       // Field names only. The name, the phone, the email, and the note stay on the Partner row.

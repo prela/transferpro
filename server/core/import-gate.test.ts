@@ -199,6 +199,35 @@ async function partnersTransfersImport(filePath: string, source: string) {
   )
 }
 
+async function invoicingBoundary(filePath: string, source: string) {
+  const [result] = await eslint.lintText(source, { filePath })
+  return (result?.messages ?? []).filter(message =>
+    message.ruleId === 'transferpro/invoicing-boundary-import',
+  )
+}
+
+it('lets invoicing import clients and refuses transfers, including a deep client import', async () => {
+  const transfers = `import { bookRide } from '../../transfers'\n`
+  const dynamic = `await import('../transfers/index')\n`
+  const clients = `import { loadClientBillingDetails } from '../../clients'\n`
+  const deep = `import { loadClientBillingDetails } from '../../clients/infrastructure/client-billing'\n`
+  expect(await invoicingBoundary('server/modules/invoicing/infrastructure/settings.ts', transfers)).not.toEqual([])
+  expect(await invoicingBoundary('server/modules/invoicing/index.ts', dynamic)).not.toEqual([])
+  expect(await invoicingBoundary('server/modules/invoicing/application/save-settings.ts', clients)).toEqual([])
+  expect(await invoicingBoundary('server/modules/invoicing/infrastructure/settings.ts', deep)).not.toEqual([])
+  expect(await invoicingBoundary('server/modules/clients/index.ts', transfers)).toEqual([])
+})
+
+it('rejects Drizzle, Nuxt, and the queue from invoicing domain and application', async () => {
+  const drizzle = `import { sql } from 'drizzle-orm'\n`
+  const nuxt = `import { useRuntimeConfig } from 'nuxt/app'\n`
+  const queue = `import { PgBoss } from 'pg-boss'\n`
+  expect(await restrictedImports('server/modules/invoicing/domain/token-cipher.ts', drizzle)).not.toEqual([])
+  expect(await restrictedImports('server/modules/invoicing/application/save-settings.ts', nuxt)).not.toEqual([])
+  expect(await restrictedImports('server/modules/invoicing/application/save-settings.ts', queue)).not.toEqual([])
+  expect(await restrictedImports('server/modules/invoicing/infrastructure/settings.ts', drizzle)).toEqual([])
+})
+
 it('rejects a Partners import of the transfers module', async () => {
   const source = `import { bookRide } from '../../transfers'\n`
   const dynamic = `await import('../transfers/index')\n`
@@ -214,15 +243,18 @@ async function transfersCatalogDeepImport(filePath: string, source: string) {
   )
 }
 
-it('rejects a Transfers deep import of Clients, Locations, Vehicles, or Partners', async () => {
+it('rejects a Transfers deep import of Clients, Locations, Vehicles, Partners, or Invoicing', async () => {
   const clients = `import { loadClients } from '../../clients/infrastructure/clients'\n`
   const locations = `await import('../locations/infrastructure/locations')\n`
   const vehicles = `import { loadVehicle } from '../../vehicles/infrastructure/vehicles'\n`
   const partners = `import { loadActivePartnerIds } from '../../partners/infrastructure/partners'\n`
+  const invoicing = `import { loadInvoicingSettings } from '../../invoicing/infrastructure/settings'\n`
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', clients)).not.toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/index.ts', locations)).not.toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/driver-ride-access.ts', vehicles)).not.toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', partners)).not.toEqual([])
+  expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', invoicing)).not.toEqual([])
+  expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', `import { readInvoicingSettings } from '../../invoicing'\n`)).toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', `import { loadClients } from '../../clients'\n`)).toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/driver-ride-access.ts', `import { loadVehicle } from '../../vehicles'\n`)).toEqual([])
   expect(await transfersCatalogDeepImport('server/modules/transfers/infrastructure/transfers.ts', `import { loadActivePartnerIds } from '../../partners'\n`)).toEqual([])

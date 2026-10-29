@@ -273,6 +273,9 @@
       "billing_details": {
         "saved": "Podaci za račun spremljeni"
       },
+      "invoicing_settings": {
+        "changed": "Promijenjene postavke računa"
+      },
       "partner": {
         "created": "Podizvođač dodan",
         "changed": "Podizvođač ispravljen",
@@ -285,6 +288,23 @@
     "title": "Postavke",
     "operations": "Operativa",
     "intro": "Ovo su čekanja prije nedolaska, koliko vožnja zauzima vozača i vozilo, i razmak koji upozorava. Vrijeme na zaslonu prikazuje se u ovoj vremenskoj zoni.",
+    "invoicing": {
+      "title": "Računi",
+      "intro": "Token trenutnog alata, rok plaćanja, stopa PDV-a i tekst stavke.",
+      "token": "Token",
+      "tokenHint": "Ostavite prazno da spremljeni token ostane. Nakon spremanja vide se samo zadnja četiri znaka.",
+      "tokenSet": "Zadnje četiri: {lastFour}",
+      "tokenMissing": "Token nije postavljen.",
+      "dueDays": "Rok plaćanja (dani)",
+      "vatRate": "Stopa PDV-a",
+      "lineText": "Tekst stavke",
+      "fields": {
+        "dueDays": "Rok plaćanja",
+        "vatRate": "Stopa PDV-a",
+        "lineText": "Tekst stavke",
+        "token": "Token"
+      }
+    },
     "airportWait": "Čekanje na aerodromu (minute)",
     "elsewhereWait": "Čekanje izvan aerodroma (minute)",
     "transferDuration": "Trajanje transfera (minute)",

@@ -36,6 +36,7 @@ const officeWrites: ReadonlyArray<{ readonly method: string, readonly pattern: R
   { method: 'PATCH', pattern: new RegExp(`^/api/unavailability/${uuid}$`, 'i') },
   { method: 'POST', pattern: new RegExp(`^/api/unavailability/${uuid}/remove$`, 'i') },
   { method: 'PATCH', pattern: /^\/api\/tenant-settings$/ },
+  { method: 'PUT', pattern: /^\/api\/invoicing-settings$/ },
   { method: 'DELETE', pattern: new RegExp(`^/api/members/${uuid}$`, 'i') },
   { method: 'PATCH', pattern: new RegExp(`^/api/members/${uuid}/role$`, 'i') },
   { method: 'POST', pattern: /^\/api\/invitations$/ },
