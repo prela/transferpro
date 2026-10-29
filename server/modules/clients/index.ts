@@ -10,7 +10,7 @@ export { ClientNotFoundError, createClient, listClients, updateClient } from './
  * Invoicing calls it inside a tenant session. The office routes use the
  * session wrappers. `app.clients` is unchanged.
  */
-export { loadClientBillingDetails } from './infrastructure/client-billing'
+export { loadClientBillingDetails, loadClientBillingForInvoice } from './infrastructure/client-billing'
 export { readClientBilling, writeClientBilling } from './infrastructure/client-billing-access'
 /** The one standing note on the Client card (ADR-0049). */
 export { readClientNote, writeClientNote } from './infrastructure/client-note-access'

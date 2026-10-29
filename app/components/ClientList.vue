@@ -13,6 +13,7 @@ defineProps<{
 }>()
 
 const { t } = useI18n()
+const route = useRoute()
 const { notifyAuditChanged } = useAuditRefresh()
 const listTitleId = useId()
 const searchId = useId()
@@ -126,6 +127,15 @@ async function loadClients() {
   try {
     const next = clientListSchema.parse(await $fetch('/api/clients')).clients
     clients.value = next
+    // The invoice refusal links here with the Client id, and opens billing.
+    const requested = route.query.client
+    if (typeof requested === 'string' && formMode.value === null) {
+      const match = next.find(client => client.id === requested)
+      if (match && (match.kind === 'agency' || match.kind === 'hotel')) {
+        openEdit(match)
+        cardTab.value = 'billing'
+      }
+    }
   }
   catch (error) {
     loadErrorKey.value = failureKey(error) === 'clients.saveFailed' ? 'clients.loadFailed' : failureKey(error)

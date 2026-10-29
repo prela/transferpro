@@ -3,6 +3,7 @@ import { boardWarningsSchema } from './board-warnings'
 import { clientOfficeBriefSchema } from './client-office-brief'
 import { isCalendarDate } from './date'
 import { sameFlightDesignator } from './flight-landing'
+import { transferInvoiceSchema } from './invoice'
 import { partnerOfficeContactSchema } from './partner'
 import { QueryParamError } from './query'
 
@@ -139,10 +140,18 @@ export function canRecordLandingTime(state: RideState): boolean {
 /**
  * ADR-0010, extended by ADR-0048. A dispatcher or an admin may correct the
  * booking while the Ride is unfinished, including when it is handed to a
- * Partner. `done`, `no-show`, and `cancelled` keep the details they have.
+ * Partner. `no-show` and `cancelled` keep the details they have. A `done`
+ * Ride stays correctable so the office can set the payment and the price
+ * before an invoice, and can fix the cause of a failed one (ADR-0051, ADR-0053).
+ * A locking invoice still refuses the Client, the price, and the payment.
  */
 export function canCorrectTransfer(state: RideState): boolean {
   return state === 'unassigned' || state === 'assigned' || state === 'accepted' || state === 'handed_off'
+}
+
+/** Unfinished Rides, and a done Ride. No-show and cancelled stay closed. */
+export function officeCanCorrectTransfer(state: RideState): boolean {
+  return canCorrectTransfer(state) || state === 'done'
 }
 
 /**
@@ -467,6 +476,8 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   // Null until an office data save. A member who has left leaves the name null.
   changedAt: z.iso.datetime().nullable(),
   changedByName: z.string().min(1).nullable(),
+  // The open invoice, or null. The line and the amount stay off this view.
+  invoice: transferInvoiceSchema.nullable(),
 })
 
 export type TransferDayRide = z.infer<typeof transferDayRideSchema>

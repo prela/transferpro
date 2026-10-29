@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { EMPTY_INVOICING_SETTINGS, invoicingSettingsSchema, invoicingVatRateSchema, StaleSaveError } from '../../../../shared'
 import { hideDatabaseError, postgresErrorCode } from '../../../core'
 import { appendAuditEntry } from '../../audit'
+import { TenantAccessError } from '../../tenancy'
 import { saveInvoicingSettings } from '../application/save-settings'
 import { InvoicingKeyMissingError, InvoicingTokenDecryptError } from '../domain/token-cipher'
 
@@ -63,6 +64,27 @@ function viewFromStored(stored: ReturnType<typeof toStored>): InvoicingSettings 
     tokenSet: stored.ciphertext !== null,
     tokenLastFour: stored.tokenLastFour,
   })
+}
+
+/**
+ * Due days, the VAT rate, the line text, and whether a token is set.
+ * A Driver is 403 before the row is read. The ciphertext is not returned.
+ */
+export async function readInvoicingReadiness(transaction: TenantTransaction, role: string): Promise<{
+  tokenSet: boolean
+  dueDays: number
+  vatRate: InvoicingSettings['vatRate']
+  lineText: string
+}> {
+  if (role !== 'admin' && role !== 'dispatcher')
+    throw new TenantAccessError(403)
+  const view = await loadInvoicingSettings(transaction)
+  return {
+    tokenSet: view.tokenSet,
+    dueDays: view.dueDays,
+    vatRate: view.vatRate,
+    lineText: view.lineText,
+  }
 }
 
 /** The session's row, or the defaults when the Tenant has not saved yet. */

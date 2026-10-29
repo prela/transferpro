@@ -108,6 +108,15 @@ export async function loadClientBillingDetails(transaction: TenantTransaction, c
   return readBilling(transaction, clientId)
 }
 
+/**
+ * Billing for the invoice job. The job has no member role: the office check
+ * already ran when the invoice was requested. RLS still limits the row to
+ * this Tenant. A missing Client throws, and the job treats that as a refusal.
+ */
+export async function loadClientBillingForInvoice(transaction: TenantTransaction, clientId: string): Promise<ClientBilling> {
+  return readBilling(transaction, clientId)
+}
+
 async function readBilling(transaction: TenantTransaction, clientId: string): Promise<ClientBilling> {
   await requireClient(transaction, clientId)
   const selected = billingRows.parse(await transaction.execute(sql`

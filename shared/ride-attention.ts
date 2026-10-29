@@ -164,11 +164,11 @@ export type TransferDayFilter = (typeof TRANSFER_DAY_FILTERS)[number]
  * Toolbar chips stay the seven in ADR-0038. Home's balance also links to
  * the part that has no chip: assigned and not started, and each finished state.
  */
-export type TransferBoardFilter = TransferDayFilter | 'assignedNotStarted' | 'handedOff' | 'done' | 'noShow' | 'cancelled'
+export type TransferBoardFilter = TransferDayFilter | 'assignedNotStarted' | 'handedOff' | 'done' | 'noShow' | 'cancelled' | 'toInvoice'
 
 const CLOSED = new Set<RideState>(['done', 'no-show', 'cancelled'])
 
-const HOME_PART_FILTERS = ['assignedNotStarted', 'handedOff', 'done', 'noShow', 'cancelled'] as const
+const HOME_PART_FILTERS = ['assignedNotStarted', 'handedOff', 'done', 'noShow', 'cancelled', 'toInvoice'] as const
 
 export function parseTransferDayFilter(value: unknown): TransferBoardFilter {
   if (typeof value === 'string' && (HOME_PART_FILTERS as readonly string[]).includes(value))

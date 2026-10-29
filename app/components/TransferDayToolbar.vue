@@ -4,6 +4,7 @@ import { addCalendarDays, isCalendarDate, TRANSFER_DAY_FILTERS } from '../../sha
 
 defineProps<{
   counts: Record<TransferDayFilter, number>
+  toInvoiceCount: number
   clients: { id: string, name: string }[]
   drivers: { id: string, name: string }[]
   note: readonly SevenDayUnassignedPart[]
@@ -197,6 +198,17 @@ function shift(delta: number) {
       @click="filter = item"
     >
       {{ t(`transfers.filters.${item}`) }} ({{ counts[item] }})
+    </UButton>
+    <UButton
+      type="button"
+      color="neutral"
+      :variant="filter === 'toInvoice' ? 'solid' : 'outline'"
+      size="sm"
+      :class="controlClass"
+      :aria-pressed="filter === 'toInvoice'"
+      @click="filter = 'toInvoice'"
+    >
+      {{ t('transfers.filters.toInvoice') }} ({{ toInvoiceCount }})
     </UButton>
   </div>
 </template>

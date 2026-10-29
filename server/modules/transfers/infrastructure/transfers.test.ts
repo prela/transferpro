@@ -405,8 +405,9 @@ it('loads the Zagreb operational day as a half-open range of local 05:00 and map
   // 28 March contains the spring-forward; 24 October contains the fall-back. Both still end at local 05:00.
   await loadRidesForDay(transaction, '2026-03-28', 'Europe/Zagreb')
   await loadRidesForDay(transaction, '2026-10-24', 'Europe/Zagreb')
-  expect(queries[1]?.params).toEqual(['2026-03-28T04:00:00.000Z', '2026-03-29T03:00:00.000Z'])
-  expect(queries[2]?.params).toEqual(['2026-10-24T03:00:00.000Z', '2026-10-25T04:00:00.000Z'])
+  // Each day read is followed by the open-invoice lookup, so the bounds sit on the even queries.
+  expect(queries[2]?.params).toEqual(['2026-03-28T04:00:00.000Z', '2026-03-29T03:00:00.000Z'])
+  expect(queries[4]?.params).toEqual(['2026-10-24T03:00:00.000Z', '2026-10-25T04:00:00.000Z'])
   expect(queries[1]?.sql.toLowerCase()).not.toContain('::date')
   expect(queries[2]?.sql.toLowerCase()).not.toContain('::date')
 })

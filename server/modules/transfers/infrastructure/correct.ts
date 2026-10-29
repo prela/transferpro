@@ -4,22 +4,24 @@ import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { canCorrectTransfer, changedTransferFields, correctionChangesRoute, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, officeGroupPassengerCount, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, ROUTE_TRANSFER_FIELDS, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
+import { changedTransferFields, correctionChangesRoute, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, officeCanCorrectTransfer, officeGroupPassengerCount, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, ROUTE_TRANSFER_FIELDS, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
 import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { correctionMovesWindow, lockTenantCapacity, tenantCapacityMinutes } from '../../capacity'
 import { ClientNotFoundError, loadClients } from '../../clients'
+import { lockOpenInvoice } from '../../invoicing'
 import { loadLocation, LocationArchivedError } from '../../locations'
 import { mailerForApp, TenantAccessError, withOfficeWrite } from '../../tenancy'
+import { correctionBlockedByInvoice } from '../application/issue-invoice'
 import { cancellableRideStatesSql } from './cancellable-ride-states'
 import { checkRideCapacity, transferFullyBooked } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
-import { ExtraVehicleCountError, ExtraVehiclePriceError, TransferNotCorrectableError, TransferNotFoundError } from './transfer-errors'
+import { ExtraVehicleCountError, ExtraVehiclePriceError, TransferInvoicedError, TransferNotCorrectableError, TransferNotFoundError } from './transfer-errors'
 import { refuseStaleVersion, StaleSaveError } from './transfer-version'
 import { toInstant, toPrice } from './transfers'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
-export { ExtraVehicleCountError, ExtraVehiclePriceError, TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from './transfer-errors'
+export { ExtraVehicleCountError, ExtraVehiclePriceError, TransferInvoicedError, TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from './transfer-errors'
 
 const lockedRows = z.object({
   rows: z.array(z.object({
@@ -188,7 +190,10 @@ export async function correctTransferForOffice(
   // matches the stored booking. A form that still holds this version and
   // finds the Ride finished is the existing closed error.
   refuseStaleVersion(current.version, version)
-  if (!canCorrectTransfer(current.state))
+  // A done Ride stays closed unless an invoice is open. The invoice lock
+  // is the same order as an issue: the Transfer row, then the invoice row.
+  const openInvoice = await lockOpenInvoice(transaction, transferId)
+  if (!officeCanCorrectTransfer(current.state))
     throw new TransferNotCorrectableError()
   // An extra vehicle keeps Price 0 and has no group count. Either refusal
   // writes nothing, including when the rest of the body matches the row.
@@ -208,6 +213,10 @@ export async function correctTransferForOffice(
   const nextGroup = groupPassengerCount ?? current.groupPassengerCount
   if (fields.length === 0)
     return { recorded: toRecorded(current, stored), notify: false, relocationWarnings: [], fullyBooked: false, unfinishedExtraVehicleCount: 0, extraNotices: [] }
+  // Client, price, and payment stay while the invoice locks them. The
+  // throw is before any write, so the version and the audit stay put.
+  if (correctionBlockedByInvoice(openInvoice, fields))
+    throw new TransferInvoicedError()
 
   // A different designator throws away the landing, the expected arrival,
   // and the will-not-arrive memory (ADR-0028). The occupation check reads
@@ -358,7 +367,8 @@ export async function correctTransferForOffice(
     // A mailed fact is the list in ADR-0026, plus a Client reference change
     // (ADR-0054). The price mails only while the Driver collects cash. The
     // group's ordered passenger count is not a work-order fact (ADR-0054).
-    notify: fields.some(field => field !== 'groupPassengerCount' && (field !== 'price' || input.payment === 'cash')),
+    // A done Ride is already finished. Correcting it does not mail a work order.
+    notify: current.state !== 'done' && fields.some(field => field !== 'groupPassengerCount' && (field !== 'price' || input.payment === 'cash')),
     relocationWarnings,
     fullyBooked,
     unfinishedExtraVehicleCount,

@@ -81,6 +81,9 @@ export const auditActions = [
   'client_note.saved',
   'billing_details.saved',
   'invoicing_settings.changed',
+  'invoice.requested',
+  'invoice.issued',
+  'invoice.failed',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -782,6 +785,28 @@ const invoicingSettingsChanged = z.object({
 })
 
 /*
+ * An invoice (ADR-0051) names the invoice and the Transfer reference.
+ * The number, the amount, the link, the guest, and the OIB are not keys.
+ * The actor is the member who asked. `subjectUserId` stays null.
+ */
+const invoiceAuditData = z.strictObject({
+  invoiceId: z.uuid(),
+  transferId: z.uuid(),
+})
+
+function invoiceAudit(action: 'invoice.requested' | 'invoice.issued' | 'invoice.failed') {
+  return z.object({
+    action: z.literal(action),
+    subjectUserId: z.null(),
+    data: invoiceAuditData,
+  })
+}
+
+const invoiceRequested = invoiceAudit('invoice.requested')
+const invoiceIssued = invoiceAudit('invoice.issued')
+const invoiceFailed = invoiceAudit('invoice.failed')
+
+/*
  * A handoff names the Ride and the Partner. When it cleared a Driver, it
  * also names that Driver and the Vehicle. The field order is the constant
  * in ride-handoff.ts. A name, a contact, a plate, or a guest is not a key
@@ -896,6 +921,9 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   clientNoteSaved,
   billingDetailsSaved,
   invoicingSettingsChanged,
+  invoiceRequested,
+  invoiceIssued,
+  invoiceFailed,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -1049,6 +1077,9 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   clientNoteSaved.extend(listed),
   billingDetailsSaved.extend(listed),
   invoicingSettingsChanged.extend(listed),
+  invoiceRequested.extend(listed),
+  invoiceIssued.extend(listed),
+  invoiceFailed.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

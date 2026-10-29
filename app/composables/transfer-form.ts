@@ -16,6 +16,7 @@ type TransferFailure
     | 'transfers.saveFailed'
     | 'transfers.locationArchived'
     | 'transfers.closed'
+    | 'transfers.invoice.errors.transfer_invoiced'
     | 'locations.saveFailed'
     | 'clients.saveFailed'
 
@@ -253,6 +254,8 @@ export function useTransferForm(options: {
       return 'transfers.locationArchived'
     if (errorCode(error) === 'transfer_closed')
       return 'transfers.closed'
+    if (errorCode(error) === 'transfer_invoiced')
+      return 'transfers.invoice.errors.transfer_invoiced'
     switch (httpStatus(error)) {
       case 400: return 'transfers.rejected'
       case 401: return 'transfers.signedOut'

@@ -1,5 +1,6 @@
+import { startInvoiceCreateWorker } from '../modules/invoicing'
 import { startMailOutboxRetention } from '../modules/mail'
-import { startMailOutboxWorker } from '../modules/transfers'
+import { mailOutboxQueue, startMailOutboxWorker } from '../modules/transfers'
 
 /**
  * Retries for the mail outbox, and the daily delete of entries older than 90 days.
@@ -8,5 +9,6 @@ import { startMailOutboxWorker } from '../modules/transfers'
  */
 export default defineNitroPlugin(async () => {
   await startMailOutboxWorker()
+  await startInvoiceCreateWorker(await mailOutboxQueue())
   await startMailOutboxRetention()
 })

@@ -276,6 +276,11 @@
       "invoicing_settings": {
         "changed": "Invoicing settings changed"
       },
+      "invoice": {
+        "requested": "Invoice requested",
+        "issued": "Invoice issued",
+        "failed": "Invoice failed"
+      },
       "partner": {
         "created": "Subcontractor added",
         "changed": "Subcontractor corrected",
@@ -558,7 +563,37 @@
       "unassigned": "Unassigned",
       "waiting": "Waiting on acceptance",
       "inProgress": "In progress",
-      "closed": "Closed"
+      "closed": "Closed",
+      "toInvoice": "To invoice"
+    },
+    "invoice": {
+      "title": "Invoice",
+      "issue": "Issue invoice",
+      "retry": "Try again",
+      "open": "Open invoice",
+      "billingLink": "Billing details",
+      "states": {
+        "requested": "Requested",
+        "created": "Issued",
+        "sent": "Sent",
+        "failed": "Failed",
+        "cancelling": "Cancelling",
+        "cancelled": "Cancelled",
+        "withdrawn": "Withdrawn"
+      },
+      "reasons": {
+        "rejected": "Rejected",
+        "allowance": "Allowance spent",
+        "token": "Token rejected",
+        "unavailable": "Unavailable"
+      },
+      "errors": {
+        "not_invoiceable": "This transfer cannot be invoiced.",
+        "client_not_invoiceable": "This client cannot be invoiced.",
+        "billing_details_missing": "Billing details are missing.",
+        "invoicing_not_ready": "Invoicing is not ready.",
+        "transfer_invoiced": "This transfer already has an invoice."
+      }
     },
     "attention": {
       "unassignedAlarm": "Unassigned < 4 h",

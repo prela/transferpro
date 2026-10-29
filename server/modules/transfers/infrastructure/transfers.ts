@@ -7,6 +7,7 @@ import { canCorrectTransfer, emptyBoardWarnings, linkedMainSchema, localDayBound
 import { getLogger } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClients } from '../../clients'
+import { readOpenInvoicesForTransfers } from '../../invoicing'
 import { loadLocation, LocationArchivedError } from '../../locations'
 import { cancellableRideStatesSql } from './cancellable-ride-states'
 import { TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from './transfer-errors'
@@ -478,7 +479,10 @@ export async function loadRidesForDay(
     where t.pickup_at >= ${bounds.start.toISOString()} and t.pickup_at < ${bounds.end.toISOString()}
     order by t.pickup_at, r.id
   `))
-  return selected.rows.map(row => toDayRide(row, nowMs, transferDurationMinutes))
+  // The invoice row belongs to invoicing. This read asks for the open ones
+  // after the day query, instead of joining that table here (ADR-0018).
+  const invoices = await readOpenInvoicesForTransfers(transaction, selected.rows.map(row => row.transferId))
+  return selected.rows.map(row => toDayRide(row, nowMs, transferDurationMinutes, invoices.get(row.transferId) ?? null))
 }
 
 /**
@@ -598,6 +602,7 @@ function toDayRide(
   row: z.infer<typeof dayRowSchema>,
   nowMs: number,
   transferDurationMinutes: number,
+  invoice: TransferDayRide['invoice'],
 ): TransferDayRide {
   const pickupAt = toInstant(row.pickupAt)
   const landingAt = row.landingAt == null ? null : toInstant(row.landingAt)
@@ -649,6 +654,7 @@ function toDayRide(
       transferDurationMinutes,
     }),
     warnings: emptyBoardWarnings(),
+    invoice,
   }
 }
 

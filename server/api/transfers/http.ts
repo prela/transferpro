@@ -4,7 +4,7 @@ import { ClientNotFoundError } from '../../modules/clients'
 import { LocationArchivedError, LocationNotFoundError } from '../../modules/locations'
 import { PartnerNotFoundError } from '../../modules/partners'
 import { TenantAccessError } from '../../modules/tenancy'
-import { ExtraVehicleCountError, ExtraVehiclePriceError, RideOverlapError, RideUnavailableError, StaleSaveError, TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from '../../modules/transfers'
+import { BillingDetailsMissingError, ClientNotInvoiceableError, ExtraVehicleCountError, ExtraVehiclePriceError, InvoiceOfficeOnlyError, InvoicingNotReadyError, RideOverlapError, RideUnavailableError, StaleSaveError, TransferInvoicedError, TransferNotCorrectableError, TransferNotFoundError, TransferNotInvoiceableError, TransferNotMainError } from '../../modules/transfers'
 import { rethrowTenantChanged } from '../tenant-changed'
 
 /**
@@ -26,6 +26,7 @@ export function transferHttpError(error: unknown): never {
     || error instanceof LocationNotFoundError
     || error instanceof TenantAccessError
     || error instanceof TransferNotFoundError
+    || error instanceof InvoiceOfficeOnlyError
   ) {
     throw createError({ statusCode: error.statusCode })
   }
@@ -37,10 +38,20 @@ export function transferHttpError(error: unknown): never {
     || error instanceof RideOverlapError
     || error instanceof RideUnavailableError
     || error instanceof StaleSaveError
+    || error instanceof TransferNotInvoiceableError
+    || error instanceof ClientNotInvoiceableError
+    || error instanceof InvoicingNotReadyError
+    || error instanceof TransferInvoicedError
   ) {
     throw createError({
       statusCode: error.statusCode,
       data: { code: error.code },
+    })
+  }
+  if (error instanceof BillingDetailsMissingError) {
+    throw createError({
+      statusCode: error.statusCode,
+      data: { code: error.code, clientId: error.clientId },
     })
   }
   if (error instanceof LocationArchivedError) {
