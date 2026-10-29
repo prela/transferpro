@@ -47,13 +47,14 @@ function leaks(dockerfile, history, files, values = [sentinel]) {
   })
 }
 
-it('names the five Coolify secrets that must stay off the build', () => {
+it('names the Coolify secrets that must stay off the build', () => {
   assert.deepEqual(SECRET_BUILD_NAMES, [
     'BETTER_AUTH_SECRET',
     'BETTER_AUTH_URL',
     'AUTH_DATABASE_URL',
     'MAPS_API_KEY',
     'MAPS_EMBED_KEY',
+    'INVOICING_SECRET_KEY',
   ])
 })
 

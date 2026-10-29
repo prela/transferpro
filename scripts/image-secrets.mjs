@@ -19,6 +19,7 @@ export const SECRET_BUILD_NAMES = [
   'AUTH_DATABASE_URL',
   'MAPS_API_KEY',
   'MAPS_EMBED_KEY',
+  'INVOICING_SECRET_KEY',
 ]
 
 /** Shorter needles match ordinary words. Callers pass the real values. */

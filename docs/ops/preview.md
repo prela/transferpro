@@ -23,6 +23,8 @@ Set these names in the preview environment. Values stay in Coolify.
 | `MAPS` | No |
 | `MAPS_API_KEY` | Only when `MAPS` is `google` |
 | `MAPS_EMBED_KEY` | No. Optional with either `MAPS` value. Restrict the key to the Maps Embed API and this environment's origin. |
+| `INVOICING` | No. `none` or `current`. Default `none`, so the process does not call the current tool. |
+| `INVOICING_SECRET_KEY` | When `INVOICING` is not `none`. 32 bytes, base64. Env only. |
 | `SENTRY_DSN` | No |
 | `SENTRY_RELEASE` | No |
 | `HOST` | No |
@@ -32,7 +34,7 @@ Set these names in the preview environment. Values stay in Coolify.
 
 Every name in the table is runtime only. In Coolify, leave "Available at Buildtime" off. The Dockerfile declares no secret `ARG` or `ENV`. `docker build` must not warn `SecretsUsedInArgOrEnv`.
 
-`nuxi build` does not read `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `AUTH_DATABASE_URL`, `MAPS_API_KEY`, or `MAPS_EMBED_KEY`. Boot reads them from the process environment (`parseAppEnv`). Nitro's production build replaces the token `process.env.NODE_ENV` only, not those names. `.dockerignore` excludes `.env`, so a local file is not copied into the build. The server bundle still contains the key strings, because that is how it reads `process.env` at start. The client bundle (`.output/public`) must not. No value is required at build time, so the image does not use a BuildKit secret mount.
+`nuxi build` does not read `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `AUTH_DATABASE_URL`, `MAPS_API_KEY`, `MAPS_EMBED_KEY`, or `INVOICING_SECRET_KEY`. Boot reads them from the process environment (`parseAppEnv`). Nitro's production build replaces the token `process.env.NODE_ENV` only, not those names. `.dockerignore` excludes `.env`, so a local file is not copied into the build. The server bundle still contains the key strings, because that is how it reads `process.env` at start. The client bundle (`.output/public`) must not. No value is required at build time, so the image does not use a BuildKit secret mount.
 
 `NODE_ENV=production` is set on the runtime stage. It is not a build `ARG` and it is not a secret. `nuxi build` emits a production server without that variable. Do not pass it as a build-arg.
 

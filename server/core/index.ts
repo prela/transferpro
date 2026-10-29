@@ -4,6 +4,7 @@
  * Env is parsed here so boot can reject a bad config before that adapter loads.
  */
 import type { LogLevel } from './logger'
+import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import { z } from 'zod'
 import { configureLogger, logLevels } from './logger'
@@ -82,6 +83,18 @@ export interface AppEnv {
   readonly SENTRY_DSN: string | undefined
   /** Git SHA or release name. Set in deployment; forwarded to Sentry as `release`. */
   readonly SENTRY_RELEASE: string | undefined
+  /**
+   * Which invoicing adapter runs. `none` is the default in every environment,
+   * so a fresh process never calls the current tool. `current` is that
+   * adapter and requires `INVOICING_SECRET_KEY`. ADR-0051.
+   */
+  readonly INVOICING: 'none' | 'current'
+  /**
+   * 32-byte AES-256-GCM key, decoded from base64. Required when `INVOICING`
+   * is not `none`. Optional while `INVOICING` is `none`, and still required
+   * to store a token. The name is redacted (`secret`). It never reaches the browser.
+   */
+  readonly INVOICING_SECRET_KEY: Uint8Array | undefined
 }
 
 /**
@@ -223,6 +236,54 @@ function parseMapsEmbedKey(source: NodeJS.ProcessEnv): string | undefined {
   return parsed.data
 }
 
+/**
+ * Unset or blank is `none` in every environment, including production.
+ * `current` is the current-tool adapter. A typo fails boot and the value
+ * is not copied into the error text.
+ */
+function parseInvoicing(source: NodeJS.ProcessEnv): 'none' | 'current' {
+  const raw = blankEnv(source.INVOICING)
+  if (raw === undefined)
+    return 'none'
+  const parsed = z.enum(['none', 'current']).safeParse(raw)
+  if (!parsed.success)
+    throw new Error('INVOICING must be none, current, or unset.')
+  return parsed.data
+}
+
+/**
+ * Base64 of exactly 32 bytes. A blank value is missing. A bad value throws
+ * a fixed sentence, so the key is not written into it.
+ */
+function decodeInvoicingSecretKey(raw: string): Uint8Array {
+  const bytes = Buffer.from(raw, 'base64')
+  if (bytes.length !== 32 || bytes.toString('base64') !== raw)
+    throw new Error('INVOICING_SECRET_KEY is invalid.')
+  return new Uint8Array(bytes)
+}
+
+/**
+ * The key at call time. Boot also stores it on `AppEnv`. A save reads this
+ * so a test can set the variable before the request. Production does not
+ * change it after start.
+ */
+export function readInvoicingSecretKey(source: NodeJS.ProcessEnv = process.env): Uint8Array | undefined {
+  const raw = blankEnv(source.INVOICING_SECRET_KEY)
+  if (raw === undefined)
+    return undefined
+  return decodeInvoicingSecretKey(raw)
+}
+
+/**
+ * `INVOICING=current` cannot boot without a key. `none` may omit it.
+ */
+function parseInvoicingSecretKey(source: NodeJS.ProcessEnv, invoicing: 'none' | 'current'): Uint8Array | undefined {
+  const key = readInvoicingSecretKey(source)
+  if (invoicing !== 'none' && key === undefined)
+    throw new Error('INVOICING_SECRET_KEY is required when INVOICING is not none.')
+  return key
+}
+
 function parseSentryDsn(source: NodeJS.ProcessEnv): string | undefined {
   const dsn = blankEnv(source.SENTRY_DSN)
   if (dsn === undefined)
@@ -260,6 +321,7 @@ export function nodeEnv(): string | undefined {
 /** Parse one source. Boot uses `loadAppEnv`, which caches this. */
 export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
   const MAPS = parseMaps(source)
+  const INVOICING = parseInvoicing(source)
   const MAILER = parseMailer(source)
   const DEPLOY_ENV = parseDeployEnv(source)
   const MAIL_ALLOWLIST = parseMailAllowlist(source)
@@ -284,6 +346,8 @@ export function parseAppEnv(source: NodeJS.ProcessEnv): AppEnv {
     MAPS,
     MAPS_API_KEY: parseMapsApiKey(source, MAPS),
     MAPS_EMBED_KEY: parseMapsEmbedKey(source),
+    INVOICING,
+    INVOICING_SECRET_KEY: parseInvoicingSecretKey(source, INVOICING),
     SENTRY_DSN: parseSentryDsn(source),
     SENTRY_RELEASE: parseSentryRelease(source),
   }

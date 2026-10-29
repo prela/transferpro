@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { spawn } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import process from 'node:process'
@@ -27,6 +28,12 @@ catch (error) {
 
 // The owner URL migrates and seeds. The app process must not see it.
 delete process.env.DATABASE_MIGRATE_URL
+
+// E2E never calls the current tool (ADR-0051). The key exists only so an
+// Admin can store a token during the settings spec. It is not a Tenant secret.
+process.env.INVOICING = 'none'
+if (process.env.INVOICING_SECRET_KEY === undefined || process.env.INVOICING_SECRET_KEY === '')
+  process.env.INVOICING_SECRET_KEY = Buffer.alloc(32, 7).toString('base64')
 
 // A previous run can leave a token. The spec must see only this server's mail.
 const resetOutbox = process.env.E2E_PASSWORD_RESET_OUTBOX

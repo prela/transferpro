@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, BILLING_DETAILS_FIELD_LISTS, CLIENT_KINDS, CONTACT_PERSON_ADDED_FIELD_LISTS, CONTACT_PERSON_CHANGED_FIELD_LISTS, DRIVER_FIELDS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, PARTNER_CHANGED_FIELD_LISTS, PARTNER_CREATED_FIELD_LISTS, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_HANDOFF_CLEAR_FIELDS, RIDE_HANDOFF_OPEN_FIELDS, RIDE_LANDING_FIELDS, RIDE_PARTNER_CHANGED_FIELDS, RIDE_TAKEN_BACK_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, BILLING_DETAILS_FIELD_LISTS, CLIENT_KINDS, CONTACT_PERSON_ADDED_FIELD_LISTS, CONTACT_PERSON_CHANGED_FIELD_LISTS, DRIVER_FIELDS, INVOICING_SETTINGS_FIELD_LISTS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, PARTNER_CHANGED_FIELD_LISTS, PARTNER_CREATED_FIELD_LISTS, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_HANDOFF_CLEAR_FIELDS, RIDE_HANDOFF_OPEN_FIELDS, RIDE_LANDING_FIELDS, RIDE_PARTNER_CHANGED_FIELDS, RIDE_TAKEN_BACK_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -304,6 +304,15 @@ function billingDetailsSaved(data: AnyPgColumn) {
 }
 
 /**
+ * An invoicing settings change records field names only. Equality refuses
+ * a due-day count, a VAT rate, a line, or a token (ADR-0051).
+ */
+function invoicingSettingsChanged(data: AnyPgColumn) {
+  const allowed = INVOICING_SETTINGS_FIELD_LISTS.map(list => `'${JSON.stringify(list)}'::jsonb`).join(', ')
+  return sql`${keysOnly(data, 'fields')} and ${data} -> ${sql.raw(`'fields'`)} in (${sql.raw(allowed)})`
+}
+
+/**
  * `fields` is one of the canonical Partner arrays. Equality refuses a name,
  * a phone, an email, a note, or a different order.
  */
@@ -413,6 +422,7 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'contact_person.removed' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'clientId', 'contactPersonId', 'fields')} and ${uuidText(table.data, 'clientId')} and ${uuidText(table.data, 'contactPersonId')} and ${table.data} -> 'fields' = '["removed"]'::jsonb
     when 'client_note.saved' then ${table.subjectUserId} is null and ${clientNoteSaved(table.data)}
     when 'billing_details.saved' then ${table.subjectUserId} is null and ${billingDetailsSaved(table.data)}
+    when 'invoicing_settings.changed' then ${table.subjectUserId} is null and ${invoicingSettingsChanged(table.data)}
     when 'partner.created' then ${table.subjectUserId} is null and ${partnerFields(table.data, PARTNER_CREATED_FIELD_LISTS)}
     when 'partner.changed' then ${table.subjectUserId} is null and ${partnerFields(table.data, PARTNER_CHANGED_FIELD_LISTS)}
     when 'partner.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'partnerId')} and ${uuidText(table.data, 'partnerId')}

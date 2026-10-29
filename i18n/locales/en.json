@@ -273,6 +273,9 @@
       "billing_details": {
         "saved": "Billing details saved"
       },
+      "invoicing_settings": {
+        "changed": "Invoicing settings changed"
+      },
       "partner": {
         "created": "Subcontractor added",
         "changed": "Subcontractor corrected",
@@ -285,6 +288,23 @@
     "title": "Settings",
     "operations": "Operations",
     "intro": "These are the No-show waits, how long a ride occupies a driver and a vehicle, and the gap that warns. Times on the screen use the time zone.",
+    "invoicing": {
+      "title": "Invoices",
+      "intro": "The current tool's token, the due days, the VAT rate, and the line text.",
+      "token": "Token",
+      "tokenHint": "Leave this blank to keep the saved token. After a save only the last four characters show.",
+      "tokenSet": "Last four: {lastFour}",
+      "tokenMissing": "No token is set.",
+      "dueDays": "Due days",
+      "vatRate": "VAT rate",
+      "lineText": "Line text",
+      "fields": {
+        "dueDays": "Due days",
+        "vatRate": "VAT rate",
+        "lineText": "Line text",
+        "token": "Token"
+      }
+    },
     "airportWait": "Airport wait (minutes)",
     "elsewhereWait": "Wait elsewhere (minutes)",
     "transferDuration": "Transfer duration (minutes)",

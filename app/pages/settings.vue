@@ -119,11 +119,13 @@ bindScreenTitle(() => onSettings.value ? t('shell.companySettings') : '')
         :ui="{ link: 'h-7 min-h-7 max-lg:h-11 max-lg:min-h-11' }"
       />
 
-      <TenantSettings
-        v-if="tab === 'operations'"
-        :is-admin="session.role === 'admin'"
-        @saved="refresh()"
-      />
+      <template v-if="tab === 'operations'">
+        <TenantSettings
+          :is-admin="session.role === 'admin'"
+          @saved="refresh()"
+        />
+        <InvoicingSettings />
+      </template>
       <section v-else>
         <MemberInvite @sent="pendingGeneration += 1" />
         <MemberList

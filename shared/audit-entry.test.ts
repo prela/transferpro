@@ -867,6 +867,32 @@ it('records billing details by the Client id and the field names, never a value'
   expect(auditFactSchema.safeParse({ ...saved, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records an invoicing settings change by field names, never the values', () => {
+  const changed = {
+    action: 'invoicing_settings.changed' as const,
+    subjectUserId: null,
+    data: { fields: ['dueDays', 'token'] as const },
+  }
+  expect(auditFactSchema.parse(changed)).toEqual(changed)
+  expect(auditFactSchema.safeParse({
+    ...changed,
+    data: { ...changed.data, token: 'current-tool-token-9911' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...changed,
+    data: { ...changed.data, dueDays: 10 },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...changed,
+    data: { fields: ['token', 'dueDays'] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...changed,
+    data: { fields: [] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...changed, subjectUserId: memberId }).success).toBe(false)
+})
+
 it('records a Partner by id and field names, and refuses the name, the phone, the email, and the note', () => {
   const partnerId = '2e3d4c5b-7777-4777-8777-777777777777'
   const created = {

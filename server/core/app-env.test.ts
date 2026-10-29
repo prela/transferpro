@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { expect, it } from 'vitest'
 import { parseAppEnv } from './index'
 
@@ -296,4 +297,35 @@ it('keeps MAPS_EMBED_KEY optional, treats blank as missing, and never echoes the
   catch (error) {
     expect(String(error)).not.toContain(embedKey)
   }
+})
+
+const invoicingKey = Buffer.alloc(32, 4).toString('base64')
+
+it('defaults INVOICING to none and does not require the key', () => {
+  expect(parseAppEnv(base).INVOICING).toBe('none')
+  expect(parseAppEnv(base).INVOICING_SECRET_KEY).toBeUndefined()
+  expect(parseAppEnv({ ...base, INVOICING: '' }).INVOICING).toBe('none')
+  expect(parseAppEnv({ ...base, INVOICING: 'none', INVOICING_SECRET_KEY: invoicingKey }).INVOICING_SECRET_KEY).toHaveLength(32)
+})
+
+it('refuses an invoicing adapter without the key and does not echo a bad value', () => {
+  expect(() => parseAppEnv({ ...base, INVOICING: 'current' })).toThrow(/INVOICING_SECRET_KEY is required/)
+  const bad = 'not-a-real-key'
+  expect(() => parseAppEnv({ ...base, INVOICING: 'current', INVOICING_SECRET_KEY: bad })).toThrow(/INVOICING_SECRET_KEY is invalid/)
+  try {
+    parseAppEnv({ ...base, INVOICING: 'current', INVOICING_SECRET_KEY: bad })
+  }
+  catch (error) {
+    expect(String(error)).not.toContain(bad)
+  }
+  try {
+    parseAppEnv({ ...base, INVOICING: 'nope' })
+  }
+  catch (error) {
+    expect(String(error)).not.toContain('nope')
+    expect(String(error)).toMatch(/INVOICING must be none, current, or unset/)
+  }
+  expect(parseAppEnv({ ...base, INVOICING: 'current', INVOICING_SECRET_KEY: invoicingKey })).toMatchObject({
+    INVOICING: 'current',
+  })
 })
