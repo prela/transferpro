@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { billingDetailsFieldsSchema } from './billing-details'
 import { clientKindSchema } from './client'
 import { contactPersonAddedFieldsSchema, contactPersonChangedFieldsSchema } from './contact-person'
 import { driverFieldSchema } from './driver'
@@ -77,6 +78,7 @@ export const auditActions = [
   'partner.archived',
   'partner.restored',
   'client_note.saved',
+  'billing_details.saved',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -751,6 +753,20 @@ const clientNoteSaved = z.object({
 })
 
 /*
+ * Billing details (ADR-0051) name the Client and the fields that changed.
+ * A legal name, an OIB, a VAT id, an address, or a guest name is not a value
+ * on the row. The field order is the constant in billing-details.ts.
+ */
+const billingDetailsSaved = z.object({
+  action: z.literal('billing_details.saved'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    clientId,
+    fields: billingDetailsFieldsSchema,
+  }),
+})
+
+/*
  * A handoff names the Ride and the Partner. When it cleared a Driver, it
  * also names that Driver and the Vehicle. The field order is the constant
  * in ride-handoff.ts. A name, a contact, a plate, or a guest is not a key
@@ -863,6 +879,7 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   partnerArchived,
   partnerRestored,
   clientNoteSaved,
+  billingDetailsSaved,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -1014,6 +1031,7 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   partnerArchived.extend(listed),
   partnerRestored.extend(listed),
   clientNoteSaved.extend(listed),
+  billingDetailsSaved.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

@@ -18,6 +18,7 @@ const officeWrites: ReadonlyArray<{ readonly method: string, readonly pattern: R
   { method: 'PATCH', pattern: new RegExp(`^/api/clients/${uuid}/contact-persons/${uuid}$`, 'i') },
   { method: 'POST', pattern: new RegExp(`^/api/clients/${uuid}/contact-persons/${uuid}/remove$`, 'i') },
   { method: 'PUT', pattern: new RegExp(`^/api/clients/${uuid}/note$`, 'i') },
+  { method: 'PUT', pattern: new RegExp(`^/api/clients/${uuid}/billing-details$`, 'i') },
   { method: 'POST', pattern: /^\/api\/partners$/ },
   { method: 'PATCH', pattern: new RegExp(`^/api/partners/${uuid}$`, 'i') },
   { method: 'POST', pattern: new RegExp(`^/api/partners/${uuid}/(?:archive|restore)$`, 'i') },

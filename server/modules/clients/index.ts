@@ -4,6 +4,14 @@
  * A daily job deletes contact persons removed more than 90 days ago.
  */
 export { ClientNotFoundError, createClient, listClients, updateClient } from './infrastructure/client-access'
+/**
+ * Billing details for one Client, and whether they are complete (ADR-0051).
+ * The helper refuses any role other than dispatcher or admin before it reads.
+ * Invoicing calls it inside a tenant session. The office routes use the
+ * session wrappers. `app.clients` is unchanged.
+ */
+export { loadClientBillingDetails } from './infrastructure/client-billing'
+export { readClientBilling, writeClientBilling } from './infrastructure/client-billing-access'
 /** The one standing note on the Client card (ADR-0049). */
 export { readClientNote, writeClientNote } from './infrastructure/client-note-access'
 /**

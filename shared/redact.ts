@@ -30,6 +30,12 @@ const PERSONAL_KEYS = new Set([
   'flightno',
   'iata',
   'address',
+  // Billing details are personal data, including a sole trader's OIB (ADR-0051).
+  'legalname',
+  'oib',
+  'vatid',
+  'country',
+  'guestnameoninvoice',
   'street',
   'streetaddress',
   'postalcode',

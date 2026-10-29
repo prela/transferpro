@@ -30,8 +30,10 @@ const saving = ref(false)
  */
 const formMode = ref<'add' | 'edit' | null>(null)
 const editingId = ref<string | null>(null)
-/** Podaci is the name and the kind. Kontakti, Napomena, and Vožnje are the card's other tabs. */
-const cardTab = ref<'data' | 'contacts' | 'note' | 'rides'>('data')
+/** Podaci is the name and the kind. Kontakti, Napomena, Podaci za račun, and Vožnje are the card's other tabs. */
+const cardTab = ref<'data' | 'contacts' | 'note' | 'billing' | 'rides'>('data')
+/** The kind the card was opened with. An individual has no billing tab (ADR-0051). */
+const openedKind = ref<ClientKind | null>(null)
 /** The panel title stays the name that was opened, not the half-typed correction. */
 const openedName = ref('')
 /** The version the edit form opened with. Only Osvježi replaces it (ADR-0046). */
@@ -58,12 +60,18 @@ interface ClientForm {
   kind: ClientKind
 }
 
-const cardTabs = computed(() => [
-  { label: t('clients.tabs.data'), value: 'data' as const },
-  { label: t('clients.tabs.contacts'), value: 'contacts' as const },
-  { label: t('clients.tabs.note'), value: 'note' as const },
-  { label: t('clients.tabs.rides'), value: 'rides' as const },
-])
+const cardTabs = computed(() => {
+  const tabs: { label: string, value: 'data' | 'contacts' | 'note' | 'billing' | 'rides' }[] = [
+    { label: t('clients.tabs.data'), value: 'data' },
+    { label: t('clients.tabs.contacts'), value: 'contacts' },
+    { label: t('clients.tabs.note'), value: 'note' },
+  ]
+  // Billing details are for an agency or a hotel. An individual Client has no tab.
+  if (openedKind.value === 'agency' || openedKind.value === 'hotel')
+    tabs.push({ label: t('clients.tabs.billing'), value: 'billing' as const })
+  tabs.push({ label: t('clients.tabs.rides'), value: 'rides' as const })
+  return tabs
+})
 
 const kindItems = computed(() => [
   { label: t('clients.kinds.agency'), value: 'agency' as const },
@@ -143,6 +151,7 @@ async function rereadClients(): Promise<boolean> {
 
 function openAdd() {
   editingId.value = null
+  openedKind.value = null
   cardTab.value = 'data'
   openedName.value = ''
   state.name = ''
@@ -154,6 +163,7 @@ function openAdd() {
 
 function openEdit(client: ClientListEntry) {
   editingId.value = client.id
+  openedKind.value = client.kind
   cardTab.value = 'data'
   openedName.value = client.name
   openedVersion.value = client.version
@@ -411,6 +421,13 @@ onMounted(loadClients)
       />
       <ClientNote
         v-if="formMode === 'edit' && editingId && cardTab === 'note'"
+        :client-id="editingId"
+        :phone="phone"
+        :time-zone="timeZone"
+        :locale="locale"
+      />
+      <ClientBilling
+        v-if="formMode === 'edit' && editingId && cardTab === 'billing'"
         :client-id="editingId"
         :phone="phone"
         :time-zone="timeZone"
