@@ -18,6 +18,8 @@ const askedAtPayload = z.strictObject({
 export const jobPayloads: Record<string, z.ZodType> = {
   'mail-outbox': z.strictObject({ entryId: z.uuid() }),
   'invoice-create': z.strictObject({ invoiceId: z.uuid() }),
+  'invoice-status': emptyPayload,
+  'invoice-status-check': askedAtPayload,
   'mail-outbox-retention': emptyPayload,
   'mail-outbox-retention-tenant': askedAtPayload,
   'unavailability-retention': emptyPayload,

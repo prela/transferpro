@@ -58,6 +58,9 @@ beforeAll(async () => {
   const auth = await authPool.connect()
   try {
     await owner.query('begin')
+    await owner.query(`delete from app.invoices where tenant_id::text in (
+      select id from auth.organization where slug like 'crh-%'
+    )`)
     await owner.query(`delete from app.rides where tenant_id::text in (
       select id from auth.organization where slug like 'crh-%'
     )`)
@@ -453,4 +456,34 @@ it('pages 50 rides and keeps the counts on the whole history', async () => {
   expect(second.rides.map(ride => ride.guestName)).toEqual(['n00'])
   expect(second.nextCursor).toBeNull()
   expect(second.counts).toEqual(first.counts)
+})
+
+it('shows the invoice state on a Client row, and leaves a Ride without one empty', async () => {
+  const created = await tenant('crh-invoice', 'Hana Admin')
+  const admin = await signIn('crh-invoice-admin@example.test')
+  const client = await createClient(admin, { name: 'Agencija Račun', kind: 'agency' })
+  const start = await createLocation(admin, { name: 'Zračna luka', kind: 'airport' })
+  const end = await createLocation(admin, { name: 'Hotel Park', kind: 'hotel' })
+  const places = { tenantId: created.tenantId, clientId: client.id, startId: start.id, endId: end.id }
+  await seedRide({ ...places, pickupAt: instantFromWallClock('2026-06-02T12:00', zone).toISOString(), guestName: 'Fakturirani gost', state: 'done' })
+  await seedRide({ ...places, pickupAt: instantFromWallClock('2026-06-01T12:00', zone).toISOString(), guestName: 'Bez računa', state: 'done' })
+  const transfer = await ownerPool.query<{ id: string }>(
+    `select id from app.transfers where tenant_id = $1 and guest_name = 'Fakturirani gost'`,
+    [created.tenantId],
+  )
+  const transferId = transfer.rows[0]?.id
+  if (transferId === undefined)
+    throw new Error('transfer insert returned no row')
+  await ownerPool.query(
+    `insert into app.invoices (
+      tenant_id, transfer_reference, state, client_id, line_text, language,
+      due_days, vat_rate, gross_amount, asked_by
+    ) values ($1, $2, 'created', $3, 'Transfer', 'hr', 15, 25, '80.00', 'office')`,
+    [created.tenantId, transferId, client.id],
+  )
+
+  const body = rideHistorySchema.parse(await (await call(`/api/clients/${client.id}/ride-history`, admin)).json())
+  expect(body.rides.find(ride => ride.guestName === 'Fakturirani gost')?.invoiceState).toBe('created')
+  expect(body.rides.find(ride => ride.guestName === 'Bez računa')?.invoiceState).toBeNull()
+  expect(JSON.stringify(body)).not.toContain('Transfer,')
 })

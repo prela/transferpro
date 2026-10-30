@@ -142,6 +142,16 @@ export const officeHomeFailedMailSchema = z.discriminatedUnion('kind', [
   officeHomeFailedInvitationSchema,
 ])
 
+/**
+ * A Ride whose invoice is unsent (`created`) or failed. It is a Warning.
+ * It is not one of the urgent groups, and it does not count toward the
+ * urgent count (ADR-0051). The row is the same shape as a Home row so
+ * Pozornost can open the Ride.
+ */
+export const officeHomeInvoiceWarningSchema = officeHomeRowSchema.extend({
+  kind: z.enum(['unsent', 'failed']),
+}).strict()
+
 export const officeHomeSchema = z.strictObject({
   operationalDate: z.string().refine(isCalendarDate),
   operationalDayStartHour: operationalDayStartHourSchema,
@@ -151,6 +161,13 @@ export const officeHomeSchema = z.strictObject({
   handedOff: z.array(officeHomeHandedOffSchema),
   counts: officeHomeCountsSchema,
   failedMails: z.array(officeHomeFailedMailSchema),
+  /** One row per Ride. A Ride already in Pozornost as urgent is not repeated. */
+  invoiceWarnings: z.array(officeHomeInvoiceWarningSchema),
+  /**
+   * From the 15th through the 20th, in the Tenant time zone, while a sent
+   * invoice to a Croatian Client exists. Not attached to a Ride.
+   */
+  paymentReportingReminder: z.boolean(),
 })
 
 /** One immediate resend. The address is not on the body. */
@@ -354,8 +371,10 @@ export function buildOfficeHome(
     inProgress,
     handedOff,
     counts,
-    // The Ride snapshot does not know about mail. The Home read fills this afterwards.
+    // The Ride snapshot does not know about mail or invoices. The Home read fills these afterwards.
     failedMails: [],
+    invoiceWarnings: [],
+    paymentReportingReminder: false,
   })
 }
 

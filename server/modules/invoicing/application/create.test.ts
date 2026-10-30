@@ -86,6 +86,9 @@ function world(behavior: (request: InvoiceCreateRequest) => Promise<
       finds.push(id)
       return found
     },
+    async readStatus() {
+      return { sent: false, storno: null }
+    },
   }
   const store = {
     async load(id: string) {

@@ -1,5 +1,5 @@
 import type { SQL } from 'drizzle-orm'
-import type { RideHistory, RideHistoryCursor } from '../../../../shared'
+import type { InvoiceState, RideHistory, RideHistoryCursor } from '../../../../shared'
 import type { TenantTransaction } from '../../../core/index'
 import { Buffer } from 'node:buffer'
 import { sql } from 'drizzle-orm'
@@ -8,6 +8,7 @@ import { locationLabel, operationalDateInTimeZone, paymentMethodSchema, QueryPar
 import { hideDatabaseError } from '../../../core/index'
 import { ClientNotFoundError, loadClient } from '../../clients'
 import { loadDrivers } from '../../drivers'
+import { readLatestInvoiceStates } from '../../invoicing'
 import { loadLocations } from '../../locations'
 import { loadPartner, loadPartners, PartnerNotFoundError } from '../../partners'
 import { loadTenantSettings, TenantAccessError, withTenantFromSession } from '../../tenancy'
@@ -60,6 +61,7 @@ const historyRowSchema = z.object({
   guestName: z.string().min(1),
   price: z.union([z.string(), z.number()]),
   payment: paymentMethodSchema,
+  transferId: z.uuid(),
 })
 
 /**
@@ -158,6 +160,7 @@ async function loadRideHistory(
         t.pickup_at as "pickupAt",
         t.start_location_id as "startLocationId",
         t.end_location_id as "endLocationId",
+        t.id as "transferId",
         t.guest_name as "guestName",
         t.price,
         t.payment
@@ -175,6 +178,11 @@ async function loadRideHistory(
   // Archived Partners stay in the map. A Ride already handed to one still names it.
   const partners = new Map((await loadPartners(transaction, true)).map(partner => [partner.id, partner.name]))
   const page = selected.rows.slice(0, RIDE_HISTORY_PAGE_SIZE)
+  // A Client's row shows its invoice. A Partner's history leaves the state
+  // empty. `clients` does not read invoicing; this query stays in transfers.
+  const invoiceStates: Map<string, InvoiceState> = scope.kind === 'client'
+    ? await readLatestInvoiceStates(transaction, page.map(row => row.transferId))
+    : new Map()
   const rides = page.map((row) => {
     const start = places.get(row.startLocationId)
     const end = places.get(row.endLocationId)
@@ -199,6 +207,7 @@ async function loadRideHistory(
       partnerName,
       price: toPrice(row.price),
       payment: row.payment,
+      invoiceState: invoiceStates.get(row.transferId) ?? null,
     }
   })
   const last = rides[rides.length - 1]

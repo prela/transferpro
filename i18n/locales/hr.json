@@ -1210,6 +1210,9 @@
       "unclosed-mark": "Nije zatvoreno"
     },
     "emptyAttention": "Nema hitnih vožnji. Ostale vožnje su na popisima ispod.",
+    "warning": "Upozorenje",
+    "sendFromTool": "Pošalji iz alata za račune",
+    "paymentReminder": "Prijavite plaćanja za prošli mjesec u alatu za račune.",
     "emptyUnassigned": "Nema nedodijeljenih vožnji. Novi transfer otvorite na Transferima.",
     "emptyWaiting": "Nema vožnji koje čekaju prihvat. Dodijeljena vožnja čeka ovdje dok je vozač ne prihvati.",
     "emptyInProgress": "Nema vožnji u tijeku. Započeta vožnja pojavit će se ovdje.",

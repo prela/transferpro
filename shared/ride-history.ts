@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { isCalendarDate } from './date'
+import { invoiceStateSchema } from './invoice'
 import { paymentMethodSchema, rideStateSchema, transferPriceSchema } from './transfer'
 
 /**
@@ -32,6 +33,8 @@ export const rideHistoryRowSchema = z.object({
   partnerName: z.string().min(1).nullable(),
   price: transferPriceSchema,
   payment: paymentMethodSchema,
+  /** Null when this Ride has no invoice. A Partner's history leaves it null. */
+  invoiceState: invoiceStateSchema.nullable(),
 })
 
 export type RideHistoryRow = z.infer<typeof rideHistoryRowSchema>

@@ -1,4 +1,5 @@
 import type { InvoiceReason, InvoiceState } from '../../../../shared'
+import { calendarDateInTimeZone } from '../../../../shared'
 
 /**
  * The request and the line the current tool is asked to create (ADR-0051,
@@ -109,6 +110,74 @@ export function retryDelayAfterAttempt(attemptCount: number): number | null {
 /** A refusal fails at once. A transient miss may wait. */
 export function refusalReason(kind: 'rejected' | 'allowance' | 'token'): InvoiceReason {
   return kind
+}
+
+/** Reads of invoice status in one Tenant in one run (ADR-0051). */
+export const INVOICE_STATUS_BUDGET = 20
+
+/** The status tick. Fifteen minutes keeps the tool's hourly read allowance. */
+export const INVOICE_STATUS_EVERY_MINUTES = 15
+
+export interface InvoiceStatusCandidate {
+  readonly id: string
+  readonly state: 'created' | 'cancelling'
+  readonly toolInvoiceId: string
+}
+
+/**
+ * What one read changes. `sent` is only from `created`. A storno number
+ * and link are stored only when `cancelling` finds the negative invoice.
+ * An unchanged row is returned as its current state so the caller can
+ * stamp the check without a second decision.
+ */
+export type InvoiceStatusEffect
+  = { readonly id: string, readonly state: 'created' | 'cancelling' | 'sent' }
+    | {
+      readonly id: string
+      readonly state: 'cancelled'
+      readonly stornoNumber: string
+      readonly stornoLink: string
+    }
+
+/** The first `INVOICE_STATUS_BUDGET` rows. The caller orders oldest checked first. */
+export function statusReadsThisRun<T>(rows: readonly T[]): T[] {
+  return rows.slice(0, INVOICE_STATUS_BUDGET)
+}
+
+export function invoiceStatusEffect(
+  candidate: InvoiceStatusCandidate,
+  read: { readonly sent: boolean, readonly storno: { readonly number: string, readonly documentLink: string } | null },
+): InvoiceStatusEffect {
+  if (candidate.state === 'created' && read.sent)
+    return { id: candidate.id, state: 'sent' }
+  if (candidate.state === 'cancelling' && read.storno !== null) {
+    return {
+      id: candidate.id,
+      state: 'cancelled',
+      stornoNumber: read.storno.number,
+      stornoLink: read.storno.documentLink,
+    }
+  }
+  return { id: candidate.id, state: candidate.state }
+}
+
+/**
+ * The payment-reporting reminder. The 15th and the 20th are included,
+ * in the Tenant's time zone, and only while a sent invoice to a Croatian
+ * Client exists. The day is the calendar date, so the edges are local
+ * midnight, not UTC (ADR-0051).
+ */
+export function paymentReportingReminderDue(
+  now: Date,
+  timeZone: string,
+  hasSentCroatianInvoice: boolean,
+): boolean {
+  if (!hasSentCroatianInvoice)
+    return false
+  if (Number.isNaN(now.getTime()))
+    throw new RangeError('Instant is not a valid time.')
+  const day = Number(calendarDateInTimeZone(timeZone, now).slice(-2))
+  return day >= 15 && day <= 20
 }
 
 export function isInvoiceState(value: string): value is InvoiceState {

@@ -1,4 +1,4 @@
-import type { CreateSlot, InvoiceCreateGate } from './application/port'
+import type { CreateSlot, InvoiceCreateGate, InvoiceStatusRead } from './application/port'
 import { INVOICE_CREATE_LEASE_MS, INVOICE_CREATE_SPACING_MS } from './domain/invoice'
 
 /**
@@ -48,7 +48,9 @@ export function memoryCreateGate(): InvoiceCreateGate {
  * current tool. A create returns a fixed number and link. The notes it
  * was given are the invoice id, and a later find returns that invoice.
  */
-export function fakeInvoicingPort() {
+export function fakeInvoicingPort(options?: {
+  readonly readStatus?: (toolInvoiceId: string) => Promise<InvoiceStatusRead>
+}) {
   const byReference = new Map<string, { toolInvoiceId: string, number: string, issuedOn: string, documentLink: string }>()
   let sequence = 0
   return {
@@ -68,6 +70,15 @@ export function fakeInvoicingPort() {
     },
     async findByReference(invoiceId: string) {
       return byReference.get(invoiceId) ?? null
+    },
+    /**
+     * Unsent, and no storno, unless the test passes its own read.
+     * A created invoice then stays created, which is the unsent warning.
+     */
+    async readStatus(toolInvoiceId: string): Promise<InvoiceStatusRead> {
+      if (options?.readStatus)
+        return options.readStatus(toolInvoiceId)
+      return { sent: false, storno: null }
     },
   }
 }

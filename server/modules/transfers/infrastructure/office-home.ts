@@ -2,10 +2,11 @@ import type { OfficeHome, OfficeHomeRide, TenantRole } from '../../../../shared'
 import type { TenantContext, TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { buildOfficeHome, localDayBounds, officeHomeSchema, operationalDateInTimeZone, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema } from '../../../../shared'
+import { buildOfficeHome, localDayBounds, officeHomeBlocks, officeHomeSchema, operationalDateInTimeZone, PASSENGER_COUNT_MAX, PASSENGER_COUNT_MIN, paymentMethodSchema, rideStateSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { loadClients } from '../../clients'
 import { loadDrivers } from '../../drivers'
+import { readInvoiceHomeNotices } from '../../invoicing'
 import { loadLocations } from '../../locations'
 import { loadTenantSettings } from '../../tenancy'
 import { loadVehicles } from '../../vehicles'
@@ -144,12 +145,107 @@ export async function loadOfficeHome(
   })
 
   const home = buildOfficeHome(rides, now, timeZone, startHour, settings.transferDurationMinutes)
+  const notices = await readInvoiceHomeNotices(transaction, now, timeZone)
+  const invoiceWarnings = await loadInvoiceWarnings(transaction, notices.warnings, clients, places, drivers, vehicles, home)
   // Derived on read. A finished Ride or a newer work order for this Driver drops the row.
   // Nothing is written, so a refresh cannot turn a failed row into stale by itself.
   const failedWorkOrders = await loadFailedWorkOrders(transaction, drivers, places)
   // Still pending is derived on read. The invitee's email comes from the auth role.
   const failedInvitations = viewer ? await loadFailedInvitations(transaction, viewer.context, viewer.role, now) : []
-  return officeHomeSchema.parse({ ...home, failedMails: [...failedWorkOrders, ...failedInvitations] })
+  return officeHomeSchema.parse({
+    ...home,
+    failedMails: [...failedWorkOrders, ...failedInvitations],
+    invoiceWarnings,
+    paymentReportingReminder: notices.paymentReportingReminder,
+  })
+}
+
+/**
+ * Rides for unsent and failed invoices, including a pickup outside the
+ * operational day. A Ride already shown as urgent is left out, so Pozornost
+ * lists it once. Names come from the catalogs this read already loaded.
+ */
+async function loadInvoiceWarnings(
+  transaction: TenantTransaction,
+  warnings: Awaited<ReturnType<typeof readInvoiceHomeNotices>>['warnings'],
+  clients: Map<string, string>,
+  places: Map<string, string>,
+  drivers: Map<string, string>,
+  vehicles: Map<string, string>,
+  home: OfficeHome,
+): Promise<OfficeHome['invoiceWarnings']> {
+  if (warnings.length === 0)
+    return []
+  const urgent = new Set(
+    officeHomeBlocks(home).attention.flatMap(group => group.rides.map(ride => ride.rideId)),
+  )
+  const kindByTransfer = new Map(warnings.map(warning => [warning.transferReference, warning.kind]))
+  const ids = sql.join(warnings.map(warning => sql`${warning.transferReference}`), sql`, `)
+  const selected = z.object({ rows: z.array(sourceRowSchema.omit({ declinedBy: true }).extend({
+    transferId: z.uuid(),
+  })) }).parse(await hideDatabaseError(
+    () => transaction.execute(sql`
+      select
+        r.id as "rideId",
+        t.id as "transferId",
+        t.pickup_at as "pickupAt",
+        t.guest_name as "guestName",
+        t.passenger_count as "passengerCount",
+        t.client_id as "clientId",
+        t.start_location_id as "startLocationId",
+        t.end_location_id as "endLocationId",
+        r.state,
+        r.driver_id as "driverId",
+        r.vehicle_id as "vehicleId",
+        r.must_accept as "mustAccept",
+        t.price,
+        t.payment,
+        t.flight_number as "flightNumber",
+        t.landing_at as "landingAt",
+        t.expected_arrival_at as "expectedArrival",
+        t.tabla
+      from app.rides as r
+      join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
+      where t.id in (${ids})
+    `),
+    'Office home read failed',
+  ))
+  const rows: OfficeHome['invoiceWarnings'] = []
+  for (const row of selected.rows) {
+    const kind = kindByTransfer.get(row.transferId)
+    if (kind === undefined || urgent.has(row.rideId))
+      continue
+    const start = places.get(row.startLocationId)
+    const end = places.get(row.endLocationId)
+    if (start === undefined || end === undefined)
+      throw new Error('Office home read failed')
+    rows.push({
+      rideId: row.rideId,
+      pickupAt: toInstant(row.pickupAt),
+      guestName: row.guestName,
+      passengerCount: row.passengerCount,
+      clientName: requiredName(row.clientId, clients),
+      start,
+      end,
+      state: row.state,
+      driverName: named(row.driverId, drivers),
+      vehiclePlate: named(row.vehicleId, vehicles),
+      price: toPrice(row.price),
+      payment: row.payment,
+      flightNumber: row.flightNumber,
+      landingAt: row.landingAt == null ? null : toInstant(row.landingAt),
+      expectedArrival: row.expectedArrival == null ? null : toInstant(row.expectedArrival),
+      tabla: row.tabla,
+      kind,
+    })
+  }
+  rows.sort((a, b) => {
+    const delta = a.pickupAt < b.pickupAt ? -1 : a.pickupAt > b.pickupAt ? 1 : 0
+    if (delta !== 0)
+      return delta
+    return a.rideId < b.rideId ? -1 : a.rideId > b.rideId ? 1 : 0
+  })
+  return rows
 }
 
 /** A missing Driver or Vehicle for an id that is set fails the whole read. A null id is an empty name. */
