@@ -283,12 +283,17 @@ async function postInvoice(path: string) {
     await $fetch(path, { method: 'POST', body: {} })
     // The number is written by the job, which waits out this tenant's
     // ten-second spacing and can sit in the queue. Keep the day current
-    // until that row leaves "requested".
-    for (let attempt = 0; attempt < 24; attempt += 1) {
-      await props.loadDay()
+    // until that row leaves "requested". A new issue must not stop on the
+    // cancelled invoice still on screen.
+    const issuing = path.endsWith('/invoice') || path.endsWith('/retry')
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const outcome = await props.loadDay()
+      // The day ref updates in the parent. Wait for that render, or this
+      // still reads the previous invoice.
+      await nextTick()
       const state = props.ride.invoice?.state
-      // Requested waits for the create job. Cancelling waits for the storno.
-      if (state !== 'requested' && state !== 'cancelling')
+      const previous = state === 'cancelled' || state === 'withdrawn' || state === undefined
+      if (outcome === 'ok' && state !== 'requested' && state !== 'cancelling' && !(issuing && previous))
         return
       await new Promise(resolve => setTimeout(resolve, 500))
     }
@@ -738,16 +743,17 @@ const primaryLabel = computed(() => {
             <span v-if="ride.invoice.stornoNumber">{{ ride.invoice.stornoNumber }}</span>
             <span v-if="ride.invoice.reason">{{ t(`transfers.invoice.reasons.${ride.invoice.reason}`) }}</span>
           </p>
+          <!-- 28px tall, on its own row, so two links still meet the 24px target. -->
           <a
             v-if="ride.invoice?.documentLink"
-            class="text-primary underline"
+            class="mt-1 flex min-h-7 w-fit items-center text-primary underline"
             :href="ride.invoice.documentLink"
             target="_blank"
             rel="noopener noreferrer"
           >{{ t('transfers.invoice.open') }}</a>
           <a
             v-if="ride.invoice?.stornoLink"
-            class="text-primary underline"
+            class="mt-1 flex min-h-7 w-fit items-center text-primary underline"
             :href="ride.invoice.stornoLink"
             target="_blank"
             rel="noopener noreferrer"

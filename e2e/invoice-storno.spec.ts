@@ -4,7 +4,7 @@ import { expectNoAxeViolations } from './fixtures/axe'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { hydrated, signIn, signOut, useTheme } from './fixtures/ui'
+import { hydrated, openUserMenu, signIn, useTheme } from './fixtures/ui'
 
 /**
  * An Admin stornos a created invoice and issues another. A Dispatcher
@@ -16,6 +16,18 @@ const licence = '2031-01-01'
 
 function isPhone(page: Page): boolean {
   return (page.viewportSize()?.width ?? 1280) < 1024
+}
+
+/**
+ * The Ride slideover covers the account button on a phone, and it adds
+ * other menus, so Odjava is opened from Office Home.
+ */
+async function signOutOffice(page: Page, tenantName: string) {
+  await page.goto('/')
+  await hydrated(page)
+  await openUserMenu(page, tenantName)
+  await page.getByRole('menuitem', { name: 'Odjava', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
 }
 
 async function createdId(page: Page, path: string, data: unknown): Promise<string> {
@@ -114,14 +126,14 @@ test.describe('@phone', () => {
       if (firstNumber === undefined)
         throw new Error('missing invoice number')
 
-      await signOut(page)
+      await signOutOffice(page, tenant.name)
       await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
       await page.goto(`/transfers?day=${day}&ride=${body.ride.id}`)
       await hydrated(page)
       await expect(page.getByRole('button', { name: 'Storniraj', exact: true })).toHaveCount(0)
       await expectNoAxeViolations(page)
 
-      await signOut(page)
+      await signOutOffice(page, tenant.name)
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       await page.goto(`/transfers?day=${day}&ride=${body.ride.id}`)
       await hydrated(page)
@@ -130,6 +142,8 @@ test.describe('@phone', () => {
       await expect(page.getByRole('link', { name: 'Otvori storno', exact: true })).toBeVisible()
       await expectNoAxeViolations(page)
       await page.getByRole('button', { name: 'Izdaj račun', exact: true }).click()
+      // The cancelled row still shows the first number until the new invoice replaces it.
+      await expect(invoice).not.toContainText(/S-\d+/, { timeout: 20_000 })
       await expect(invoice).toContainText(/F-\d+/, { timeout: 20_000 })
       const secondNumber = (await invoice.textContent())?.match(/F-\d+/)?.[0]
       expect(secondNumber).toBeTruthy()
