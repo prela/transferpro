@@ -84,6 +84,8 @@ export const auditActions = [
   'invoice.requested',
   'invoice.issued',
   'invoice.failed',
+  'invoice.cancelled',
+  'invoice.withdrawn',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -794,7 +796,7 @@ const invoiceAuditData = z.strictObject({
   transferId: z.uuid(),
 })
 
-function invoiceAudit(action: 'invoice.requested' | 'invoice.issued' | 'invoice.failed') {
+function invoiceAudit(action: 'invoice.requested' | 'invoice.issued' | 'invoice.failed' | 'invoice.cancelled' | 'invoice.withdrawn') {
   return z.object({
     action: z.literal(action),
     subjectUserId: z.null(),
@@ -805,6 +807,8 @@ function invoiceAudit(action: 'invoice.requested' | 'invoice.issued' | 'invoice.
 const invoiceRequested = invoiceAudit('invoice.requested')
 const invoiceIssued = invoiceAudit('invoice.issued')
 const invoiceFailed = invoiceAudit('invoice.failed')
+const invoiceCancelled = invoiceAudit('invoice.cancelled')
+const invoiceWithdrawn = invoiceAudit('invoice.withdrawn')
 
 /*
  * A handoff names the Ride and the Partner. When it cleared a Driver, it
@@ -924,6 +928,8 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   invoiceRequested,
   invoiceIssued,
   invoiceFailed,
+  invoiceCancelled,
+  invoiceWithdrawn,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -1080,6 +1086,8 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   invoiceRequested.extend(listed),
   invoiceIssued.extend(listed),
   invoiceFailed.extend(listed),
+  invoiceCancelled.extend(listed),
+  invoiceWithdrawn.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

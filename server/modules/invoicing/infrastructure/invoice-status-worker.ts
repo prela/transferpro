@@ -72,7 +72,7 @@ export async function registerInvoiceStatus(
   })
 }
 
-/** Tenants with a created or cancelling invoice. The function returns Tenant ids only. */
+/** Tenants with a created, cancelling, or unsent-storno invoice. Tenant ids only. */
 export async function listTenantsDueInvoiceStatus(pool: pg.Pool): Promise<string[]> {
   const listed = await pool.query('select tenant_id from app.tenants_due_invoice_status()')
   return z.array(z.object({ tenant_id: z.uuid() })).parse(listed.rows).map(row => row.tenant_id)

@@ -38,7 +38,7 @@ function sink() {
     async insertRequested(draft) {
       calls.push('insert')
       drafts.push(draft.lineText)
-      const invoice: TransferInvoice = { id: draft.id, state: 'requested', number: null, documentLink: null, reason: null }
+      const invoice: TransferInvoice = { id: draft.id, state: 'requested', number: null, documentLink: null, reason: null, stornoNumber: null, stornoLink: null }
       return invoice
     },
     async enqueue() {
@@ -50,7 +50,7 @@ function sink() {
     async replaceRequested(draft) {
       calls.push('replace')
       drafts.push(draft.lineText)
-      return { id: draft.id, state: 'requested', number: null, documentLink: null, reason: null }
+      return { id: draft.id, state: 'requested', number: null, documentLink: null, reason: null, stornoNumber: null, stornoLink: null }
     },
   }
   return { open, calls, drafts }
@@ -102,7 +102,7 @@ it('puts the guest name on the line only when the billing details ask for it', a
 })
 
 it('rebuilds a failed invoice under the same id, and a locking invoice blocks the price', async () => {
-  const failed: TransferInvoice = { id: invoiceId, state: 'failed', number: null, documentLink: null, reason: 'rejected' }
+  const failed: TransferInvoice = { id: invoiceId, state: 'failed', number: null, documentLink: null, reason: 'rejected', stornoNumber: null, stornoLink: null }
   const recorded = sink()
   const next = await retryInvoice('dispatcher', 'fake', 'member-2', transfer({ price: '90.00' }), client, billing, settings, failed, recorded.open)
   expect(next.id).toBe(invoiceId)
@@ -111,5 +111,7 @@ it('rebuilds a failed invoice under the same id, and a locking invoice blocks th
   expect(recorded.drafts[0]).toContain('4 putnika')
   expect(correctionBlockedByInvoice({ state: 'requested' }, ['price'])).toBe(true)
   expect(correctionBlockedByInvoice({ state: 'failed' }, ['price'])).toBe(false)
+  expect(correctionBlockedByInvoice({ state: 'cancelled' }, ['price'])).toBe(false)
+  expect(correctionBlockedByInvoice({ state: 'withdrawn' }, ['clientId'])).toBe(false)
   expect(correctionBlockedByInvoice({ state: 'created' }, ['guestName'])).toBe(false)
 })

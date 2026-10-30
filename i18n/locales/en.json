@@ -279,7 +279,9 @@
       "invoice": {
         "requested": "Invoice requested",
         "issued": "Invoice issued",
-        "failed": "Invoice failed"
+        "failed": "Invoice failed",
+        "cancelled": "Invoice cancelled",
+        "withdrawn": "Invoice withdrawn"
       },
       "partner": {
         "created": "Subcontractor added",
@@ -570,7 +572,10 @@
       "title": "Invoice",
       "issue": "Issue invoice",
       "retry": "Try again",
+      "storno": "Cancel invoice",
+      "withdraw": "Withdraw",
       "open": "Open invoice",
+      "openStorno": "Open cancellation",
       "billingLink": "Billing details",
       "states": {
         "requested": "Requested",

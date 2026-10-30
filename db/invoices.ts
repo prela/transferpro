@@ -41,6 +41,18 @@ export const invoices = tenantTable('invoices', {
   nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'date' }),
   awaitingLookup: boolean('awaiting_lookup').notNull().default(false),
   /**
+   * True once the storno job has committed its claim. The port is called
+   * only after that commit, so a timeout cannot call the tool twice.
+   * A constant default does not rewrite existing rows.
+   */
+  stornoCalled: boolean('storno_called').notNull().default(false),
+  /**
+   * True once the status job sees the negative invoice as sent.
+   * Until then a cancelled invoice is an unsent warning (ADR-0051).
+   * A constant default does not rewrite existing rows.
+   */
+  stornoSent: boolean('storno_sent').notNull().default(false),
+  /**
    * When the status job last read this invoice in the current tool.
    * Null until the first read. The job takes the oldest, nulls first,
    * so a run of 20 rotates instead of rereading the same rows (ADR-0051).

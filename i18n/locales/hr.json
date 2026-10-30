@@ -279,7 +279,9 @@
       "invoice": {
         "requested": "Račun zatražen",
         "issued": "Račun izdan",
-        "failed": "Račun nije izdan"
+        "failed": "Račun nije izdan",
+        "cancelled": "Račun storniran",
+        "withdrawn": "Račun povučen"
       },
       "partner": {
         "created": "Podizvođač dodan",
@@ -570,7 +572,10 @@
       "title": "Račun",
       "issue": "Izdaj račun",
       "retry": "Pokušaj ponovno",
+      "storno": "Storniraj",
+      "withdraw": "Povuci",
       "open": "Otvori račun",
+      "openStorno": "Otvori storno",
       "billingLink": "Podaci za račun",
       "states": {
         "requested": "Zatražen",

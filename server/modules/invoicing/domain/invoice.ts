@@ -120,8 +120,18 @@ export const INVOICE_STATUS_EVERY_MINUTES = 15
 
 export interface InvoiceStatusCandidate {
   readonly id: string
-  readonly state: 'created' | 'cancelling'
+  readonly state: 'created' | 'cancelling' | 'cancelled'
   readonly toolInvoiceId: string
+}
+
+/** An Admin may cancel a created or sent invoice. Any other state is refused. */
+export function stornoRequestAllowed(state: InvoiceState): boolean {
+  return state === 'created' || state === 'sent'
+}
+
+/** An Admin may withdraw only a failed invoice, and only after a lookup. */
+export function withdrawRequestAllowed(state: InvoiceState): boolean {
+  return state === 'failed'
 }
 
 /**
@@ -131,12 +141,19 @@ export interface InvoiceStatusCandidate {
  * stamp the check without a second decision.
  */
 export type InvoiceStatusEffect
-  = { readonly id: string, readonly state: 'created' | 'cancelling' | 'sent' }
+  = { readonly id: string, readonly state: 'created' | 'cancelling' | 'sent' | 'cancelled' }
+    | {
+      readonly id: string
+      readonly state: 'cancelled'
+      readonly stornoSent: true
+    }
     | {
       readonly id: string
       readonly state: 'cancelled'
       readonly stornoNumber: string
       readonly stornoLink: string
+      /** False until the office sends the negative invoice from the current tool. */
+      readonly stornoSent: boolean
     }
 
 /** The first `INVOICE_STATUS_BUDGET` rows. The caller orders oldest checked first. */
@@ -146,7 +163,10 @@ export function statusReadsThisRun<T>(rows: readonly T[]): T[] {
 
 export function invoiceStatusEffect(
   candidate: InvoiceStatusCandidate,
-  read: { readonly sent: boolean, readonly storno: { readonly number: string, readonly documentLink: string } | null },
+  read: {
+    readonly sent: boolean
+    readonly storno: { readonly number: string, readonly documentLink: string, readonly sent?: boolean } | null
+  },
 ): InvoiceStatusEffect {
   if (candidate.state === 'created' && read.sent)
     return { id: candidate.id, state: 'sent' }
@@ -156,8 +176,12 @@ export function invoiceStatusEffect(
       state: 'cancelled',
       stornoNumber: read.storno.number,
       stornoLink: read.storno.documentLink,
+      stornoSent: read.storno.sent === true,
     }
   }
+  // A cancelled storno stays an unsent warning until the tool says it was sent.
+  if (candidate.state === 'cancelled' && read.storno?.sent === true)
+    return { id: candidate.id, state: 'cancelled', stornoSent: true }
   return { id: candidate.id, state: candidate.state }
 }
 

@@ -89,6 +89,12 @@ function world(behavior: (request: InvoiceCreateRequest) => Promise<
     async readStatus() {
       return { sent: false, storno: null }
     },
+    async storno() {
+      return { kind: 'accepted' as const }
+    },
+    async findStorno() {
+      return null
+    },
   }
   const store = {
     async load(id: string) {

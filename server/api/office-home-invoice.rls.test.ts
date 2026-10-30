@@ -156,15 +156,16 @@ async function seedInvoice(
   tenantId: string,
   transferId: string,
   clientId: string,
-  state: 'created' | 'failed' | 'sent',
+  state: 'created' | 'failed' | 'sent' | 'cancelled',
   language: 'hr' | 'en',
+  stornoNumber: string | null = null,
 ): Promise<void> {
   await ownerPool.query(
     `insert into app.invoices (
       tenant_id, transfer_reference, state, client_id, line_text, language,
-      due_days, vat_rate, gross_amount, reason, asked_by
-    ) values ($1, $2, $3, $4, 'Transfer', $5, 15, 25, '80.00', $6, 'office')`,
-    [tenantId, transferId, state, clientId, language, state === 'failed' ? 'unavailable' : null],
+      due_days, vat_rate, gross_amount, reason, asked_by, storno_number, storno_sent
+    ) values ($1, $2, $3, $4, 'Transfer', $5, 15, 25, '80.00', $6, 'office', $7, false)`,
+    [tenantId, transferId, state, clientId, language, state === 'failed' ? 'unavailable' : null, stornoNumber],
   )
 }
 
@@ -222,4 +223,25 @@ it('hides another Tenant unsent invoice, refuses a driver, and reminds only with
     expect(body.paymentReportingReminder).toBe(due)
   }
   expect(JSON.stringify(home)).not.toContain(foreignGuest)
+})
+
+it('lists a cancelled invoice whose storno is not yet sent as unsent', async () => {
+  const created = await tenant('ihs-storno', 'Ema Admin')
+  const admin = await signIn('ihs-storno-admin@example.test')
+  const client = await createClient(admin, { name: 'Agencija Storno', kind: 'agency' })
+  const start = await createLocation(admin, { name: 'Luka', kind: 'airport' })
+  const end = await createLocation(admin, { name: 'Hotel', kind: 'hotel' })
+  const guest = 'Storno gost'
+  const transferId = await seedDoneRide(created.tenantId, client.id, start.id, end.id, guest)
+  await seedInvoice(created.tenantId, transferId, client.id, 'cancelled', 'hr', 'S-7')
+  const sentGuest = 'Poslani storno'
+  const sentTransfer = await seedDoneRide(created.tenantId, client.id, start.id, end.id, sentGuest)
+  await seedInvoice(created.tenantId, sentTransfer, client.id, 'cancelled', 'hr', 'S-8')
+  await ownerPool.query(
+    `update app.invoices set storno_sent = true where tenant_id = $1 and transfer_reference = $2`,
+    [created.tenantId, sentTransfer],
+  )
+  const now = instantFromWallClock('2026-06-02T12:00', zone).toISOString()
+  const home = officeHomeSchema.parse(await (await call(admin, now)).json())
+  expect(home.invoiceWarnings.map(row => [row.guestName, row.kind])).toEqual([[guest, 'unsent']])
 })

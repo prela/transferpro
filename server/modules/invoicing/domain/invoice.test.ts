@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { instantFromWallClock } from '../../../../shared'
-import { INVOICE_CREATE_LEASE_MS, INVOICE_CREATE_SPACING_MS, INVOICE_STATUS_BUDGET, invoiceLanguage, invoiceLineText, invoiceStatusEffect, paymentReportingReminderDue, retryDelayAfterAttempt, statusReadsThisRun } from './invoice'
+import { INVOICE_CREATE_LEASE_MS, INVOICE_CREATE_SPACING_MS, INVOICE_STATUS_BUDGET, invoiceLanguage, invoiceLineText, invoiceStatusEffect, paymentReportingReminderDue, retryDelayAfterAttempt, statusReadsThisRun, stornoRequestAllowed, withdrawRequestAllowed } from './invoice'
 
 const route = {
   lineText: 'Transfer',
@@ -79,8 +79,19 @@ it('reads twenty status rows and turns a sent create, or a found storno, into th
     state: 'cancelled',
     stornoNumber: 'S-1',
     stornoLink: 'https://invoices.invalid/s/1',
+    stornoSent: false,
   })
   expect(invoiceStatusEffect(cancelling, { sent: true, storno: null }).state).toBe('cancelling')
+  const cancelled = { ...created, state: 'cancelled' as const }
+  expect(invoiceStatusEffect(cancelled, {
+    sent: true,
+    storno: { number: 'S-1', documentLink: 'https://invoices.invalid/s/1', sent: true },
+  })).toEqual({ id: created.id, state: 'cancelled', stornoSent: true })
+  expect(stornoRequestAllowed('created')).toBe(true)
+  expect(stornoRequestAllowed('sent')).toBe(true)
+  expect(stornoRequestAllowed('failed')).toBe(false)
+  expect(withdrawRequestAllowed('failed')).toBe(true)
+  expect(withdrawRequestAllowed('created')).toBe(false)
 })
 
 it('retries after 1, 5, and 30 minutes, then stops', () => {

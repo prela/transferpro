@@ -1,4 +1,4 @@
-import { startInvoiceCreateWorker } from '../modules/invoicing'
+import { startInvoiceCreateWorker, startInvoiceStornoWorker } from '../modules/invoicing'
 import { startMailOutboxRetention } from '../modules/mail'
 import { mailOutboxQueue, startMailOutboxWorker } from '../modules/transfers'
 
@@ -9,6 +9,8 @@ import { mailOutboxQueue, startMailOutboxWorker } from '../modules/transfers'
  */
 export default defineNitroPlugin(async () => {
   await startMailOutboxWorker()
-  await startInvoiceCreateWorker(await mailOutboxQueue())
+  const queue = await mailOutboxQueue()
+  await startInvoiceCreateWorker(queue)
+  await startInvoiceStornoWorker(queue)
   await startMailOutboxRetention()
 })

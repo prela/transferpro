@@ -204,6 +204,8 @@ function detailText(entry: AuditEntry): string {
     case 'invoice.requested':
     case 'invoice.issued':
     case 'invoice.failed':
+    case 'invoice.cancelled':
+    case 'invoice.withdrawn':
       // The action sentence is the whole entry. The ids stay off the screen.
       return ''
     case 'partner.created':

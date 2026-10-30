@@ -143,7 +143,8 @@ export const officeHomeFailedMailSchema = z.discriminatedUnion('kind', [
 ])
 
 /**
- * A Ride whose invoice is unsent (`created`) or failed. It is a Warning.
+ * A Ride whose invoice is unsent (`created`, or a cancelled storno not yet
+ * sent) or failed. It is a Warning.
  * It is not one of the urgent groups, and it does not count toward the
  * urgent count (ADR-0051). The row is the same shape as a Home row so
  * Pozornost can open the Ride.

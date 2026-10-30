@@ -86,6 +86,7 @@ export { askFlightLandings, LandingTimeClosedError, LandingTimeInFutureError, re
 export { startFlightLandingWorker } from './infrastructure/flight-landing-worker'
 export { changeRidePartner, handOffRide, RideNotHandedOffError, RideNotHandoffableError, RidePartnerArchivedError, RidePartnerUnchangedError, takeBackRide } from './infrastructure/handoff'
 export { closeDriverHoldingRides, driverHasHoldingRide } from './infrastructure/holding-ride'
+export { stornoTransferInvoice, withdrawTransferInvoice } from './infrastructure/invoice-actions'
 export { issueTransferInvoice, retryTransferInvoice } from './infrastructure/issue-access'
 export { RecordLandingInputError, recordRideLanding, RideLandingClosedError, RideLandingInFutureError } from './infrastructure/landing'
 export { closeMailOutboxQueue, mailOutboxQueue, mailOutboxStore, startMailOutboxWorker } from './infrastructure/mail-outbox-worker'

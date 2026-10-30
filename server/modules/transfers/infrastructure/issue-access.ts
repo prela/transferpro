@@ -93,7 +93,7 @@ async function lockTransfer(transaction: TenantTransaction, transferId: string) 
  * so a second press sees the row the first press inserted.
  */
 function requestedView(id: string): TransferInvoice {
-  return { id, state: 'requested', number: null, documentLink: null, reason: null }
+  return { id, state: 'requested', number: null, documentLink: null, reason: null, stornoNumber: null, stornoLink: null }
 }
 
 async function runIssue(

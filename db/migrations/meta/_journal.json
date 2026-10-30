@@ -470,6 +470,13 @@
       "when": 1793278907959,
       "tag": "0066_invoice_status_checked",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1793278908959,
+      "tag": "0067_invoice_storno",
+      "breakpoints": true
     }
   ]
 }

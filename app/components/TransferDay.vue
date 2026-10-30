@@ -15,6 +15,8 @@ const props = defineProps<{
   operationalDayStartHour: number
   tenantId: string
   userId: string
+  /** Storniraj and Povuci are Admin only. A Dispatcher does not see them. */
+  isAdmin: boolean
 }>()
 
 const { t } = useI18n()
@@ -962,6 +964,7 @@ onUnmounted(() => {
               :day-rides="rides"
               :list-drivers="false"
               :pin-actions="false"
+              :is-admin="isAdmin"
               :operational-day-start-hour="operationalDayStartHour"
               :tenant-id="tenantId"
               :user-id="userId"
@@ -1043,6 +1046,7 @@ onUnmounted(() => {
           :day-rides="rides"
           :list-drivers="layout === 'phone'"
           :pin-actions="layout === 'phone'"
+          :is-admin="isAdmin"
           :operational-day-start-hour="operationalDayStartHour"
           :tenant-id="tenantId"
           :user-id="userId"

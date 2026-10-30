@@ -35,6 +35,8 @@ const props = defineProps<{
   operationalDayStartHour: number
   tenantId: string
   userId: string
+  /** Storniraj and Povuci. A Dispatcher issues and retries, and does not see these. */
+  isAdmin: boolean
   /**
    * The correction notice set this. Scroll the group list into view once
    * it has loaded. A full page load uses the `#transfer-group` hash instead.
@@ -284,7 +286,9 @@ async function postInvoice(path: string) {
     // until that row leaves "requested".
     for (let attempt = 0; attempt < 24; attempt += 1) {
       await props.loadDay()
-      if (props.ride.invoice?.state !== 'requested')
+      const state = props.ride.invoice?.state
+      // Requested waits for the create job. Cancelling waits for the storno.
+      if (state !== 'requested' && state !== 'cancelling')
         return
       await new Promise(resolve => setTimeout(resolve, 500))
     }
@@ -731,6 +735,7 @@ const primaryLabel = computed(() => {
           <p v-if="ride.invoice">
             {{ t(`transfers.invoice.states.${ride.invoice.state}`) }}
             <span v-if="ride.invoice.number">{{ ride.invoice.number }}</span>
+            <span v-if="ride.invoice.stornoNumber">{{ ride.invoice.stornoNumber }}</span>
             <span v-if="ride.invoice.reason">{{ t(`transfers.invoice.reasons.${ride.invoice.reason}`) }}</span>
           </p>
           <a
@@ -740,6 +745,31 @@ const primaryLabel = computed(() => {
             target="_blank"
             rel="noopener noreferrer"
           >{{ t('transfers.invoice.open') }}</a>
+          <a
+            v-if="ride.invoice?.stornoLink"
+            class="text-primary underline"
+            :href="ride.invoice.stornoLink"
+            target="_blank"
+            rel="noopener noreferrer"
+          >{{ t('transfers.invoice.openStorno') }}</a>
+          <UButton
+            v-if="isAdmin && (ride.invoice?.state === 'created' || ride.invoice?.state === 'sent')"
+            type="button"
+            size="sm"
+            :loading="invoicePending"
+            @click="postInvoice(`/api/transfers/${ride.transferId}/invoice/storno`)"
+          >
+            {{ t('transfers.invoice.storno') }}
+          </UButton>
+          <UButton
+            v-if="isAdmin && ride.invoice?.state === 'failed'"
+            type="button"
+            size="sm"
+            :loading="invoicePending"
+            @click="postInvoice(`/api/transfers/${ride.transferId}/invoice/withdraw`)"
+          >
+            {{ t('transfers.invoice.withdraw') }}
+          </UButton>
           <UButton
             v-if="transferAwaitingInvoice(ride)"
             type="button"

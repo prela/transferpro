@@ -48,6 +48,7 @@ function jobNamesInSource(): string[] {
       const value = match[2]
       const isJob = constant === 'MAIL_OUTBOX_QUEUE'
         || constant === 'INVOICE_CREATE_QUEUE'
+        || constant === 'INVOICE_STORNO_QUEUE'
         || constant.endsWith('_TICK')
         || constant.endsWith('_DELETE')
         || constant.endsWith('_ASK')
@@ -62,7 +63,7 @@ function jobNamesInSource(): string[] {
 function sample(name: string): unknown {
   if (name === 'mail-outbox')
     return { entryId }
-  if (name === 'invoice-create')
+  if (name === 'invoice-create' || name === 'invoice-storno')
     return { invoiceId: entryId }
   if (name === 'foundation_rollback')
     return { token: 'kept' }

@@ -43,6 +43,9 @@ export const transferInvoiceSchema = z.object({
   number: z.string().min(1).nullable(),
   documentLink: z.string().min(1).nullable(),
   reason: invoiceReasonSchema.nullable(),
+  /** The negative invoice, once the current tool has created it. */
+  stornoNumber: z.string().min(1).nullable().optional().default(null),
+  stornoLink: z.string().min(1).nullable().optional().default(null),
 }).refine(invoice => invoice.state === 'failed' || invoice.reason === null)
 
 export type TransferInvoice = z.infer<typeof transferInvoiceSchema>
@@ -66,5 +69,8 @@ export function transferAwaitingInvoice(ride: {
   const cents = Number(ride.price)
   if (!Number.isFinite(cents) || cents <= 0)
     return false
-  return ride.invoice === null
+  // Cancelled and withdrawn no longer hold the Transfer, so it can be invoiced again.
+  if (ride.invoice === null)
+    return true
+  return ride.invoice.state === 'cancelled' || ride.invoice.state === 'withdrawn'
 }

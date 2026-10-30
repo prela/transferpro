@@ -55,6 +55,7 @@ const office = computed(() => isOfficeMember(session.value?.role))
         :locale="session.locale"
         :tenant-id="session.tenantId"
         :user-id="session.userId"
+        :is-admin="session.role === 'admin'"
       />
       <UAlert
         v-if="shellError"
