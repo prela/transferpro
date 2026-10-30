@@ -363,7 +363,11 @@ export async function replaceFailedInvoice(
   `)
 }
 
-/** Open invoices for these Transfers. A miss is absent from the map. */
+/**
+ * The invoice the Ride shows. An open invoice wins. Otherwise the latest
+ * cancelled or withdrawn invoice, so the storno number stays on the detail
+ * and the Transfer can be invoiced again.
+ */
 export async function readOpenInvoicesForTransfers(
   transaction: TenantTransaction,
   transferIds: readonly string[],
@@ -373,17 +377,23 @@ export async function readOpenInvoicesForTransfers(
     return found
   const ids = sql.join(transferIds.map(id => sql`${id}`), sql`, `)
   const selected = z.object({
-    rows: z.array(openRow.extend({ transferReference: z.uuid() })),
+    rows: z.array(openRow.extend({
+      transferReference: z.uuid(),
+      stornoNumber: z.string().nullable(),
+      stornoLink: z.string().nullable(),
+    })),
   }).parse(await transaction.execute(sql`
-    select
+    select distinct on (transfer_reference)
       transfer_reference as "transferReference",
       id, state,
       invoice_number as "number",
       document_link as "documentLink",
-      reason
+      reason,
+      storno_number as "stornoNumber",
+      storno_link as "stornoLink"
     from app.invoices
     where transfer_reference in (${ids})
-      and state not in ('cancelled', 'withdrawn')
+    order by transfer_reference, (state in ('cancelled', 'withdrawn')), created_at desc
   `))
   for (const row of selected.rows) {
     found.set(row.transferReference, transferInvoiceSchema.parse({
@@ -392,6 +402,8 @@ export async function readOpenInvoicesForTransfers(
       number: row.number,
       documentLink: row.documentLink,
       reason: row.reason,
+      stornoNumber: row.stornoNumber,
+      stornoLink: row.stornoLink,
     }))
   }
   return found

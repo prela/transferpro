@@ -434,6 +434,8 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'invoice.requested' then ${table.subjectUserId} is null and ${invoiceRecorded(table.data)}
     when 'invoice.issued' then ${table.subjectUserId} is null and ${invoiceRecorded(table.data)}
     when 'invoice.failed' then ${table.subjectUserId} is null and ${invoiceRecorded(table.data)}
+    when 'invoice.cancelled' then ${table.subjectUserId} is null and ${invoiceRecorded(table.data)}
+    when 'invoice.withdrawn' then ${table.subjectUserId} is null and ${invoiceRecorded(table.data)}
     when 'partner.created' then ${table.subjectUserId} is null and ${partnerFields(table.data, PARTNER_CREATED_FIELD_LISTS)}
     when 'partner.changed' then ${table.subjectUserId} is null and ${partnerFields(table.data, PARTNER_CHANGED_FIELD_LISTS)}
     when 'partner.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'partnerId')} and ${uuidText(table.data, 'partnerId')}

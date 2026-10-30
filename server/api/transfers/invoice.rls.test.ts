@@ -10,12 +10,14 @@ import { instantFromWallClock, operationalDateInTimeZone } from '../../../shared
 import { configureLogger } from '../../core/index'
 import { createClient, writeClientBilling } from '../../modules/clients'
 import { createDriver } from '../../modules/drivers'
-import { handleInvoiceCreateJob, INVOICE_CREATE_LEASE_MS, selectInvoicingMode, writeInvoicingSettings } from '../../modules/invoicing'
+import { handleInvoiceCreateJob, handleInvoiceStornoJob, INVOICE_CREATE_LEASE_MS, selectInvoicingMode, writeInvoicingSettings } from '../../modules/invoicing'
 import { createLocation } from '../../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest, withTenantFromSession } from '../../modules/tenancy'
 import { assignRide, correctTransfer, createTransfer, markRideDone } from '../../modules/transfers'
 import { createVehicle } from '../../modules/vehicles'
 import postInvoice from './[id]/invoice.post'
+import postStorno from './[id]/invoice/storno.post'
+import postWithdraw from './[id]/invoice/withdraw.post'
 
 /**
  * POST /api/transfers/:id/invoice. A driver is 403. A price of 0 writes
@@ -44,10 +46,16 @@ const ownerPool = new pg.Pool({ connectionString: migrateDatabaseUrl })
 const appPool = new pg.Pool({ connectionString: databaseUrl })
 const authUrl = required('BETTER_AUTH_URL')
 
-const issue = toWebHandler(createApp().use((event) => {
-  event.context.params = { id: event.path.replace(/^\//, '') }
-  return postInvoice(event)
-}))
+function route(post: typeof postInvoice) {
+  return toWebHandler(createApp().use((event) => {
+    event.context.params = { id: event.path.replace(/^\//, '') }
+    return post(event)
+  }))
+}
+
+const issue = route(postInvoice)
+const storno = route(postStorno)
+const withdraw = route(postWithdraw)
 
 const licence = '2031-01-01'
 
@@ -139,14 +147,26 @@ async function signIn(email: string): Promise<Headers> {
   return new Headers({ cookie: response.headers.getSetCookie().map(part => part.split(';')[0]).join('; ') })
 }
 
-async function postIssue(headers: Headers | undefined, transferId: string): Promise<Response> {
+async function postTo(handle: (request: Request) => Promise<Response>, headers: Headers | undefined, transferId: string): Promise<Response> {
   const requestHeaders = new Headers(headers)
   requestHeaders.set('content-type', 'application/json')
-  return issue(new Request(`http://localhost/${transferId}`, {
+  return handle(new Request(`http://localhost/${transferId}`, {
     method: 'POST',
     headers: requestHeaders,
     body: '{}',
   }))
+}
+
+async function postIssue(headers: Headers | undefined, transferId: string): Promise<Response> {
+  return postTo(issue, headers, transferId)
+}
+
+async function postStornoInvoice(headers: Headers | undefined, transferId: string): Promise<Response> {
+  return postTo(storno, headers, transferId)
+}
+
+async function postWithdrawInvoice(headers: Headers | undefined, transferId: string): Promise<Response> {
+  return postTo(withdraw, headers, transferId)
 }
 
 async function invoiceCount(tenantId: string): Promise<number> {
@@ -208,20 +228,21 @@ async function seedOffice(slug: string) {
   return { created, admin, driver, client, start, end, driverRow, vehicle }
 }
 
-function pickup(): string {
+function pickup(hour = '15:00'): string {
   const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
-  return instantFromWallClock(`${day}T15:00`, 'Europe/Zagreb').toISOString()
+  return instantFromWallClock(`${day}T${hour}`, 'Europe/Zagreb').toISOString()
 }
 
 async function bookAndFinish(
   admin: Headers,
   seed: Awaited<ReturnType<typeof seedOffice>>,
   price: number,
+  hour = '15:00',
 ) {
   const recorded = await createTransfer(admin, {
     externalId: crypto.randomUUID(),
     clientId: seed.client.id,
-    pickupAt: pickup(),
+    pickupAt: pickup(hour),
     startLocationId: seed.start.id,
     endLocationId: seed.end.id,
     passengerCount: 4,
@@ -431,6 +452,12 @@ it('commits the attempt and the gate before the call, and a crash does not creat
     async readStatus() {
       return { sent: false, storno: null }
     },
+    async storno() {
+      return { kind: 'accepted' as const }
+    },
+    async findStorno() {
+      return null
+    },
   }
   const running = handleInvoiceCreateJob(job, step, queue, undefined, port)
   await seen
@@ -518,6 +545,12 @@ it('a killed create keeps the slot until the lease ends, then the next run looks
     async readStatus() {
       return { sent: false, storno: null }
     },
+    async storno() {
+      return { kind: 'accepted' as const }
+    },
+    async findStorno() {
+      return null
+    },
   }
   void handleInvoiceCreateJob(job, step, queue, undefined, port)
   await seen
@@ -559,4 +592,162 @@ it('a killed create keeps the slot until the lease ends, then the next run looks
     [invoice.id],
   )
   expect(stored.rows[0]).toMatchObject({ state: 'created', invoice_number: '9-1-2', awaiting_lookup: false })
+})
+
+async function actionCount(tenantId: string, action: string): Promise<number> {
+  const counted = await ownerPool.query<{ n: number }>(
+    'select count(*)::int as n from app.audit_entry where tenant_id = $1 and action::text = $2',
+    [tenantId, action],
+  )
+  return counted.rows[0]?.n ?? 0
+}
+
+async function stornoJobs(invoiceId: string): Promise<number> {
+  const counted = await ownerPool.query<{ n: number }>(
+    `select count(*)::int as n from pgboss.job
+     where name = 'invoice-storno' and data #>> '{data,invoiceId}' = $1`,
+    [invoiceId],
+  )
+  return counted.rows[0]?.n ?? 0
+}
+
+it('stornos once for an admin, refuses a dispatcher and another tenant, and withdraws only when the tool has none', async () => {
+  const seed = await seedOffice('inv439-storno')
+  await addMember(seed.created.tenantId, 'inv439-storno-dispatcher@example.test', 'Dana Dispatch', 'dispatcher')
+  const dispatcher = await signIn('inv439-storno-dispatcher@example.test')
+  await tenant('inv439-storno-other')
+  const otherAdmin = await signIn('inv439-storno-other-admin@example.test')
+  await writeClientBilling(seed.admin, seed.client.id, {
+    legalName: 'Agencija Račun d.o.o.',
+    country: 'HR',
+    oib: '12345678903',
+    vatId: null,
+    address: 'Obala 1, Split',
+    guestNameOnInvoice: false,
+  })
+  await writeInvoicingSettings(seed.admin, {
+    dueDays: 15,
+    vatRate: 25,
+    lineText: 'Transfer',
+    version: 0,
+    token: 'route-invoice-token',
+  })
+  const recorded = await bookAndFinish(seed.admin, seed, 80)
+  const issued = await postIssue(seed.admin, recorded.transfer.id)
+  expect(issued.status).toBe(200)
+  const invoice = await issued.json() as { id: string }
+  const early = await postStornoInvoice(seed.admin, recorded.transfer.id)
+  expect(early.status).toBe(409)
+  expect(await actionCount(seed.created.tenantId, 'invoice.cancelled')).toBe(0)
+  expect(await stornoJobs(invoice.id)).toBe(0)
+  const stillRequested = await ownerPool.query<{ state: string }>(
+    'select state from app.invoices where id = $1',
+    [invoice.id],
+  )
+  expect(stillRequested.rows[0]?.state).toBe('requested')
+
+  const step = async <T>(run: (transaction: TenantTransaction) => Promise<T>): Promise<T> => {
+    return withTenantFromSession(seed.admin, ({ transaction }) => run(transaction))
+  }
+  await handleInvoiceCreateJob({
+    id: crypto.randomUUID(),
+    name: 'invoice-create',
+    tenantId: seed.created.tenantId,
+    data: { invoiceId: invoice.id },
+  }, step, queue)
+  const created = await ownerPool.query<{ state: string, invoice_number: string }>(
+    'select state, invoice_number from app.invoices where id = $1',
+    [invoice.id],
+  )
+  expect(created.rows[0]?.state).toBe('created')
+  const firstNumber = created.rows[0]?.invoice_number
+
+  const forbidden = await postStornoInvoice(dispatcher, recorded.transfer.id)
+  expect(forbidden.status).toBe(403)
+  const driverRefused = await postStornoInvoice(seed.driver, recorded.transfer.id)
+  expect(driverRefused.status).toBe(403)
+  const hidden = await postStornoInvoice(otherAdmin, recorded.transfer.id)
+  expect(hidden.status).toBe(404)
+  expect(await actionCount(seed.created.tenantId, 'invoice.cancelled')).toBe(0)
+  expect(await stornoJobs(invoice.id)).toBe(0)
+  expect((await ownerPool.query<{ state: string }>('select state from app.invoices where id = $1', [invoice.id])).rows[0]?.state).toBe('created')
+
+  const asked = await postStornoInvoice(seed.admin, recorded.transfer.id)
+  expect(asked.status).toBe(200)
+  expect(await asked.json()).toMatchObject({ id: invoice.id, state: 'cancelling' })
+  expect(await actionCount(seed.created.tenantId, 'invoice.cancelled')).toBe(1)
+  expect(await stornoJobs(invoice.id)).toBe(1)
+  await handleInvoiceStornoJob({
+    id: crypto.randomUUID(),
+    name: 'invoice-storno',
+    tenantId: seed.created.tenantId,
+    data: { invoiceId: invoice.id },
+  }, step)
+  const cancelled = await ownerPool.query<{ state: string, storno_number: string, storno_called: boolean }>(
+    'select state, storno_number, storno_called from app.invoices where id = $1',
+    [invoice.id],
+  )
+  expect(cancelled.rows[0]?.state).toBe('cancelled')
+  expect(cancelled.rows[0]?.storno_called).toBe(true)
+  expect(cancelled.rows[0]?.storno_number).toMatch(/^S-/)
+
+  const version = await ownerPool.query<{ version: number }>(
+    'select version from app.transfers where id = $1',
+    [recorded.transfer.id],
+  )
+  await correctTransfer(seed.admin, recorded.transfer.id, {
+    clientId: seed.client.id,
+    pickupAt: pickup(),
+    startLocationId: seed.start.id,
+    endLocationId: seed.end.id,
+    passengerCount: 4,
+    guestName: 'Iva Račun',
+    price: 90,
+    payment: 'invoice_to_agency',
+    airportMark: false,
+    luggageCount: 0,
+    childSeatCount: 0,
+    clientReference: 'V-19',
+    version: version.rows[0]?.version,
+  })
+
+  const again = await postIssue(seed.admin, recorded.transfer.id)
+  expect(again.status).toBe(200)
+  const second = await again.json() as { id: string }
+  expect(second.id).not.toBe(invoice.id)
+  expect(firstNumber).toMatch(/^F-/)
+
+  const held = await bookAndFinish(seed.admin, seed, 70, '18:00')
+  const heldIssue = await postIssue(seed.admin, held.transfer.id)
+  expect(heldIssue.status).toBe(200)
+  const heldInvoice = await heldIssue.json() as { id: string }
+  // The create gate spaces calls by ten seconds. This job has to reach the
+  // fake, so the previous create's stamp is cleared first.
+  await ownerPool.query(
+    `update app.invoicing_create_gate set in_flight = false, last_create_at = null where tenant_id = $1`,
+    [seed.created.tenantId],
+  )
+  await handleInvoiceCreateJob({
+    id: crypto.randomUUID(),
+    name: 'invoice-create',
+    tenantId: seed.created.tenantId,
+    data: { invoiceId: heldInvoice.id },
+  }, step, queue)
+  await ownerPool.query(`update app.invoices set state = 'failed', reason = 'unavailable' where id = $1`, [heldInvoice.id])
+  expect((await postWithdrawInvoice(dispatcher, held.transfer.id)).status).toBe(403)
+  expect((await postWithdrawInvoice(otherAdmin, held.transfer.id)).status).toBe(404)
+  const adopted = await postWithdrawInvoice(seed.admin, held.transfer.id)
+  expect(adopted.status).toBe(200)
+  expect(await adopted.json()).toMatchObject({ id: heldInvoice.id, state: 'created' })
+  expect(await actionCount(seed.created.tenantId, 'invoice.withdrawn')).toBe(0)
+
+  const missed = await bookAndFinish(seed.admin, seed, 60, '21:00')
+  const missedIssue = await postIssue(seed.admin, missed.transfer.id)
+  expect(missedIssue.status).toBe(200)
+  const missedInvoice = await missedIssue.json() as { id: string }
+  await ownerPool.query(`update app.invoices set state = 'failed', reason = 'rejected' where id = $1`, [missedInvoice.id])
+  const cleared = await postWithdrawInvoice(seed.admin, missed.transfer.id)
+  expect(cleared.status).toBe(200)
+  expect(await cleared.json()).toMatchObject({ id: missedInvoice.id, state: 'withdrawn' })
+  expect(await actionCount(seed.created.tenantId, 'invoice.withdrawn')).toBe(1)
 })

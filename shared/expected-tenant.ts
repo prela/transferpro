@@ -11,7 +11,7 @@ const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 const officeWrites: ReadonlyArray<{ readonly method: string, readonly pattern: RegExp }> = [
   { method: 'POST', pattern: /^\/api\/transfers$/ },
   { method: 'PATCH', pattern: new RegExp(`^/api/transfers/${uuid}$`, 'i') },
-  { method: 'POST', pattern: new RegExp(`^/api/transfers/${uuid}/invoice(?:/retry)?$`, 'i') },
+  { method: 'POST', pattern: new RegExp(`^/api/transfers/${uuid}/invoice(?:/(?:retry|storno|withdraw))?$`, 'i') },
   { method: 'POST', pattern: new RegExp(`^/api/rides/${uuid}/(?:assign|accept|accept-by-phone|done|no-show|cancel|decline|landing|vehicle|clear|reassign|hand-off|partner|take-back)$`, 'i') },
   { method: 'POST', pattern: /^\/api\/clients$/ },
   { method: 'PATCH', pattern: new RegExp(`^/api/clients/${uuid}$`, 'i') },

@@ -75,6 +75,7 @@ it('gives each call its own budget, and stores a found storno without logging it
     state: 'cancelled',
     stornoNumber: 'S-9',
     stornoLink: 'https://invoices.invalid/s/9',
+    stornoSent: false,
   }])
   expect(logs).toEqual([{ invoiceId: cancelling.id, state: 'cancelled' }])
   expect(JSON.stringify(logs)).not.toContain('S-9')

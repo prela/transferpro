@@ -1,4 +1,4 @@
-import type { CreateSlot, InvoiceCreateGate, InvoiceStatusRead } from './application/port'
+import type { CreateSlot, InvoiceCreateGate, InvoiceStatusRead, InvoiceStornoResult, InvoicingPort, StornoDocument } from './application/port'
 import { INVOICE_CREATE_LEASE_MS, INVOICE_CREATE_SPACING_MS } from './domain/invoice'
 
 /**
@@ -48,12 +48,30 @@ export function memoryCreateGate(): InvoiceCreateGate {
  * current tool. A create returns a fixed number and link. The notes it
  * was given are the invoice id, and a later find returns that invoice.
  */
+/**
+ * The fake adapter. `hideStorno` keeps a recorded negative invoice out of
+ * find and status until `revealStorno`, so a timeout test can show the
+ * status job finding it later. The default shows it at once.
+ */
 export function fakeInvoicingPort(options?: {
   readonly readStatus?: (toolInvoiceId: string) => Promise<InvoiceStatusRead>
-}) {
+  readonly stornoOutcome?: 'accepted' | 'unknown' | 'refused'
+  readonly hideStorno?: boolean
+}): InvoicingPort & { revealStorno: () => void } {
   const byReference = new Map<string, { toolInvoiceId: string, number: string, issuedOn: string, documentLink: string }>()
+  const stornos = new Map<string, StornoDocument>()
   let sequence = 0
+  let stornoSequence = 0
+  let hidden = options?.hideStorno === true
+  function visibleStorno(toolInvoiceId: string): StornoDocument | null {
+    if (hidden)
+      return null
+    return stornos.get(toolInvoiceId) ?? null
+  }
   return {
+    revealStorno() {
+      hidden = false
+    },
     async create(request: { invoiceId: string }) {
       const existing = byReference.get(request.invoiceId)
       if (existing)
@@ -72,13 +90,37 @@ export function fakeInvoicingPort(options?: {
       return byReference.get(invoiceId) ?? null
     },
     /**
-     * Unsent, and no storno, unless the test passes its own read.
-     * A created invoice then stays created, which is the unsent warning.
+     * Unsent, and no storno, unless the test passes its own read or this
+     * fake has already recorded a visible negative invoice.
      */
     async readStatus(toolInvoiceId: string): Promise<InvoiceStatusRead> {
       if (options?.readStatus)
         return options.readStatus(toolInvoiceId)
-      return { sent: false, storno: null }
+      const storno = visibleStorno(toolInvoiceId)
+      return {
+        sent: false,
+        storno: storno
+          ? { number: storno.number, documentLink: storno.documentLink, sent: storno.sent }
+          : null,
+      }
+    },
+    async storno(toolInvoiceId: string): Promise<InvoiceStornoResult> {
+      if (options?.stornoOutcome === 'refused')
+        return { kind: 'refused', reason: 'rejected' }
+      if (!stornos.has(toolInvoiceId)) {
+        stornoSequence += 1
+        stornos.set(toolInvoiceId, {
+          number: `S-${stornoSequence}`,
+          documentLink: `https://invoices.invalid/storno/${stornoSequence}`,
+          sent: false,
+        })
+      }
+      if (options?.stornoOutcome === 'unknown')
+        return { kind: 'unknown' }
+      return { kind: 'accepted' }
+    },
+    async findStorno(toolInvoiceId: string) {
+      return visibleStorno(toolInvoiceId)
     },
   }
 }

@@ -8,14 +8,14 @@ import { INVOICE_STATUS_BUDGET, paymentReportingReminderDue } from '../domain/in
 
 const candidateRow = z.object({
   id: z.uuid(),
-  state: z.enum(['created', 'cancelling']),
+  state: z.enum(['created', 'cancelling', 'cancelled']),
   toolInvoiceId: z.string().min(1),
 })
 
 /**
- * Created and cancelling invoices this session may read, oldest check
- * first. A null check is first. The limit is the per-run budget. RLS
- * keeps the rows to this Tenant, so another Tenant's budget is its own run.
+ * Created and cancelling invoices, and a cancelled invoice whose storno
+ * is not yet sent. Oldest check first. A null check is first. The limit
+ * is the per-run budget. RLS keeps the rows to this Tenant.
  */
 export async function loadInvoiceStatusCandidates(
   transaction: TenantTransaction,
@@ -23,8 +23,11 @@ export async function loadInvoiceStatusCandidates(
   const selected = z.object({ rows: z.array(candidateRow) }).parse(await transaction.execute(sql`
     select id, state, tool_invoice_id as "toolInvoiceId"
     from app.invoices
-    where state in ('created', 'cancelling')
-      and tool_invoice_id is not null
+    where tool_invoice_id is not null
+      and (
+        state in ('created', 'cancelling')
+        or (state = 'cancelled' and storno_sent = false and storno_number is not null)
+      )
     order by status_checked_at asc nulls first, id
     limit ${INVOICE_STATUS_BUDGET}
   `))
@@ -38,15 +41,27 @@ export async function saveInvoiceStatusEffect(
   checkedAt: Date,
 ): Promise<void> {
   const at = checkedAt.toISOString()
-  if (effect.state === 'cancelled') {
+  if ('stornoNumber' in effect) {
     await transaction.execute(sql`
       update app.invoices
       set state = 'cancelled',
           storno_number = ${effect.stornoNumber},
           storno_link = ${effect.stornoLink},
+          storno_sent = ${effect.stornoSent},
+          storno_from = null,
           status_checked_at = ${at},
           updated_at = now()
       where id = ${effect.id} and state = 'cancelling'
+    `)
+    return
+  }
+  if ('stornoSent' in effect) {
+    await transaction.execute(sql`
+      update app.invoices
+      set storno_sent = true,
+          status_checked_at = ${at},
+          updated_at = now()
+      where id = ${effect.id} and state = 'cancelled'
     `)
     return
   }
@@ -70,7 +85,7 @@ export async function saveInvoiceStatusEffect(
 
 const warningRow = z.object({
   transferReference: z.uuid(),
-  state: z.enum(['created', 'failed']),
+  state: z.enum(['created', 'failed', 'cancelled']),
 })
 
 export interface InvoiceHomeNotice {
@@ -79,8 +94,8 @@ export interface InvoiceHomeNotice {
 }
 
 /**
- * Unsent is `created`: the tool has the invoice and the office has not
- * sent it. Failed is its own warning. A sent invoice in Croatian is what
+ * Unsent is `created`, or `cancelled` whose storno the office has not
+ * sent. Failed is its own warning. A sent invoice in Croatian is what
  * the reminder looks for. The language is the country at issue time.
  */
 export async function readInvoiceHomeNotices(
@@ -92,6 +107,7 @@ export async function readInvoiceHomeNotices(
     select transfer_reference as "transferReference", state
     from app.invoices
     where state in ('created', 'failed')
+       or (state = 'cancelled' and storno_sent = false and storno_number is not null)
   `))
   const sent = z.object({
     rows: z.array(z.object({ present: z.boolean() })),
@@ -104,7 +120,7 @@ export async function readInvoiceHomeNotices(
   return {
     warnings: selected.rows.map(row => ({
       transferReference: row.transferReference,
-      kind: row.state === 'created' ? 'unsent' as const : 'failed' as const,
+      kind: row.state === 'failed' ? 'failed' as const : 'unsent' as const,
     })),
     paymentReportingReminder: paymentReportingReminderDue(now, timeZone, sent.rows[0]?.present === true),
   }

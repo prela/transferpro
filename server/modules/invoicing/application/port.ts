@@ -45,13 +45,41 @@ export interface InvoiceCreateRequest {
  */
 export interface InvoiceStatusRead {
   readonly sent: boolean
-  readonly storno: { readonly number: string, readonly documentLink: string } | null
+  /**
+   * The negative invoice. `sent` is whether the office has sent that
+   * document from the current tool. Absent means not sent yet.
+   */
+  readonly storno: {
+    readonly number: string
+    readonly documentLink: string
+    readonly sent?: boolean
+  } | null
+}
+
+/**
+ * A storno returns no id. `unknown` means the call may have created the
+ * negative invoice anyway, so it is never repeated (ADR-0051).
+ */
+export type InvoiceStornoResult
+  = | { readonly kind: 'accepted' }
+    | { readonly kind: 'unknown' }
+    | { readonly kind: 'refused', readonly reason: Exclude<InvoiceReason, 'unavailable'> }
+
+/** The negative invoice, once the tool has it. `sent` is the office's send. */
+export interface StornoDocument {
+  readonly number: string
+  readonly documentLink: string
+  readonly sent: boolean
 }
 
 export interface InvoicingPort {
   create: (request: InvoiceCreateRequest) => Promise<InvoiceCreateResult>
   findByReference: (invoiceId: string) => Promise<ToolInvoice | null>
   readStatus: (toolInvoiceId: string) => Promise<InvoiceStatusRead>
+  /** One call. The tool does not refuse a duplicate, so the caller calls this once. */
+  storno: (toolInvoiceId: string) => Promise<InvoiceStornoResult>
+  /** The negative invoice for this tool id, or null when the tool has none yet. */
+  findStorno: (toolInvoiceId: string) => Promise<StornoDocument | null>
 }
 
 export type CreateSlot

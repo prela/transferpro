@@ -1,6 +1,7 @@
 import { createError } from 'h3'
 import { QueryParamError, RideExportRangeError, TransferInputError } from '../../../shared'
 import { ClientNotFoundError } from '../../modules/clients'
+import { InvoiceAdminOnlyError, InvoiceNotCancellableError, InvoiceNotWithdrawableError } from '../../modules/invoicing'
 import { LocationArchivedError, LocationNotFoundError } from '../../modules/locations'
 import { PartnerNotFoundError } from '../../modules/partners'
 import { TenantAccessError } from '../../modules/tenancy'
@@ -27,6 +28,7 @@ export function transferHttpError(error: unknown): never {
     || error instanceof TenantAccessError
     || error instanceof TransferNotFoundError
     || error instanceof InvoiceOfficeOnlyError
+    || error instanceof InvoiceAdminOnlyError
   ) {
     throw createError({ statusCode: error.statusCode })
   }
@@ -42,6 +44,8 @@ export function transferHttpError(error: unknown): never {
     || error instanceof ClientNotInvoiceableError
     || error instanceof InvoicingNotReadyError
     || error instanceof TransferInvoicedError
+    || error instanceof InvoiceNotCancellableError
+    || error instanceof InvoiceNotWithdrawableError
   ) {
     throw createError({
       statusCode: error.statusCode,
