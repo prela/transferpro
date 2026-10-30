@@ -86,6 +86,7 @@ it('refuses an individual Client, missing billing details, an adapter that is no
   await expect(issueInvoice('dispatcher', 'fake', 'member-1', transfer(), { kind: 'individual' }, billing, settings, null, recorded.open, () => invoiceId)).rejects.toBeInstanceOf(ClientNotInvoiceableError)
   await expect(issueInvoice('dispatcher', 'fake', 'member-1', transfer(), client, { ...billing, complete: false }, settings, null, recorded.open, () => invoiceId)).rejects.toBeInstanceOf(BillingDetailsMissingError)
   await expect(issueInvoice('dispatcher', 'none', 'member-1', transfer(), client, billing, settings, null, recorded.open, () => invoiceId)).rejects.toBeInstanceOf(InvoicingNotReadyError)
+  await expect(issueInvoice('dispatcher', 'current', 'member-1', transfer(), client, billing, settings, null, recorded.open, () => invoiceId)).rejects.toBeInstanceOf(InvoicingNotReadyError)
   await expect(issueInvoice('dispatcher', 'fake', 'member-1', transfer(), client, billing, { ...settings, tokenSet: false }, null, recorded.open, () => invoiceId)).rejects.toBeInstanceOf(InvoicingNotReadyError)
   await expect(issueInvoice('driver', 'fake', 'member-1', transfer(), client, billing, settings, null, recorded.open, () => invoiceId)).rejects.toBeInstanceOf(InvoiceOfficeOnlyError)
   expect(recorded.calls).toEqual([])

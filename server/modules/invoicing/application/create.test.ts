@@ -82,6 +82,7 @@ function world(behavior: (request: InvoiceCreateRequest) => Promise<
       return behavior(request)
     },
     async findByReference(id: string) {
+      order.push('find')
       finds.push(id)
       return found
     },
@@ -95,7 +96,7 @@ function world(behavior: (request: InvoiceCreateRequest) => Promise<
       const current = rows.get(id)
       if (!current || current.state !== 'requested')
         return null
-      const next = { ...current, attemptCount: current.attemptCount + 1 }
+      const next = { ...current, attemptCount: current.attemptCount + 1, awaitingLookup: true }
       rows.set(id, next)
       return next
     },
@@ -242,4 +243,30 @@ it('retries a transient failure after 1, 5, and 30 minutes, then fails as unavai
   expect(flaky.rows.get(invoiceId)?.state).toBe('failed')
   expect(flaky.logs.at(-1)).toMatchObject({ reason: 'unavailable' })
   expect(flaky.creates).toHaveLength(4)
+})
+
+it('a crash after create and before the outcome does not create again', async () => {
+  const gate = memoryCreateGate()
+  const crashed = world(async () => ({ kind: 'created', invoice: toolInvoice }))
+  const save = crashed.store.saveCreated
+  crashed.store.saveCreated = async () => {
+    throw new Error('crash')
+  }
+  await expect(performInvoiceCreate(tenantA, invoiceId, now, crashed.port, gate, crashed.store, crashed.enqueue, crashed.log)).rejects.toThrow('crash')
+  expect(crashed.creates).toEqual([invoiceId])
+  expect(crashed.rows.get(invoiceId)?.awaitingLookup).toBe(true)
+  expect(crashed.finds).toEqual([])
+
+  crashed.store.saveCreated = save
+  crashed.port.findByReference = async (id: string) => {
+    crashed.order.push('find')
+    crashed.finds.push(id)
+    return toolInvoice
+  }
+  const later = new Date(now.getTime() + INVOICE_CREATE_SPACING_MS)
+  await performInvoiceCreate(tenantA, invoiceId, later, crashed.port, gate, crashed.store, crashed.enqueue, crashed.log)
+  expect(crashed.creates).toEqual([invoiceId])
+  expect(crashed.finds).toEqual([invoiceId])
+  expect(crashed.order.lastIndexOf('find')).toBeGreaterThan(crashed.order.indexOf('create'))
+  expect(crashed.rows.get(invoiceId)?.state).toBe('created')
 })

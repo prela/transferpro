@@ -240,8 +240,9 @@ function parseMapsEmbedKey(source: NodeJS.ProcessEnv): string | undefined {
 
 /**
  * Unset or blank is `none` in every environment, including production.
- * `fake` and `current` both stay off the network until #442. A typo fails
- * boot and the value is not copied into the error text.
+ * `fake` is the in-process adapter. `current` is accepted at boot and
+ * refuses to issue until #442. A typo fails boot and the value is not
+ * copied into the error text.
  */
 function parseInvoicing(source: NodeJS.ProcessEnv): 'none' | 'fake' | 'current' {
   const raw = blankEnv(source.INVOICING)
@@ -499,6 +500,18 @@ export interface JobQueue {
   work: (
     name: string,
     handle: (job: QueuedJob, scope: JobHandlerScope) => Promise<void>,
+  ) => Promise<void>
+
+  /**
+   * Worker that commits each `step` on its own. The handler calls the port
+   * between steps, so no tenant transaction stays open across that call.
+   */
+  workInSteps?: (
+    name: string,
+    handle: (
+      job: QueuedJob,
+      step: <T>(run: (transaction: TenantTransaction) => Promise<T>) => Promise<T>,
+    ) => Promise<void>,
   ) => Promise<void>
 
   close: () => Promise<void>

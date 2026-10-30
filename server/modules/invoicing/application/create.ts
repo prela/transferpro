@@ -3,9 +3,11 @@ import type { InvoiceCreateGate, InvoiceCreateRequest, InvoicingPort, ToolInvoic
 import { retryDelayAfterAttempt } from '../domain/invoice'
 
 /**
- * One create. The attempt is recorded before the port is called. An unknown
- * outcome is looked up by our reference before another create. A refusal
- * fails at once. A transient miss waits 1, 5, then 30 minutes (ADR-0051).
+ * One create. The attempt and `awaiting_lookup` commit before the port is
+ * called, and the outcome commits afterwards. A row already marked
+ * `awaiting_lookup` is looked up by our reference before any create. A
+ * refusal fails at once. A transient miss waits 1, 5, then 30 minutes
+ * (ADR-0051).
  */
 
 export interface InvoiceJobRow {
@@ -25,7 +27,10 @@ export interface InvoiceJobRow {
 
 export interface InvoiceCreateStore {
   load: (invoiceId: string) => Promise<InvoiceJobRow | null>
-  /** Increments the attempt and returns the row. Null when it is not `requested`. */
+  /**
+   * Increments the attempt, sets `awaiting_lookup`, and commits that before
+   * returning. Null when the row is not `requested`.
+   */
   beginAttempt: (invoiceId: string) => Promise<InvoiceJobRow | null>
   saveCreated: (invoiceId: string, invoice: ToolInvoice, actorUserId: string, transferReference: string) => Promise<void>
   saveRetry: (invoiceId: string, awaitingLookup: boolean, nextAttemptAt: Date) => Promise<void>
@@ -70,8 +75,9 @@ function logOutcome(log: InvoiceLog, invoiceId: string, state: InvoiceState, rea
 
 /**
  * Run one `invoice-create` job. A missing row, or a row that is no longer
- * requested, does nothing. The gate is released after the call, including
- * when the call throws.
+ * requested, does nothing. Each store and gate call commits on its own.
+ * Nothing is left open across the port call. The gate is released after
+ * the call, including when the call throws.
  */
 export async function performInvoiceCreate(
   tenantId: string,
@@ -98,16 +104,20 @@ export async function performInvoiceCreate(
   }
 
   try {
+    // The previous run committed the attempt and then died before the
+    // outcome. Look the invoice up before any new create.
+    if (loaded.awaitingLookup) {
+      const adopted = await port.findByReference(loaded.id)
+      if (adopted) {
+        await store.saveCreated(loaded.id, adopted, loaded.askedBy, loaded.transferReference)
+        logOutcome(log, loaded.id, 'created', null, loaded.attemptCount)
+        return
+      }
+    }
+
     const row = await store.beginAttempt(invoiceId)
     if (!row)
       return
-
-    const adopted = row.awaitingLookup ? await port.findByReference(row.id) : null
-    if (adopted) {
-      await store.saveCreated(row.id, adopted, row.askedBy, row.transferReference)
-      logOutcome(log, row.id, 'created', null, row.attemptCount)
-      return
-    }
 
     const buyer = await store.loadBuyer(row.clientId)
     if (!buyer) {

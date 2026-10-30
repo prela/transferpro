@@ -134,30 +134,44 @@ async function audit(
   })
 }
 
-function createStore(transaction: TenantTransaction): InvoiceCreateStore {
+/** One committed tenant transaction. The port call stays between steps. */
+export type InvoiceStep = <T>(run: (transaction: TenantTransaction) => Promise<T>) => Promise<T>
+
+function createStore(step: InvoiceStep): InvoiceCreateStore {
   return {
     async load(invoiceId) {
-      const selected = z.object({ rows: z.array(jobRow) }).parse(await transaction.execute(sql`
-        select ${jobColumns} from app.invoices where id = ${invoiceId}
-      `))
-      const row = selected.rows[0]
-      return row ? toJob(row) : null
+      return step(async (transaction) => {
+        const selected = z.object({ rows: z.array(jobRow) }).parse(await transaction.execute(sql`
+          select ${jobColumns} from app.invoices where id = ${invoiceId}
+        `))
+        const row = selected.rows[0]
+        return row ? toJob(row) : null
+      })
     },
     async beginAttempt(invoiceId) {
-      // The increment commits with this transaction, before the port returns.
-      // A crash rolls the increment back with the call. #442 can split them.
-      const updated = z.object({ rows: z.array(z.object({ id: z.uuid() })) }).parse(await transaction.execute(sql`
-        update app.invoices
-        set attempt_count = attempt_count + 1, updated_at = now()
-        where id = ${invoiceId} and state = 'requested'
-        returning id
-      `))
-      if (!updated.rows[0])
-        return null
-      return this.load(invoiceId)
+      // Commits before the caller returns, so a crash after the port call
+      // still leaves the attempt and awaiting_lookup for the next run.
+      return step(async (transaction) => {
+        const updated = z.object({ rows: z.array(z.object({ id: z.uuid() })) }).parse(await transaction.execute(sql`
+          update app.invoices
+          set attempt_count = attempt_count + 1,
+              awaiting_lookup = true,
+              updated_at = now()
+          where id = ${invoiceId} and state = 'requested'
+          returning id
+        `))
+        if (!updated.rows[0])
+          return null
+        const selected = z.object({ rows: z.array(jobRow) }).parse(await transaction.execute(sql`
+          select ${jobColumns} from app.invoices where id = ${invoiceId}
+        `))
+        const row = selected.rows[0]
+        return row ? toJob(row) : null
+      })
     },
     async saveCreated(invoiceId, invoice, actorUserId, transferReference) {
-      await transaction.execute(sql`
+      await step(async (transaction) => {
+        await transaction.execute(sql`
         update app.invoices
         set state = 'created',
             tool_invoice_id = ${invoice.toolInvoiceId},
@@ -170,19 +184,23 @@ function createStore(transaction: TenantTransaction): InvoiceCreateStore {
             updated_at = now()
         where id = ${invoiceId}
       `)
-      await audit(transaction, 'invoice.issued', actorUserId, invoiceId, transferReference)
+        await audit(transaction, 'invoice.issued', actorUserId, invoiceId, transferReference)
+      })
     },
     async saveRetry(invoiceId, awaitingLookup, nextAttemptAt) {
-      await transaction.execute(sql`
+      await step(async (transaction) => {
+        await transaction.execute(sql`
         update app.invoices
         set awaiting_lookup = ${awaitingLookup},
             next_attempt_at = ${nextAttemptAt.toISOString()},
             updated_at = now()
         where id = ${invoiceId}
-      `)
+        `)
+      })
     },
     async saveFailed(invoiceId, reason, actorUserId, transferReference) {
-      await transaction.execute(sql`
+      await step(async (transaction) => {
+        await transaction.execute(sql`
         update app.invoices
         set state = 'failed',
             reason = ${reason},
@@ -191,35 +209,39 @@ function createStore(transaction: TenantTransaction): InvoiceCreateStore {
             updated_at = now()
         where id = ${invoiceId}
       `)
-      await audit(transaction, 'invoice.failed', actorUserId, invoiceId, transferReference)
+        await audit(transaction, 'invoice.failed', actorUserId, invoiceId, transferReference)
+      })
     },
     async loadBuyer(clientId) {
-      try {
-        const billing = await loadClientBillingForInvoice(transaction, clientId)
-        if (!billing.complete || billing.legalName === null || billing.country === null || billing.address === null)
-          return null
-        return {
-          legalName: billing.legalName,
-          country: billing.country,
-          oib: billing.oib,
-          vatId: billing.vatId,
-          address: billing.address,
+      return step(async (transaction) => {
+        try {
+          const billing = await loadClientBillingForInvoice(transaction, clientId)
+          if (!billing.complete || billing.legalName === null || billing.country === null || billing.address === null)
+            return null
+          return {
+            legalName: billing.legalName,
+            country: billing.country,
+            oib: billing.oib,
+            vatId: billing.vatId,
+            address: billing.address,
+          }
         }
-      }
-      catch (error) {
-        if (error instanceof ClientNotFoundError)
-          return null
-        throw error
-      }
+        catch (error) {
+          if (error instanceof ClientNotFoundError)
+            return null
+          throw error
+        }
+      })
     },
   }
 }
 
 let sharedFake: InvoicingPort | undefined
 
-/** One fake for this process. Tests and E2E never call the current tool. */
+/** The in-process fake. `current` has no adapter until #442, so it is refused. */
 export function invoicingPort(): InvoicingPort {
-  // `current` stays on the fake until #442 supplies the real adapter.
+  if (invoicingMode() !== 'fake')
+    throw new Error('The invoicing port is only available when INVOICING is fake.')
   sharedFake ??= fakeInvoicingPort()
   return sharedFake
 }
@@ -240,8 +262,9 @@ function instant(value: unknown): Date | null {
 }
 
 /**
- * Reserve this Tenant's create slot. The row lock is held by the caller's
- * transaction until it commits, so a second job for the same Tenant waits.
+ * Reserve this Tenant's create slot. The caller commits this transaction
+ * before the port call, so `in_flight` and `last_create_at` are visible to
+ * the next job. The row lock ends at that commit.
  */
 export async function reserveCreateSlot(
   transaction: TenantTransaction,
@@ -374,34 +397,35 @@ export async function finishCreateSlot(transaction: TenantTransaction): Promise<
 }
 
 /**
- * One job. The attempt update is ordered before the port call. It commits
- * with the outcome, the same way the mail outbox does (ADR-0051 cites that
- * schedule). A crash rolls the increment back and the queue retries. The
- * log line is the invoice id, the state, the reason, and the attempt count.
+ * One job. The attempt and the gate each commit before the port is called.
+ * The outcome commits in a later step. `none` and `current` do not call the
+ * fake. The log line is the invoice id, the state, the reason, and the
+ * attempt count.
  */
 export async function handleInvoiceCreateJob(
   job: QueuedJob,
-  transaction: TenantTransaction,
+  step: InvoiceStep,
   queue: JobQueue,
   log: Logger = getLogger(),
+  port?: InvoicingPort,
 ): Promise<void> {
   const { invoiceId } = jobData.parse(job.data)
-  // A process left on `none` does not call out. The fake is the only adapter here.
-  if (invoicingMode() === 'none')
+  // Checked before the default port is built, so `current` never touches the fake.
+  if (invoicingMode() !== 'fake')
     return
   await performInvoiceCreate(
     job.tenantId,
     invoiceId,
     new Date(),
-    invoicingPort(),
+    port ?? invoicingPort(),
     {
-      reserve: (_tenantId, now) => reserveCreateSlot(transaction, now),
-      finish: () => finishCreateSlot(transaction),
+      reserve: (_tenantId, now) => step(transaction => reserveCreateSlot(transaction, now)),
+      finish: () => step(transaction => finishCreateSlot(transaction)),
     },
-    createStore(transaction),
+    createStore(step),
     {
       later: async (id, startAfter) => {
-        await queue.enqueue({ tenantId: job.tenantId }, transaction, INVOICE_CREATE_QUEUE, { invoiceId: id }, { startAfter })
+        await step(transaction => queue.enqueue({ tenantId: job.tenantId }, transaction, INVOICE_CREATE_QUEUE, { invoiceId: id }, { startAfter }))
       },
     },
     log,
@@ -410,10 +434,13 @@ export async function handleInvoiceCreateJob(
 
 let starting: Promise<void> | undefined
 
-/** Worker for `invoice-create`. The queue is the process queue the mail outbox already holds. */
+/** Worker for `invoice-create`. Each database step commits before the port is called. */
 export function startInvoiceCreateWorker(queue: JobQueue, log: Logger = getLogger()): Promise<void> {
-  starting ??= queue.work(INVOICE_CREATE_QUEUE, async (job, scope) => {
-    await handleInvoiceCreateJob(job, scope.transaction, queue, log)
+  const workInSteps = queue.workInSteps
+  if (workInSteps === undefined)
+    throw new Error('invoice-create needs a queue that commits each step.')
+  starting ??= workInSteps(INVOICE_CREATE_QUEUE, async (job, step) => {
+    await handleInvoiceCreateJob(job, step, queue, log)
   }).then(() => undefined)
   return starting
 }

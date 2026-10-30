@@ -1,5 +1,5 @@
 import type { TenantRole } from '../../../shared'
-import type { JobQueue, QueuedJob } from '../../core/index'
+import type { JobQueue, QueuedJob, TenantTransaction } from '../../core/index'
 import { Buffer } from 'node:buffer'
 import { loadEnvFile } from 'node:process'
 import { hashPassword } from 'better-auth/crypto'
@@ -194,12 +194,12 @@ async function seedOffice(slug: string) {
   const driverRow = await createDriver(admin, {
     name: 'Ivo Račun',
     kind: 'own',
-    phone: slug.endsWith('refuse') ? '+385914390011' : '+385914390012',
+    phone: slug.endsWith('refuse') ? '+385914390011' : slug.endsWith('crash') ? '+385914390013' : '+385914390012',
     drivingLicenceExpiresOn: licence,
     transportLicenceExpiresOn: licence,
   })
   const vehicle = await createVehicle(admin, {
-    registrationPlate: slug.endsWith('refuse') ? 'DU439RF' : 'DU439IS',
+    registrationPlate: slug.endsWith('refuse') ? 'DU439RF' : slug.endsWith('crash') ? 'DU439CR' : 'DU439IS',
     kind: 'fixed',
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
@@ -319,15 +319,13 @@ it('issues once, keeps the row inside the Tenant, and locks the price', async ()
     seenByOther.release()
   }
 
-  await withTenantFromSession(seed.admin, async ({ transaction }) => {
-    const job: QueuedJob = {
-      id: crypto.randomUUID(),
-      name: 'invoice-create',
-      tenantId: seed.created.tenantId,
-      data: { invoiceId: invoice.id },
-    }
-    await handleInvoiceCreateJob(job, transaction, queue)
-  })
+  const job: QueuedJob = {
+    id: crypto.randomUUID(),
+    name: 'invoice-create',
+    tenantId: seed.created.tenantId,
+    data: { invoiceId: invoice.id },
+  }
+  await handleInvoiceCreateJob(job, async run => withTenantFromSession(seed.admin, ({ transaction }) => run(transaction)), queue)
   const stored = await ownerPool.query<{ state: string, invoice_number: string, line_text: string }>(
     'select state, invoice_number, line_text from app.invoices where id = $1',
     [invoice.id],
@@ -373,4 +371,87 @@ it('issues once, keeps the row inside the Tenant, and locks the price', async ()
   finally {
     deleter.release()
   }
+})
+
+it('commits the attempt and the gate before the call, and a crash does not create again', async () => {
+  const seed = await seedOffice('inv439-crash')
+  const recorded = await bookAndFinish(seed.admin, seed, 80)
+  await writeClientBilling(seed.admin, seed.client.id, {
+    legalName: 'Agencija Račun d.o.o.',
+    country: 'HR',
+    oib: '12345678903',
+    vatId: null,
+    address: 'Obala 1, Split',
+    guestNameOnInvoice: false,
+  })
+  await writeInvoicingSettings(seed.admin, {
+    dueDays: 15,
+    vatRate: 25,
+    lineText: 'Transfer',
+    version: 0,
+    token: 'route-invoice-token',
+  })
+  const issued = await postIssue(seed.admin, recorded.transfer.id)
+  expect(issued.status).toBe(200)
+  const invoice = await issued.json() as { id: string }
+  const job: QueuedJob = {
+    id: crypto.randomUUID(),
+    name: 'invoice-create',
+    tenantId: seed.created.tenantId,
+    data: { invoiceId: invoice.id },
+  }
+  const step = async <T>(run: (transaction: TenantTransaction) => Promise<T>): Promise<T> => {
+    return withTenantFromSession(seed.admin, ({ transaction }) => run(transaction))
+  }
+  let release: () => void = () => {}
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let visible: () => void = () => {}
+  const seen = new Promise<void>((resolve) => {
+    visible = resolve
+  })
+  const made = {
+    toolInvoiceId: 'tool-crash',
+    number: '9-1-1',
+    issuedOn: '2026-06-01',
+    documentLink: 'https://invoices.invalid/crash/1',
+  }
+  let creates = 0
+  const port = {
+    async create() {
+      creates += 1
+      visible()
+      await held
+      throw new Error('crash')
+    },
+    async findByReference() {
+      return made
+    },
+  }
+  const running = handleInvoiceCreateJob(job, step, queue, undefined, port)
+  await seen
+  const during = await ownerPool.query<{ attempt_count: number, awaiting_lookup: boolean, in_flight: boolean }>(
+    `select i.attempt_count, i.awaiting_lookup, g.in_flight
+     from app.invoices as i
+     join app.invoicing_create_gate as g on g.tenant_id = i.tenant_id
+     where i.id = $1`,
+    [invoice.id],
+  )
+  expect(during.rows[0]).toMatchObject({ attempt_count: 1, awaiting_lookup: true, in_flight: true })
+  release()
+  await expect(running).rejects.toThrow('crash')
+  expect(creates).toBe(1)
+  await ownerPool.query(
+    `update app.invoicing_create_gate set last_create_at = now() - interval '11 seconds' where tenant_id = $1`,
+    [seed.created.tenantId],
+  )
+
+  await handleInvoiceCreateJob(job, step, queue, undefined, port)
+  expect(creates).toBe(1)
+  const stored = await ownerPool.query<{ state: string, invoice_number: string }>(
+    'select state, invoice_number from app.invoices where id = $1',
+    [invoice.id],
+  )
+  expect(stored.rows[0]).toMatchObject({ state: 'created', invoice_number: '9-1-1' })
 })
