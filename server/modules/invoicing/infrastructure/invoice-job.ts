@@ -9,7 +9,7 @@ import { getLogger } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { ClientNotFoundError, loadClientBillingForInvoice } from '../../clients'
 import { performInvoiceCreate } from '../application/create'
-import { INVOICE_CREATE_SPACING_MS } from '../domain/invoice'
+import { INVOICE_CREATE_LEASE_MS, INVOICE_CREATE_SPACING_MS } from '../domain/invoice'
 import { fakeInvoicingPort } from '../testing'
 import { invoicingMode } from './mode'
 
@@ -254,17 +254,22 @@ const gateRow = z.object({
 function instant(value: unknown): Date | null {
   if (value === null || value === undefined)
     return null
-  if (value instanceof Date)
-    return value
-  if (typeof value === 'string')
-    return new Date(value)
-  return null
+  const parsed = value instanceof Date
+    ? value
+    : typeof value === 'string'
+      ? new Date(value)
+      : null
+  if (parsed === null || Number.isNaN(parsed.getTime()))
+    return null
+  return parsed
 }
 
 /**
  * Reserve this Tenant's create slot. The caller commits this transaction
  * before the port call, so `in_flight` and `last_create_at` are visible to
- * the next job. The row lock ends at that commit.
+ * the next job. The row lock ends at that commit. `last_create_at` is the
+ * start of the flight. A flight older than the lease is taken again: the
+ * process that set `in_flight` may have been killed, and `finish` did not run.
  */
 export async function reserveCreateSlot(
   transaction: TenantTransaction,
@@ -283,9 +288,11 @@ export async function reserveCreateSlot(
   const row = selected.rows[0]
   if (!row)
     return { status: 'busy' }
-  if (row.inFlight)
-    return { status: 'busy' }
   const last = instant(row.lastCreateAt)
+  // A flight with no start time cannot be shown to be inside the lease.
+  const stale = row.inFlight && (last === null || now.getTime() >= last.getTime() + INVOICE_CREATE_LEASE_MS)
+  if (row.inFlight && !stale)
+    return { status: 'busy' }
   if (last && now.getTime() < last.getTime() + INVOICE_CREATE_SPACING_MS)
     return { status: 'later', at: new Date(last.getTime() + INVOICE_CREATE_SPACING_MS) }
   await transaction.execute(sql`

@@ -4,7 +4,7 @@
  * (ADR-0051). It may import clients. It does not import transfers
  * (ADR-0018, ADR-0036).
  */
-export { invoiceLanguage, invoiceLineText } from './domain/invoice'
+export { INVOICE_CREATE_LEASE_MS, invoiceLanguage, invoiceLineText } from './domain/invoice'
 export { InvoicingKeyMissingError } from './domain/token-cipher'
 export { handleInvoiceCreateJob, insertRequestedInvoice, INVOICE_CREATE_QUEUE, lockOpenInvoice, readOpenInvoice, readOpenInvoicesForTransfers, replaceFailedInvoice, startInvoiceCreateWorker } from './infrastructure/invoice-job'
 export { invoicingMode, selectInvoicingMode } from './infrastructure/mode'

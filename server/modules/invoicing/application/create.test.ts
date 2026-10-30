@@ -1,7 +1,7 @@
 import type { InvoiceReason, InvoiceState } from '../../../../shared'
 import type { InvoiceCreateRequest, ToolInvoice } from './port'
 import { expect, it } from 'vitest'
-import { INVOICE_CREATE_SPACING_MS } from '../domain/invoice'
+import { INVOICE_CREATE_LEASE_MS, INVOICE_CREATE_SPACING_MS } from '../domain/invoice'
 import { memoryCreateGate } from '../testing'
 import { performInvoiceCreate } from './create'
 
@@ -269,4 +269,27 @@ it('a crash after create and before the outcome does not create again', async ()
   expect(crashed.finds).toEqual([invoiceId])
   expect(crashed.order.lastIndexOf('find')).toBeGreaterThan(crashed.order.indexOf('create'))
   expect(crashed.rows.get(invoiceId)?.state).toBe('created')
+})
+
+it('a killed create stays busy until the lease ends, then the next run looks the invoice up and does not create again', async () => {
+  const gate = memoryCreateGate()
+  const killed = world(async () => ({ kind: 'created', invoice: toolInvoice }), toolInvoice)
+  // The process reserved the slot, committed the attempt, and died inside
+  // the port. `finish` is never called, so nothing clears `in_flight`.
+  killed.rows.set(invoiceId, row({ attemptCount: 1, awaitingLookup: true }))
+  expect(await gate.reserve(tenantA, now)).toEqual({ status: 'ready' })
+
+  const early = new Date(now.getTime() + INVOICE_CREATE_LEASE_MS - 1)
+  await performInvoiceCreate(tenantA, invoiceId, early, killed.port, gate, killed.store, killed.enqueue, killed.log)
+  expect(killed.creates).toEqual([])
+  expect(killed.finds).toEqual([])
+  expect(killed.enqueued).toEqual([new Date(early.getTime() + 1_000)])
+  expect(killed.rows.get(invoiceId)?.state).toBe('requested')
+
+  const later = new Date(now.getTime() + INVOICE_CREATE_LEASE_MS)
+  await performInvoiceCreate(tenantA, invoiceId, later, killed.port, gate, killed.store, killed.enqueue, killed.log)
+  expect(killed.creates).toEqual([])
+  expect(killed.finds).toEqual([invoiceId])
+  expect(killed.order[0]).toBe('find')
+  expect(killed.rows.get(invoiceId)?.state).toBe('created')
 })

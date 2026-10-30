@@ -10,6 +10,20 @@ import type { InvoiceReason, InvoiceState } from '../../../../shared'
 export const INVOICE_CREATE_SPACING_MS = 10_000
 
 /**
+ * How long one create may hold the Tenant's slot.
+ * `last_create_at` is written in the same update as `in_flight`, and that
+ * update commits before the port call, so the column is the start of the
+ * call. One run may call the port twice (a create, then a lookup). The
+ * real adapter has to abort each call within 30 seconds. Two minutes
+ * covers both calls twice over, so a live call finishes before another
+ * run takes the slot. The queue reclaims a job after 15 minutes, so a
+ * killed process, which never runs `finish`, frees the Tenant before that
+ * retry. A shorter lease would let a second run create while the first
+ * call was still out.
+ */
+export const INVOICE_CREATE_LEASE_MS = 120_000
+
+/**
  * Wait after a failed attempt, in order: 1 minute, 5 minutes, 30 minutes.
  * The fourth failure has no next wait. The invoice is then failed.
  * Same schedule as the mail outbox (ADR-0045, ADR-0051).

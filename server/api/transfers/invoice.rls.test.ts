@@ -10,7 +10,7 @@ import { instantFromWallClock, operationalDateInTimeZone } from '../../../shared
 import { configureLogger } from '../../core/index'
 import { createClient, writeClientBilling } from '../../modules/clients'
 import { createDriver } from '../../modules/drivers'
-import { handleInvoiceCreateJob, selectInvoicingMode, writeInvoicingSettings } from '../../modules/invoicing'
+import { handleInvoiceCreateJob, INVOICE_CREATE_LEASE_MS, selectInvoicingMode, writeInvoicingSettings } from '../../modules/invoicing'
 import { createLocation } from '../../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest, withTenantFromSession } from '../../modules/tenancy'
 import { assignRide, correctTransfer, createTransfer, markRideDone } from '../../modules/transfers'
@@ -454,4 +454,103 @@ it('commits the attempt and the gate before the call, and a crash does not creat
     [invoice.id],
   )
   expect(stored.rows[0]).toMatchObject({ state: 'created', invoice_number: '9-1-1' })
+})
+
+it('a killed create keeps the slot until the lease ends, then the next run looks the invoice up and does not create again', async () => {
+  const seed = await seedOffice('inv439-kill')
+  const recorded = await bookAndFinish(seed.admin, seed, 80)
+  await writeClientBilling(seed.admin, seed.client.id, {
+    legalName: 'Agencija Račun d.o.o.',
+    country: 'HR',
+    oib: '12345678903',
+    vatId: null,
+    address: 'Obala 1, Split',
+    guestNameOnInvoice: false,
+  })
+  await writeInvoicingSettings(seed.admin, {
+    dueDays: 15,
+    vatRate: 25,
+    lineText: 'Transfer',
+    version: 0,
+    token: 'route-invoice-token',
+  })
+  const issued = await postIssue(seed.admin, recorded.transfer.id)
+  expect(issued.status).toBe(200)
+  const invoice = await issued.json() as { id: string }
+  const job: QueuedJob = {
+    id: crypto.randomUUID(),
+    name: 'invoice-create',
+    tenantId: seed.created.tenantId,
+    data: { invoiceId: invoice.id },
+  }
+  const step = async <T>(run: (transaction: TenantTransaction) => Promise<T>): Promise<T> => {
+    return withTenantFromSession(seed.admin, ({ transaction }) => run(transaction))
+  }
+  // Never resolved. `finish` runs only after the port returns, so this is
+  // the committed state a SIGKILL leaves behind.
+  const held = new Promise<void>(() => {})
+  let visible: () => void = () => {}
+  const seen = new Promise<void>((resolve) => {
+    visible = resolve
+  })
+  const made = {
+    toolInvoiceId: 'tool-kill',
+    number: '9-1-2',
+    issuedOn: '2026-06-01',
+    documentLink: 'https://invoices.invalid/kill/1',
+  }
+  let creates = 0
+  let finds = 0
+  const port = {
+    async create() {
+      creates += 1
+      visible()
+      await held
+      return { kind: 'created' as const, invoice: made }
+    },
+    async findByReference() {
+      finds += 1
+      return made
+    },
+  }
+  void handleInvoiceCreateJob(job, step, queue, undefined, port)
+  await seen
+  const during = await ownerPool.query<{ attempt_count: number, awaiting_lookup: boolean, in_flight: boolean }>(
+    `select i.attempt_count, i.awaiting_lookup, g.in_flight
+     from app.invoices as i
+     join app.invoicing_create_gate as g on g.tenant_id = i.tenant_id
+     where i.id = $1`,
+    [invoice.id],
+  )
+  expect(during.rows[0]).toMatchObject({ attempt_count: 1, awaiting_lookup: true, in_flight: true })
+
+  await handleInvoiceCreateJob(job, step, queue, undefined, port)
+  expect(creates).toBe(1)
+  expect(finds).toBe(0)
+  const stillHeld = await ownerPool.query<{ state: string, in_flight: boolean }>(
+    `select i.state, g.in_flight
+     from app.invoices as i
+     join app.invoicing_create_gate as g on g.tenant_id = i.tenant_id
+     where i.id = $1`,
+    [invoice.id],
+  )
+  expect(stillHeld.rows[0]).toMatchObject({ state: 'requested', in_flight: true })
+
+  // Past the lease. The comparison uses the job's clock, so the row has
+  // to be older than that lease by more than clock skew.
+  await ownerPool.query(
+    `update app.invoicing_create_gate
+     set last_create_at = now() - ($2::int * interval '1 millisecond')
+     where tenant_id = $1`,
+    [seed.created.tenantId, INVOICE_CREATE_LEASE_MS + 30_000],
+  )
+
+  await handleInvoiceCreateJob(job, step, queue, undefined, port)
+  expect(creates).toBe(1)
+  expect(finds).toBe(1)
+  const stored = await ownerPool.query<{ state: string, invoice_number: string, awaiting_lookup: boolean }>(
+    'select state, invoice_number, awaiting_lookup from app.invoices where id = $1',
+    [invoice.id],
+  )
+  expect(stored.rows[0]).toMatchObject({ state: 'created', invoice_number: '9-1-2', awaiting_lookup: false })
 })

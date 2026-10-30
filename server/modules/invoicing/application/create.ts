@@ -77,7 +77,8 @@ function logOutcome(log: InvoiceLog, invoiceId: string, state: InvoiceState, rea
  * Run one `invoice-create` job. A missing row, or a row that is no longer
  * requested, does nothing. Each store and gate call commits on its own.
  * Nothing is left open across the port call. The gate is released after
- * the call, including when the call throws.
+ * the call, including when the call throws. A killed process does not
+ * reach that release; the gate's lease frees the slot.
  */
 export async function performInvoiceCreate(
   tenantId: string,

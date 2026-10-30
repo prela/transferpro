@@ -1,10 +1,12 @@
 import type { CreateSlot, InvoiceCreateGate } from './application/port'
-import { INVOICE_CREATE_SPACING_MS } from './domain/invoice'
+import { INVOICE_CREATE_LEASE_MS, INVOICE_CREATE_SPACING_MS } from './domain/invoice'
 
 /**
  * An in-memory gate for the application tests. One Tenant has one slot.
  * A second Tenant has its own. `reserve` sets the slot before it returns,
- * so a create that is still awaiting sees the Tenant as busy.
+ * so a create that is still awaiting sees the Tenant as busy. A flight
+ * older than the lease is free again, matching the database gate: a
+ * killed process never calls `finish`.
  */
 export function memoryCreateGate(): InvoiceCreateGate {
   const slots = new Map<string, { inFlight: boolean, lastAt: number | null }>()
@@ -21,10 +23,14 @@ export function memoryCreateGate(): InvoiceCreateGate {
   return {
     async reserve(tenantId: string, now: Date): Promise<CreateSlot> {
       const current = slot(tenantId)
-      if (current.inFlight)
+      const started = current.lastAt
+      // No start time means the flight cannot be shown to be inside the lease.
+      const stale = current.inFlight
+        && (started === null || now.getTime() >= started + INVOICE_CREATE_LEASE_MS)
+      if (current.inFlight && !stale)
         return { status: 'busy' }
-      if (current.lastAt !== null && now.getTime() < current.lastAt + INVOICE_CREATE_SPACING_MS)
-        return { status: 'later', at: new Date(current.lastAt + INVOICE_CREATE_SPACING_MS) }
+      if (started !== null && now.getTime() < started + INVOICE_CREATE_SPACING_MS)
+        return { status: 'later', at: new Date(started + INVOICE_CREATE_SPACING_MS) }
       current.inFlight = true
       current.lastAt = now.getTime()
       return { status: 'ready' }

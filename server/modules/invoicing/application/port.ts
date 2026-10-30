@@ -50,7 +50,9 @@ export type CreateSlot
 
 /**
  * One create in flight per Tenant, and at least ten seconds after that
- * Tenant's last create. Two Tenants do not share a slot.
+ * Tenant's last create. A flight older than the lease is free again,
+ * because the process that took it may have been killed. Two Tenants
+ * do not share a slot.
  */
 export interface InvoiceCreateGate {
   reserve: (tenantId: string, now: Date) => Promise<CreateSlot>
