@@ -48,6 +48,14 @@ const shownTime = computed(() =>
 )
 
 const blocks = computed(() => snapshot.value ? officeHomeBlocks(snapshot.value) : null)
+const invoiceWarnings = computed(() => snapshot.value?.invoiceWarnings ?? [])
+const paymentReminder = computed(() => snapshot.value?.paymentReportingReminder === true)
+const attentionEmpty = computed(() =>
+  blocks.value !== null
+  && blocks.value.attention.length === 0
+  && invoiceWarnings.value.length === 0
+  && !paymentReminder.value,
+)
 
 const countLinks = computed(() => {
   const home = snapshot.value
@@ -196,7 +204,7 @@ function formatOperationalDate(iso: string, locale: DisplayLocale): string {
             >
               {{ t('officeHome.attention') }}
             </h2>
-            <p v-if="blocks.attention.length === 0">
+            <p v-if="attentionEmpty">
               {{ t('officeHome.emptyAttention') }}
             </p>
             <section
@@ -214,6 +222,43 @@ function formatOperationalDate(iso: string, locale: DisplayLocale): string {
                   class="rounded-md border border-default px-2"
                 >
                   <OfficeHomeRow
+                    :ride="ride"
+                    :time-zone="timeZone"
+                    :locale="locale"
+                    :operational-date="snapshot.operationalDate"
+                    :operational-day-start-hour="snapshot.operationalDayStartHour"
+                  />
+                </li>
+              </ul>
+            </section>
+            <section
+              v-if="paymentReminder || invoiceWarnings.length > 0"
+              class="mb-4"
+            >
+              <h3 class="mb-1 text-xs font-medium text-warning">
+                {{ t('officeHome.warning') }}
+              </h3>
+              <p
+                v-if="paymentReminder"
+                class="mb-2 flex items-center gap-1 text-sm text-warning"
+              >
+                <UIcon
+                  name="i-lucide-file-warning"
+                  class="size-3.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>{{ t('officeHome.paymentReminder') }}</span>
+              </p>
+              <ul
+                v-if="invoiceWarnings.length > 0"
+                class="flex flex-col gap-2"
+              >
+                <li
+                  v-for="ride in invoiceWarnings"
+                  :key="ride.rideId"
+                  class="rounded-md border border-default px-2"
+                >
+                  <OfficeHomeInvoiceRow
                     :ride="ride"
                     :time-zone="timeZone"
                     :locale="locale"

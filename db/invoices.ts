@@ -40,6 +40,13 @@ export const invoices = tenantTable('invoices', {
   attemptCount: integer('attempt_count').notNull().default(0),
   nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'date' }),
   awaitingLookup: boolean('awaiting_lookup').notNull().default(false),
+  /**
+   * When the status job last read this invoice in the current tool.
+   * Null until the first read. The job takes the oldest, nulls first,
+   * so a run of 20 rotates instead of rereading the same rows (ADR-0051).
+   * No default and no backfill: existing rows stay unchecked.
+   */
+  statusCheckedAt: timestamp('status_checked_at', { withTimezone: true, mode: 'date' }),
   askedBy: text('asked_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),

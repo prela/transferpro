@@ -76,6 +76,11 @@ function catalogWithoutOneDriver(failedRows: ReadonlyArray<Record<string, unknow
         return { rows: [] }
       if (text.includes('app.mail_outbox'))
         return { rows: failedRows }
+      if (text.includes('app.invoices')) {
+        if (text.includes('exists'))
+          return { rows: [{ present: false }] }
+        return { rows: [] }
+      }
       if (text.includes('app.rides')) {
         return {
           rows: [{

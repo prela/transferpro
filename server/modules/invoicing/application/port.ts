@@ -38,9 +38,20 @@ export interface InvoiceCreateRequest {
   }
 }
 
+/**
+ * One status read. `sent` is the original invoice. `storno` is the
+ * negative invoice, present only once the tool has created it. A number
+ * and a link stay here, off the log (ADR-0051).
+ */
+export interface InvoiceStatusRead {
+  readonly sent: boolean
+  readonly storno: { readonly number: string, readonly documentLink: string } | null
+}
+
 export interface InvoicingPort {
   create: (request: InvoiceCreateRequest) => Promise<InvoiceCreateResult>
   findByReference: (invoiceId: string) => Promise<ToolInvoice | null>
+  readStatus: (toolInvoiceId: string) => Promise<InvoiceStatusRead>
 }
 
 export type CreateSlot

@@ -1,7 +1,7 @@
 import type { OfficeHomeRide } from './office-home'
 import { expect, it } from 'vitest'
 import { instantFromWallClock } from './date'
-import { buildOfficeHome, officeHomeBlocks, officeHomeCountPath, officeHomeUrgentKeys, officeHomeUrgentRideCount } from './office-home'
+import { buildOfficeHome, officeHomeBlocks, officeHomeCountPath, officeHomeSchema, officeHomeUrgentKeys, officeHomeUrgentRideCount } from './office-home'
 
 /**
  * The office home snapshot. Lists keep every matching Ride. Counts keep
@@ -863,4 +863,41 @@ it('counts a handed-off Ride on the day and shows it only once the unclosed mark
     + snapshot.counts.noShow
     + snapshot.counts.cancelled,
   ).toBe(snapshot.counts.rides)
+})
+
+it('keeps an unsent invoice and the payment reminder out of the urgent count', () => {
+  const now = new Date('2026-06-15T08:00:00.000Z')
+  const snapshot = buildOfficeHome([
+    ride({
+      rideId: '00000000-0000-4000-8000-0000000000b1',
+      guestName: 'Past pickup',
+      pickupAt: '2026-06-15T07:00:00.000Z',
+      state: 'unassigned',
+    }),
+  ], now, zone)
+  const withInvoice = officeHomeSchema.parse({
+    ...snapshot,
+    paymentReportingReminder: true,
+    invoiceWarnings: [{
+      rideId: '00000000-0000-4000-8000-0000000000b2',
+      pickupAt: '2026-05-01T10:00:00.000Z',
+      guestName: 'Unsent Iva',
+      passengerCount: 2,
+      clientName: 'Agencija Mora',
+      start: 'Zračna luka Dubrovnik',
+      end: 'Hotel Excelsior',
+      state: 'done',
+      driverName: null,
+      vehiclePlate: null,
+      price: '80.00',
+      payment: 'invoice_to_agency',
+      flightNumber: null,
+      landingAt: null,
+      expectedArrival: null,
+      tabla: '',
+      kind: 'unsent',
+    }],
+  })
+  expect(officeHomeUrgentRideCount(withInvoice)).toBe(officeHomeUrgentRideCount(snapshot))
+  expect(officeHomeUrgentRideCount(withInvoice)).toBe(1)
 })

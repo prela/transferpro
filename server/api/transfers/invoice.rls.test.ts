@@ -428,6 +428,9 @@ it('commits the attempt and the gate before the call, and a crash does not creat
     async findByReference() {
       return made
     },
+    async readStatus() {
+      return { sent: false, storno: null }
+    },
   }
   const running = handleInvoiceCreateJob(job, step, queue, undefined, port)
   await seen
@@ -511,6 +514,9 @@ it('a killed create keeps the slot until the lease ends, then the next run looks
     async findByReference() {
       finds += 1
       return made
+    },
+    async readStatus() {
+      return { sent: false, storno: null }
     },
   }
   void handleInvoiceCreateJob(job, step, queue, undefined, port)

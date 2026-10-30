@@ -157,6 +157,10 @@ onMounted(loadFirst)
             <span class="mt-0.5 block">{{ ride.start }} → {{ ride.end }}</span>
             <span class="mt-0.5 block">{{ t(`transfers.states.${ride.state}`) }} · {{ crew(ride) }}</span>
             <span class="mt-0.5 block tabular-nums">{{ priceLabel(ride.price) }} · {{ t(`transfers.payments.${ride.payment}`) }}</span>
+            <span
+              v-if="ride.invoiceState"
+              class="mt-0.5 block"
+            >{{ t(`transfers.invoice.states.${ride.invoiceState}`) }}</span>
           </NuxtLink>
         </li>
       </ul>

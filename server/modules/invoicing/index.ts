@@ -7,6 +7,8 @@
 export { INVOICE_CREATE_LEASE_MS, invoiceLanguage, invoiceLineText } from './domain/invoice'
 export { InvoicingKeyMissingError } from './domain/token-cipher'
 export { handleInvoiceCreateJob, insertRequestedInvoice, INVOICE_CREATE_QUEUE, lockOpenInvoice, readOpenInvoice, readOpenInvoicesForTransfers, replaceFailedInvoice, startInvoiceCreateWorker } from './infrastructure/invoice-job'
+export { readInvoiceHomeNotices, readLatestInvoiceStates } from './infrastructure/invoice-status'
+export { startInvoiceStatusWorker } from './infrastructure/invoice-status-worker'
 export { invoicingMode, selectInvoicingMode } from './infrastructure/mode'
 export { readInvoicingReadiness } from './infrastructure/settings'
 export { readInvoicingSettings, writeInvoicingSettings } from './infrastructure/settings-access'

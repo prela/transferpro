@@ -369,6 +369,8 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
       cancelled: 0,
     },
     failedMails: [],
+    invoiceWarnings: [],
+    paymentReportingReminder: false,
   })
 
   const http = await call(admin)
