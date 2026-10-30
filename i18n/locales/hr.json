@@ -276,6 +276,11 @@
       "invoicing_settings": {
         "changed": "Promijenjene postavke računa"
       },
+      "invoice": {
+        "requested": "Račun zatražen",
+        "issued": "Račun izdan",
+        "failed": "Račun nije izdan"
+      },
       "partner": {
         "created": "Podizvođač dodan",
         "changed": "Podizvođač ispravljen",
@@ -558,7 +563,37 @@
       "unassigned": "Nedodijeljeno",
       "waiting": "Čeka prihvat",
       "inProgress": "U tijeku",
-      "closed": "Zatvoreno"
+      "closed": "Zatvoreno",
+      "toInvoice": "Za fakturiranje"
+    },
+    "invoice": {
+      "title": "Račun",
+      "issue": "Izdaj račun",
+      "retry": "Pokušaj ponovno",
+      "open": "Otvori račun",
+      "billingLink": "Podaci za račun",
+      "states": {
+        "requested": "Zatražen",
+        "created": "Izdan",
+        "sent": "Poslan",
+        "failed": "Nije izdan",
+        "cancelling": "Stornira se",
+        "cancelled": "Storniran",
+        "withdrawn": "Povučen"
+      },
+      "reasons": {
+        "rejected": "Odbijen",
+        "allowance": "Potrošena kvota",
+        "token": "Token odbijen",
+        "unavailable": "Nedostupan"
+      },
+      "errors": {
+        "not_invoiceable": "Ovaj transfer se ne može fakturirati.",
+        "client_not_invoiceable": "Ovaj naručitelj se ne može fakturirati.",
+        "billing_details_missing": "Nedostaju podaci za račun.",
+        "invoicing_not_ready": "Fakturiranje nije spremno.",
+        "transfer_invoiced": "Ovaj transfer već ima račun."
+      }
     },
     "attention": {
       "unassignedAlarm": "Nedodijeljeno < 4 h",

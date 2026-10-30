@@ -41,6 +41,13 @@ const PERSONAL_KEYS = new Set([
   'postalcode',
   'zipcode',
   'price',
+  // An invoice log keeps the id, the state, the reason, and the attempt count.
+  'invoicenumber',
+  'documentlink',
+  'amount',
+  'grossamount',
+  'toolresponse',
+  'linetext',
   'prices',
   'fare',
   'note',

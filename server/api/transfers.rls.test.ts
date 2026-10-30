@@ -1312,14 +1312,16 @@ it('leaves an assigned Ride assigned, and a save of the same trip writes nothing
   expect(audits.filter(row => row.action === 'ride.returned_to_assigned')).toEqual([])
 })
 
-it('refuses a finished Ride and writes nothing', async () => {
+it('refuses a closed Ride and writes nothing, and a done Ride still accepts a correction', async () => {
   const created = await tenant('htr-correct-closed', 'Hana Admin')
   await addMember(created.tenantId, 'htr-correct-closed-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
   const dispatcher = await signIn('htr-correct-closed-dispatcher@example.test')
   const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
   const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
   const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
-  for (const state of ['done', 'no-show', 'cancelled'] as const) {
+  // No-show and cancelled stay closed. A done Ride stays open so the office
+  // can set the payment and the price before an invoice (ADR-0051, ADR-0053).
+  for (const state of ['no-show', 'cancelled'] as const) {
     const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()))
     const body = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
     await ownerPool.query('update app.rides set state = $2 where id = $1', [body.ride.id, state])
@@ -1330,6 +1332,12 @@ it('refuses a finished Ride and writes nothing', async () => {
     expect(await storedTransfer(body.transfer.id)).toMatchObject({ guest_name: guest })
     expect(await correctionAudits(created.tenantId)).toEqual(before)
   }
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()))
+  const body = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
+  await ownerPool.query('update app.rides set state = $2 where id = $1', [body.ride.id, 'done'])
+  const saved = await call('PATCH', `/api/transfers/${body.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(), { guestName: 'Iva Ivić' }))
+  expect(saved.status).toBe(200)
+  expect(await storedTransfer(body.transfer.id)).toMatchObject({ guest_name: 'Iva Ivić' })
 })
 
 it('refuses a flight-number change on a finished Ride and keeps the live-flight facts', async () => {
@@ -1339,7 +1347,7 @@ it('refuses a flight-number change on a finished Ride and keeps the live-flight 
   const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
   const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
   const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
-  for (const state of ['done', 'no-show', 'cancelled'] as const) {
+  for (const state of ['no-show', 'cancelled'] as const) {
     const pickupAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()
     const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
     const body = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
@@ -1360,6 +1368,16 @@ it('refuses a flight-number change on a finished Ride and keeps the live-flight 
     })
     expect(await correctionAudits(created.tenantId)).toEqual(before)
   }
+  const pickupAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()
+  const recorded = await call('POST', '/api/transfers', dispatcher, createBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 384' }))
+  const body = await recorded.json() as { transfer: { id: string }, ride: { id: string } }
+  await ownerPool.query('update app.rides set state = $2 where id = $1', [body.ride.id, 'done'])
+  await rememberLiveFlight(body.transfer.id, pickupAt)
+  const saved = await call('PATCH', `/api/transfers/${body.transfer.id}`, dispatcher, correctionBody(client.id, start.id, end.id, pickupAt, { flightNumber: 'OU 392' }))
+  expect(saved.status).toBe(200)
+  const stored = await storedTransfer(body.transfer.id)
+  expect(stored?.flight_number).toBe('OU 392')
+  expect(stored?.landing_at).toBeNull()
 })
 
 it('another Tenant cannot correct the Transfer', async () => {
@@ -2040,7 +2058,7 @@ it('lets an unassigned Ride move onto an occupied time', async () => {
   })
 })
 
-it('a finished Ride stays transfer_closed when the new pickup would overlap', async () => {
+it('a done Ride can move onto a held time, and a no-show stays transfer_closed', async () => {
   const office = await bookedOffice('htr-ovlp-closed')
   const driver = await createDriver(office.dispatcher, driverInput('Drago Driver', '+385911112137'))
   const vehicle = await createVehicle(office.dispatcher, vehicleInput('ZG2137AA'))
@@ -2051,11 +2069,26 @@ it('a finished Ride stays transfer_closed when the new pickup would overlap', as
   await assignRide(office.dispatcher, { rideId: moving.ride.id, driverId: driver.id, vehicleId: otherVehicle.id })
   await ownerPool.query('update app.rides set state = $2 where id = $1', [moving.ride.id, 'done'])
 
-  const refused = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T10:30:00.000Z'))
+  // A done Ride is no longer on the board, so the overlap question does not apply.
+  const moved = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T10:30:00.000Z'))
+  expect(moved.status).toBe(200)
+  const movedPickup = await ownerPool.query<{ pickup_at: Date }>(
+    'select pickup_at from app.transfers where id = $1',
+    [moving.transfer.id],
+  )
+  expect(movedPickup.rows[0]?.pickup_at.toISOString()).toBe('2026-11-02T10:30:00.000Z')
+
+  await ownerPool.query('update app.rides set state = $2 where id = $1', [moving.ride.id, 'no-show'])
+  const refused = await call('PATCH', `/api/transfers/${moving.transfer.id}`, office.dispatcher, correctionBody(office.client.id, office.start.id, office.end.id, '2026-11-02T11:00:00.000Z'))
   expect(refused.status).toBe(409)
   const closedText = await refused.text()
   expect(closedText).toContain('transfer_closed')
   expect(closedText).not.toContain('ride_overlap')
+  const kept = await ownerPool.query<{ pickup_at: Date }>(
+    'select pickup_at from app.transfers where id = $1',
+    [moving.transfer.id],
+  )
+  expect(kept.rows[0]?.pickup_at.toISOString()).toBe('2026-11-02T10:30:00.000Z')
 })
 
 it('an archived Location is refused before an overlap', async () => {
@@ -2279,7 +2312,7 @@ it('a fresh correction bumps the version and the day read names that member', as
   expect(await correctionAudits(office.created.tenantId)).toHaveLength(1)
 })
 
-it('a wrong version on a finished Transfer is stale_save, and the current version is transfer_closed', async () => {
+it('a wrong version on a done Transfer is stale_save, and a closed Ride stays transfer_closed', async () => {
   const office = await correctionOffice('htr-ver-closed')
   const driver = await createDriver(office.dispatcher, {
     name: 'Drago Driver',
@@ -2309,20 +2342,32 @@ it('a wrong version on a finished Transfer is stale_save, and the current versio
   ))
   expect(stale.status).toBe(409)
   expect(await stale.text()).toContain('stale_save')
+  expect(await transferStamp(office.body.transfer.id)).toMatchObject({ version: 1, guest_name: guest })
+  expect(await correctionAudits(office.created.tenantId)).toEqual(before)
 
-  const closed = await call('PATCH', path, office.dispatcher, correctionBody(
+  const saved = await call('PATCH', path, office.dispatcher, correctionBody(
     office.client.id,
     office.start.id,
     office.end.id,
     office.pickupAt,
     { guestName: 'Skriveni Gost', version: 1 },
   ))
+  expect(saved.status).toBe(200)
+  expect(await transferStamp(office.body.transfer.id)).toMatchObject({ version: 2, guest_name: 'Skriveni Gost' })
+
+  await ownerPool.query(`update app.rides set state = 'no-show' where id = $1`, [office.body.ride.id])
+  const closed = await call('PATCH', path, office.dispatcher, correctionBody(
+    office.client.id,
+    office.start.id,
+    office.end.id,
+    office.pickupAt,
+    { guestName: 'Drugi Gost', version: 2 },
+  ))
   expect(closed.status).toBe(409)
   const text = await closed.text()
   expect(text).toContain('transfer_closed')
   expect(text).not.toContain('stale_save')
-  expect(await transferStamp(office.body.transfer.id)).toMatchObject({ version: 1, guest_name: guest })
-  expect(await correctionAudits(office.created.tenantId)).toEqual(before)
+  expect(await transferStamp(office.body.transfer.id)).toMatchObject({ version: 2, guest_name: 'Skriveni Gost' })
 })
 
 it('lets exactly one of two corrections with the same version pass', async () => {

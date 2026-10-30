@@ -2,7 +2,7 @@
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, OfficeLocation, Partner, PartnerOfficeContact, TransferDayRide, TransferGroupMember, Vehicle } from '../../shared'
 import type { RideDetailCommand } from '../ride-detail'
-import { canAddExtraVehicle, canCorrectTransfer, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel, rideDetailEmbedUrls, rideDetailMapOpen, transferGroupRole, transferGroupSchema } from '../../shared'
+import { canAddExtraVehicle, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel, officeCanCorrectTransfer, rideDetailEmbedUrls, rideDetailMapOpen, transferAwaitingInvoice, transferGroupRole, transferGroupSchema } from '../../shared'
 import { useKeptWorkOrders } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, rideFormStamp } from '../ride-detail'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -122,7 +122,7 @@ function openedCommandStillAllowed(ride: TransferDayRide): boolean {
   if (props.command === 'reassign' || props.command === 'vehicle')
     return canChangeAssignment(ride)
   if (props.command === 'correct')
-    return canCorrectTransfer(ride.state)
+    return officeCanCorrectTransfer(ride.state)
   return true
 }
 
@@ -152,7 +152,7 @@ async function refreshStale() {
     rideChanged.value = false
     staleNotice.value = false
     const ride = props.ride
-    if (props.command === 'correct' && canCorrectTransfer(ride.state))
+    if (props.command === 'correct' && officeCanCorrectTransfer(ride.state))
       correctForm.value?.openCorrect(ride)
     if (!openedCommandStillAllowed(ride))
       emit('command', null)
@@ -250,6 +250,55 @@ function plate(id: string | null): string {
   return props.vehicles.find(vehicle => vehicle.id === id)?.registrationPlate ?? ''
 }
 
+const invoiceError = ref<string | null>(null)
+const invoiceClientId = ref<string | null>(null)
+const invoicePending = ref(false)
+
+const showInvoice = computed(() => props.ride.invoice !== null || transferAwaitingInvoice(props.ride))
+
+function readInvoiceError(error: unknown): { code: string | null, clientId: string | null } {
+  if (typeof error !== 'object' || error === null || !('data' in error))
+    return { code: null, clientId: null }
+  const data = error.data
+  if (typeof data !== 'object' || data === null || !('code' in data) || typeof data.code !== 'string')
+    return { code: null, clientId: null }
+  const clientId = 'clientId' in data && typeof data.clientId === 'string' ? data.clientId : null
+  return { code: data.code, clientId }
+}
+
+/**
+ * Issue or retry, then reload the day until the job has stored a result.
+ * The response itself is only the requested row. The number arrives with
+ * the job, which can wait out this tenant's ten-second spacing.
+ */
+async function postInvoice(path: string) {
+  if (invoicePending.value)
+    return
+  invoicePending.value = true
+  invoiceError.value = null
+  invoiceClientId.value = null
+  try {
+    await $fetch(path, { method: 'POST', body: {} })
+    // The number is written by the job, which waits out this tenant's
+    // ten-second spacing and can sit in the queue. Keep the day current
+    // until that row leaves "requested".
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      await props.loadDay()
+      if (props.ride.invoice?.state !== 'requested')
+        return
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+  }
+  catch (error) {
+    const read = readInvoiceError(error)
+    invoiceError.value = read.code
+    invoiceClientId.value = read.clientId
+  }
+  finally {
+    invoicePending.value = false
+  }
+}
+
 function priceLabel(price: string): string {
   const shown = props.locale === 'hr' ? price.replace('.', ',') : price
   return `${shown} EUR`
@@ -272,7 +321,7 @@ const primary = computed<'assign' | 'accept' | 'done' | null>(() => {
 const menuItems = computed<DropdownMenuItem[][]>(() => {
   const ride = props.ride
   const items: DropdownMenuItem[] = []
-  if (canCorrectTransfer(ride.state))
+  if (officeCanCorrectTransfer(ride.state))
     items.push({ label: t('transfers.correct'), icon: 'i-lucide-pencil', onSelect: () => emit('command', 'correct') })
   if (canRecordLandingTime(ride.state))
     items.push({ label: t('ride.recordLanding'), icon: 'i-lucide-plane-landing', onSelect: () => emit('command', 'landing') })
@@ -676,6 +725,52 @@ const primaryLabel = computed(() => {
       <dd class="tabular-nums">
         {{ priceLabel(ride.price) }} · {{ t(`transfers.payments.${ride.payment}`) }}
       </dd>
+      <template v-if="showInvoice">
+        <dt>{{ t('transfers.invoice.title') }}</dt>
+        <dd id="transfer-invoice">
+          <p v-if="ride.invoice">
+            {{ t(`transfers.invoice.states.${ride.invoice.state}`) }}
+            <span v-if="ride.invoice.number">{{ ride.invoice.number }}</span>
+            <span v-if="ride.invoice.reason">{{ t(`transfers.invoice.reasons.${ride.invoice.reason}`) }}</span>
+          </p>
+          <a
+            v-if="ride.invoice?.documentLink"
+            class="text-primary underline"
+            :href="ride.invoice.documentLink"
+            target="_blank"
+            rel="noopener noreferrer"
+          >{{ t('transfers.invoice.open') }}</a>
+          <UButton
+            v-if="transferAwaitingInvoice(ride)"
+            type="button"
+            size="sm"
+            :loading="invoicePending"
+            @click="postInvoice(`/api/transfers/${ride.transferId}/invoice`)"
+          >
+            {{ t('transfers.invoice.issue') }}
+          </UButton>
+          <UButton
+            v-if="ride.invoice?.state === 'failed'"
+            type="button"
+            size="sm"
+            :loading="invoicePending"
+            @click="postInvoice(`/api/transfers/${ride.transferId}/invoice/retry`)"
+          >
+            {{ t('transfers.invoice.retry') }}
+          </UButton>
+          <p v-if="invoiceError">
+            {{ t(`transfers.invoice.errors.${invoiceError}`) }}
+          </p>
+          <NuxtLink
+            v-if="invoiceError === 'billing_details_missing'"
+            class="text-primary underline"
+            :to="invoiceClientId ? `/clients?client=${invoiceClientId}` : '/clients'"
+            :data-client-id="invoiceClientId ?? undefined"
+          >
+            {{ t('transfers.invoice.billingLink') }}
+          </NuxtLink>
+        </dd>
+      </template>
       <template v-if="ride.tabla">
         <dt>{{ t('transfers.fields.tabla') }}</dt>
         <dd>{{ ride.tabla }}</dd>

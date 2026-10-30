@@ -323,7 +323,7 @@ it('refuses an invoicing adapter without the key and does not echo a bad value',
   }
   catch (error) {
     expect(String(error)).not.toContain('nope')
-    expect(String(error)).toMatch(/INVOICING must be none, current, or unset/)
+    expect(String(error)).toMatch(/INVOICING must be none, fake, current, or unset/)
   }
   expect(parseAppEnv({ ...base, INVOICING: 'current', INVOICING_SECRET_KEY: invoicingKey })).toMatchObject({
     INVOICING: 'current',

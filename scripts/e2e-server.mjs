@@ -31,7 +31,7 @@ delete process.env.DATABASE_MIGRATE_URL
 
 // E2E never calls the current tool (ADR-0051). The key exists only so an
 // Admin can store a token during the settings spec. It is not a Tenant secret.
-process.env.INVOICING = 'none'
+process.env.INVOICING = 'fake'
 if (process.env.INVOICING_SECRET_KEY === undefined || process.env.INVOICING_SECRET_KEY === '')
   process.env.INVOICING_SECRET_KEY = Buffer.alloc(32, 7).toString('base64')
 

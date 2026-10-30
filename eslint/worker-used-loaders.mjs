@@ -24,6 +24,8 @@ export const workerUsedLoaders = [
   'outboxAttemptStore',
   'mailOutboxStore',
   'readInvitationForMail',
+  // The invoice job has no member. The office check ran when the invoice was requested.
+  'loadClientBillingForInvoice',
 ]
 
 export const workerLoaderModules = [

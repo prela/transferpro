@@ -62,6 +62,21 @@ export class ExtraVehiclePriceError extends Error {
  * The group's ordered passenger count lives on the main Transfer. A
  * correction that sends one for an extra vehicle writes nothing (ADR-0054).
  */
+/**
+ * The Client, the price, or the payment cannot change while an invoice
+ * is requested, created, sent, or cancelling. Nothing is written
+ * (ADR-0051). A failed invoice does not use this error.
+ */
+export class TransferInvoicedError extends Error {
+  readonly statusCode = 409
+  readonly code = 'transfer_invoiced'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'TransferInvoicedError'
+  }
+}
+
 export class ExtraVehicleCountError extends Error {
   readonly statusCode = 409
   readonly code = 'extra_vehicle_count'

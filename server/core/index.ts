@@ -85,10 +85,12 @@ export interface AppEnv {
   readonly SENTRY_RELEASE: string | undefined
   /**
    * Which invoicing adapter runs. `none` is the default in every environment,
-   * so a fresh process never calls the current tool. `current` is that
-   * adapter and requires `INVOICING_SECRET_KEY`. ADR-0051.
+   * so a fresh process never calls the current tool. `fake` is the in-process
+   * adapter for tests and E2E. `current` uses that same adapter until the
+   * real one lands (#442). Anything other than `none` requires
+   * `INVOICING_SECRET_KEY`. ADR-0051.
    */
-  readonly INVOICING: 'none' | 'current'
+  readonly INVOICING: 'none' | 'fake' | 'current'
   /**
    * 32-byte AES-256-GCM key, decoded from base64. Required when `INVOICING`
    * is not `none`. Optional while `INVOICING` is `none`, and still required
@@ -238,16 +240,17 @@ function parseMapsEmbedKey(source: NodeJS.ProcessEnv): string | undefined {
 
 /**
  * Unset or blank is `none` in every environment, including production.
- * `current` is the current-tool adapter. A typo fails boot and the value
- * is not copied into the error text.
+ * `fake` is the in-process adapter. `current` is accepted at boot and
+ * refuses to issue until #442. A typo fails boot and the value is not
+ * copied into the error text.
  */
-function parseInvoicing(source: NodeJS.ProcessEnv): 'none' | 'current' {
+function parseInvoicing(source: NodeJS.ProcessEnv): 'none' | 'fake' | 'current' {
   const raw = blankEnv(source.INVOICING)
   if (raw === undefined)
     return 'none'
-  const parsed = z.enum(['none', 'current']).safeParse(raw)
+  const parsed = z.enum(['none', 'fake', 'current']).safeParse(raw)
   if (!parsed.success)
-    throw new Error('INVOICING must be none, current, or unset.')
+    throw new Error('INVOICING must be none, fake, current, or unset.')
   return parsed.data
 }
 
@@ -277,7 +280,7 @@ export function readInvoicingSecretKey(source: NodeJS.ProcessEnv = process.env):
 /**
  * `INVOICING=current` cannot boot without a key. `none` may omit it.
  */
-function parseInvoicingSecretKey(source: NodeJS.ProcessEnv, invoicing: 'none' | 'current'): Uint8Array | undefined {
+function parseInvoicingSecretKey(source: NodeJS.ProcessEnv, invoicing: 'none' | 'fake' | 'current'): Uint8Array | undefined {
   const key = readInvoicingSecretKey(source)
   if (invoicing !== 'none' && key === undefined)
     throw new Error('INVOICING_SECRET_KEY is required when INVOICING is not none.')
@@ -497,6 +500,18 @@ export interface JobQueue {
   work: (
     name: string,
     handle: (job: QueuedJob, scope: JobHandlerScope) => Promise<void>,
+  ) => Promise<void>
+
+  /**
+   * Worker that commits each `step` on its own. The handler calls the port
+   * between steps, so no tenant transaction stays open across that call.
+   */
+  workInSteps?: (
+    name: string,
+    handle: (
+      job: QueuedJob,
+      step: <T>(run: (transaction: TenantTransaction) => Promise<T>) => Promise<T>,
+    ) => Promise<void>,
   ) => Promise<void>
 
   close: () => Promise<void>

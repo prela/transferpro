@@ -395,6 +395,7 @@ const WORKER_USED_LOADERS = [
   'outboxAttemptStore',
   'mailOutboxStore',
   'readInvitationForMail',
+  'loadClientBillingForInvoice',
 ] as const
 
 async function workerLoaderRole(filePath: string, source: string) {

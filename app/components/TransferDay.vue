@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DisplayLocale, LiveRefreshOutcome, TransferBoardFilter, TransferDayRide, TransferPrefill } from '../../shared'
 import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
-import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
+import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferAwaitingInvoice, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
 import { groupRouteLeftKey } from '../composables/transfer-form'
@@ -136,9 +136,14 @@ const counts = computed(() => transferDayFilterCounts(
   nowMs.value,
 ))
 
-const visibleRides = computed(() => narrowedRides.value.filter(ride =>
-  transferDayFilterMatches(filter.value, ride, declinesFor(ride.rideId), nowMs.value),
-))
+const toInvoiceCount = computed(() => narrowedRides.value.filter(ride => transferAwaitingInvoice(ride)).length)
+
+const visibleRides = computed(() => narrowedRides.value.filter((ride) => {
+  // Za fakturiranje is an extra chip. It is not one of the seven day filters.
+  if (filter.value === 'toInvoice')
+    return transferAwaitingInvoice(ride)
+  return transferDayFilterMatches(filter.value, ride, declinesFor(ride.rideId), nowMs.value)
+}))
 
 const filteredEmpty = computed(() =>
   !loading.value && !loadError.value && rides.value.length > 0 && visibleRides.value.length === 0,
@@ -722,6 +727,7 @@ onUnmounted(() => {
       v-model:client-id="clientId"
       v-model:driver-id="driverId"
       :counts="counts"
+      :to-invoice-count="toInvoiceCount"
       :clients="clients"
       :drivers="drivers"
       :note="unassignedNote"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, DisplayLocale, Driver, Location, Partner, RideAttentionItem, TransferDayRide, Vehicle } from '../../shared'
-import { calendarDateInTimeZone, canAddExtraVehicle, canCorrectTransfer, canRecordLandingTime, classifyRideAttention, clockLabel, formatCalendarDate, formatInstant, locationLabel, pickupNeedsCalendarDate, rideStateMark, transferGroupRole } from '../../shared'
+import { calendarDateInTimeZone, canAddExtraVehicle, canRecordLandingTime, classifyRideAttention, clockLabel, formatCalendarDate, formatInstant, locationLabel, officeCanCorrectTransfer, pickupNeedsCalendarDate, rideStateMark, transferGroupRole } from '../../shared'
 import { driverDisplayName } from '../transfer-day-labels'
 import { canCallOff, canChangeAssignment, canChangePartner, canHandOff, canNoShow, canTakeBack } from '../transfer-ride-guards'
 
@@ -169,7 +169,7 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
   if (!ride)
     return []
   const items: DropdownMenuItem[] = []
-  if (canCorrectTransfer(ride.state))
+  if (officeCanCorrectTransfer(ride.state))
     items.push({ label: t('transfers.correct'), icon: 'i-lucide-pencil', onSelect: () => emit('correct', ride) })
   if (canRecordLandingTime(ride.state))
     items.push({ label: t('ride.recordLanding'), icon: 'i-lucide-plane-landing', onSelect: () => emit('landing', ride) })

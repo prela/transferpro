@@ -214,6 +214,34 @@ export async function createPgBossJobQueue(env: AppEnv): Promise<JobQueue> {
       })
     },
 
+    async workInSteps(name, handle) {
+      raiseIfBossFailed()
+      await ensureQueue(name)
+      await boss.work(name, async (jobs) => {
+        for (const job of jobs) {
+          const envelope = envelopeSchema.parse(job.data)
+          const queued: QueuedJob = {
+            id: job.id,
+            name: job.name,
+            tenantId: envelope.tenantId,
+            data: envelope.data,
+          }
+          // Each step commits. The port call sits between steps.
+          const step = async <T>(run: (transaction: TenantTransaction) => Promise<T>): Promise<T> => {
+            return appDb.transaction(async (transaction) => {
+              return openTenantSessionById(transaction, envelope.tenantId, () => run(transaction))
+            })
+          }
+          const run = () => handle(queued, step)
+          const requestId = acceptRequestId(envelope.requestId)
+          if (requestId === undefined)
+            await run()
+          else
+            await runWithRequestId(requestId, run)
+        }
+      })
+    },
+
     async close() {
       await boss.stop({ graceful: false, close: true })
       await appPool.end()

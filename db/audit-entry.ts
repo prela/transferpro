@@ -313,6 +313,14 @@ function invoicingSettingsChanged(data: AnyPgColumn) {
 }
 
 /**
+ * An invoice records its id and the Transfer reference. A number, an amount,
+ * a link, or a guest cannot be a key (ADR-0051).
+ */
+function invoiceRecorded(data: AnyPgColumn) {
+  return sql`${keysOnly(data, 'invoiceId', 'transferId')} and ${uuidText(data, 'invoiceId')} and ${uuidText(data, 'transferId')}`
+}
+
+/**
  * `fields` is one of the canonical Partner arrays. Equality refuses a name,
  * a phone, an email, a note, or a different order.
  */
@@ -423,6 +431,9 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'client_note.saved' then ${table.subjectUserId} is null and ${clientNoteSaved(table.data)}
     when 'billing_details.saved' then ${table.subjectUserId} is null and ${billingDetailsSaved(table.data)}
     when 'invoicing_settings.changed' then ${table.subjectUserId} is null and ${invoicingSettingsChanged(table.data)}
+    when 'invoice.requested' then ${table.subjectUserId} is null and ${invoiceRecorded(table.data)}
+    when 'invoice.issued' then ${table.subjectUserId} is null and ${invoiceRecorded(table.data)}
+    when 'invoice.failed' then ${table.subjectUserId} is null and ${invoiceRecorded(table.data)}
     when 'partner.created' then ${table.subjectUserId} is null and ${partnerFields(table.data, PARTNER_CREATED_FIELD_LISTS)}
     when 'partner.changed' then ${table.subjectUserId} is null and ${partnerFields(table.data, PARTNER_CHANGED_FIELD_LISTS)}
     when 'partner.archived' then ${table.subjectUserId} is null and ${keysOnly(table.data, 'partnerId')} and ${uuidText(table.data, 'partnerId')}

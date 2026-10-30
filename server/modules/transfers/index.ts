@@ -72,11 +72,12 @@
  * Ride, through the Partners index. The Driver's read does not.
  */
 export { FullyBookedError, RideOverlapError, RideUnavailableError, startUnavailabilityRetention, UnavailabilityArchivedError, UnavailabilityNotFoundError } from '../capacity'
+export { BillingDetailsMissingError, ClientNotInvoiceableError, InvoiceOfficeOnlyError, InvoicingNotReadyError, TransferNotInvoiceableError } from './application/issue-invoice'
 export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableError } from './infrastructure/accept'
 export { RideDriverArchivedError, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
 export { assignRide, rosterVehicleForRide } from './infrastructure/assign-access'
 export { cancelRide, CancelRideInputError, RideNotCancellableError } from './infrastructure/cancel'
-export { correctTransfer, ExtraVehicleCountError, ExtraVehiclePriceError, TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from './infrastructure/correct'
+export { correctTransfer, ExtraVehicleCountError, ExtraVehiclePriceError, TransferInvoicedError, TransferNotCorrectableError, TransferNotFoundError, TransferNotMainError } from './infrastructure/correct'
 export { declineRide, DeclineRideInputError, RideNotDeclinableError } from './infrastructure/decline'
 export { markRideDone, MarkRideDoneInputError, RideNotFinishableError } from './infrastructure/done'
 export { listUpcomingRides } from './infrastructure/driver-ride-access'
@@ -85,6 +86,7 @@ export { askFlightLandings, LandingTimeClosedError, LandingTimeInFutureError, re
 export { startFlightLandingWorker } from './infrastructure/flight-landing-worker'
 export { changeRidePartner, handOffRide, RideNotHandedOffError, RideNotHandoffableError, RidePartnerArchivedError, RidePartnerUnchangedError, takeBackRide } from './infrastructure/handoff'
 export { closeDriverHoldingRides, driverHasHoldingRide } from './infrastructure/holding-ride'
+export { issueTransferInvoice, retryTransferInvoice } from './infrastructure/issue-access'
 export { RecordLandingInputError, recordRideLanding, RideLandingClosedError, RideLandingInFutureError } from './infrastructure/landing'
 export { closeMailOutboxQueue, mailOutboxQueue, mailOutboxStore, startMailOutboxWorker } from './infrastructure/mail-outbox-worker'
 export { markNoShow, MarkNoShowInputError, NoShowTooEarlyError, RideNotNoShowError } from './infrastructure/no-show'
