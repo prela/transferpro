@@ -77,11 +77,14 @@ test.describe('@phone', () => {
       if (!phone)
         await page.setViewportSize({ width: 1440, height: 900 })
       await pinOperationalClock(page, pinned)
-      await page.route('**/api/office-home', async (route) => {
-        const headers = route.request().headers()
-        headers['x-office-now'] = pinned.toISOString()
-        await route.continue({ headers })
-      })
+      // `route.continue` drops a custom header, so the built server reads
+      // this cookie. It is honoured only while NODE_ENV is test.
+      await page.context().addCookies([{
+        name: 'tp-office-now',
+        value: pinned.toISOString(),
+        domain: '127.0.0.1',
+        path: '/',
+      }])
       await useTheme(page, theme)
       const tenant = await seedTenant(`attention-${theme}`)
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)

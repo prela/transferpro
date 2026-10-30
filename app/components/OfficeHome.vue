@@ -235,12 +235,16 @@ function formatOperationalDate(iso: string, locale: DisplayLocale): string {
               v-if="paymentReminder || invoiceWarnings.length > 0"
               class="mb-4"
             >
-              <h3 class="mb-1 text-xs font-medium text-warning">
+              <!--
+                Default text, not warning yellow: that yellow fails the
+                light-theme contrast check.
+              -->
+              <h3 class="mb-1 text-xs font-medium text-default">
                 {{ t('officeHome.warning') }}
               </h3>
               <p
                 v-if="paymentReminder"
-                class="mb-2 flex items-center gap-1 text-sm text-warning"
+                class="mb-2 flex items-center gap-1 text-sm text-default"
               >
                 <UIcon
                   name="i-lucide-file-warning"
