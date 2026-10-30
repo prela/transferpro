@@ -47,6 +47,12 @@ export const invoices = tenantTable('invoices', {
    */
   stornoCalled: boolean('storno_called').notNull().default(false),
   /**
+   * `created` or `sent`, kept while the invoice is cancelling, so a
+   * refusal can put it back. Cleared when it returns or is cancelled.
+   * No default: existing rows stay null and are not rewritten.
+   */
+  stornoFrom: text('storno_from'),
+  /**
    * True once the status job sees the negative invoice as sent.
    * Until then a cancelled invoice is an unsent warning (ADR-0051).
    * A constant default does not rewrite existing rows.
@@ -81,6 +87,7 @@ export const invoices = tenantTable('invoices', {
   check('invoices_asked_by', sql`${table.askedBy} <> ''`),
   check('invoices_quantity', sql`${table.quantity} = 1`),
   check('invoices_buyer_type', sql`${table.buyerType} = 'b2b'`),
+  check('invoices_storno_from', sql`${table.stornoFrom} is null or (${table.state} = 'cancelling' and ${table.stornoFrom} in ('created', 'sent'))`),
 ], { oneRowPerTenant: false })
 
 /**

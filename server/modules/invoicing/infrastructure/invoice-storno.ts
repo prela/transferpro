@@ -49,7 +49,8 @@ function viewOf(row: z.infer<typeof lockedRow>): TransferInvoice {
 export type InvoiceStornoStep = <T>(run: (transaction: TenantTransaction) => Promise<T>) => Promise<T>
 
 /**
- * The created or sent invoice becomes cancelling, and the audit entry is
+ * The created or sent invoice becomes cancelling, and that earlier state
+ * is kept on the row so a refusal can put it back. The audit entry is
  * the ask. Null when this Transfer has no such invoice: nothing is written.
  */
 export async function beginInvoiceStorno(
@@ -60,6 +61,7 @@ export async function beginInvoiceStorno(
   const updated = z.object({ rows: z.array(lockedRow) }).parse(await transaction.execute(sql`
     update app.invoices
     set state = 'cancelling',
+        storno_from = state,
         updated_at = now()
     where transfer_reference = ${transferReference}
       and state in ('created', 'sent')
@@ -204,6 +206,25 @@ export async function handleInvoiceStornoJob(
         return updated.rows[0] !== undefined
       })
     },
+    async restore(id) {
+      return step(async (transaction) => {
+        const updated = z.object({
+          rows: z.array(z.object({ state: z.enum(['created', 'sent']) })),
+        }).parse(await transaction.execute(sql`
+          update app.invoices
+          set state = storno_from,
+              storno_called = false,
+              storno_from = null,
+              updated_at = now()
+          where id = ${id}
+            and state = 'cancelling'
+            and storno_called = true
+            and storno_from in ('created', 'sent')
+          returning state
+        `))
+        return updated.rows[0]?.state ?? null
+      })
+    },
     async saveCancelled(id, storno) {
       await step(async (transaction) => {
         await transaction.execute(sql`
@@ -212,6 +233,7 @@ export async function handleInvoiceStornoJob(
               storno_number = ${storno.number},
               storno_link = ${storno.documentLink},
               storno_sent = ${storno.sent},
+              storno_from = null,
               updated_at = now()
           where id = ${id} and state = 'cancelling'
         `)

@@ -48,6 +48,7 @@ export async function saveInvoiceStatusEffect(
           storno_number = ${effect.stornoNumber},
           storno_link = ${effect.stornoLink},
           storno_sent = ${effect.stornoSent},
+          storno_from = null,
           status_checked_at = ${at},
           updated_at = now()
       where id = ${effect.id} and state = 'cancelling'

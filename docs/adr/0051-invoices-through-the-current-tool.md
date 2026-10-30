@@ -60,7 +60,7 @@ The invoice block on the Ride detail shows the state, the number, the document l
 
 ### Storno
 
-An Admin may cancel a created or sent invoice with "Storniraj"; a Dispatcher or a Driver gets 403. The job calls the tool's storno once and marks the invoice as being cancelled. The tool returns no id and does not refuse a duplicate, so the job never repeats a storno, whatever the outcome; the status job always finds the negative invoice the tool created. When it finds it, it stores that number and link, and the invoice is cancelled. The Transfer is then free again, and a new invoice for it gets its own id and the tool's next number. A domestic storno is sent from the current tool like any invoice, and until then it is an unsent invoice.
+An Admin may cancel a created or sent invoice with "Storniraj"; a Dispatcher or a Driver gets 403. The job calls the tool's storno once and marks the invoice as being cancelled. The tool returns no id and does not refuse a duplicate, so a timeout or any other unknown outcome never repeats the call; the status job finds the negative invoice the tool created. When it finds it, it stores that number and link, and the invoice is cancelled. A refusal is different: the tool did not create the negative invoice, so the job puts the invoice back to created or sent, clears the claim, and logs the reason category. The number and the link stay off that line. The office may ask again. The Transfer is then free again only once the invoice is cancelled, and a new invoice for it gets its own id and the tool's next number. A domestic storno is sent from the current tool like any invoice, and until then it is an unsent invoice.
 
 ### The token and the settings
 
