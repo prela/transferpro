@@ -1,5 +1,6 @@
 import type { RideState } from './transfer'
 import { calendarDateInTimeZone, isCalendarDate, operationalDateInTimeZone } from './date'
+import { passengersExceedSeatCount } from './vehicle'
 
 /**
  * In progress, the same way the office-home list decides it (ADR-0022).
@@ -39,6 +40,7 @@ export const RIDE_ATTENTION_KINDS = [
   'fully-booked',
   'roster-mismatch',
   'expired-document',
+  'too-many-passengers',
 ] as const
 
 export type RideAttentionKind = (typeof RIDE_ATTENTION_KINDS)[number]
@@ -69,6 +71,12 @@ export interface RideAttentionSource {
     /** Popunjeno on an unfinished unassigned Ride. Absent otherwise (ADR-0034). */
     readonly fullyBooked?: boolean
   }
+  /**
+   * This Ride's passengers and the assigned Vehicle's seat count.
+   * Absent, or an empty seat count, shows no seat warning (ADR-0059).
+   */
+  readonly passengerCount?: number
+  readonly seatCount?: number | null
 }
 
 export interface RideDecline {
@@ -135,6 +143,9 @@ export function classifyRideAttention(
     items.push({ tier: 'warning', kind: 'roster-mismatch' })
   if (ride.warnings.expiredDocuments.length > 0)
     items.push({ tier: 'warning', kind: 'expired-document' })
+  // A seat warning is not a capacity refusal. An empty count stays quiet.
+  if (ride.passengerCount !== undefined && passengersExceedSeatCount(ride.passengerCount, ride.seatCount))
+    items.push({ tier: 'warning', kind: 'too-many-passengers' })
 
   return items
 }

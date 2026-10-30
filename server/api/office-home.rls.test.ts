@@ -209,6 +209,7 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
   const vehicle = await createVehicle(admin, {
     registrationPlate: 'DU200AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -442,6 +443,7 @@ it('turns the unclosed mark on from the stored landing plus the Tenant transfer 
   const vehicle = await createVehicle(admin, {
     registrationPlate: 'DU183AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -510,6 +512,7 @@ it('carries a decline alert and the Driver name for any day, drops it when the R
   const vehicle = await createVehicle(admin, {
     registrationPlate: 'DU248AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -558,6 +561,7 @@ it('carries a decline alert and the Driver name for any day, drops it when the R
   const foreignVehicle = await createVehicle(foreignAdmin, {
     registrationPlate: 'ST248BB',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',

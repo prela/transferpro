@@ -36,6 +36,7 @@ async function addVehicle(page: Page, registrationPlate: string): Promise<void> 
   await createdId(page, '/api/vehicles', {
     registrationPlate,
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,

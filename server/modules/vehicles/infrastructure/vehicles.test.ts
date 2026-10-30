@@ -21,6 +21,7 @@ const stored: Vehicle = {
   technicalInspectionExpiresOn: '2028-01-31',
   insuranceExpiresOn: '2029-03-03',
   description: null,
+  seatCount: 8,
   archivedAt: null,
 }
 
@@ -55,6 +56,7 @@ function fakeTransaction(
             technicalInspectionExpiresOn: compiled.params[3],
             insuranceExpiresOn: compiled.params[4],
             description: compiled.params[5] ?? null,
+            seatCount: compiled.params[6],
             archivedAt: null,
           }],
         }
@@ -122,6 +124,7 @@ const input = {
   technicalInspectionExpiresOn: '2028-01-31',
   insuranceExpiresOn: '2029-03-03',
   description: null,
+  seatCount: 8,
 }
 
 it('adds a Vehicle and records field names, not the plate or the dates', async () => {
@@ -131,7 +134,7 @@ it('adds a Vehicle and records field names, not the plate or the dates', async (
   expect(created).toEqual([
     JSON.stringify({
       vehicleId,
-      fields: ['registrationPlate', 'kind', 'registrationExpiresOn', 'technicalInspectionExpiresOn', 'insuranceExpiresOn'],
+      fields: ['registrationPlate', 'kind', 'registrationExpiresOn', 'technicalInspectionExpiresOn', 'insuranceExpiresOn', 'seatCount'],
     }),
   ])
   expect(JSON.stringify(created)).not.toContain(plate)

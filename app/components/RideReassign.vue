@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Driver, Vehicle } from '../../shared'
-import { assignedRideSchema, rosterVehicleSuggestionSchema } from '../../shared'
+import { assignedRideSchema, recordedSeatCount, rosterVehicleSuggestionSchema } from '../../shared'
 import { useCapacityRefusal } from '../composables/capacity-refusal'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
@@ -8,6 +8,8 @@ import { commandControlClass, commandControlSize, commandInputClass } from '../r
 const props = defineProps<{
   rideId: string
   guestName: string
+  /** This Ride's passengers. Compared with the chosen Vehicle's seats. */
+  passengerCount: number
   /** The Driver already on the Ride. The same Driver is not a reassignment. */
   driverId: string
   /** The Transfer version this form was opened with. ADR-0046. */
@@ -78,6 +80,8 @@ const vehicleItems = computed(() => props.vehicles
   })))
 
 const canSubmit = computed(() => Boolean(nextDriverId.value) && Boolean(vehicleId.value))
+
+const chosenSeatCount = computed(() => recordedSeatCount(props.vehicles, vehicleId.value ?? null))
 
 watch(() => props.version, (next, previous) => {
   // Osvježi replaced the opened version. The current Driver stays off this picker.
@@ -273,6 +277,10 @@ async function submit(confirm = false) {
     >
       {{ t('ride.fromRoster') }}
     </p>
+    <SeatCountWarning
+      :passenger-count="passengerCount"
+      :seat-count="chosenSeatCount"
+    />
     <div class="flex flex-wrap gap-2">
       <UButton
         type="submit"

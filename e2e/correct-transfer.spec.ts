@@ -45,6 +45,7 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   const vehicleId = await createdId(page, '/api/vehicles', {
     registrationPlate: 'DU026AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,
@@ -182,6 +183,7 @@ test('a pickup correction that overlaps asks, and cancel leaves the slideover op
   const heldVehicleId = await createdId(page, '/api/vehicles', {
     registrationPlate: 'DU213AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,
@@ -189,6 +191,7 @@ test('a pickup correction that overlaps asks, and cancel leaves the slideover op
   const movingVehicleId = await createdId(page, '/api/vehicles', {
     registrationPlate: 'DU213BB',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,
@@ -269,6 +272,7 @@ test('the correction overlap question is in English in the dark theme', async ({
   const heldVehicleId = await createdId(page, '/api/vehicles', {
     registrationPlate: 'DU214AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,
@@ -276,6 +280,7 @@ test('the correction overlap question is in English in the dark theme', async ({
   const movingVehicleId = await createdId(page, '/api/vehicles', {
     registrationPlate: 'DU214BB',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,

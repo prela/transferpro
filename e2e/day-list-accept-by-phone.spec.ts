@@ -44,6 +44,7 @@ async function addVehicle(page: Page, registrationPlate: string): Promise<string
     data: {
       registrationPlate,
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

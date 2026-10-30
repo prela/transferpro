@@ -72,6 +72,7 @@ test('search, Client, and Driver filters narrow the day and stay in the URL', as
   const vehicleId = await createdId(page, '/api/vehicles', {
     registrationPlate: 'ZG255AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,

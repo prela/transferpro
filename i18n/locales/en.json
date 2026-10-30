@@ -609,7 +609,8 @@
       "rosterMismatch": "Roster mismatch",
       "expiredDocument": "Expired document",
       "unavailable": "Unavailable",
-      "fullyBooked": "Fully booked"
+      "fullyBooked": "Fully booked",
+      "tooManyPassengers": "More passengers than seats. Add an extra vehicle."
     },
     "attentionDetail": {
       "unassignedAlarm": "The ride is unassigned and the pickup is within four hours.",
@@ -620,7 +621,8 @@
       "rosterMismatch": "The vehicle is not the one the roster gives this driver for that day.",
       "expiredDocument": "A document for the driver or the vehicle has expired.",
       "unavailable": "The driver, the vehicle, or the subcontractor is marked unavailable during this ride.",
-      "fullyBooked": "No free driver with a free vehicle, and no free subcontractor."
+      "fullyBooked": "No free driver with a free vehicle, and no free subcontractor.",
+      "tooManyPassengers": "This ride has more passengers than the vehicle's seats. Add an extra vehicle."
     },
     "rowAccept": "Confirm by phone",
     "rowAcceptFor": "Confirm by phone: {guest}",
@@ -954,6 +956,12 @@
     "technicalInspectionExpiresOn": "Technical inspection valid until",
     "insuranceExpiresOn": "Insurance valid until",
     "description": "Description",
+    "seatCount": "Seat count",
+    "seatCountHint": "Passenger seats, not counting the driver.",
+    "seatCountEmpty": "Enter a seat count.",
+    "seatCountInvalid": "Enter a whole number.",
+    "seatCountTooSmall": "A seat count is at least 1.",
+    "seatCountTooLarge": "A seat count is at most 999.",
     "plateEmpty": "Enter a registration plate.",
     "plateTooLong": "A registration plate can be at most 16 characters.",
     "kindInvalid": "Choose a kind: fixed or occasional.",
@@ -985,7 +993,8 @@
       "registrationExpiresOn": "Registration expiry",
       "technicalInspectionExpiresOn": "Technical inspection expiry",
       "insuranceExpiresOn": "Insurance expiry",
-      "description": "Description"
+      "description": "Description",
+      "seatCount": "Seat count"
     }
   },
   "roster": {

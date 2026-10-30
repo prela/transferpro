@@ -49,7 +49,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0031 | Maps for Locations behind a port | accepted; partially superseded by ADR-0052 |
 | ADR-0032 | Board warnings are derived on read | accepted |
 | ADR-0033 | v1 scope: price list, invoices through a provider, Client card, and Partner record | accepted |
-| ADR-0034 | Capacity as a module | accepted; partially superseded by ADR-0058 |
+| ADR-0034 | Capacity as a module | accepted; partially superseded by ADR-0058 and ADR-0059 |
 | ADR-0035 | Idempotent manual entry, and reactions to a change without an event log | accepted |
 | ADR-0036 | The Transfer is the order, and who owns the v1 modules | accepted; partially superseded by ADR-0051 |
 | ADR-0037 | Console mailer on preview | accepted; partially superseded by ADR-0042 |
@@ -74,3 +74,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0056 | Tenant gate, switch, and the per-Tenant draft | accepted |
 | ADR-0057 | Office and driver session lengths | accepted |
 | ADR-0058 | Stops and an escort on one Transfer | accepted |
+| ADR-0059 | A Vehicle seat count and a passenger warning | accepted |

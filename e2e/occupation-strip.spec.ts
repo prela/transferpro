@@ -58,6 +58,7 @@ test('a block names the ride, opens its detail, and the collapsed strip survives
   const vehicleId = await createdId(page, '/api/vehicles', {
     registrationPlate: 'DU261AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,
@@ -73,6 +74,7 @@ test('a block names the ride, opens its detail, and the collapsed strip survives
   await createdId(page, '/api/vehicles', {
     registrationPlate: 'DU261BB',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,
@@ -148,6 +150,7 @@ test.describe('@phone', () => {
     const vehicleId = await createdId(page, '/api/vehicles', {
       registrationPlate: 'DU261BB',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

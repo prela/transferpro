@@ -540,6 +540,7 @@ test('the driver card has no map button', async ({ page }) => {
     data: {
       registrationPlate: 'E2E451AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

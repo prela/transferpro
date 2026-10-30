@@ -190,6 +190,16 @@ it('records a Vehicle by id and field names, and refuses the plate and the dates
     subjectUserId: null,
     data: { vehicleId, field: 'description' as const },
   }).data).toEqual({ vehicleId, field: 'description' })
+  expect(auditFactSchema.parse({
+    action: 'vehicle.field_changed' as const,
+    subjectUserId: null,
+    data: { vehicleId, field: 'seatCount' as const },
+  }).data).toEqual({ vehicleId, field: 'seatCount' })
+  expect(auditFactSchema.safeParse({
+    action: 'vehicle.field_changed' as const,
+    subjectUserId: null,
+    data: { vehicleId, field: 'seatCount' as const, seatCount: 8 },
+  }).success).toBe(false)
   expect(auditFactSchema.safeParse({
     ...changed,
     data: { vehicleId, field: 'description', from: 'van' },

@@ -147,6 +147,7 @@ function vehicleBody(overrides: Record<string, unknown> = {}) {
     registrationExpiresOn: '2027-06-01',
     technicalInspectionExpiresOn: '2028-01-31',
     insuranceExpiresOn: '2029-03-03',
+    seatCount: 8,
     ...overrides,
   }
 }
@@ -166,6 +167,10 @@ it('post answers 400 for a bad body and does not echo the plate, and no session 
   expect((await call('POST', '/api/vehicles', undefined, vehicleBody({ registrationPlate: '   ' }))).status).toBe(400)
   expect((await call('POST', '/api/vehicles', undefined, vehicleBody({ kind: 'own' }))).status).toBe(400)
   expect((await call('POST', '/api/vehicles', undefined, vehicleBody({ registrationExpiresOn: '2026-02-31' }))).status).toBe(400)
+  expect((await call('POST', '/api/vehicles', undefined, vehicleBody({ seatCount: 0 }))).status).toBe(400)
+  expect((await call('POST', '/api/vehicles', undefined, vehicleBody({ seatCount: null }))).status).toBe(400)
+  const { seatCount: _seats, ...withoutSeats } = vehicleBody()
+  expect((await call('POST', '/api/vehicles', undefined, withoutSeats)).status).toBe(400)
   const unknown = await call('POST', '/api/vehicles', undefined, vehicleBody({ name: 'Van' }))
   expect(unknown.status).toBe(400)
   const unknownText = await unknown.text()
@@ -207,6 +212,7 @@ it('a dispatcher and an admin can add, correct, list, and archive a Vehicle, and
     technicalInspectionExpiresOn: '2028-01-31',
     insuranceExpiresOn: '2029-03-03',
     description: null,
+    seatCount: 8,
     archivedAt: null,
   })
 

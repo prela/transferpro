@@ -274,6 +274,7 @@ it('rolls the entry back with the Ride transaction, then a sent attempt marks it
   const vehicle = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG9330AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -343,6 +344,7 @@ it('leaves a failed first attempt pending and logs the entry, the Ride, and the 
   const vehicle = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG9330BB',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -404,6 +406,7 @@ it('stores the released vehicle on no longer yours and leaves the assigned row w
   const vehicle = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG9330EE',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -448,6 +451,7 @@ it('refuses an assigned work order that names a vehicle', async () => {
   const vehicle = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG9330FF',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -475,6 +479,7 @@ it('writes no entry when the Driver has no email', async () => {
   const vehicle = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG9330CC',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -520,6 +525,7 @@ it('retries no longer yours from the released vehicle, not the one assigned late
     registrationPlate: releasedPlate,
     description: 'Stari kombi',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -528,6 +534,7 @@ it('retries no longer yours from the released vehicle, not the one assigned late
     registrationPlate: laterPlate,
     description: 'Novi kombi',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -631,6 +638,7 @@ it('replaces an older work order only when the later one names the same driver',
   const vehicleA = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG9330SA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -638,6 +646,7 @@ it('replaces an older work order only when the later one names the same driver',
   const vehicleB = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG9330SB',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -702,6 +711,7 @@ it('replaces A no longer yours when A is assigned the Ride again', async () => {
   const vehicleA = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG9330TA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -709,6 +719,7 @@ it('replaces A no longer yours when A is assigned the Ride again', async () => {
   const vehicleB = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG9330TB',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -772,6 +783,7 @@ it('hides Tenant A entries from Tenant B, and Tenant B cannot change or delete t
   const vehicle = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG9330DD',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',

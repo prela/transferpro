@@ -225,6 +225,7 @@ test('handing off an assigned ride says the driver and vehicle are cleared', asy
   const vehicleId = await createdId(page, '/api/vehicles', {
     registrationPlate: 'DU410AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,

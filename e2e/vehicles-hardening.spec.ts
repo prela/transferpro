@@ -14,6 +14,7 @@ async function addVehicle(page: Page, plate: string, kind: 'Stalno' | 'Povremeno
   await dialog.getByLabel('Registracija vrijedi do').fill('2027-06-01')
   await dialog.getByLabel('Tehnički pregled vrijedi do').fill('2028-01-31')
   await dialog.getByLabel('Osiguranje vrijedi do').fill('2029-03-03')
+  await dialog.getByLabel('Broj sjedala').fill('8')
   await dialog.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('button', { name: `Radnje: ${plate}` })).toBeVisible()

@@ -63,6 +63,7 @@ test.describe('@phone', () => {
       const vehicleId = await createdId(page, '/api/vehicles', {
         registrationPlate: `DU441${theme === 'light' ? 'A' : 'B'}`,
         kind: 'fixed',
+        seatCount: 4,
         registrationExpiresOn: licence,
         technicalInspectionExpiresOn: licence,
         insuranceExpiresOn: licence,

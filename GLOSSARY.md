@@ -146,7 +146,7 @@ A work order that is not sent because the Ride is finished (`done` or `no-show`)
 _Avoid_: old mail
 
 **Vehicle**:
-A vehicle the office can assign. Kind is `fixed` or `occasional`. The registration plate identifies it in the Tenant; three expiry dates (registration, technical inspection, insurance) are calendar days. Archive hides it from the default list without deleting it. A Ride has a Vehicle only when it has a Driver.
+A vehicle the office can assign. Kind is `fixed` or `occasional`. The registration plate identifies it in the Tenant; three expiry dates (registration, technical inspection, insurance) are calendar days. It records a maximum passenger seat count, not counting the Driver. A count of at least 1 is required when a Vehicle is created or saved. A Vehicle that already existed may still have an empty count, and an empty count shows no warning. When a Ride's passenger count is greater than the Vehicle's seat count, the office sees a warning that suggests an extra vehicle. The warning does not block assignment, closing, or a correction. Archive hides it from the default list without deleting it. A Ride has a Vehicle only when it has a Driver.
 
 **Roster**:
 The office's assignment of one Vehicle to one Driver for one calendar date. The date is that day in the Tenant's time zone, stored with no time. A Driver has at most one Vehicle that day, and a Vehicle is given to at most one Driver that day. The office can clear the day. An archived Vehicle cannot be newly given; a row already stored stays until the office clears or replaces it. An archived Driver cannot be given a new day; saving the same pair writes nothing, and a row already stored stays until the office clears it. A later Ride reads this row and may still use a different Vehicle for that one Ride.
@@ -169,7 +169,7 @@ An assigned or accepted Ride that shares its Driver or its Vehicle with another 
 _Avoid_: ride_overlap, conflict
 
 **Capacity**:
-Whether a Driver, a Vehicle, or a Partner is taken or unavailable at a given time. It is about time, not seats.
+Whether a Driver, a Vehicle, or a Partner is taken or unavailable at a given time. It is about time, not seats. A seat-count warning is a Vehicle fact, not this judgement.
 _Avoid_: seats, availability
 
 **Free**:

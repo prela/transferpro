@@ -21,6 +21,7 @@ const iconFor: Record<RideAttentionItem['kind'], string> = {
   'fully-booked': 'i-lucide-ban',
   'roster-mismatch': 'i-lucide-calendar-x',
   'expired-document': 'i-lucide-file-warning',
+  'too-many-passengers': 'i-lucide-users',
 }
 
 function label(item: RideAttentionItem): string {
@@ -38,6 +39,7 @@ function label(item: RideAttentionItem): string {
     'fully-booked': `${group}.fullyBooked`,
     'roster-mismatch': `${group}.rosterMismatch`,
     'expired-document': `${group}.expiredDocument`,
+    'too-many-passengers': `${group}.tooManyPassengers`,
   }[item.kind]
   return t(key)
 }

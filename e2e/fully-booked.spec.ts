@@ -57,6 +57,7 @@ test('the slideover warns Popunjeno and still saves, the board shows it, and the
   const vehicleId = await createdId(page, '/api/vehicles', {
     registrationPlate: plate,
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: validOn,
     technicalInspectionExpiresOn: validOn,
     insuranceExpiresOn: validOn,

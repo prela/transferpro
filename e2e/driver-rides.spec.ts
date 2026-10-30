@@ -153,6 +153,7 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
     data: {
       registrationPlate: 'DU300AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -163,6 +164,7 @@ test('a driver sees only their own rides, cash shows the fare, and the app is in
     data: {
       registrationPlate: 'DU301AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -419,6 +421,7 @@ test('a driver sees which rides are waiting on acceptance and which are accepted
     data: {
       registrationPlate: 'DU301AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -588,6 +591,7 @@ test('@phone a driver accepts a waiting ride, and a conflict reloads the list', 
     data: {
       registrationPlate: 'DU302AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -794,6 +798,7 @@ test('@phone a driver marks a ride done and it leaves the upcoming list', async 
     data: {
       registrationPlate: 'DU023AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -889,6 +894,7 @@ test('@phone a driver declines an assigned ride and the board names them', async
     data: {
       registrationPlate: 'DU024AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -1018,6 +1024,7 @@ test('@phone a driver marks a no-show after the wait and it leaves the upcoming 
     data: {
       registrationPlate: 'DU025AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -1166,6 +1173,7 @@ test.describe('@phone', () => {
         data: {
           registrationPlate: theme === 'dark' ? 'DU267AA' : 'DU266AA',
           kind: 'fixed',
+          seatCount: 4,
           registrationExpiresOn: licence,
           technicalInspectionExpiresOn: licence,
           insuranceExpiresOn: licence,
@@ -1365,6 +1373,7 @@ async function seedMeetSign(page: Page, slug: string, phone: string, plate: stri
     data: {
       registrationPlate: plate,
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -1464,6 +1473,7 @@ test('a group card shows the client reference and the group mark, and an extra v
     data: {
       registrationPlate: 'DU467AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

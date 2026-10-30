@@ -467,6 +467,7 @@ it('applies a main Transfer route correction to unfinished extra vehicles and wr
   const vehicle = await createVehicle(admin, {
     registrationPlate: 'ZG4681AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',

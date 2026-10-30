@@ -37,6 +37,7 @@ function driver(overrides: Pick<Driver, 'id' | 'name' | 'memberUserId' | 'drivin
 function vehicle(overrides: Pick<Vehicle, 'id' | 'registrationPlate' | 'archivedAt' | 'registrationExpiresOn' | 'technicalInspectionExpiresOn' | 'insuranceExpiresOn'>): Vehicle {
   return {
     kind: 'fixed',
+    seatCount: 4,
     description: null,
     ...overrides,
   }
