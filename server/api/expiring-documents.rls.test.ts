@@ -159,6 +159,7 @@ function vehicleBody(overrides: Record<string, unknown> = {}) {
   return {
     registrationPlate: 'ZG100AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2000-03-03',
     technicalInspectionExpiresOn: '2099-01-01',
     insuranceExpiresOn: '2099-01-01',

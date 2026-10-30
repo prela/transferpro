@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DisplayLocale, LiveRefreshOutcome, TransferBoardFilter, TransferDayRide, TransferPrefill } from '../../shared'
 import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
-import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferAwaitingInvoice, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
+import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, recordedSeatCount, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferAwaitingInvoice, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
 import { groupRouteLeftKey } from '../composables/transfer-form'
@@ -129,10 +129,14 @@ const narrowedRides = computed(() => rides.value.filter(ride =>
   }) && transferDayPartyMatches(clientId.value ?? '', driverId.value ?? '', ride),
 ))
 
+function withSeatCount(ride: TransferDayRide): TransferDayRide & { seatCount: number | null } {
+  return { ...ride, seatCount: recordedSeatCount(vehicles.value, ride.vehicleId) }
+}
+
 const counts = computed(() => transferDayFilterCounts(
   narrowedRides.value.map(ride => ({
     rideId: ride.rideId,
-    ride,
+    ride: withSeatCount(ride),
     declines: declinesFor(ride.rideId),
   })),
   nowMs.value,
@@ -144,7 +148,7 @@ const visibleRides = computed(() => narrowedRides.value.filter((ride) => {
   // Za fakturiranje is an extra chip. It is not one of the seven day filters.
   if (filter.value === 'toInvoice')
     return transferAwaitingInvoice(ride)
-  return transferDayFilterMatches(filter.value, ride, declinesFor(ride.rideId), nowMs.value)
+  return transferDayFilterMatches(filter.value, withSeatCount(ride), declinesFor(ride.rideId), nowMs.value)
 }))
 
 const filteredEmpty = computed(() =>
@@ -158,7 +162,7 @@ const announcement = computed(() =>
 function urgentKeys(): string[] {
   const keys: string[] = []
   for (const ride of rides.value) {
-    const items = classifyRideAttention(ride, declinesFor(ride.rideId), nowMs.value)
+    const items = classifyRideAttention(withSeatCount(ride), declinesFor(ride.rideId), nowMs.value)
     keys.push(...rideUrgentKeys(ride.rideId, items))
   }
   return keys

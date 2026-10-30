@@ -324,6 +324,7 @@ test('a refused clear names who removed the assignment, and Osvježi closes the 
     const vehicleId = await createdId(page, '/api/vehicles', {
       registrationPlate: 'DU334AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

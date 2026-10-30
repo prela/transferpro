@@ -270,3 +270,21 @@ it('puts the unavailability warning in the Warning tier, after an overlap and be
   ])
   expect(rideAttentionTier('unavailable')).toBe('warning')
 })
+
+it('warns when passengers exceed a recorded seat count, and stays quiet when the count is empty or enough', () => {
+  const tight = source({
+    state: 'assigned',
+    driverId: '00000000-0000-4000-8000-000000000010',
+    mustAccept: false,
+    passengerCount: 5,
+    seatCount: 3,
+  })
+  expect(classifyRideAttention(tight, [], NOW)).toEqual([
+    { tier: 'warning', kind: 'too-many-passengers' },
+  ])
+  expect(rideAttentionTier('too-many-passengers')).toBe('warning')
+  expect(transferDayFilterMatches('warnings', tight, [], NOW)).toBe(true)
+  expect(classifyRideAttention(source({ passengerCount: 3, seatCount: 3 }), [], NOW)).toEqual([])
+  expect(classifyRideAttention(source({ passengerCount: 8, seatCount: null }), [], NOW)).toEqual([])
+  expect(classifyRideAttention(source({ passengerCount: 8 }), [], NOW)).toEqual([])
+})

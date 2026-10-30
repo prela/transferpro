@@ -890,6 +890,7 @@ function vehicleInput(registrationPlate: string) {
   return {
     registrationPlate,
     kind: 'fixed' as const,
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -1025,6 +1026,7 @@ it('keeps an accepted Ride accepted when the Client, the guest, the price, the p
   const vehicle = await createVehicle(dispatcher, {
     registrationPlate: 'ZG9411AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -1101,6 +1103,7 @@ it('returns an accepted Ride to assigned when the trip changes, alerts the Drive
   const vehicle = await createVehicle(dispatcher, {
     registrationPlate: 'ZG9421AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -1175,6 +1178,7 @@ it('clears live-flight facts when the flight designator changes, and returns an 
   const vehicle = await createVehicle(dispatcher, {
     registrationPlate: 'ZG9441AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -1231,6 +1235,7 @@ it('keeps live-flight facts and acceptance when only the flight designator spaci
   const vehicle = await createVehicle(dispatcher, {
     registrationPlate: 'ZG9451AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -1287,6 +1292,7 @@ it('leaves an assigned Ride assigned, and a save of the same trip writes nothing
   const vehicle = await createVehicle(dispatcher, {
     registrationPlate: 'ZG9431AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -1475,6 +1481,7 @@ it('emails one changed work order for each mailed fact, and a quiet save sends n
   const vehicle = await createVehicle(dispatcher, {
     registrationPlate: 'ZG9168AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -1611,6 +1618,7 @@ it('mails a price change only while payment is cash, and a payment-method change
   const vehicle = await createVehicle(dispatcher, {
     registrationPlate: 'ZG9168BB',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -1685,6 +1693,7 @@ it('a rejected send leaves the correction, and the audit stays the correction', 
   const vehicle = await createVehicle(dispatcher, {
     registrationPlate: 'ZG9168CC',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -1762,6 +1771,7 @@ it('a change that returns an accepted Ride to assigned uses changed and does not
   const vehicle = await createVehicle(dispatcher, {
     registrationPlate: 'ZG9168DD',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -1824,6 +1834,7 @@ it('refuses a pickup correction that overlaps the Driver and writes nothing', as
   const heldVehicle = await createVehicle(dispatcher, {
     registrationPlate: 'ZG2130AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -1831,6 +1842,7 @@ it('refuses a pickup correction that overlaps the Driver and writes nothing', as
   const movingVehicle = await createVehicle(dispatcher, {
     registrationPlate: 'ZG2130BB',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2031-01-01',
     technicalInspectionExpiresOn: '2031-01-01',
     insuranceExpiresOn: '2031-01-01',
@@ -2324,6 +2336,7 @@ it('a wrong version on a done Transfer is stale_save, and a closed Ride stays tr
   const vehicle = await createVehicle(office.dispatcher, {
     registrationPlate: 'ZG9401AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',

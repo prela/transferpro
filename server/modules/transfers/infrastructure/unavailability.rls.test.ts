@@ -223,6 +223,7 @@ async function office(slug: string) {
       return createVehicle(dispatcher, {
         registrationPlate: `DU${String(vehicles).padStart(4, '0')}UW`,
         kind: 'fixed',
+        seatCount: 4,
         registrationExpiresOn: '2030-01-01',
         technicalInspectionExpiresOn: '2030-01-01',
         insuranceExpiresOn: '2030-01-01',

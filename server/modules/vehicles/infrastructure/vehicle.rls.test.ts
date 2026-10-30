@@ -136,6 +136,31 @@ it('stores a calendar date and refuses an empty plate, spaces in the stored plat
     ))).rejects.toMatchObject({ code: '23514' })
 })
 
+it('keeps an empty seat count and refuses a count below 1', async () => {
+  await withTenant(tenantA, async (client) => {
+    await client.query(insert, ['SEAT01AA', 'fixed', '2027-06-01', '2028-01-31', '2029-03-03'])
+    await client.query(
+      `insert into app.vehicles (
+         registration_plate, kind, registration_expires_on, technical_inspection_expires_on, insurance_expires_on, seat_count
+       ) values ('SEAT08BB', 'fixed', '2027-06-01', '2028-01-31', '2029-03-03', 8)`,
+    )
+  })
+  const stored = await withTenant(tenantA, async (client) => {
+    return client.query<{ registration_plate: string, seat_count: number | null }>(
+      `select registration_plate, seat_count from app.vehicles where registration_plate in ('SEAT01AA', 'SEAT08BB') order by registration_plate`,
+    )
+  })
+  expect(stored.rows).toEqual([
+    { registration_plate: 'SEAT01AA', seat_count: null },
+    { registration_plate: 'SEAT08BB', seat_count: 8 },
+  ])
+  await expect(withTenant(tenantA, client => client.query(
+    `insert into app.vehicles (
+       registration_plate, kind, registration_expires_on, technical_inspection_expires_on, insurance_expires_on, seat_count
+     ) values ('SEAT00CC', 'fixed', '2027-06-01', '2028-01-31', '2029-03-03', 0)`,
+  ))).rejects.toMatchObject({ code: '23514' })
+})
+
 it('refuses a second live plate in the Tenant, and allows the plate after archive', async () => {
   await withTenant(tenantA, async (client) => {
     await client.query(insert, ['ST111AA', 'fixed', '2027-06-01', '2028-01-31', '2029-03-03'])

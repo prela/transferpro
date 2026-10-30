@@ -609,7 +609,8 @@
       "rosterMismatch": "Nesklad rasporeda",
       "expiredDocument": "Istekao dokument",
       "unavailable": "Nedostupan",
-      "fullyBooked": "Popunjeno"
+      "fullyBooked": "Popunjeno",
+      "tooManyPassengers": "Više putnika nego sjedala. Dodajte dodatno vozilo."
     },
     "attentionDetail": {
       "unassignedAlarm": "Vožnja nije dodijeljena, a do preuzimanja je manje od četiri sata.",
@@ -620,7 +621,8 @@
       "rosterMismatch": "Vozilo nije ono koje raspored daje vozaču za taj dan.",
       "expiredDocument": "Vozaču ili vozilu je istekao dokument.",
       "unavailable": "Vozač, vozilo ili podizvođač ima zabilježenu nedostupnost u vrijeme ove vožnje.",
-      "fullyBooked": "Nema slobodnog vozača sa slobodnim vozilom ni slobodnog podizvođača."
+      "fullyBooked": "Nema slobodnog vozača sa slobodnim vozilom ni slobodnog podizvođača.",
+      "tooManyPassengers": "Vožnja ima više putnika nego što vozilo ima sjedala. Dodajte dodatno vozilo."
     },
     "rowAccept": "Potvrdi telefonom",
     "rowAcceptFor": "Potvrdi telefonom: {guest}",
@@ -954,6 +956,12 @@
     "technicalInspectionExpiresOn": "Tehnički pregled vrijedi do",
     "insuranceExpiresOn": "Osiguranje vrijedi do",
     "description": "Opis",
+    "seatCount": "Broj sjedala",
+    "seatCountHint": "Putnička sjedala, bez vozača.",
+    "seatCountEmpty": "Unesite broj sjedala.",
+    "seatCountInvalid": "Unesite cijeli broj.",
+    "seatCountTooSmall": "Broj sjedala je najmanje 1.",
+    "seatCountTooLarge": "Broj sjedala je najviše 999.",
     "plateEmpty": "Unesite registarsku oznaku.",
     "plateTooLong": "Registarska oznaka može imati najviše 16 znakova.",
     "kindInvalid": "Odaberite vrstu: stalno ili povremeno.",
@@ -985,7 +993,8 @@
       "registrationExpiresOn": "Istek registracije",
       "technicalInspectionExpiresOn": "Istek tehničkog pregleda",
       "insuranceExpiresOn": "Istek osiguranja",
-      "description": "Opis"
+      "description": "Opis",
+      "seatCount": "Broj sjedala"
     }
   },
   "roster": {

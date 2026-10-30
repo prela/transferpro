@@ -124,6 +124,7 @@ test('the lists show the alarm, every price, and the flight as text, in both loc
     data: {
       registrationPlate: 'DU146AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -529,6 +530,7 @@ test('a failed work order sits below Attention and Send again clears it, in both
     data: {
       registrationPlate: 'DU180AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -586,6 +588,7 @@ test('a resend that is no longer current keeps the sentence after the row leaves
     data: {
       registrationPlate: 'DU181AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

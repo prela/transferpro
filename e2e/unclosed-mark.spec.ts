@@ -67,6 +67,7 @@ test('a landed Ride past its planned end shows only the unclosed mark, and a Rid
     data: {
       registrationPlate: 'DU183AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

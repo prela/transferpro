@@ -124,6 +124,7 @@ test.describe('@phone', () => {
       await addVehicle.getByLabel('Registracija vrijedi do').fill('2027-06-01')
       await addVehicle.getByLabel('Tehnički pregled vrijedi do').fill('2028-01-31')
       await addVehicle.getByLabel('Osiguranje vrijedi do').fill('2029-03-03')
+      await addVehicle.getByLabel('Broj sjedala').fill('8')
       await addVehicle.getByRole('button', { name: 'Dodaj vozilo', exact: true }).click()
       await expect(addVehicle).toBeHidden()
       await expect(page.getByRole('button', { name: 'DU264AB', exact: true })).toBeVisible()

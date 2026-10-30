@@ -46,7 +46,7 @@ async function driver(page: Page, name: string, phone: string): Promise<string> 
 
 async function vehicle(page: Page, registrationPlate: string): Promise<string> {
   return createdId(await page.request.post('/api/vehicles', {
-    data: { registrationPlate, kind: 'fixed', registrationExpiresOn: licence, technicalInspectionExpiresOn: licence, insuranceExpiresOn: licence },
+    data: { registrationPlate, kind: 'fixed', seatCount: 4, registrationExpiresOn: licence, technicalInspectionExpiresOn: licence, insuranceExpiresOn: licence },
   }))
 }
 

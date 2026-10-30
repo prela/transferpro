@@ -2,7 +2,7 @@
 import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
 import type { Vehicle, VehicleKind } from '../../shared'
 import { z } from 'zod'
-import { catalogSearchMatches, VEHICLE_KINDS, vehicleDateError, vehicleDescriptionError, vehicleDescriptionSchema, vehicleListSchema, vehiclePlateError, vehicleSchema } from '../../shared'
+import { catalogSearchMatches, VEHICLE_KINDS, vehicleDateError, vehicleDescriptionError, vehicleDescriptionSchema, vehicleListSchema, vehiclePlateError, vehicleSchema, vehicleSeatCountError } from '../../shared'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
 defineProps<{
@@ -41,12 +41,14 @@ const state = reactive<{
   technicalInspectionExpiresOn: string
   insuranceExpiresOn: string
   description: string
+  seatCount: string
 }>({
   registrationPlate: '',
   registrationExpiresOn: '',
   technicalInspectionExpiresOn: '',
   insuranceExpiresOn: '',
   description: '',
+  seatCount: '',
 })
 
 type VehicleFailure = 'vehicles.loadFailed' | 'vehicles.rejected' | 'vehicles.notFound' | 'vehicles.forbidden' | 'vehicles.signedOut' | 'vehicles.saveFailed' | 'vehicles.plateTaken' | 'vehicles.plateArchived' | 'vehicles.archivedLocked'
@@ -57,6 +59,7 @@ interface VehicleForm {
   technicalInspectionExpiresOn: string
   insuranceExpiresOn: string
   description: string
+  seatCount: string
 }
 
 const kindItems = computed(() => [
@@ -120,6 +123,17 @@ const schema = computed(() => z.object({
   description: z.string().superRefine((value, ctx) => {
     if (vehicleDescriptionError(value))
       ctx.addIssue({ code: 'custom', message: t('vehicles.descriptionTooLong') })
+  }),
+  seatCount: z.string().superRefine((value, ctx) => {
+    const problem = vehicleSeatCountError(value)
+    if (problem === 'empty')
+      ctx.addIssue({ code: 'custom', message: t('vehicles.seatCountEmpty') })
+    else if (problem === 'invalid')
+      ctx.addIssue({ code: 'custom', message: t('vehicles.seatCountInvalid') })
+    else if (problem === 'too-small')
+      ctx.addIssue({ code: 'custom', message: t('vehicles.seatCountTooSmall') })
+    else if (problem === 'too-large')
+      ctx.addIssue({ code: 'custom', message: t('vehicles.seatCountTooLarge') })
   }),
 }))
 
@@ -222,6 +236,7 @@ function resetForm() {
   state.technicalInspectionExpiresOn = ''
   state.insuranceExpiresOn = ''
   state.description = ''
+  state.seatCount = ''
   openedName.value = ''
   formErrorKey.value = null
 }
@@ -241,6 +256,7 @@ function openEdit(vehicle: Vehicle) {
   state.technicalInspectionExpiresOn = vehicle.technicalInspectionExpiresOn
   state.insuranceExpiresOn = vehicle.insuranceExpiresOn
   state.description = vehicle.description ?? ''
+  state.seatCount = vehicle.seatCount === null ? '' : String(vehicle.seatCount)
   formErrorKey.value = null
   formMode.value = 'edit'
 }
@@ -254,6 +270,7 @@ function vehicleBody(data: VehicleForm) {
     insuranceExpiresOn: data.insuranceExpiresOn,
     // Blank becomes null. The stored description is never an empty string.
     description: vehicleDescriptionSchema.parse(data.description),
+    seatCount: Number(data.seatCount),
   }
 }
 
@@ -582,6 +599,28 @@ onMounted(() => {
               v-model="state.insuranceExpiresOn"
               name="insuranceExpiresOn"
               type="date"
+              autocomplete="off"
+              class="w-full"
+              :disabled="archivedView"
+            />
+            <template #error="{ error }">
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
+            :label="t('vehicles.seatCount')"
+            name="seatCount"
+            :hint="t('vehicles.seatCountHint')"
+            :size="phone ? 'xl' : 'sm'"
+          >
+            <UInput
+              v-model="state.seatCount"
+              name="seatCount"
+              type="text"
+              inputmode="numeric"
               autocomplete="off"
               class="w-full"
               :disabled="archivedView"

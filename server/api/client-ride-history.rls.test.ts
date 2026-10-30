@@ -285,6 +285,7 @@ it('lists every state newest first, in the Tenant time zone, with whole-history 
   const vehicle = await createVehicle(dispatcher, {
     registrationPlate: 'DU417RH',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',

@@ -60,6 +60,7 @@ test('the day board shows an expired document, a roster mismatch, and an overlap
     data: {
       registrationPlate: 'DU212AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: validOn,
       technicalInspectionExpiresOn: validOn,
       insuranceExpiresOn: '2026-10-01',
@@ -69,6 +70,7 @@ test('the day board shows an expired document, a roster mismatch, and an overlap
     data: {
       registrationPlate: 'DU213AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: validOn,
       technicalInspectionExpiresOn: validOn,
       insuranceExpiresOn: validOn,

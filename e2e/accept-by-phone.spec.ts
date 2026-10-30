@@ -37,6 +37,7 @@ async function acceptByPhone(page: Page): Promise<void> {
     data: {
       registrationPlate: plate,
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

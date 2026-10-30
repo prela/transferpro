@@ -228,6 +228,7 @@ it('a driver is 403, and an admin and a dispatcher download the calendar day inc
   const vehicle = await createVehicle(dispatcher, {
     registrationPlate: '@ZG1',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',

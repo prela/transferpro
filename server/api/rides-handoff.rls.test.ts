@@ -417,6 +417,7 @@ it('handoff from assigned and accepted clears the crew and mails no longer yours
   const vehicle = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG4091AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -846,6 +847,7 @@ it('drops a handed-off Ride from the Driver list and lets a correction through w
   const vehicle = await createVehicle(world.dispatcher, {
     registrationPlate: 'ZG4092AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',

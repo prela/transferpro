@@ -68,6 +68,7 @@ test('a true overlap asks before it saves, and a tight gap warns without asking'
     data: {
       registrationPlate: 'DU184AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -77,6 +78,7 @@ test('a true overlap asks before it saves, and a tight gap warns without asking'
     data: {
       registrationPlate: 'DU184BB',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -86,6 +88,7 @@ test('a true overlap asks before it saves, and a tight gap warns without asking'
     data: {
       registrationPlate: 'DU184CC',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -157,6 +160,7 @@ test('the overlap question is in English in the dark theme', async ({ page }) =>
     data: {
       registrationPlate: 'DU185AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,
@@ -166,6 +170,7 @@ test('the overlap question is in English in the dark theme', async ({ page }) =>
     data: {
       registrationPlate: 'DU185BB',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

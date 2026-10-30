@@ -308,6 +308,7 @@ function vehicleBody(registrationPlate: string) {
   return {
     registrationPlate,
     kind: 'fixed' as const,
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',

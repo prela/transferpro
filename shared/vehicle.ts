@@ -13,6 +13,13 @@ export const VEHICLE_PLATE_MAX_LENGTH = 16
  */
 export const VEHICLE_DESCRIPTION_MAX_LENGTH = 120
 
+/**
+ * Passenger seats, not counting the Driver. 1 is the smallest vehicle the
+ * office can record. 999 refuses a pasted phone number and still covers a coach.
+ */
+export const SEAT_COUNT_MIN = 1
+export const SEAT_COUNT_MAX = 999
+
 /** Own fleet, or a vehicle the office uses only some of the time. */
 export const VEHICLE_KINDS = ['fixed', 'occasional'] as const
 
@@ -27,6 +34,7 @@ export const VEHICLE_FIELDS = [
   'technicalInspectionExpiresOn',
   'insuranceExpiresOn',
   'description',
+  'seatCount',
 ] as const
 
 export const vehicleKindSchema = z.enum(VEHICLE_KINDS)
@@ -63,6 +71,9 @@ export const vehicleDescriptionSchema = z.union([
   }).pipe(z.string().max(VEHICLE_DESCRIPTION_MAX_LENGTH).nullable()),
 ])
 
+/** A stored count. Null is an existing Vehicle the office has not filled in yet. */
+export const seatCountSchema = z.number().int().min(SEAT_COUNT_MIN).max(SEAT_COUNT_MAX)
+
 export const vehicleSchema = z.object({
   id: z.uuid(),
   registrationPlate: vehiclePlateSchema,
@@ -71,6 +82,7 @@ export const vehicleSchema = z.object({
   technicalInspectionExpiresOn: vehicleDateSchema,
   insuranceExpiresOn: vehicleDateSchema,
   description: z.string().max(VEHICLE_DESCRIPTION_MAX_LENGTH).nullable(),
+  seatCount: seatCountSchema.nullable(),
   archivedAt: z.iso.datetime().nullable(),
 })
 
@@ -93,6 +105,7 @@ export const createVehicleSchema = z.strictObject({
   technicalInspectionExpiresOn: vehicleDateSchema,
   insuranceExpiresOn: vehicleDateSchema,
   description: vehicleDescriptionSchema.optional(),
+  seatCount: seatCountSchema,
 })
 
 export interface CreateVehicle {
@@ -102,6 +115,7 @@ export interface CreateVehicle {
   readonly technicalInspectionExpiresOn: string
   readonly insuranceExpiresOn: string
   readonly description: string | null
+  readonly seatCount: number
 }
 
 /**
@@ -115,6 +129,9 @@ export const vehiclePatchSchema = z.strictObject({
   technicalInspectionExpiresOn: vehicleDateSchema.optional(),
   insuranceExpiresOn: vehicleDateSchema.optional(),
   description: vehicleDescriptionSchema.optional(),
+  // Absent keeps the stored count, including an empty one. Null, 0, and a
+  // blank are not a count, so a save that sends them is refused.
+  seatCount: seatCountSchema.optional(),
 })
 
 export type VehiclePatch = z.infer<typeof vehiclePatchSchema>
@@ -141,6 +158,7 @@ export function parseCreateVehicle(raw: unknown): CreateVehicle {
     technicalInspectionExpiresOn: parsed.data.technicalInspectionExpiresOn,
     insuranceExpiresOn: parsed.data.insuranceExpiresOn,
     description: parsed.data.description === undefined ? null : parsed.data.description,
+    seatCount: parsed.data.seatCount,
   }
 }
 
@@ -156,6 +174,7 @@ export type VehiclePlateError = 'empty' | 'too-long'
 export type VehicleKindError = 'invalid'
 export type VehicleDateError = 'invalid'
 export type VehicleDescriptionError = 'too-long'
+export type SeatCountError = 'empty' | 'invalid' | 'too-small' | 'too-large'
 
 /** What the add and edit forms can tell the person before a request. */
 export function vehiclePlateError(plate: string): VehiclePlateError | null {
@@ -177,4 +196,40 @@ export function vehicleDateError(value: string): VehicleDateError | null {
 
 export function vehicleDescriptionError(value: string): VehicleDescriptionError | null {
   return value.trim().length > VEHICLE_DESCRIPTION_MAX_LENGTH ? 'too-long' : null
+}
+
+/** What the add and edit forms can tell the person before a request. */
+export function vehicleSeatCountError(value: string): SeatCountError | null {
+  const trimmed = value.trim()
+  if (trimmed.length === 0)
+    return 'empty'
+  if (!/^\d+$/.test(trimmed))
+    return 'invalid'
+  const count = Number(trimmed)
+  if (count < SEAT_COUNT_MIN)
+    return 'too-small'
+  if (count > SEAT_COUNT_MAX)
+    return 'too-large'
+  return null
+}
+
+/**
+ * True when this Ride's passengers do not fit the Vehicle.
+ * An empty count is an existing Vehicle the office has not filled in, and
+ * that shows no warning (ADR-0059). Equal counts fit. The assignment still saves.
+ */
+export function passengersExceedSeatCount(passengerCount: number, seatCount: number | null | undefined): boolean {
+  if (seatCount == null)
+    return false
+  return passengerCount > seatCount
+}
+
+/** The assigned Vehicle's seat count. No Vehicle, or a missing id, is an empty count. */
+export function recordedSeatCount(
+  vehicles: readonly { readonly id: string, readonly seatCount: number | null }[],
+  vehicleId: string | null,
+): number | null {
+  if (vehicleId === null)
+    return null
+  return vehicles.find(vehicle => vehicle.id === vehicleId)?.seatCount ?? null
 }

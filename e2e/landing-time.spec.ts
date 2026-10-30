@@ -69,6 +69,7 @@ test('the office Ride and the Driver Ride show a stored landing time in both lan
     data: {
       registrationPlate: 'DU174AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

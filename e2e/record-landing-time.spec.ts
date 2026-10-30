@@ -43,6 +43,7 @@ test('the office and the Driver record a landing time in both languages and both
   const vehicleId = await createdId(page, '/api/vehicles', {
     registrationPlate: 'DU027AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,
@@ -131,6 +132,7 @@ test('@phone a driver records a landing time from the next ride', async ({ page 
   const vehicleId = await createdId(page, '/api/vehicles', {
     registrationPlate: 'DU127AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,

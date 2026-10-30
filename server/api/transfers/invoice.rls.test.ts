@@ -221,6 +221,7 @@ async function seedOffice(slug: string) {
   const vehicle = await createVehicle(admin, {
     registrationPlate: slug.endsWith('refuse') ? 'DU439RF' : slug.endsWith('crash') ? 'DU439CR' : 'DU439IS',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: licence,
     technicalInspectionExpiresOn: licence,
     insuranceExpiresOn: licence,

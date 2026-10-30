@@ -81,6 +81,7 @@ async function seedGroup(page: Page, name: string) {
     data: {
       registrationPlate: name === 'Zadano' ? 'ZG543AA' : 'ZG543BB',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

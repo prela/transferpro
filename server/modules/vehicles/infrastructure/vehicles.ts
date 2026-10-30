@@ -3,7 +3,7 @@ import type { CreateVehicle, Vehicle, VehicleField, VehiclePatch } from '../../.
 import type { TenantTransaction } from '../../../core/index'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { VEHICLE_FIELDS, vehicleDateSchema, VehicleInputError, vehicleKindSchema, vehicleSchema } from '../../../../shared'
+import { seatCountSchema, VEHICLE_FIELDS, vehicleDateSchema, VehicleInputError, vehicleKindSchema, vehicleSchema } from '../../../../shared'
 import { hideDatabaseError } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { TenantAccessError } from '../../tenancy'
@@ -16,6 +16,7 @@ const vehicleRowSchema = z.object({
   technicalInspectionExpiresOn: vehicleDateSchema,
   insuranceExpiresOn: vehicleDateSchema,
   description: z.string().nullable(),
+  seatCount: seatCountSchema.nullable(),
   archivedAt: z.unknown().nullable(),
 })
 
@@ -83,6 +84,7 @@ const vehicleColumns = sql`
   technical_inspection_expires_on::text as "technicalInspectionExpiresOn",
   insurance_expires_on::text as "insuranceExpiresOn",
   description,
+  seat_count as "seatCount",
   archived_at as "archivedAt"
 `
 
@@ -249,12 +251,12 @@ export async function addVehicle(
     insert into app.vehicles (
       registration_plate, kind,
       registration_expires_on, technical_inspection_expires_on, insurance_expires_on,
-      description
+      description, seat_count
     )
     values (
       ${input.registrationPlate}, ${input.kind},
       ${input.registrationExpiresOn}, ${input.technicalInspectionExpiresOn},
-      ${input.insuranceExpiresOn}, ${input.description}
+      ${input.insuranceExpiresOn}, ${input.description}, ${input.seatCount}
     )
     returning ${vehicleColumns}
   `))
@@ -300,7 +302,8 @@ export async function correctVehicle(
         registration_expires_on = ${next.registrationExpiresOn},
         technical_inspection_expires_on = ${next.technicalInspectionExpiresOn},
         insurance_expires_on = ${next.insuranceExpiresOn},
-        description = ${next.description}
+        description = ${next.description},
+        seat_count = ${next.seatCount}
     where id = ${next.id}
   `)
 
@@ -354,6 +357,7 @@ function createdFields(input: CreateVehicle): VehicleField[] {
     'registrationExpiresOn',
     'technicalInspectionExpiresOn',
     'insuranceExpiresOn',
+    'seatCount',
   ]
   if (input.description !== null)
     fields.push('description')
@@ -379,6 +383,7 @@ function applyPatch(current: Vehicle, patch: VehiclePatch): Vehicle {
       ? current.insuranceExpiresOn
       : patch.insuranceExpiresOn,
     description: patch.description === undefined ? current.description : patch.description,
+    seatCount: patch.seatCount === undefined ? current.seatCount : patch.seatCount,
     archivedAt: current.archivedAt,
   })
 }

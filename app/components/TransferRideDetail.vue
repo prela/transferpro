@@ -2,7 +2,7 @@
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, OfficeLocation, Partner, PartnerOfficeContact, TransferDayRide, TransferGroupMember, Vehicle } from '../../shared'
 import type { RideDetailCommand } from '../ride-detail'
-import { canAddExtraVehicle, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel, officeCanCorrectTransfer, rideDetailEmbedUrls, rideDetailMapOpen, transferAwaitingInvoice, transferGroupRole, transferGroupSchema } from '../../shared'
+import { canAddExtraVehicle, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel, officeCanCorrectTransfer, recordedSeatCount, rideDetailEmbedUrls, rideDetailMapOpen, transferAwaitingInvoice, transferGroupRole, transferGroupSchema } from '../../shared'
 import { useKeptWorkOrders } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, rideFormStamp } from '../ride-detail'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -168,7 +168,11 @@ const notices = computed(() => kept.value.filter(entry =>
   entry.rideId === props.ride.rideId || entry.rideId === props.ride.transferId,
 ))
 
-const attention = computed(() => classifyRideAttention(props.ride, props.declines, props.nowMs))
+const attention = computed(() => classifyRideAttention(
+  { ...props.ride, seatCount: recordedSeatCount(props.vehicles, props.ride.vehicleId) },
+  props.declines,
+  props.nowMs,
+))
 
 /** The Ride's Client. A missing brief is a Client the day read did not return. */
 const officeBrief = computed(() =>
@@ -876,6 +880,7 @@ const primaryLabel = computed(() => {
       v-if="command === 'assign'"
       :ride-id="formRide.rideId"
       :guest-name="formRide.guestName"
+      :passenger-count="formRide.passengerCount"
       :drivers="drivers"
       :vehicles="vehicles"
       :list-drivers="listDrivers"
@@ -894,6 +899,7 @@ const primaryLabel = computed(() => {
       v-else-if="command === 'vehicle' && formRide.vehicleId"
       :ride-id="formRide.rideId"
       :guest-name="formRide.guestName"
+      :passenger-count="formRide.passengerCount"
       :vehicle-id="formRide.vehicleId"
       :version="formRide.version"
       :drivers="drivers"
@@ -907,6 +913,7 @@ const primaryLabel = computed(() => {
       v-else-if="command === 'reassign' && formRide.driverId"
       :ride-id="formRide.rideId"
       :guest-name="formRide.guestName"
+      :passenger-count="formRide.passengerCount"
       :driver-id="formRide.driverId"
       :version="formRide.version"
       :drivers="drivers"

@@ -69,6 +69,7 @@ test('the office Ride and the Driver Ride show an expected arrival in both langu
     data: {
       registrationPlate: 'DU175AA',
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

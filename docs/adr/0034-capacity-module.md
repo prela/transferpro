@@ -1,6 +1,6 @@
 # Capacity as a module
 
-Status: accepted; partially superseded by ADR-0058
+Status: accepted; partially superseded by ADR-0058 and ADR-0059
 
 Damir accepted this on 19 October 2026, in the step 13 grill of #206. It partially supersedes one consequence of ADR-0029, named below, and extends the import-boundary allow-list of ADR-0036. ADR-0029 still decides the occupied window, the relocation gap, the 409 `ride_overlap`, and its confirmation. ADR-0046 stays the server version check. ADR-0048 decides how a Ride handed to a Partner fits the Ride states.
 

@@ -242,6 +242,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
   const vehicle = await createVehicle(admin, {
     registrationPlate: 'DU200AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -250,6 +251,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
   await createVehicle(admin, {
     registrationPlate: 'DU200BB',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -457,6 +459,7 @@ it('returns only this Driver\'s assigned and accepted Rides, and hides card and 
   const foreignVehicle = await createVehicle(foreignAdmin, {
     registrationPlate: 'DU201AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -522,6 +525,7 @@ it('does not carry a contact person or the Client note', async () => {
   const vehicle = await createVehicle(admin, {
     registrationPlate: 'DU368AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -582,6 +586,7 @@ it('shows each Driver their own count, the client reference, and the group mark,
   const vehicle = await createVehicle(admin, {
     registrationPlate: 'DU467AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',

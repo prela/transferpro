@@ -85,6 +85,7 @@ async function assignHoldingRide(page: Page, driverUserId: string): Promise<stri
     data: {
       registrationPlate: `ZG${crypto.randomUUID().replaceAll('-', '').slice(0, 6).toUpperCase()}`,
       kind: 'fixed',
+      seatCount: 4,
       registrationExpiresOn: licence,
       technicalInspectionExpiresOn: licence,
       insuranceExpiresOn: licence,

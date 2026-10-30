@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Driver, TransferDayRide, Vehicle } from '../../shared'
-import { assignedRideSchema, judgeSchedule, RELOCATION_GAP_DEFAULT_MINUTES, rosterVehicleSuggestionSchema, tenantSettingsGetSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../shared'
+import { assignedRideSchema, judgeSchedule, recordedSeatCount, RELOCATION_GAP_DEFAULT_MINUTES, rosterVehicleSuggestionSchema, tenantSettingsGetSchema, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../shared'
 import { useCapacityRefusal } from '../composables/capacity-refusal'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
@@ -8,6 +8,8 @@ import { commandControlClass, commandControlSize, commandInputClass } from '../r
 const props = defineProps<{
   rideId: string
   guestName: string
+  /** This Ride's passengers. Compared with the chosen Vehicle's seats. */
+  passengerCount: number
   drivers: Driver[]
   vehicles: Vehicle[]
   /**
@@ -88,6 +90,8 @@ const vehicleItems = computed(() => props.vehicles
   })))
 
 const canSubmit = computed(() => Boolean(driverId.value) && Boolean(vehicleId.value))
+
+const chosenSeatCount = computed(() => recordedSeatCount(props.vehicles, vehicleId.value ?? null))
 
 const rosterByDriver = ref<Record<string, string | null>>({})
 const durationMinutes = ref(TRANSFER_DURATION_DEFAULT_MINUTES)
@@ -391,6 +395,10 @@ async function assign(confirm = false) {
     >
       {{ t('ride.fromRoster') }}
     </p>
+    <SeatCountWarning
+      :passenger-count="passengerCount"
+      :seat-count="chosenSeatCount"
+    />
     <div class="flex flex-wrap gap-2">
       <UButton
         type="submit"

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { parseCreateVehicle, parseVehiclePatch, VEHICLE_DESCRIPTION_MAX_LENGTH, VEHICLE_PLATE_MAX_LENGTH, vehicleDateError, vehicleDescriptionError, VehicleInputError, vehicleKindError, vehicleListSchema, vehiclePlateError } from './vehicle'
+import { parseCreateVehicle, parseVehiclePatch, passengersExceedSeatCount, recordedSeatCount, SEAT_COUNT_MAX, VEHICLE_DESCRIPTION_MAX_LENGTH, VEHICLE_PLATE_MAX_LENGTH, vehicleDateError, vehicleDescriptionError, VehicleInputError, vehicleKindError, vehicleListSchema, vehiclePlateError, vehicleSeatCountError } from './vehicle'
 
 const plate = 'DU123AB'
 
@@ -9,6 +9,7 @@ const createBody = {
   registrationExpiresOn: '2027-06-01',
   technicalInspectionExpiresOn: '2028-01-31',
   insuranceExpiresOn: '2029-03-03',
+  seatCount: 8,
 }
 
 it('accepts a Vehicle, trims spaces, and stores the plate in uppercase without spaces', () => {
@@ -19,6 +20,7 @@ it('accepts a Vehicle, trims spaces, and stores the plate in uppercase without s
     technicalInspectionExpiresOn: '2028-01-31',
     insuranceExpiresOn: '2029-03-03',
     description: null,
+    seatCount: 8,
   })
   expect(parseCreateVehicle({ ...createBody, kind: 'occasional' }).kind).toBe('occasional')
 })
@@ -44,6 +46,11 @@ it('refuses an empty plate, a long plate, an unknown kind, and a key that is not
   expect(() => parseCreateVehicle({ ...createBody, kind: 'own' })).toThrow(VehicleInputError)
   expect(() => parseCreateVehicle({ ...createBody, name: 'Van' })).toThrow(VehicleInputError)
   expect(() => parseCreateVehicle({ ...createBody, archivedAt: '2026-10-05T00:00:00.000Z' })).toThrow(VehicleInputError)
+  expect(() => parseCreateVehicle({ ...createBody, seatCount: 0 })).toThrow(VehicleInputError)
+  expect(() => parseCreateVehicle({ ...createBody, seatCount: SEAT_COUNT_MAX + 1 })).toThrow(VehicleInputError)
+  expect(() => parseCreateVehicle({ ...createBody, seatCount: 1.5 })).toThrow(VehicleInputError)
+  const { seatCount: _seats, ...withoutSeats } = createBody
+  expect(() => parseCreateVehicle(withoutSeats)).toThrow(VehicleInputError)
   const { registrationPlate: _plate, ...withoutPlate } = createBody
   expect(() => parseCreateVehicle(withoutPlate)).toThrow(VehicleInputError)
 })
@@ -58,6 +65,9 @@ it('accepts a correction of one field and an empty patch', () => {
   expect(() => parseVehiclePatch({ insuranceExpiresOn: '2026-13-01' })).toThrow(VehicleInputError)
   expect(() => parseVehiclePatch({ notes: 'spare' })).toThrow(VehicleInputError)
   expect(() => parseVehiclePatch({ archivedAt: null })).toThrow(VehicleInputError)
+  expect(() => parseVehiclePatch({ seatCount: 0 })).toThrow(VehicleInputError)
+  expect(() => parseVehiclePatch({ seatCount: null })).toThrow(VehicleInputError)
+  expect(parseVehiclePatch({ seatCount: 1 })).toEqual({ seatCount: 1 })
 })
 
 it('names the field the form got wrong, and the error text never carries the plate', () => {
@@ -70,6 +80,12 @@ it('names the field the form got wrong, and the error text never carries the pla
   expect(vehicleDateError('2027-06-01')).toBeNull()
   expect(vehicleDescriptionError('A'.repeat(VEHICLE_DESCRIPTION_MAX_LENGTH + 1))).toBe('too-long')
   expect(vehicleDescriptionError('Mercedes Vito')).toBeNull()
+  expect(vehicleSeatCountError('')).toBe('empty')
+  expect(vehicleSeatCountError('  ')).toBe('empty')
+  expect(vehicleSeatCountError('0')).toBe('too-small')
+  expect(vehicleSeatCountError('no')).toBe('invalid')
+  expect(vehicleSeatCountError(String(SEAT_COUNT_MAX + 1))).toBe('too-large')
+  expect(vehicleSeatCountError('8')).toBeNull()
 
   let message = ''
   try {
@@ -92,11 +108,25 @@ it('lists a Vehicle the office can correct or archive later', () => {
       technicalInspectionExpiresOn: '2028-01-31',
       insuranceExpiresOn: '2029-03-03',
       description: null,
+      seatCount: null,
       archivedAt: null,
     }],
   })
   expect(listed.vehicles[0]?.archivedAt).toBeNull()
+  expect(listed.vehicles[0]?.seatCount).toBeNull()
   expect(vehicleListSchema.safeParse({
     vehicles: [{ ...listed.vehicles[0], kind: 'own' }],
   }).success).toBe(false)
+})
+
+it('warns only when the passengers do not fit a recorded seat count', () => {
+  expect(passengersExceedSeatCount(4, 3)).toBe(true)
+  expect(passengersExceedSeatCount(3, 3)).toBe(false)
+  expect(passengersExceedSeatCount(2, 3)).toBe(false)
+  expect(passengersExceedSeatCount(8, null)).toBe(false)
+  expect(passengersExceedSeatCount(8, undefined)).toBe(false)
+  const vehicles = [{ id: 'a1b2c3d4-5555-4555-8555-555555555555', seatCount: 3 as number | null }]
+  expect(recordedSeatCount(vehicles, vehicles[0]!.id)).toBe(3)
+  expect(recordedSeatCount(vehicles, null)).toBeNull()
+  expect(recordedSeatCount([{ id: vehicles[0]!.id, seatCount: null }], vehicles[0]!.id)).toBeNull()
 })

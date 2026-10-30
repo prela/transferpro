@@ -198,6 +198,7 @@ async function vehicle(
   return createVehicle(session, {
     registrationPlate: plate,
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: registration,
     technicalInspectionExpiresOn: inspection,
     insuranceExpiresOn: insurance,

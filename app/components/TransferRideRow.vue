@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, DisplayLocale, Driver, Location, Partner, RideAttentionItem, TransferDayRide, Vehicle } from '../../shared'
-import { calendarDateInTimeZone, canAddExtraVehicle, canRecordLandingTime, classifyRideAttention, clockLabel, formatCalendarDate, formatInstant, locationLabel, officeCanCorrectTransfer, pickupNeedsCalendarDate, rideStateMark, transferGroupRole } from '../../shared'
+import { calendarDateInTimeZone, canAddExtraVehicle, canRecordLandingTime, classifyRideAttention, clockLabel, formatCalendarDate, formatInstant, locationLabel, officeCanCorrectTransfer, pickupNeedsCalendarDate, recordedSeatCount, rideStateMark, transferGroupRole } from '../../shared'
 import { driverDisplayName } from '../transfer-day-labels'
 import { canCallOff, canChangeAssignment, canChangePartner, canHandOff, canNoShow, canTakeBack } from '../transfer-ride-guards'
 
@@ -75,7 +75,11 @@ function attention(): RideAttentionItem[] {
   const ride = props.ride
   if (!ride)
     return []
-  return classifyRideAttention(ride, props.declines ?? [], props.nowMs ?? Date.now())
+  return classifyRideAttention(
+    { ...ride, seatCount: recordedSeatCount(props.vehicles ?? [], ride.vehicleId) },
+    props.declines ?? [],
+    props.nowMs ?? Date.now(),
+  )
 }
 
 function mark() {

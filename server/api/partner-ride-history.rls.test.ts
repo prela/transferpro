@@ -313,6 +313,7 @@ it('lists open and closed Rides newest first, keeps an archived Partner, and cou
   const vehicle = await createVehicle(world.dispatcher, {
     registrationPlate: 'DU415RH',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -483,6 +484,7 @@ it('returns the Partner phone and email on a handed-off Ride, and the Driver rea
   const vehicle = await createVehicle(world.admin, {
     registrationPlate: 'DU415BB',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',

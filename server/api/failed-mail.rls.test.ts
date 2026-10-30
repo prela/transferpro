@@ -235,6 +235,7 @@ it('lists only failed work orders that still matter, and a driver cannot read th
   const vehicle = await createVehicle(admin, {
     registrationPlate: 'DU330AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -369,6 +370,7 @@ it('lists only failed work orders that still matter, and a driver cannot read th
   const otherVehicle = await createVehicle(outsider, {
     registrationPlate: 'ZG331AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -457,6 +459,7 @@ it('resends one failed work order, refuses the other roles, and does not audit',
   const vehicle = await createVehicle(admin, {
     registrationPlate: 'DU332AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',
@@ -536,6 +539,7 @@ it('resends one failed work order, refuses the other roles, and does not audit',
   const otherVehicle = await createVehicle(outsider, {
     registrationPlate: 'ZG334AA',
     kind: 'fixed',
+    seatCount: 4,
     registrationExpiresOn: '2030-01-01',
     technicalInspectionExpiresOn: '2030-01-01',
     insuranceExpiresOn: '2030-01-01',

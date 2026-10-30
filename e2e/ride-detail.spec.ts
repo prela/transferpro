@@ -92,6 +92,7 @@ test.describe('@phone', () => {
       const vehicleId = await createdId(page, '/api/vehicles', {
         registrationPlate: 'DU256AA',
         kind: 'fixed',
+        seatCount: 4,
         registrationExpiresOn: licence,
         technicalInspectionExpiresOn: licence,
         insuranceExpiresOn: licence,
@@ -99,6 +100,7 @@ test.describe('@phone', () => {
       const otherVehicleId = await createdId(page, '/api/vehicles', {
         registrationPlate: 'DU256BB',
         kind: 'fixed',
+        seatCount: 4,
         registrationExpiresOn: licence,
         technicalInspectionExpiresOn: licence,
         insuranceExpiresOn: licence,

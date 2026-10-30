@@ -484,6 +484,13 @@
       "when": 1793278909959,
       "tag": "0068_invoice_storno_from",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1793278910959,
+      "tag": "0069_vehicle_seat_count",
+      "breakpoints": true
     }
   ]
 }
