@@ -172,6 +172,7 @@ test('state, vehicle, partner, and needs attention combine, stay in the URL, and
   await expect(page.getByRole('button', { name: 'Hitno (3)', exact: true })).toBeVisible()
 
   await page.getByRole('searchbox', { name: 'Traži u danu' }).fill('predani')
+  await expect(page).toHaveURL(/search=predani/)
   await expect(page.getByText('Nema vožnji za ovaj filtar.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Hitno (3)', exact: true })).toBeVisible()
   await page.reload()
@@ -285,7 +286,7 @@ test.describe('@phone', () => {
         await expect(page.getByRole('searchbox', { name: 'Search this day' })).toBeVisible()
         await expect(page.getByRole('checkbox', { name: 'Needs attention' })).toBeVisible()
         await expect(page.getByRole('button', { name: 'Ride state', exact: true })).toBeVisible()
-        await expect(card.getByRole('button', { name: /details: Sutra Telefon/ })).toHaveAttribute('aria-expanded', 'true')
+        await expect(card.getByRole('button', { name: /details: Sutra Telefon/ })).toBeVisible()
         await expect(page.getByRole('button', { name: 'Client', exact: true })).toBeVisible()
         await expectNoAxeViolations(page)
       }

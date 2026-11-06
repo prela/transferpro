@@ -75,6 +75,7 @@ test('the office and the Driver record a landing time in both languages and both
   await page.getByRole('menuitem', { name: 'Zabilježi slijetanje', exact: true }).click()
   await page.locator('#landing-time').fill(landingWall)
   await page.getByRole('button', { name: 'Spremi vrijeme slijetanja', exact: true }).click()
+  await page.getByRole('button', { name: 'Proširi sve', exact: true }).click()
   await expect(page.getByText(landingHr)).toBeVisible()
 
   await openAudit(page)
@@ -103,11 +104,14 @@ test('the office and the Driver record a landing time in both languages and both
   await page.getByRole('button', { name: 'Proširi sve', exact: true }).click()
   await expect(page.getByText(driverHr)).toBeVisible()
   await switchTheme(page, 'dark')
+  await page.getByRole('button', { name: 'Proširi sve', exact: true }).click()
   await expect(page.getByText(driverHr)).toBeVisible()
   await switchLocale(page, 'en')
+  await page.getByRole('button', { name: 'Expand all', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Details: Ana Slijetanje' })).toBeVisible()
   await expect(page.getByText(driverEn)).toBeVisible()
   await switchTheme(page, 'light')
+  await page.getByRole('button', { name: 'Expand all', exact: true }).click()
   await expect(page.getByText(driverEn)).toBeVisible()
 
   await openRideMenu(page, guest)

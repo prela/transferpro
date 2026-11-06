@@ -128,6 +128,7 @@ test('the office Ride and the Driver Ride show a stored landing time in both lan
   await expect(page.getByRole('region', { name: 'Details: Ana Let' })).toBeVisible()
   await expect(page.getByText(landingEn)).toBeVisible()
   await switchLocale(page, 'hr')
+  await page.getByRole('button', { name: 'Proširi sve', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Detalji: Ana Let' })).toBeVisible()
   await expect(page.getByText(landingHr)).toBeVisible()
 

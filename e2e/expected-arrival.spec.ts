@@ -128,6 +128,7 @@ test('the office Ride and the Driver Ride show an expected arrival in both langu
   await expect(page.getByRole('region', { name: 'Details: Ana Dolazak' })).toBeVisible()
   await expect(page.getByText(arrivalEn)).toBeVisible()
   await switchLocale(page, 'hr')
+  await page.getByRole('button', { name: 'Proširi sve', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Detalji: Ana Dolazak' })).toBeVisible()
   await expect(page.getByText(arrivalHr)).toBeVisible()
 
