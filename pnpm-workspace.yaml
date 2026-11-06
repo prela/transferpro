@@ -1,45 +1,56 @@
 minimumReleaseAgeExcludePrune: true
-# 1.7.14 is younger than the release-age gate. Drop each line once that version installs without an exclude.
+# 1.7.18 is younger than the release-age gate. Drop each line once that version installs without an exclude.
 minimumReleaseAgeExclude:
-  - '@better-auth/core@1.7.14'
-  - '@better-auth/drizzle-adapter@1.7.14'
-  - '@better-auth/kysely-adapter@1.7.14'
-  - '@better-auth/memory-adapter@1.7.14'
-  - '@better-auth/mongo-adapter@1.7.14'
-  - '@better-auth/prisma-adapter@1.7.14'
-  - '@better-auth/telemetry@1.7.14'
-  - better-auth@1.7.14
-  # pnpm 12.16.0 is younger than the release-age gate. Drop these lines once that version installs without an exclude.
-  - '@pnpm/exe.android-arm64@12.16.0'
-  - '@pnpm/exe.android-x64@12.16.0'
-  - '@pnpm/exe.darwin-arm64@12.16.0'
-  - '@pnpm/exe.darwin-x64@12.16.0'
-  - '@pnpm/exe.freebsd-x64@12.16.0'
-  - '@pnpm/exe.linux-arm64-musl@12.16.0'
-  - '@pnpm/exe.linux-arm64@12.16.0'
-  - '@pnpm/exe.linux-ppc64@12.16.0'
-  - '@pnpm/exe.linux-riscv64@12.16.0'
-  - '@pnpm/exe.linux-s390x@12.16.0'
-  - '@pnpm/exe.linux-x64-musl@12.16.0'
-  - '@pnpm/exe.linux-x64@12.16.0'
-  - '@pnpm/exe.win32-arm64@12.16.0'
-  - '@pnpm/exe.win32-x64@12.16.0'
-  - pnpm@12.16.0
-  # 4.6.3 is younger than the release-age gate. Drop these lines once that version installs without an exclude.
-  - '@nuxt/kit@4.6.3'
-  - '@nuxt/nitro-server@4.6.3'
-  - '@nuxt/schema@4.6.3'
-  - '@nuxt/vite-builder@4.6.3'
-  - '@nuxt/vite-server@4.6.3'
-  - nuxt@4.6.3
+  - '@better-auth/core@1.7.18'
+  - '@better-auth/drizzle-adapter@1.7.18'
+  - '@better-auth/kysely-adapter@1.7.18'
+  - '@better-auth/memory-adapter@1.7.18'
+  - '@better-auth/mongo-adapter@1.7.18'
+  - '@better-auth/prisma-adapter@1.7.18'
+  - '@better-auth/telemetry@1.7.18'
+  - better-auth@1.7.18
+  # pnpm 12.18.0 is younger than the release-age gate. Drop these lines once that version installs without an exclude.
+  - '@pnpm/exe.android-arm64@12.18.0'
+  - '@pnpm/exe.android-x64@12.18.0'
+  - '@pnpm/exe.darwin-arm64@12.18.0'
+  - '@pnpm/exe.darwin-x64@12.18.0'
+  - '@pnpm/exe.freebsd-x64@12.18.0'
+  - '@pnpm/exe.linux-arm64-musl@12.18.0'
+  - '@pnpm/exe.linux-arm64@12.18.0'
+  - '@pnpm/exe.linux-ppc64@12.18.0'
+  - '@pnpm/exe.linux-riscv64@12.18.0'
+  - '@pnpm/exe.linux-s390x@12.18.0'
+  - '@pnpm/exe.linux-x64-musl@12.18.0'
+  - '@pnpm/exe.linux-x64@12.18.0'
+  - '@pnpm/exe.win32-arm64@12.18.0'
+  - '@pnpm/exe.win32-x64@12.18.0'
+  - pnpm@12.18.0
+  # 4.6.4 is younger than the release-age gate. Drop these lines once that version installs without an exclude.
+  - '@nuxt/kit@4.6.4'
+  - '@nuxt/nitro-server@4.6.4'
+  - '@nuxt/schema@4.6.4'
+  - '@nuxt/vite-builder@4.6.4'
+  - '@nuxt/vite-server@4.6.4'
+  - nuxt@4.6.4
+  # Vue 3.5.45 is younger than the release-age gate. The override pins one copy
+  # so the traced server render does not load a second Vue. Drop each line once
+  # that version installs without an exclude.
+  - '@vue/compiler-core@3.5.45'
+  - '@vue/compiler-dom@3.5.45'
+  - '@vue/compiler-sfc@3.5.45'
+  - '@vue/compiler-ssr@3.5.45'
+  - '@vue/reactivity@3.5.45'
+  - '@vue/runtime-core@3.5.45'
+  - '@vue/runtime-dom@3.5.45'
+  - '@vue/server-renderer@3.5.45'
+  - '@vue/shared@3.5.45'
+  - vue@3.5.45
 # Babel still depends on semver 6.3.1, which this policy flags as a trust downgrade.
-# @nuxt/vite-builder 4.6.3 requires seroval ^1.7.2. 1.7.0 and 1.7.1 were
-# trusted-publisher + provenance; 1.7.2 is the same maintainer as the lockfile's
-# 1.6.11, without that evidence. Drop once Nuxt depends on a trusted seroval.
+# Nuxt 4.6.4 resolves seroval 1.7.7, which passes trustPolicy, so the old
+# seroval@1.7.2 exclude is gone.
 trustPolicy: no-downgrade
 trustPolicyExclude:
   - semver
-  - seroval@1.7.2
 
 shellEmulator: true
 
@@ -47,7 +58,7 @@ shellEmulator: true
 # launch-editor 2.14.1 (via nuxt > @nuxt/devtools) and vite 8.3.1 (via vitest) are GHSA-587h-7wmj-h5pm (#393).
 # Drop these two lines once nuxt and vitest depend on launch-editor >= 2.14.2 and vite >= 8.3.3.
 # unifont (via @nuxt/fonts) resolved undici 8.11.2, under the 8.12.2 floor (#406). No 6.x or 7.x is installed. Drop once unifont depends on undici >= 8.12.2.
-# @better-auth/telemetry and vue-router resolved vue 3.5.43 beside the app's 3.5.44.
+# @better-auth/telemetry and vue-router resolved vue 3.5.43 beside the app's 3.5.45.
 # Two copies make the traced server render fail once the CI artifact materializes the links.
 overrides:
   # GHSA-83rm-6c8r-g728: sanitizeTranslatedHtml left iframe srcdoc intact.
@@ -57,20 +68,23 @@ overrides:
   '@intlify/message-compiler': '>=11.4.14'
   '@intlify/shared': '>=11.4.14'
   '@intlify/vue-i18n-core': '>=11.4.14'
-  '@vue/compiler-core': 3.5.44
-  '@vue/compiler-dom': 3.5.44
-  '@vue/compiler-sfc': 3.5.44
-  '@vue/compiler-ssr': 3.5.44
-  '@vue/reactivity': 3.5.44
-  '@vue/runtime-core': 3.5.44
-  '@vue/runtime-dom': 3.5.44
-  '@vue/server-renderer': 3.5.44
-  '@vue/shared': 3.5.44
+  '@vue/compiler-core': 3.5.45
+  '@vue/compiler-dom': 3.5.45
+  '@vue/compiler-sfc': 3.5.45
+  '@vue/compiler-ssr': 3.5.45
+  '@vue/reactivity': 3.5.45
+  '@vue/runtime-core': 3.5.45
+  '@vue/runtime-dom': 3.5.45
+  '@vue/server-renderer': 3.5.45
+  '@vue/shared': 3.5.45
   launch-editor: 2.14.2
+  # listhen (nitropack, dev cert only) resolves node-forge ^1.4.0 to 1.4.0.
+  # 1.4.1 fixes the high Forge advisories. Drop once listhen depends on >=1.4.1.
+  node-forge: '>=1.4.1'
   petite-vue-i18n: '>=11.4.14'
   undici: ^8.12.2
   vite: ^8.3.3
-  vue: 3.5.44
+  vue: 3.5.45
   vue-i18n: '>=11.4.14'
   web-vitals: 6.2.2
 
@@ -80,11 +94,9 @@ allowBuilds:
   vue-demi: true
 
 auditConfig:
-  # dev-only via listhen (dev-server self-signed cert), not in the production bundle, revisit when node-forge > 1.4.0 ships.
   # build-time only via micromatch (nitropack globby, @nuxtjs/i18n fast-glob) on our own glob patterns, never user input, not in .output; no patched release yet, revisit when braces > 3.0.3 ships.
   # dev-only via @nuxt/devtools (nuxt and @sentry/nuxt), not shipped in production. simple-git >=4.0.1 and argv-parser >=2.0.1 break nuxi (no default export). Remove when nuxt ships a patched devtools.
   ignoreGhsas:
-    - GHSA-86w9-cpqp-85rv
     - GHSA-vfj7-8cjw-p6xm
     - GHSA-x6jw-m9v5-85vh
     - GHSA-g4wm-2vf7-vfgr

@@ -244,7 +244,8 @@ it('lists only failed work orders that still matter, and a driver cannot read th
   let day = 0
   async function ride(guestName: string): Promise<string> {
     // A day apart, so the same Driver and Vehicle do not overlap.
-    const pickupAt = new Date(Date.parse('2026-11-02T09:00:00.000Z') + day * 24 * 60 * 60 * 1000).toISOString()
+    // Tomorrow onward stays inside the 30×24h create window.
+    const pickupAt = new Date(Date.now() + (day + 1) * 24 * 60 * 60 * 1000).toISOString()
     day += 1
     const recorded = await createTransfer(admin, {
       externalId: crypto.randomUUID(),
@@ -275,8 +276,10 @@ it('lists only failed work orders that still matter, and a driver cannot read th
   await ownerPool.query(`update app.rides set state = 'cancelled' where id = $1`, [noticeId])
   await ownerPool.query(`update app.rides set state = 'cancelled' where id = $1`, [lostId])
 
-  const later = new Date('2026-11-02T12:00:00.000Z')
-  const earlier = new Date('2026-11-02T08:00:00.000Z')
+  // Assign writes its own work order at the database clock. A planted
+  // created_at before that write is superseded, so the failed list is empty.
+  const later = new Date(Date.now() + 60 * 60 * 1000)
+  const earlier = new Date(later.getTime() - 60 * 60 * 1000)
   const current = await plant({
     tenantId: created.tenantId,
     rideId: openId,
@@ -378,7 +381,7 @@ it('lists only failed work orders that still matter, and a driver cannot read th
   const otherRecorded = await createTransfer(outsider, {
     externalId: crypto.randomUUID(),
     clientId: otherClient.id,
-    pickupAt: '2026-11-02T09:00:00.000Z',
+    pickupAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     startLocationId: otherStart.id,
     endLocationId: otherEnd.id,
     passengerCount: 1,
@@ -468,7 +471,8 @@ it('resends one failed work order, refuses the other roles, and does not audit',
   let day = 0
   async function ride(guestName: string, driverId: string): Promise<string> {
     // A day apart, so the same Driver and Vehicle do not overlap.
-    const pickupAt = new Date(Date.parse('2026-11-03T09:00:00.000Z') + day * 24 * 60 * 60 * 1000).toISOString()
+    // Tomorrow onward stays inside the 30×24h create window.
+    const pickupAt = new Date(Date.now() + (day + 1) * 24 * 60 * 60 * 1000).toISOString()
     day += 1
     const recorded = await createTransfer(admin, {
       externalId: crypto.randomUUID(),
@@ -488,7 +492,8 @@ it('resends one failed work order, refuses the other roles, and does not audit',
     return recorded.ride.id
   }
 
-  const later = new Date('2026-11-03T12:00:00.000Z')
+  // After the assign's work order, so this failed row is the newest.
+  const later = new Date(Date.now() + 60 * 60 * 1000)
   const successId = await plant({
     tenantId: created.tenantId,
     rideId: await ride('Send Klara', driver.id),
@@ -547,7 +552,7 @@ it('resends one failed work order, refuses the other roles, and does not audit',
   const otherRecorded = await createTransfer(outsider, {
     externalId: crypto.randomUUID(),
     clientId: otherClient.id,
-    pickupAt: '2026-11-03T09:00:00.000Z',
+    pickupAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     startLocationId: otherStart.id,
     endLocationId: otherEnd.id,
     passengerCount: 1,
