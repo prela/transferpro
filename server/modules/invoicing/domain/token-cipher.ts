@@ -21,13 +21,25 @@ export class InvoicingTokenDecryptError extends Error {
   }
 }
 
-/** The key is missing when a token is being written. The message has no key. */
+/**
+ * The key is missing when a token is being written. 409, not 500: the
+ * office can do nothing until the server is configured (#554). The
+ * message has no key. The HTTP body uses a fixed Croatian sentence.
+ */
 export class InvoicingKeyMissingError extends Error {
-  readonly statusCode = 500
+  readonly statusCode = 409
 
   constructor() {
     super('Invoicing secret key is missing.')
     this.name = 'InvoicingKeyMissingError'
+  }
+}
+
+/** No ciphertext on the row. The message has no token. */
+export class InvoicingTokenMissingError extends Error {
+  constructor() {
+    super('Invoicing token is not set.')
+    this.name = 'InvoicingTokenMissingError'
   }
 }
 

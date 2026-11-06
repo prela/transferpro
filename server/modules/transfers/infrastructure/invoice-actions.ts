@@ -13,6 +13,7 @@ import {
   InvoiceNotWithdrawableError,
   invoicingMode,
   invoicingPort,
+  invoicingPortForTenant,
   readFailedInvoiceForWithdraw,
   withdrawFailedInvoice,
 } from '../../invoicing'
@@ -91,12 +92,13 @@ export async function withdrawTransferInvoice(headers: Headers, transferId: unkn
       const failed = await readFailedInvoiceForWithdraw(transaction, id)
       if (!failed)
         throw new InvoiceNotWithdrawableError()
-      return { role: actor.role, actorUserId: actor.userId, invoice: failed }
+      return { role: actor.role, actorUserId: actor.userId, tenantId: actor.context.tenantId, invoice: failed }
     }, 'Invoice withdraw failed', { passthrough })
   })
-  if (invoicingMode() !== 'fake')
+  if (invoicingMode() === 'none')
     throw new InvoicingNotReadyError()
-  return withdrawFailedInvoice(prepared.role, prepared.actorUserId, prepared.invoice, invoicingPort(), {
+  const port = invoicingMode() === 'fake' ? invoicingPort() : invoicingPortForTenant(prepared.tenantId)
+  return withdrawFailedInvoice(prepared.role, prepared.actorUserId, prepared.invoice, port, {
     async adopt(invoiceId, found) {
       return withOfficeWrite(headers, body, raw => parseEmpty(transferId, raw), async ({ transaction }) => {
         const saved = await finishInvoiceWithdraw(transaction, invoiceId, prepared.actorUserId, prepared.invoice.transferReference, found)

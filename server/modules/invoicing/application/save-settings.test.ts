@@ -1,6 +1,7 @@
 import type { InvoicingSettingsSave } from '../../../../shared'
 import { expect, it } from 'vitest'
 import { EMPTY_INVOICING_SETTINGS, StaleSaveError } from '../../../../shared'
+import { InvoicingKeyMissingError } from '../domain/token-cipher'
 import { saveInvoicingSettings } from './save-settings'
 
 const tenantId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -54,6 +55,24 @@ it('records the field name token and not the token value', async () => {
   expect(audits).toEqual([['dueDays', 'token']])
   expect(JSON.stringify(audits)).not.toContain(token)
   expect(JSON.stringify(view)).not.toContain(token)
+})
+
+it('refuses a new token when the server has no encryption key', async () => {
+  const writes: string[] = []
+  await expect(saveInvoicingSettings({
+    lock: async () => null,
+    insert: async () => {
+      writes.push('insert')
+    },
+    update: async () => {
+      writes.push('update')
+      return true
+    },
+    audit: async () => {
+      writes.push('audit')
+    },
+  }, input({ token }), undefined, tenantId, EMPTY_INVOICING_SETTINGS)).rejects.toBeInstanceOf(InvoicingKeyMissingError)
+  expect(writes).toEqual([])
 })
 
 it('refuses a version that is not the stored one and writes nothing', async () => {

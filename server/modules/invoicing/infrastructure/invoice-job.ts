@@ -11,6 +11,8 @@ import { ClientNotFoundError, loadClientBillingForInvoice } from '../../clients'
 import { performInvoiceCreate } from '../application/create'
 import { INVOICE_CREATE_LEASE_MS, INVOICE_CREATE_SPACING_MS } from '../domain/invoice'
 import { fakeInvoicingPort } from '../testing'
+import { currentToolPort } from './current-tool'
+import { openDecryptedInvoicingToken } from './current-tool-token'
 import { invoicingMode } from './mode'
 
 /** The only payload is the invoice id (ADR-0035). */
@@ -238,12 +240,28 @@ function createStore(step: InvoiceStep): InvoiceCreateStore {
 
 let sharedFake: InvoicingPort | undefined
 
-/** The in-process fake. `current` has no adapter until #442, so it is refused. */
+/** The in-process fake. Tests and `INVOICING=fake` use it. It never calls the tool. */
 export function invoicingPort(): InvoicingPort {
   if (invoicingMode() !== 'fake')
     throw new Error('The invoicing port is only available when INVOICING is fake.')
   sharedFake ??= fakeInvoicingPort()
   return sharedFake
+}
+
+/**
+ * The port for one Tenant. `fake` ignores the token. `current` decrypts
+ * that Tenant's token inside each call and talks to the current tool.
+ */
+export function invoicingPortForTenant(tenantId: string): InvoicingPort {
+  if (invoicingMode() === 'fake')
+    return invoicingPort()
+  if (invoicingMode() === 'current') {
+    return currentToolPort({
+      spacingKey: tenantId,
+      readToken: () => openDecryptedInvoicingToken(tenantId),
+    })
+  }
+  throw new Error('The invoicing port is not available when INVOICING is none.')
 }
 
 const gateRow = z.object({
@@ -417,8 +435,8 @@ export async function finishCreateSlot(transaction: TenantTransaction): Promise<
 
 /**
  * One job. The attempt and the gate each commit before the port is called.
- * The outcome commits in a later step. `none` and `current` do not call the
- * fake. The log line is the invoice id, the state, the reason, and the
+ * The outcome commits in a later step. `none` does not call a port.
+ * `current` uses the real adapter. The log line is the invoice id, the state, the reason, and the
  * attempt count.
  */
 export async function handleInvoiceCreateJob(
@@ -429,14 +447,14 @@ export async function handleInvoiceCreateJob(
   port?: InvoicingPort,
 ): Promise<void> {
   const { invoiceId } = jobData.parse(job.data)
-  // Checked before the default port is built, so `current` never touches the fake.
-  if (invoicingMode() !== 'fake')
+  // `none` issues nothing. `current` uses the real adapter, not the fake.
+  if (invoicingMode() === 'none')
     return
   await performInvoiceCreate(
     job.tenantId,
     invoiceId,
     new Date(),
-    port ?? invoicingPort(),
+    port ?? invoicingPortForTenant(job.tenantId),
     {
       reserve: (_tenantId, now) => step(transaction => reserveCreateSlot(transaction, now)),
       finish: () => step(transaction => finishCreateSlot(transaction)),

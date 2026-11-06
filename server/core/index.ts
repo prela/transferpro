@@ -86,9 +86,8 @@ export interface AppEnv {
   /**
    * Which invoicing adapter runs. `none` is the default in every environment,
    * so a fresh process never calls the current tool. `fake` is the in-process
-   * adapter for tests and E2E. `current` uses that same adapter until the
-   * real one lands (#442). Anything other than `none` requires
-   * `INVOICING_SECRET_KEY`. ADR-0051.
+   * adapter for tests and E2E. `current` is the current-tool adapter.
+   * Anything other than `none` requires `INVOICING_SECRET_KEY`. ADR-0051.
    */
   readonly INVOICING: 'none' | 'fake' | 'current'
   /**
@@ -240,9 +239,8 @@ function parseMapsEmbedKey(source: NodeJS.ProcessEnv): string | undefined {
 
 /**
  * Unset or blank is `none` in every environment, including production.
- * `fake` is the in-process adapter. `current` is accepted at boot and
- * refuses to issue until #442. A typo fails boot and the value is not
- * copied into the error text.
+ * `fake` is the in-process adapter. `current` is the current-tool adapter.
+ * A typo fails boot and the value is not copied into the error text.
  */
 function parseInvoicing(source: NodeJS.ProcessEnv): 'none' | 'fake' | 'current' {
   const raw = blankEnv(source.INVOICING)

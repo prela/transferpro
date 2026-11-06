@@ -6,7 +6,7 @@ import { getLogger, loadAppEnv } from '../../../core/index'
 import { createPgBossJobQueue } from '../../../core/infrastructure'
 import { applyInvoiceStatusReads } from '../application/status'
 import { INVOICE_STATUS_EVERY_MINUTES } from '../domain/invoice'
-import { invoicingPort } from './invoice-job'
+import { invoicingPort, invoicingPortForTenant } from './invoice-job'
 import { loadInvoiceStatusCandidates, saveInvoiceStatusEffect } from './invoice-status'
 
 /**
@@ -31,7 +31,7 @@ const askedAtSchema = z.object({
  * The tick lists Tenant ids and publishes one check each. That job's
  * envelope carries the Tenant. The payload is the tick's instant.
  * `none` does not schedule: nothing is issued, and nothing is read.
- * `current` has no adapter until #442, so a check returns before a call.
+ * `fake` and `current` call the port. `current` uses one adapter per Tenant.
  */
 export async function registerInvoiceStatus(
   queue: JobQueue,
@@ -40,8 +40,10 @@ export async function registerInvoiceStatus(
     readonly port: { readStatus: (toolInvoiceId: string) => Promise<InvoiceStatusRead> }
     readonly listTenantIds: () => Promise<readonly string[]>
     readonly enabled: boolean
-    /** False until the adapter can be called. `current` waits for #442. */
+    /** False when invoicing is off. `current` calls the real adapter. */
     readonly callPort: boolean
+    /** One port per Tenant. The status job's budget stays in the caller. */
+    readonly portForTenant?: (tenantId: string) => { readStatus: (toolInvoiceId: string) => Promise<InvoiceStatusRead> }
     readonly now?: () => Date
   },
 ): Promise<void> {
@@ -64,7 +66,7 @@ export async function registerInvoiceStatus(
     const candidates = await step(transaction => loadInvoiceStatusCandidates(transaction))
     const effects = await applyInvoiceStatusReads({
       candidates,
-      port: options.port,
+      port: options.portForTenant?.(job.tenantId) ?? options.port,
       log: options.log,
     })
     for (const effect of effects)
@@ -82,7 +84,7 @@ let started = false
 
 /**
  * Schedule the check when invoicing is on. `none` returns before a queue
- * exists. The fake is the only port until #442.
+ * exists. `fake` uses the in-process port. `current` uses the real adapter.
  */
 export async function startInvoiceStatusWorker(env: AppEnv = loadAppEnv(), log: Logger = getLogger()): Promise<void> {
   if (env.INVOICING === 'none')
@@ -92,16 +94,18 @@ export async function startInvoiceStatusWorker(env: AppEnv = loadAppEnv(), log: 
   started = true
   const queue = await createPgBossJobQueue(env)
   const pool = new pg.Pool({ connectionString: env.DATABASE_URL, max: 1 })
-  // `current` is registered so the tick exists, and the handler returns
-  // before a call until #442 supplies the adapter. The fake is the port now.
-  const callPort = env.INVOICING === 'fake'
   await registerInvoiceStatus(queue, {
     log,
-    port: callPort
+    port: env.INVOICING === 'fake'
       ? invoicingPort()
-      : { async readStatus() { return { sent: false, storno: null } } },
+      : {
+          async readStatus() {
+            throw new Error('Invoice status for the current tool uses the tenant port.')
+          },
+        },
+    portForTenant: env.INVOICING === 'current' ? invoicingPortForTenant : undefined,
     enabled: true,
-    callPort,
+    callPort: true,
     listTenantIds: () => listTenantsDueInvoiceStatus(pool),
   })
 }

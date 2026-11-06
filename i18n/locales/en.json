@@ -302,6 +302,7 @@
       "tokenHint": "Leave this blank to keep the saved token. After a save only the last four characters show.",
       "tokenSet": "Last four: {lastFour}",
       "tokenMissing": "No token is set.",
+      "notConfigured": "Invoicing is not configured on the server.",
       "dueDays": "Due days",
       "vatRate": "VAT rate",
       "lineText": "Line text",

@@ -11,7 +11,9 @@ import { rethrowTenantChanged } from './tenant-changed'
  */
 export function invoicingHttpError(error: unknown): never {
   rethrowTenantChanged(error)
-  if (error instanceof InvoicingSettingsInputError || error instanceof TenantAccessError || error instanceof InvoicingKeyMissingError)
+  if (error instanceof InvoicingKeyMissingError)
+    throw createError({ statusCode: error.statusCode, data: { code: 'invoicing_not_configured' } })
+  if (error instanceof InvoicingSettingsInputError || error instanceof TenantAccessError)
     throw createError({ statusCode: error.statusCode })
   if (error instanceof StaleSaveError)
     throw createError({ statusCode: error.statusCode, data: { code: error.code } })
