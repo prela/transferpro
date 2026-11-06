@@ -302,6 +302,7 @@
       "tokenHint": "Ostavite prazno da spremljeni token ostane. Nakon spremanja vide se samo zadnja četiri znaka.",
       "tokenSet": "Zadnje četiri: {lastFour}",
       "tokenMissing": "Token nije postavljen.",
+      "notConfigured": "Fakturiranje nije konfigurirano na poslužitelju.",
       "dueDays": "Rok plaćanja (dani)",
       "vatRate": "Stopa PDV-a",
       "lineText": "Tekst stavke",

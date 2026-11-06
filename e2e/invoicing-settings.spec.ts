@@ -41,6 +41,34 @@ test.describe('@phone', () => {
     })
   }
 
+  test('a missing server key tells the admin that invoicing is not configured', async ({ page }) => {
+    const tenant = await seedTenant('inv-set-key')
+    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+    await page.goto('/settings')
+    await hydrated(page)
+    await page.route('**/api/invoicing-settings', async (route) => {
+      if (route.request().method() !== 'PUT') {
+        await route.continue()
+        return
+      }
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          statusCode: 409,
+          message: 'Fakturiranje nije konfigurirano na poslužitelju.',
+          request_id: 'e2e',
+          code: 'invoicing_not_configured',
+        }),
+      })
+    })
+    const form = page.locator('#invoicing-settings-form')
+    await form.getByLabel('Token').fill(token)
+    await form.getByRole('button', { name: 'Spremi', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('Fakturiranje nije konfigurirano na poslužitelju.')
+    await expect(page.getByText(token)).toHaveCount(0)
+  })
+
   test('a dispatcher has no Računi section', async ({ page }) => {
     const tenant = await seedTenant('inv-set-disp')
     const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dino')

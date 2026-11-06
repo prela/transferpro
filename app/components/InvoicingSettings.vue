@@ -19,7 +19,7 @@ const tokenLastFour = ref<string | null>(null)
 const loading = ref(false)
 const pending = ref(false)
 const loadError = ref(false)
-const saveError = ref(false)
+const saveErrorKey = ref<'settings.saveFailed' | 'settings.invoicing.notConfigured' | null>(null)
 const saved = ref(false)
 
 const dueDaysId = useId()
@@ -54,7 +54,7 @@ async function loadSettings() {
 }
 
 async function save() {
-  saveError.value = false
+  saveErrorKey.value = null
   saved.value = false
   pending.value = true
   try {
@@ -81,12 +81,24 @@ async function save() {
     saved.value = true
     notifyAuditChanged()
   }
-  catch {
-    saveError.value = true
+  catch (error) {
+    saveErrorKey.value = invoicingErrorCode(error) === 'invoicing_not_configured'
+      ? 'settings.invoicing.notConfigured'
+      : 'settings.saveFailed'
   }
   finally {
     pending.value = false
   }
+}
+
+function invoicingErrorCode(error: unknown): string | undefined {
+  // $fetch puts the JSON body on error.data. The handler forwards { code }.
+  if (typeof error !== 'object' || error === null || !('data' in error))
+    return undefined
+  const data = error.data
+  if (typeof data !== 'object' || data === null || !('code' in data))
+    return undefined
+  return typeof data.code === 'string' ? data.code : undefined
 }
 
 onMounted(loadSettings)
@@ -128,12 +140,12 @@ onMounted(loadSettings)
       @submit.prevent="save"
     >
       <UAlert
-        v-if="saveError"
+        v-if="saveErrorKey"
         color="error"
         variant="subtle"
         role="alert"
         class="mb-4"
-        :description="t('settings.saveFailed')"
+        :description="t(saveErrorKey)"
       />
       <!-- A success alert's description is `opacity-90` and fails contrast on the light theme. -->
       <p

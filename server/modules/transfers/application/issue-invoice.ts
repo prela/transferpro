@@ -141,8 +141,8 @@ export function assertInvoiceable(
     throw new ClientNotInvoiceableError()
   if (!billing.complete || billing.country === null)
     throw new BillingDetailsMissingError(transfer.clientId)
-  // `current` has no adapter until #442. Only `fake` may issue.
-  if (adapter !== 'fake' || !settings.tokenSet)
+  // `none` issues nothing. `fake` and `current` both need a saved token.
+  if (adapter === 'none' || !settings.tokenSet)
     throw new InvoicingNotReadyError()
 }
 

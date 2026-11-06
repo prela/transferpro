@@ -19,17 +19,45 @@ const queue = {
   close: async () => {},
 } as JobQueue
 
-it('does not call the fake when INVOICING is current', async () => {
+const stubPort = {
+  async create() {
+    return { kind: 'unknown' as const }
+  },
+  async findByReference() {
+    return null
+  },
+  async readStatus() {
+    return { sent: false, storno: null }
+  },
+  async storno() {
+    return { kind: 'unknown' as const }
+  },
+  async findStorno() {
+    return null
+  },
+}
+
+it('runs the create job for the current-tool adapter and does not require the fake', async () => {
   selectInvoicingMode('current')
   try {
     let stepped = false
     await handleInvoiceCreateJob(job, async () => {
       stepped = true
       return undefined as never
-    }, queue, { info() {} } as never)
-    expect(stepped).toBe(false)
+    }, queue, { info() {} } as never, stubPort)
+    expect(stepped).toBe(true)
   }
   finally {
     selectInvoicingMode('none')
   }
+})
+
+it('does not run the create job when INVOICING is none', async () => {
+  selectInvoicingMode('none')
+  let stepped = false
+  await handleInvoiceCreateJob(job, async () => {
+    stepped = true
+    return undefined as never
+  }, queue, { info() {} } as never, stubPort)
+  expect(stepped).toBe(false)
 })

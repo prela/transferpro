@@ -7,7 +7,7 @@ import { invoiceStateSchema, transferInvoiceSchema } from '../../../../shared'
 import { getLogger } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { performInvoiceStorno } from '../application/storno'
-import { invoicingPort } from './invoice-job'
+import { invoicingPortForTenant } from './invoice-job'
 import { invoicingMode } from './mode'
 
 /** The only payload is the invoice id (ADR-0035). */
@@ -178,9 +178,9 @@ export async function handleInvoiceStornoJob(
   log: Logger = getLogger(),
 ): Promise<void> {
   const { invoiceId } = jobData.parse(job.data)
-  if (invoicingMode() !== 'fake')
+  if (invoicingMode() === 'none')
     return
-  const port = invoicingPort()
+  const port = invoicingPortForTenant(job.tenantId)
   await performInvoiceStorno(invoiceId, port, {
     async load(id) {
       return step(async (transaction) => {

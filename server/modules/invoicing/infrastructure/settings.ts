@@ -5,11 +5,11 @@ import { Buffer } from 'node:buffer'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { EMPTY_INVOICING_SETTINGS, invoicingSettingsSchema, invoicingVatRateSchema, StaleSaveError } from '../../../../shared'
-import { hideDatabaseError, postgresErrorCode } from '../../../core'
+import { hideDatabaseError, loadAppEnv, postgresErrorCode } from '../../../core'
 import { appendAuditEntry } from '../../audit'
 import { TenantAccessError } from '../../tenancy'
 import { saveInvoicingSettings } from '../application/save-settings'
-import { InvoicingKeyMissingError, InvoicingTokenDecryptError } from '../domain/token-cipher'
+import { decryptInvoicingToken, InvoicingKeyMissingError, InvoicingTokenDecryptError, InvoicingTokenMissingError } from '../domain/token-cipher'
 
 /**
  * The one invoicing-settings row for the session's Tenant.
@@ -159,6 +159,22 @@ function repository(transaction: TenantTransaction, actorUserId: string): Invoic
       })
     },
   }
+}
+
+/**
+ * The plaintext token for one call. The caller commits this transaction
+ * before it talks to the tool. The plaintext is the return value and is
+ * not logged.
+ */
+export async function readDecryptedInvoicingToken(transaction: TenantTransaction, tenantId: string): Promise<string> {
+  const key = loadAppEnv().INVOICING_SECRET_KEY
+  if (!key)
+    throw new InvoicingKeyMissingError()
+  const selected = storedRows.parse(await transaction.execute(sql.raw(selectColumns)))
+  const stored = toStored(selected.rows[0])
+  if (!stored?.ciphertext || !stored.nonce)
+    throw new InvoicingTokenMissingError()
+  return decryptInvoicingToken(stored.ciphertext, stored.nonce, key, tenantId)
 }
 
 /**

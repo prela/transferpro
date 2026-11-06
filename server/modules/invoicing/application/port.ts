@@ -59,11 +59,13 @@ export interface InvoiceStatusRead {
 /**
  * A storno returns no id. `unknown` means the call may have created the
  * negative invoice anyway, so it is never repeated (ADR-0051).
+ * `unavailable` is the tool's "wait" (status 100): nothing was stornoed,
+ * so the office may ask again.
  */
 export type InvoiceStornoResult
   = | { readonly kind: 'accepted' }
     | { readonly kind: 'unknown' }
-    | { readonly kind: 'refused', readonly reason: Exclude<InvoiceReason, 'unavailable'> }
+    | { readonly kind: 'refused', readonly reason: InvoiceReason }
 
 /** The negative invoice, once the tool has it. `sent` is the office's send. */
 export interface StornoDocument {

@@ -8,7 +8,7 @@ export { InvoiceNotWithdrawableError, withdrawFailedInvoice } from './applicatio
  */
 export { INVOICE_CREATE_LEASE_MS, invoiceLanguage, invoiceLineText } from './domain/invoice'
 export { InvoicingKeyMissingError } from './domain/token-cipher'
-export { handleInvoiceCreateJob, insertRequestedInvoice, INVOICE_CREATE_QUEUE, invoicingPort, lockOpenInvoice, readOpenInvoice, readOpenInvoicesForTransfers, replaceFailedInvoice, startInvoiceCreateWorker } from './infrastructure/invoice-job'
+export { handleInvoiceCreateJob, insertRequestedInvoice, INVOICE_CREATE_QUEUE, invoicingPort, invoicingPortForTenant, lockOpenInvoice, readOpenInvoice, readOpenInvoicesForTransfers, replaceFailedInvoice, startInvoiceCreateWorker } from './infrastructure/invoice-job'
 export { readInvoiceHomeNotices, readLatestInvoiceStates } from './infrastructure/invoice-status'
 export { startInvoiceStatusWorker } from './infrastructure/invoice-status-worker'
 export { beginInvoiceStorno, finishInvoiceWithdraw, handleInvoiceStornoJob, INVOICE_STORNO_QUEUE, readFailedInvoiceForWithdraw, startInvoiceStornoWorker } from './infrastructure/invoice-storno'
