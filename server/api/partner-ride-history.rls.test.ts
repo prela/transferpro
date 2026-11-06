@@ -4,7 +4,7 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { instantFromWallClock, RIDE_HISTORY_PAGE_SIZE, rideHistorySchema, transferDaySchema } from '../../shared'
+import { addCalendarDays, instantFromWallClock, operationalDateInTimeZone, RIDE_HISTORY_PAGE_SIZE, rideHistorySchema, transferDaySchema } from '../../shared'
 import { createClient } from '../modules/clients'
 import { createDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
@@ -425,11 +425,15 @@ it('lists open and closed Rides newest first, keeps an archived Partner, and cou
 it('pages 50 rides and counts a closed Ride that is not on the page', async () => {
   const world = await office('prh-page')
   const partner = await createPartner(world.admin, { name: 'Dugi podizvođač', phone: null, email: null, note: null })
-  const doneId = await recordRide(world.admin, world, 'Najstariji zatvoreni', '2026-10-01T08:00')
+  // Yesterday stays inside the 30×24h create window. A fixed 1 October
+  // wall is outside it, and the create returns 400. This Ride is still
+  // the oldest: the page rows start two hours later on the same day.
+  const day = addCalendarDays(operationalDateInTimeZone(zone, new Date(), 5), -1)
+  const doneId = await recordRide(world.admin, world, 'Najstariji zatvoreni', `${day}T08:00`)
   await handOff(world.admin, doneId, partner.id)
   await expectOk(await call('POST', `/api/rides/${doneId}/done`, world.admin, {}))
 
-  const base = instantFromWallClock('2026-10-01T10:00', zone).getTime()
+  const base = instantFromWallClock(`${day}T10:00`, zone).getTime()
   const seeded: { guestName: string, pickupAt: string }[] = []
   for (let index = 0; index < pageSize; index += 1) {
     const guestName = `n${String(index).padStart(2, '0')}`
