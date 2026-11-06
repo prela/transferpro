@@ -8,6 +8,8 @@ import { canCallOff, canChangeAssignment, canChangePartner, canHandOff, canNoSho
 const props = defineProps<{
   cell: 'phone' | 'time' | 'flight' | 'guest' | 'route' | 'client' | 'crew' | 'state' | 'price' | 'actions'
   ride?: TransferDayRide
+  /** Phone cards start compact. The desktop expand control lives in the table. */
+  expanded?: boolean
   locations?: readonly Location[]
   drivers?: Driver[]
   vehicles?: Vehicle[]
@@ -38,6 +40,7 @@ const emit = defineEmits<{
   returnJourney: [ride: TransferDayRide]
   extraVehicle: [ride: TransferDayRide]
   open: [ride: TransferDayRide]
+  toggle: []
 }>()
 
 const { t } = useI18n()
@@ -216,6 +219,18 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     @keydown.enter.self.prevent="emit('open', ride)"
   >
     <div class="flex min-w-0 items-center gap-2">
+      <UButton
+        type="button"
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        :icon="expanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+        class="h-11 min-h-11 shrink-0 px-2"
+        :aria-expanded="expanded === true"
+        :aria-controls="expanded ? `transfer-day-more-${ride.rideId}` : undefined"
+        :aria-label="t(expanded ? 'transfers.collapseRow' : 'transfers.expandRow', { guest: ride.guestName })"
+        @click.stop="emit('toggle')"
+      />
       <!--
         The date stacks under the clock. A full instant on this line
         squeezes the guest name to nothing on a phone.
@@ -274,6 +289,33 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
         @accept-by-phone="emit('acceptByPhone', $event)"
         @mark-done="emit('markDone', $event)"
       />
+    </div>
+    <div
+      v-if="expanded"
+      :id="`transfer-day-more-${ride.rideId}`"
+      class="grid gap-1 ps-12 text-xs"
+      role="region"
+      :aria-label="t('transfers.rowDetails', { guest: ride.guestName })"
+    >
+      <span>
+        <span class="text-muted">{{ t('transfers.columns.flight') }}: </span>
+        <span
+          v-if="ride.flightNumber"
+          class="font-mono"
+        >{{ ride.flightNumber }}</span>
+        <span
+          v-if="ride.landingAt"
+          class="ms-1 text-muted"
+        >{{ t('transfers.landed', { time: clock(ride.landingAt) }) }}</span>
+        <span
+          v-else-if="ride.expectedArrival"
+          class="ms-1 text-muted"
+        >{{ t('transfers.expected', { time: clock(ride.expectedArrival) }) }}</span>
+      </span>
+      <span>
+        <span class="text-muted">{{ t('transfers.columns.client') }}: </span>{{ clientName() }}
+      </span>
+      <span>{{ priceLabel(ride.price) }} <span class="text-muted">{{ t(`transfers.payments.${ride.payment}`) }}</span></span>
     </div>
   </div>
 

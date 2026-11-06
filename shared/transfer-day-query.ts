@@ -1,4 +1,5 @@
 import type { DisplayLocale } from './display-locale'
+import type { RideState } from './transfer'
 import { addCalendarDays, isCalendarDate, operationalDateInTimeZone } from './date'
 
 /**
@@ -41,6 +42,88 @@ export function transferDayPartyMatches(
   if (clientId !== '' && ride.clientId !== clientId)
     return false
   if (driverId !== '' && ride.driverId !== driverId)
+    return false
+  return true
+}
+
+/**
+ * The Ride-state filter beside the search. Waiting on acceptance is its
+ * own value, so "assigned" is an assignment that is not waiting, or an
+ * accepted Ride. Closed is done, no-show, and cancelled. In progress stays
+ * a quick-filter chip; it is not a fifth state here.
+ */
+export const TRANSFER_DAY_RIDE_STATE_FILTERS = [
+  'unassigned',
+  'waiting',
+  'assigned',
+  'handedOff',
+  'closed',
+] as const
+
+export type TransferDayRideStateFilter = (typeof TRANSFER_DAY_RIDE_STATE_FILTERS)[number]
+
+/** A query that is not one of the five states does not narrow the list. */
+export function parseTransferDayRideState(value: unknown): TransferDayRideStateFilter | '' {
+  if (typeof value === 'string' && (TRANSFER_DAY_RIDE_STATE_FILTERS as readonly string[]).includes(value))
+    return value as TransferDayRideStateFilter
+  return ''
+}
+
+/**
+ * One loaded day row, as far as the filters beside the search need it.
+ * `needsAttention` is an urgent mark or a warning. This module does not
+ * classify; the screen does, with the same function as the marks.
+ */
+export interface TransferDayAttributeRide {
+  readonly clientId: string
+  readonly driverId: string | null
+  readonly vehicleId: string | null
+  readonly partnerId: string | null
+  readonly state: RideState
+  readonly mustAccept: boolean | null
+  readonly needsAttention: boolean
+}
+
+export interface TransferDayAttributeFilter {
+  readonly clientId: string
+  readonly driverId: string
+  readonly vehicleId: string
+  readonly partnerId: string
+  readonly rideState: TransferDayRideStateFilter | ''
+  readonly needsAttention: boolean
+}
+
+const CLOSED_STATES = new Set<RideState>(['done', 'no-show', 'cancelled'])
+
+function rideStateMatches(filter: TransferDayRideStateFilter, ride: Pick<TransferDayAttributeRide, 'state' | 'mustAccept'>): boolean {
+  if (filter === 'unassigned')
+    return ride.state === 'unassigned'
+  if (filter === 'waiting')
+    return ride.state === 'assigned' && ride.mustAccept === true
+  if (filter === 'assigned')
+    return ride.state === 'accepted' || (ride.state === 'assigned' && ride.mustAccept !== true)
+  if (filter === 'handedOff')
+    return ride.state === 'handed_off'
+  return CLOSED_STATES.has(ride.state)
+}
+
+/**
+ * Every set filter must match. An empty id, an empty state, and a clear
+ * needs-attention box do not narrow. The within-day search is separate
+ * and the screen combines the two with AND.
+ */
+export function transferDayAttributeMatches(filter: TransferDayAttributeFilter, ride: TransferDayAttributeRide): boolean {
+  if (filter.clientId !== '' && ride.clientId !== filter.clientId)
+    return false
+  if (filter.driverId !== '' && ride.driverId !== filter.driverId)
+    return false
+  if (filter.vehicleId !== '' && ride.vehicleId !== filter.vehicleId)
+    return false
+  if (filter.partnerId !== '' && ride.partnerId !== filter.partnerId)
+    return false
+  if (filter.needsAttention && !ride.needsAttention)
+    return false
+  if (filter.rideState !== '' && !rideStateMatches(filter.rideState, ride))
     return false
   return true
 }

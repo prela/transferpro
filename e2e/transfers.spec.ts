@@ -121,7 +121,6 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
   await expect(page.getByRole('heading', { level: 1, name: 'Transfers' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Record a transfer', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Assign', exact: true })).toBeVisible()
-  await expect(page.getByRole('columnheader', { name: 'Flight' })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Meet sign' })).toHaveCount(0)
   await expect(page.getByRole('cell', { name: new RegExp(`^${guest}`) })).toBeVisible()
   await expect(page.getByRole('cell', { name: /^Unassigned/ })).toBeVisible()

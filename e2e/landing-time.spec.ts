@@ -124,10 +124,12 @@ test('the office Ride and the Driver Ride show a stored landing time in both lan
   await expect(detail.getByText(landingEn, { exact: true })).toBeVisible()
 
   await page.goto('/transfers')
-  await expect(page.getByRole('columnheader', { name: 'Flight' })).toBeVisible()
+  await page.getByRole('button', { name: 'Expand all', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Details: Ana Let' })).toBeVisible()
   await expect(page.getByText(landingEn)).toBeVisible()
   await switchLocale(page, 'hr')
-  await expect(page.getByRole('columnheader', { name: 'Let' })).toBeVisible()
+  await page.getByRole('button', { name: 'Proširi sve', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Detalji: Ana Let' })).toBeVisible()
   await expect(page.getByText(landingHr)).toBeVisible()
 
   const assigned = await page.request.post(`/api/rides/${body.ride.id}/assign`, {

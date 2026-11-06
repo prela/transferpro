@@ -557,6 +557,23 @@
     "allClients": "All clients",
     "driver": "Driver",
     "allDrivers": "All drivers",
+    "vehicle": "Vehicle",
+    "allVehicles": "All vehicles",
+    "partner": "Subcontractor",
+    "allPartners": "All subcontractors",
+    "rideState": "Ride state",
+    "allRideStates": "All states",
+    "rideStates": {
+      "assigned": "Assigned or accepted"
+    },
+    "needsAttention": "Needs attention",
+    "clearFilters": "Clear filters",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "expandRow": "Show details: {guest}",
+    "collapseRow": "Hide details: {guest}",
+    "rowDetails": "Details: {guest}",
+    "rowDetailsColumn": "Details",
     "unassignedAhead": "Unassigned over the next seven days",
     "filterEmpty": "No rides match this filter.",
     "filters": {

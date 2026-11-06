@@ -5,7 +5,7 @@ import { operationalDay, pinOperationalClock } from './fixtures/operational-cloc
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
-import { chooseOption, hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
+import { chooseOption, hydrated, signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 test.beforeEach(async ({ page }) => {
   // One instant for the seed and the board, including across 05:00.
@@ -128,6 +128,101 @@ test('search, Client, and Driver filters narrow the day and stay in the URL', as
   await expect(page.getByRole('button', { name: 'Sve (1)', exact: true })).toBeVisible()
 })
 
+test('state, vehicle, partner, and needs attention combine, stay in the URL, and keep a hidden urgent row in the count', async ({ page }) => {
+  const tenant = await seedTenant('transfers-narrow')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Suženo', kind: 'address' })
+  const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Suženo', kind: 'hotel' })
+  const clientId = await createdId(page, '/api/clients', { name: 'Agencija Suženo', kind: 'agency' })
+  const driverId = await createdId(page, '/api/drivers', {
+    name: 'Marko Suženo',
+    kind: 'own',
+    phone: '+385910000546',
+    drivingLicenceExpiresOn: licence,
+    transportLicenceExpiresOn: licence,
+  })
+  const vehicleId = await createdId(page, '/api/vehicles', {
+    registrationPlate: 'ZG546AA',
+    kind: 'fixed',
+    seatCount: 4,
+    registrationExpiresOn: licence,
+    technicalInspectionExpiresOn: licence,
+    insuranceExpiresOn: licence,
+  })
+  const partnerId = await createdId(page, '/api/partners', { name: 'Prijevoz Suženo' })
+  const spot = { clientId, startLocationId, endLocationId }
+  const day = addCalendarDays(operationalDay(page), -1)
+  const hidden = await record(page, 'Hitni Skriven', day, '12:00', spot, { flightNumber: 'OU546' })
+  const shown = await record(page, 'Dodijeljeni Ostaje', day, '13:00', spot)
+  const handed = await record(page, 'Predani Gost', day, '14:00', spot)
+  expect(hidden).toBeTruthy()
+  const assigned = await page.request.post(`/api/rides/${shown}/assign`, { data: { version: 0, driverId, vehicleId } })
+  expect(assigned.ok()).toBeTruthy()
+  const handedOff = await page.request.post(`/api/rides/${handed}/hand-off`, { data: { version: 0, partnerId } })
+  expect(handedOff.ok()).toBeTruthy()
+
+  await page.goto(`/transfers?day=${day}`)
+  await hydrated(page)
+  await expect(page.getByRole('button', { name: 'Hitno (3)', exact: true })).toBeVisible()
+  const state = page.getByRole('button', { name: 'Stanje vožnje', exact: true })
+  await chooseOption(page, state, 'Nedodijeljeno')
+  await expect(page).toHaveURL(/rideState=unassigned/)
+  await expect(page.getByRole('row', { name: 'Hitni Skriven' })).toBeVisible()
+  await expect(page.getByRole('row', { name: 'Dodijeljeni Ostaje' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Hitno (3)', exact: true })).toBeVisible()
+
+  await page.getByRole('searchbox', { name: 'Traži u danu' }).fill('predani')
+  await expect(page).toHaveURL(/search=predani/)
+  await expect(page.getByText('Nema vožnji za ovaj filtar.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Hitno (3)', exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page).toHaveURL(/rideState=unassigned/)
+  await expect(page).toHaveURL(/search=predani/)
+  await page.getByRole('button', { name: 'Očisti filtre', exact: true }).click()
+  await expect(page).not.toHaveURL(/rideState=/)
+  await expect(page.getByRole('row', { name: 'Predani Gost' })).toBeVisible()
+
+  const compact = page.getByRole('row', { name: 'Hitni Skriven' })
+  await expect(compact).not.toContainText('OU546')
+  const expand = compact.getByRole('button', { name: /detalje: Hitni Skriven/ })
+  await expect(expand).toHaveAttribute('aria-expanded', 'false')
+  await expand.click()
+  await expect(expand).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.getByRole('region', { name: 'Detalji: Hitni Skriven' })).toContainText('OU546')
+  await page.getByRole('button', { name: 'Proširi sve', exact: true }).click()
+  await expect(page.getByRole('button', { name: /detalje: Dodijeljeni Ostaje/ })).toHaveAttribute('aria-expanded', 'true')
+  await page.getByRole('button', { name: 'Skupi sve', exact: true }).click()
+  await expect(expand).toHaveAttribute('aria-expanded', 'false')
+
+  await chooseOption(page, page.getByRole('button', { name: 'Vozilo', exact: true }), 'ZG546AA')
+  await expect(page).toHaveURL(new RegExp(`vehicle=${vehicleId}`))
+  await expect(page.getByRole('row', { name: 'Dodijeljeni Ostaje' })).toBeVisible()
+  await expect(page.getByRole('row', { name: 'Hitni Skriven' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Hitno (3)', exact: true })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('row', { name: 'Dodijeljeni Ostaje' })).toBeVisible()
+
+  await chooseOption(page, page.getByRole('button', { name: 'Podizvođač', exact: true }), 'Prijevoz Suženo')
+  await expect(page.getByText('Nema vožnji za ovaj filtar.')).toBeVisible()
+  await page.getByRole('button', { name: 'Očisti filtre', exact: true }).click()
+
+  await chooseOption(page, page.getByRole('button', { name: 'Podizvođač', exact: true }), 'Prijevoz Suženo')
+  await expect(page).toHaveURL(new RegExp(`partner=${partnerId}`))
+  await expect(page.getByRole('row', { name: 'Predani Gost' })).toBeVisible()
+  await expect(page.getByRole('row', { name: 'Hitni Skriven' })).toHaveCount(0)
+  await page.getByRole('checkbox', { name: 'Treba pažnju' }).click()
+  await expect(page).toHaveURL(/attention=1/)
+  await expect(page.getByRole('row', { name: 'Predani Gost' })).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('checkbox', { name: 'Treba pažnju' })).toBeChecked()
+  await expectNoAxeViolations(page)
+  await switchTheme(page, 'dark')
+  await switchLocale(page, 'en')
+  await expect(page.getByRole('checkbox', { name: 'Needs attention' })).toBeChecked()
+  await expect(page.getByRole('button', { name: 'Ride state', exact: true })).toBeVisible()
+  await expectNoAxeViolations(page)
+})
+
 test('the seven-day note names tomorrow and opens that day', async ({ page }) => {
   const tenant = await seedTenant('transfers-note')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
@@ -175,12 +270,23 @@ test.describe('@phone', () => {
       await page.goto('/transfers')
       await hydrated(page)
       await expect(page.getByRole('searchbox', { name: 'Traži u danu' })).toBeVisible()
+      await expect(page.getByRole('checkbox', { name: 'Treba pažnju' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Stanje vožnje', exact: true })).toBeVisible()
       await expect(page.getByRole('button', { name: 'sutra 1', exact: true })).toBeVisible()
+      await page.getByRole('button', { name: 'sutra 1', exact: true }).click()
+      const card = phone
+        ? page.getByRole('listitem').filter({ hasText: 'Sutra Telefon' })
+        : page.getByRole('row', { name: 'Sutra Telefon' })
+      const expand = card.getByRole('button', { name: /detalje: Sutra Telefon/ })
+      await expand.click()
+      await expect(expand).toHaveAttribute('aria-expanded', 'true')
       await expectNoAxeViolations(page)
       if (theme === 'light') {
         await switchLocale(page, 'en')
         await expect(page.getByRole('searchbox', { name: 'Search this day' })).toBeVisible()
-        await expect(page.getByRole('button', { name: 'tomorrow 1', exact: true })).toBeVisible()
+        await expect(page.getByRole('checkbox', { name: 'Needs attention' })).toBeVisible()
+        await expect(page.getByRole('button', { name: 'Ride state', exact: true })).toBeVisible()
+        await expect(card.getByRole('button', { name: /details: Sutra Telefon/ })).toBeVisible()
         await expect(page.getByRole('button', { name: 'Client', exact: true })).toBeVisible()
         await expectNoAxeViolations(page)
       }
