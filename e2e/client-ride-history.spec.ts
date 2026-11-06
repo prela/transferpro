@@ -4,6 +4,7 @@ import { formatInstant } from '../shared/format-instant'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
+import { rideHistoryClock } from './fixtures/ride-history-clock'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
 
@@ -118,16 +119,17 @@ test.describe('@phone', () => {
       insuranceExpiresOn: licence,
     })
     const booking = { clientId, startLocationId, endLocationId }
-    const newestWall = '2026-10-20T12:00'
+    const clock = rideHistoryClock()
+    const newestWall = clock.newestWall
     const rows: { guestName: string, wall: string, price: number, payment: 'cash' | 'card' | 'invoice_to_agency' }[] = [
       { guestName: 'Ana Najnovija', wall: newestWall, price: 42.5, payment: 'cash' },
     ]
     for (let index = 1; index <= 47; index += 1)
-      rows.push({ guestName: `Gost ${String(index).padStart(2, '0')}`, wall: wallBefore(index), price: 10, payment: 'cash' })
+      rows.push({ guestName: `Gost ${String(index).padStart(2, '0')}`, wall: clock.wallBefore(index), price: 10, payment: 'cash' })
     rows.push(
-      { guestName: 'Završeni Gost', wall: '2026-10-18T12:00', price: 15, payment: 'card' },
-      { guestName: 'Gost Nedolazak', wall: '2026-10-17T12:00', price: 8, payment: 'cash' },
-      { guestName: 'Stari Gost', wall: '2026-10-01T09:00', price: 0, payment: 'invoice_to_agency' },
+      { guestName: 'Završeni Gost', wall: clock.doneWall, price: 15, payment: 'card' },
+      { guestName: 'Gost Nedolazak', wall: clock.noShowWall, price: 8, payment: 'cash' },
+      { guestName: 'Stari Gost', wall: clock.oldestWall, price: 0, payment: 'invoice_to_agency' },
     )
     const ids = await bookAll(page, booking, rows)
     const newestId = ids[0]
@@ -203,7 +205,7 @@ test.describe('@phone', () => {
     const clientId = await createdId(page, '/api/clients', { name: 'Hotel Sunce', kind: 'hotel' })
     const startLocationId = await createdId(page, '/api/locations', { name: 'Start Sunce', kind: 'address' })
     const endLocationId = await createdId(page, '/api/locations', { name: 'End Sunce', kind: 'hotel' })
-    const wall = '2026-10-20T15:30'
+    const wall = rideHistoryClock().englishWall
     const rideId = await book(page, { clientId, startLocationId, endLocationId }, 'Iva English', wall, 10, 'cash')
 
     await page.goto('/clients')
@@ -232,17 +234,6 @@ test.describe('@phone', () => {
     await expect(page.locator('#ride-detail').getByRole('heading', { level: 2, name: 'Iva English' })).toBeVisible()
   })
 })
-
-/**
- * `index` minutes before 20 October 2026 at 12:00. Forty-seven minutes
- * still lands at 11:13 that day, so these Rides sort just behind the newest.
- */
-function wallBefore(index: number): string {
-  const total = 12 * 60 - index
-  const hour = String(Math.floor(total / 60)).padStart(2, '0')
-  const minute = String(total % 60).padStart(2, '0')
-  return `2026-10-20T${hour}:${minute}`
-}
 
 async function assign(page: Page, rideId: string, driverId: string, vehicleId: string) {
   const response = await page.request.post(`/api/rides/${rideId}/assign`, {
