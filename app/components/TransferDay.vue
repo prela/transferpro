@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DisplayLocale, LiveRefreshOutcome, TransferBoardFilter, TransferDayRide, TransferPrefill } from '../../shared'
 import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
-import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, recallTransferDraft, recordedSeatCount, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferAwaitingInvoice, transferDayFilterCounts, transferDayFilterMatches, transferDayPartyMatches, transferDaySearchMatches } from '../../shared'
+import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, parseTransferDayRideState, recallTransferDraft, recordedSeatCount, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferAwaitingInvoice, transferDayAttributeMatches, transferDayFilterCounts, transferDayFilterMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
 import { groupRouteLeftKey } from '../composables/transfer-form'
@@ -43,6 +43,10 @@ const filter = ref<TransferBoardFilter>(parseTransferDayFilter(route.query.filte
 const search = ref(queryText(route.query.search))
 const clientId = ref<string | null>(queryText(route.query.client) || null)
 const driverId = ref<string | null>(queryText(route.query.driver) || null)
+const vehicleId = ref<string | null>(queryText(route.query.vehicle) || null)
+const partnerId = ref<string | null>(queryText(route.query.partner) || null)
+const rideState = ref(parseTransferDayRideState(route.query.rideState))
+const needsAttention = ref(queryText(route.query.attention) === '1')
 
 const {
   day,
@@ -118,6 +122,10 @@ const unassignedNote = computed(() => sevenDayUnassignedNote(
   props.locale,
 ))
 
+function rideNeedsAttention(ride: TransferDayRide): boolean {
+  return classifyRideAttention(withSeatCount(ride), declinesFor(ride.rideId), nowMs.value).length > 0
+}
+
 const narrowedRides = computed(() => rides.value.filter(ride =>
   transferDaySearchMatches(search.value, {
     guestName: ride.guestName,
@@ -126,21 +134,49 @@ const narrowedRides = computed(() => rides.value.filter(ride =>
     tabla: ride.tabla,
     clientId: ride.clientId,
     driverId: ride.driverId,
-  }) && transferDayPartyMatches(clientId.value ?? '', driverId.value ?? '', ride),
+  }) && transferDayAttributeMatches({
+    clientId: clientId.value ?? '',
+    driverId: driverId.value ?? '',
+    vehicleId: vehicleId.value ?? '',
+    partnerId: partnerId.value ?? '',
+    rideState: rideState.value,
+    needsAttention: needsAttention.value,
+  }, {
+    clientId: ride.clientId,
+    driverId: ride.driverId,
+    vehicleId: ride.vehicleId,
+    partnerId: ride.partnerId,
+    state: ride.state,
+    mustAccept: ride.mustAccept,
+    needsAttention: rideNeedsAttention(ride),
+  }),
 ))
 
 function withSeatCount(ride: TransferDayRide): TransferDayRide & { seatCount: number | null } {
   return { ...ride, seatCount: recordedSeatCount(vehicles.value, ride.vehicleId) }
 }
 
-const counts = computed(() => transferDayFilterCounts(
-  narrowedRides.value.map(ride => ({
-    rideId: ride.rideId,
-    ride: withSeatCount(ride),
-    declines: declinesFor(ride.rideId),
-  })),
-  nowMs.value,
-))
+const counts = computed(() => {
+  const shown = transferDayFilterCounts(
+    narrowedRides.value.map(ride => ({
+      rideId: ride.rideId,
+      ride: withSeatCount(ride),
+      declines: declinesFor(ride.rideId),
+    })),
+    nowMs.value,
+  )
+  // A filter may hide an urgent row. The urgent chip still counts it,
+  // so the office does not lose the mark by narrowing the list.
+  const urgent = transferDayFilterCounts(
+    rides.value.map(ride => ({
+      rideId: ride.rideId,
+      ride: withSeatCount(ride),
+      declines: declinesFor(ride.rideId),
+    })),
+    nowMs.value,
+  ).urgent
+  return { ...shown, urgent }
+})
 
 const toInvoiceCount = computed(() => narrowedRides.value.filter(ride => transferAwaitingInvoice(ride)).length)
 
@@ -197,7 +233,7 @@ const shownTime = computed(() =>
   updatedAt.value === null ? '' : clockLabel(updatedAt.value, props.timeZone, props.locale),
 )
 
-const ownedQuery = ['day', 'filter', 'search', 'client', 'driver', 'ride']
+const ownedQuery = ['day', 'filter', 'search', 'client', 'driver', 'vehicle', 'partner', 'rideState', 'attention', 'ride']
 
 function buildQuery(): Record<string, string | string[]> {
   const query: Record<string, string | string[]> = {}
@@ -222,6 +258,14 @@ function buildQuery(): Record<string, string | string[]> {
     query.client = clientId.value
   if (driverId.value)
     query.driver = driverId.value
+  if (vehicleId.value)
+    query.vehicle = vehicleId.value
+  if (partnerId.value)
+    query.partner = partnerId.value
+  if (rideState.value !== '')
+    query.rideState = rideState.value
+  if (needsAttention.value)
+    query.attention = '1'
   if (openRideId.value)
     query.ride = openRideId.value
   return query
@@ -287,6 +331,10 @@ function applyRouteQuery() {
   const nextSearch = queryText(route.query.search)
   const nextClient = queryText(route.query.client) || null
   const nextDriver = queryText(route.query.driver) || null
+  const nextVehicle = queryText(route.query.vehicle) || null
+  const nextPartner = queryText(route.query.partner) || null
+  const nextRideState = parseTransferDayRideState(route.query.rideState)
+  const nextAttention = queryText(route.query.attention) === '1'
   const nextDay = queryText(route.query.day)
   if (filter.value !== nextFilter)
     filter.value = nextFilter
@@ -296,6 +344,14 @@ function applyRouteQuery() {
     clientId.value = nextClient
   if (driverId.value !== nextDriver)
     driverId.value = nextDriver
+  if (vehicleId.value !== nextVehicle)
+    vehicleId.value = nextVehicle
+  if (partnerId.value !== nextPartner)
+    partnerId.value = nextPartner
+  if (rideState.value !== nextRideState)
+    rideState.value = nextRideState
+  if (needsAttention.value !== nextAttention)
+    needsAttention.value = nextAttention
   if (isCalendarDate(nextDay) && day.value !== nextDay)
     day.value = nextDay
   const nextRide = queryText(route.query.ride) || null
@@ -312,7 +368,7 @@ watch(day, () => {
   void loadDay()
 })
 
-watch([filter, search, clientId, driverId, openRideId], () => {
+watch([filter, search, clientId, driverId, vehicleId, partnerId, rideState, needsAttention, openRideId], () => {
   void syncQuery()
 })
 
@@ -372,6 +428,17 @@ watch(() => route.query, () => {
 
 function goToday() {
   day.value = operationalDateInTimeZone(props.timeZone, new Date(), props.operationalDayStartHour)
+}
+
+function clearFilters() {
+  filter.value = 'all'
+  search.value = ''
+  clientId.value = null
+  driverId.value = null
+  vehicleId.value = null
+  partnerId.value = null
+  rideState.value = ''
+  needsAttention.value = false
 }
 
 const openRide = computed(() => rides.value.find(ride => ride.rideId === openRideId.value) ?? null)
@@ -732,10 +799,16 @@ onUnmounted(() => {
       v-model:search="search"
       v-model:client-id="clientId"
       v-model:driver-id="driverId"
+      v-model:vehicle-id="vehicleId"
+      v-model:partner-id="partnerId"
+      v-model:ride-state="rideState"
+      v-model:needs-attention="needsAttention"
       :counts="counts"
       :to-invoice-count="toInvoiceCount"
       :clients="clients"
       :drivers="drivers"
+      :vehicles="vehicles.map(vehicle => ({ id: vehicle.id, name: vehicle.registrationPlate }))"
+      :partners="partners.map(partner => ({ id: partner.id, name: partner.name }))"
       :note="unassignedNote"
       @today="goToday"
       @add="startAdd()"
@@ -898,6 +971,7 @@ onUnmounted(() => {
           :day="day"
           :now-ms="nowMs"
           :filtered-empty="filteredEmpty"
+          @clear-filters="clearFilters"
           @open="showRide($event, null)"
           @assign="showRide($event, 'assign')"
           @landing="showRide($event, 'landing')"

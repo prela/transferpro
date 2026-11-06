@@ -557,6 +557,23 @@
     "allClients": "Svi naručitelji",
     "driver": "Vozač",
     "allDrivers": "Svi vozači",
+    "vehicle": "Vozilo",
+    "allVehicles": "Sva vozila",
+    "partner": "Podizvođač",
+    "allPartners": "Svi podizvođači",
+    "rideState": "Stanje vožnje",
+    "allRideStates": "Sva stanja",
+    "rideStates": {
+      "assigned": "Dodijeljeno ili prihvaćeno"
+    },
+    "needsAttention": "Treba pažnju",
+    "clearFilters": "Očisti filtre",
+    "expandAll": "Proširi sve",
+    "collapseAll": "Skupi sve",
+    "expandRow": "Prikaži detalje: {guest}",
+    "collapseRow": "Sakrij detalje: {guest}",
+    "rowDetails": "Detalji: {guest}",
+    "rowDetailsColumn": "Detalji",
     "unassignedAhead": "Nedodijeljeno u idućih sedam dana",
     "filterEmpty": "Nema vožnji za ovaj filtar.",
     "filters": {

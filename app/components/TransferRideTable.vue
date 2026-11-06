@@ -37,6 +37,7 @@ const emit = defineEmits<{
   returnJourney: [ride: TransferDayRide]
   extraVehicle: [ride: TransferDayRide]
   add: []
+  clearFilters: []
 }>()
 
 const { t } = useI18n()
@@ -57,16 +58,44 @@ onMounted(() => {
 
 const clip = { class: { td: 'max-w-0 overflow-hidden text-ellipsis whitespace-nowrap', th: 'max-w-0' } }
 const columns = computed(() => [
+  { id: 'expand', header: '', meta: { class: { td: 'w-10 px-1', th: 'w-10' } } },
   { id: 'time', header: t('transfers.columns.time'), meta: { class: { td: 'whitespace-nowrap w-14', th: 'w-14' } } },
-  { id: 'flight', header: t('transfers.columns.flight'), meta: clip },
-  { id: 'guest', header: t('transfers.columns.guest'), meta: clip },
   { id: 'route', header: t('transfers.columns.route'), meta: clip },
-  { id: 'client', header: t('transfers.columns.client'), meta: clip },
+  { id: 'guest', header: t('transfers.columns.guest'), meta: clip },
   { id: 'crew', header: t('transfers.columns.crew'), meta: clip },
   { id: 'state', header: t('transfers.columns.state'), meta: clip },
-  { id: 'price', header: t('transfers.columns.price'), meta: { class: { td: 'whitespace-nowrap w-28', th: 'w-28' } } },
   { id: 'actions', header: '', meta: { class: { td: 'whitespace-nowrap w-48', th: 'w-48' } } },
 ])
+
+/**
+ * Compact by default. A row id is expanded, or every visible row is,
+ * after Expand all. The address does not store this: a shared link
+ * keeps the filters, and the glance stays compact.
+ */
+const expanded = ref<Record<string, boolean>>({})
+
+function rowExpanded(rideId: string): boolean {
+  return expanded.value[rideId] === true
+}
+
+function toggleRow(rideId: string) {
+  expanded.value = { ...expanded.value, [rideId]: !rowExpanded(rideId) }
+}
+
+const allExpanded = computed(() =>
+  props.rides.length > 0 && props.rides.every(ride => rowExpanded(ride.rideId)),
+)
+
+function toggleAll() {
+  if (allExpanded.value) {
+    expanded.value = {}
+    return
+  }
+  const next: Record<string, boolean> = {}
+  for (const ride of props.rides)
+    next[ride.rideId] = true
+  expanded.value = next
+}
 
 const showSkeleton = computed(() => props.loading && props.rides.length === 0 && !props.loadError)
 const showEmptyDay = computed(() => !props.loading && !props.loadError && props.rides.length === 0)
@@ -105,6 +134,16 @@ const shared = computed(() => ({
   </div>
   <p v-else-if="filteredEmpty">
     {{ t('transfers.filterEmpty') }}
+    <UButton
+      type="button"
+      color="neutral"
+      variant="outline"
+      size="sm"
+      class="ms-2 h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
+      @click="emit('clearFilters')"
+    >
+      {{ t('transfers.clearFilters') }}
+    </UButton>
   </p>
   <div
     v-else-if="showEmptyDay"
@@ -129,10 +168,26 @@ const shared = computed(() => ({
     :aria-label="t('transfers.title')"
     tabindex="0"
   >
+    <div class="mb-2 flex justify-end">
+      <UButton
+        type="button"
+        color="neutral"
+        variant="outline"
+        size="sm"
+        class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
+        :aria-expanded="allExpanded"
+        @click="toggleAll"
+      >
+        {{ allExpanded ? t('transfers.collapseAll') : t('transfers.expandAll') }}
+      </UButton>
+    </div>
     <UTable
       v-if="!phoneLayout"
+      v-model:expanded="expanded"
       :data="rides"
       :columns="columns"
+      :get-row-id="(ride: TransferDayRide) => ride.rideId"
+      :expanded-options="{ getRowCanExpand: () => true }"
       :on-select="(_event, row) => emit('open', row.original)"
       :ui="{
         root: 'relative overflow-x-hidden',
@@ -142,17 +197,26 @@ const shared = computed(() => ({
         tr: 'h-9',
       }"
     >
+      <template #expand-header>
+        <span class="sr-only">{{ t('transfers.rowDetailsColumn') }}</span>
+      </template>
+      <template #expand-cell="{ row }">
+        <UButton
+          type="button"
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          class="h-7 min-h-7 px-1"
+          :icon="rowExpanded(row.original.rideId) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+          :aria-expanded="rowExpanded(row.original.rideId)"
+          :aria-controls="rowExpanded(row.original.rideId) ? `transfer-day-more-${row.original.rideId}` : undefined"
+          :aria-label="t(rowExpanded(row.original.rideId) ? 'transfers.collapseRow' : 'transfers.expandRow', { guest: row.original.guestName })"
+          @click="toggleRow(row.original.rideId)"
+        />
+      </template>
       <template #time-cell="{ row }">
         <TransferRideRow
           cell="time"
-          :ride="row.original"
-          v-bind="shared"
-          :declines="declinesFor(row.original.rideId)"
-        />
-      </template>
-      <template #flight-cell="{ row }">
-        <TransferRideRow
-          cell="flight"
           :ride="row.original"
           v-bind="shared"
           :declines="declinesFor(row.original.rideId)"
@@ -174,14 +238,6 @@ const shared = computed(() => ({
           :declines="declinesFor(row.original.rideId)"
         />
       </template>
-      <template #client-cell="{ row }">
-        <TransferRideRow
-          cell="client"
-          :ride="row.original"
-          v-bind="shared"
-          :declines="declinesFor(row.original.rideId)"
-        />
-      </template>
       <template #crew-cell="{ row }">
         <TransferRideRow
           cell="crew"
@@ -193,14 +249,6 @@ const shared = computed(() => ({
       <template #state-cell="{ row }">
         <TransferRideRow
           cell="state"
-          :ride="row.original"
-          v-bind="shared"
-          :declines="declinesFor(row.original.rideId)"
-        />
-      </template>
-      <template #price-cell="{ row }">
-        <TransferRideRow
-          cell="price"
           :ride="row.original"
           v-bind="shared"
           :declines="declinesFor(row.original.rideId)"
@@ -234,6 +282,41 @@ const shared = computed(() => ({
           @extra-vehicle="emit('extraVehicle', $event)"
         />
       </template>
+      <template #expanded="{ row }">
+        <div
+          :id="`transfer-day-more-${row.original.rideId}`"
+          class="flex flex-wrap gap-x-4 gap-y-1 py-1 text-sm"
+          role="region"
+          :aria-label="t('transfers.rowDetails', { guest: row.original.guestName })"
+        >
+          <span>
+            <span class="text-muted">{{ t('transfers.columns.flight') }}: </span>
+            <TransferRideRow
+              cell="flight"
+              :ride="row.original"
+              v-bind="shared"
+              :declines="declinesFor(row.original.rideId)"
+            />
+          </span>
+          <span>
+            <span class="text-muted">{{ t('transfers.columns.client') }}: </span>
+            <TransferRideRow
+              cell="client"
+              :ride="row.original"
+              v-bind="shared"
+              :declines="declinesFor(row.original.rideId)"
+            />
+          </span>
+          <span>
+            <TransferRideRow
+              cell="price"
+              :ride="row.original"
+              v-bind="shared"
+              :declines="declinesFor(row.original.rideId)"
+            />
+          </span>
+        </div>
+      </template>
     </UTable>
     <ul
       v-else
@@ -246,8 +329,10 @@ const shared = computed(() => ({
         <TransferRideRow
           cell="phone"
           :ride="ride"
+          :expanded="rowExpanded(ride.rideId)"
           v-bind="shared"
           :declines="declinesFor(ride.rideId)"
+          @toggle="toggleRow(ride.rideId)"
           @assign="emit('assign', $event)"
           @landing="emit('landing', $event)"
           @accept-by-phone="emit('acceptByPhone', $event)"

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { instantFromWallClock } from './date'
 import { transferDayFilterCounts } from './ride-attention'
-import { sevenDayUnassignedNote, transferDayPartyMatches, transferDaySearchMatches } from './transfer-day-query'
+import { parseTransferDayRideState, sevenDayUnassignedNote, transferDayAttributeMatches, transferDayPartyMatches, transferDaySearchMatches } from './transfer-day-query'
 
 /**
  * Within-day search, Client and Driver narrowing, and the seven-day
@@ -70,6 +70,71 @@ it('counts quick filters on the rows the search and the party filters already ke
     inProgress: 0,
     closed: 0,
   })
+})
+
+const VEHICLE = '00000000-0000-4000-8000-000000000020'
+const PARTNER = '00000000-0000-4000-8000-000000000030'
+
+function attributeRide(overrides: Partial<Parameters<typeof transferDayAttributeMatches>[1]> = {}) {
+  return {
+    clientId: CLIENT,
+    driverId: DRIVER as string | null,
+    vehicleId: VEHICLE as string | null,
+    partnerId: null as string | null,
+    state: 'assigned' as const,
+    mustAccept: false as boolean | null,
+    needsAttention: false,
+    ...overrides,
+  }
+}
+
+const openFilter = {
+  clientId: '',
+  driverId: '',
+  vehicleId: '',
+  partnerId: '',
+  rideState: '' as const,
+  needsAttention: false,
+}
+
+it('combines Ride state, crew, Partner, Client, and needs-attention with AND', () => {
+  const row = attributeRide()
+  expect(transferDayAttributeMatches(openFilter, row)).toBe(true)
+  expect(transferDayAttributeMatches({ ...openFilter, clientId: CLIENT, driverId: DRIVER }, row)).toBe(true)
+  expect(transferDayAttributeMatches({ ...openFilter, clientId: OTHER_CLIENT }, row)).toBe(false)
+  expect(transferDayAttributeMatches({ ...openFilter, driverId: DRIVER }, attributeRide({ driverId: null }))).toBe(false)
+  expect(transferDayAttributeMatches({ ...openFilter, vehicleId: VEHICLE }, row)).toBe(true)
+  expect(transferDayAttributeMatches({ ...openFilter, vehicleId: VEHICLE }, attributeRide({ vehicleId: null }))).toBe(false)
+  expect(transferDayAttributeMatches({ ...openFilter, partnerId: PARTNER }, attributeRide({ partnerId: PARTNER, state: 'handed_off', driverId: null, vehicleId: null }))).toBe(true)
+  expect(transferDayAttributeMatches({ ...openFilter, partnerId: PARTNER }, row)).toBe(false)
+  expect(transferDayAttributeMatches({ ...openFilter, needsAttention: true }, row)).toBe(false)
+  expect(transferDayAttributeMatches({ ...openFilter, needsAttention: true }, attributeRide({ needsAttention: true }))).toBe(true)
+  expect(transferDayAttributeMatches({ ...openFilter, needsAttention: false }, attributeRide({ needsAttention: true }))).toBe(true)
+  // A Client match does not keep a Ride the state filter rejects.
+  expect(transferDayAttributeMatches({ ...openFilter, clientId: CLIENT, rideState: 'unassigned' }, row)).toBe(false)
+  expect(transferDayAttributeMatches({ ...openFilter, clientId: CLIENT, rideState: 'assigned' }, row)).toBe(true)
+})
+
+it('splits waiting on acceptance from assigned or accepted, and closed from a handoff', () => {
+  expect(transferDayAttributeMatches({ ...openFilter, rideState: 'unassigned' }, attributeRide({ state: 'unassigned', driverId: null, vehicleId: null, mustAccept: null }))).toBe(true)
+  expect(transferDayAttributeMatches({ ...openFilter, rideState: 'waiting' }, attributeRide({ state: 'assigned', mustAccept: true }))).toBe(true)
+  expect(transferDayAttributeMatches({ ...openFilter, rideState: 'assigned' }, attributeRide({ state: 'assigned', mustAccept: true }))).toBe(false)
+  expect(transferDayAttributeMatches({ ...openFilter, rideState: 'assigned' }, attributeRide({ state: 'assigned', mustAccept: false }))).toBe(true)
+  expect(transferDayAttributeMatches({ ...openFilter, rideState: 'assigned' }, attributeRide({ state: 'accepted', mustAccept: true }))).toBe(true)
+  expect(transferDayAttributeMatches({ ...openFilter, rideState: 'waiting' }, attributeRide({ state: 'accepted', mustAccept: true }))).toBe(false)
+  expect(transferDayAttributeMatches({ ...openFilter, rideState: 'handedOff' }, attributeRide({ state: 'handed_off', driverId: null, vehicleId: null, partnerId: PARTNER }))).toBe(true)
+  expect(transferDayAttributeMatches({ ...openFilter, rideState: 'closed' }, attributeRide({ state: 'handed_off' }))).toBe(false)
+  for (const state of ['done', 'no-show', 'cancelled'] as const) {
+    expect(transferDayAttributeMatches({ ...openFilter, rideState: 'closed' }, attributeRide({ state }))).toBe(true)
+    expect(transferDayAttributeMatches({ ...openFilter, rideState: 'assigned' }, attributeRide({ state }))).toBe(false)
+  }
+})
+
+it('reads a Ride-state query and drops anything else', () => {
+  expect(parseTransferDayRideState('waiting')).toBe('waiting')
+  expect(parseTransferDayRideState('handedOff')).toBe('handedOff')
+  expect(parseTransferDayRideState('inProgress')).toBe('')
+  expect(parseTransferDayRideState(null)).toBe('')
 })
 
 it('names the next seven operational days that have unassigned Rides, in both locales', () => {
