@@ -1153,6 +1153,7 @@
     "cancelled": "Vožnja otkazana",
     "recordLanding": "Zabilježi slijetanje",
     "recordLandingFor": "Zabilježi slijetanje: {guest}",
+    "recordLandingPickup": "Vrijeme preuzimanja {time}",
     "recordLandingTitle": "Vrijeme slijetanja",
     "recordLandingBody": "Zabilježite kada je zrakoplov sletio, ili obrišite vrijeme upisano pogreškom. Vožnja ostaje kakva jest.",
     "recordLandingSave": "Spremi vrijeme slijetanja",

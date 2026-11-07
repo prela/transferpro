@@ -118,12 +118,15 @@ function save() {
 function clearLanding() {
   void post(null, 'clear')
 }
+
+// The phone sheet stays open while a save or a clear is in flight.
+defineExpose({ pending })
 </script>
 
 <template>
   <!--
-    The landing form lives in the Ride detail. A separate modal was one of
-    the command surfaces ADR-0038 folds into that panel.
+    The office Ride detail inlines this form (ADR-0038). The Driver phone
+    opens the same form in a sheet on the Ride that was tapped.
   -->
   <form
     :aria-labelledby="titleId"
