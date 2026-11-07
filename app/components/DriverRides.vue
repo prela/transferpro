@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DisplayLocale, DriverUpcomingRide, LiveRefreshOutcome } from '../../shared'
-import { canDeclineRide, canMarkNoShow, canMarkRideDone, clockLabel, driverUpcomingListSchema, leadDriverRide, noShowWaitElapsed, rideSchema } from '../../shared'
+import { canDeclineRide, canMarkNoShow, canMarkRideDone, clockLabel, driverUpcomingListSchema, formatInstant, leadDriverRide, noShowWaitElapsed, rideSchema } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
@@ -92,9 +92,12 @@ const phoneRides = computed(() => leadDriverRide(rides.value))
 const shownTime = computed(() =>
   updatedAt.value === null ? '' : clockLabel(updatedAt.value, props.timeZone, props.locale),
 )
+// The landing sheet is modal, so the list cannot be tapped while it is open.
+// The trigger stays enabled: a disabled button cannot take focus back.
 const actionsLocked = computed(() =>
-  acceptingId.value !== null || markDonePending.value || markNoShowPending.value || declinePending.value || recordingLanding.value !== null,
+  acceptingId.value !== null || markDonePending.value || markNoShowPending.value || declinePending.value,
 )
+const landingForm = ref<{ pending: 'save' | 'clear' | null } | null>(null)
 
 function toggleRide(rideId: string) {
   const next = new Set(expandedIds.value)
@@ -105,9 +108,55 @@ function toggleRide(rideId: string) {
   expandedIds.value = next
 }
 
-async function onLandingSaved() {
+/**
+ * The sheet closes on save, cancel, and Escape. Focus goes back to the
+ * landing control on that Ride after the list has settled. `finishingLanding`
+ * ignores the drawer's close event that this function itself causes.
+ */
+let finishingLanding = false
+
+function restoreLandingFocus(rideId: string | undefined) {
+  if (rideId === undefined)
+    return
+  void nextTick(() => {
+    document.querySelector<HTMLElement>(`[data-landing-ride="${CSS.escape(rideId)}"]`)?.focus()
+  })
+}
+
+async function finishLanding(saved: boolean) {
+  const ride = recordingLanding.value
+  if (finishingLanding || ride === null)
+    return
+  finishingLanding = true
   recordingLanding.value = null
-  await refresh()
+  if (saved)
+    await refresh()
+  finishingLanding = false
+  restoreLandingFocus(ride.rideId)
+}
+
+function onLandingOpen(open: boolean) {
+  if (!open)
+    void finishLanding(false)
+}
+
+/** The field takes focus once the sheet has opened. The animation runs after the first tick and moves focus again, so both paths aim at the field. */
+function focusLandingField() {
+  document.getElementById('landing-time')?.focus()
+}
+
+function onLandingAnimation(open: boolean) {
+  if (open)
+    focusLandingField()
+}
+
+watch(recordingLanding, (ride) => {
+  if (ride !== null)
+    void nextTick(() => focusLandingField())
+})
+
+async function onLandingSaved() {
+  await finishLanding(true)
 }
 
 /**
@@ -617,16 +666,35 @@ async function confirmDecline() {
         </UButton>
       </template>
     </UModal>
-    <RideLanding
+    <!--
+      The entry sits over the list, on the Ride that was tapped. A form
+      after the list would make the Driver scroll past every later Ride.
+      The sheet reads the form's pending flag, the same way the office
+      slideover does, and stays up while the form posts.
+    -->
+    <UDrawer
       v-if="recordingLanding"
-      :key="recordingLanding.rideId"
-      :ride-id="recordingLanding.rideId"
-      :guest-name="recordingLanding.guestName"
-      :landing-at="recordingLanding.landingAt"
-      :time-zone="timeZone"
-      phone
-      @saved="onLandingSaved"
-      @cancel="recordingLanding = null"
-    />
+      :open="true"
+      :title="t('ride.recordLandingFor', { guest: recordingLanding.guestName })"
+      :description="t('ride.recordLandingPickup', { time: formatInstant(new Date(recordingLanding.pickupAt), timeZone, locale) })"
+      :dismissible="!landingForm?.pending"
+      :handle="false"
+      @update:open="onLandingOpen"
+      @animation-end="onLandingAnimation"
+    >
+      <template #body>
+        <RideLanding
+          ref="landingForm"
+          :key="recordingLanding.rideId"
+          :ride-id="recordingLanding.rideId"
+          :guest-name="recordingLanding.guestName"
+          :landing-at="recordingLanding.landingAt"
+          :time-zone="timeZone"
+          phone
+          @saved="onLandingSaved"
+          @cancel="onLandingOpen(false)"
+        />
+      </template>
+    </UDrawer>
   </section>
 </template>

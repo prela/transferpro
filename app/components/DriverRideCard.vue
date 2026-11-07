@@ -416,6 +416,7 @@ const showLanding = computed(() => props.ride.airportMark && canRecordLandingTim
         >
           {{ t('driverRides.done') }}
         </UButton>
+        <!-- data-landing-ride is how the sheet returns focus after a refresh. -->
         <UButton
           v-if="showLanding"
           type="button"
@@ -424,6 +425,7 @@ const showLanding = computed(() => props.ride.airportMark && canRecordLandingTim
           size="xl"
           class="mt-2 min-h-12 w-full justify-center"
           :disabled="actionsLocked"
+          :data-landing-ride="ride.rideId"
           @click="emit('landing')"
         >
           {{ t('ride.recordLandingTitle') }}

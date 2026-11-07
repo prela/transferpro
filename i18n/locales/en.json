@@ -1153,6 +1153,7 @@
     "cancelled": "Ride cancelled",
     "recordLanding": "Record landing",
     "recordLandingFor": "Record landing: {guest}",
+    "recordLandingPickup": "Pickup time {time}",
     "recordLandingTitle": "Landing time",
     "recordLandingBody": "Record when the aircraft landed, or clear a time that was typed by mistake. The ride stays as it is.",
     "recordLandingSave": "Save landing time",
