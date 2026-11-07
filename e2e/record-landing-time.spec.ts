@@ -225,18 +225,17 @@ test('@phone a landing time opens on the tapped ride, in both languages and both
   const day = operationalDay(page)
   const guests = Array.from({ length: 20 }, (_, index) => `Gost ${String(index + 1).padStart(2, '0')}`)
   const target = guests[19]!
-  let targetPickup = ''
+  // Default duration is 60 minutes. A shorter gap is an overlap, and assign refuses it.
+  const firstPickup = instantFromWallClock(`${day}T08:00`, 'Europe/Zagreb')
+  let targetPickupAt: Date | null = null
   for (const [index, guestName] of guests.entries()) {
-    const minutes = 8 * 60 + index * 20
-    const hour = String(Math.floor(minutes / 60)).padStart(2, '0')
-    const minute = String(minutes % 60).padStart(2, '0')
-    const pickupAt = instantFromWallClock(`${day}T${hour}:${minute}`, 'Europe/Zagreb').toISOString()
+    const pickupAt = new Date(firstPickup.getTime() + index * 90 * 60_000)
     if (guestName === target)
-      targetPickup = formatInstant(new Date(pickupAt), 'Europe/Zagreb', 'hr')
+      targetPickupAt = pickupAt
     const recorded = await recordTransfer(page.request, {
       data: {
         clientId,
-        pickupAt,
+        pickupAt: pickupAt.toISOString(),
         startLocationId,
         endLocationId,
         passengerCount: 1,
@@ -248,13 +247,18 @@ test('@phone a landing time opens on the tapped ride, in both languages and both
         childSeatCount: 0,
       },
     })
-    expect(recorded.ok()).toBeTruthy()
+    if (!recorded.ok())
+      throw new Error(`${recorded.status()} ${await recorded.text()}`)
     const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
     const assigned = await page.request.post(`/api/rides/${rideId}/assign`, {
       data: { version: 0, driverId, vehicleId },
     })
-    expect(assigned.ok()).toBeTruthy()
+    if (!assigned.ok())
+      throw new Error(`${assigned.status()} ${await assigned.text()}`)
   }
+  if (targetPickupAt === null)
+    throw new Error('The last Ride has no pickup.')
+  const targetPickup = formatInstant(targetPickupAt, 'Europe/Zagreb', 'hr')
 
   await signOut(page)
   await signIn(page, driver.email, driver.password, tenant.name)
@@ -298,7 +302,7 @@ test('@phone a landing time opens on the tapped ride, in both languages and both
   await page.keyboard.press('Escape')
 
   await switchLocale(page, 'en')
-  const englishPickup = formatInstant(instantFromWallClock(`${day}T14:20`, 'Europe/Zagreb'), 'Europe/Zagreb', 'en')
+  const englishPickup = formatInstant(targetPickupAt, 'Europe/Zagreb', 'en')
   const englishArticle = await showRide(page, target)
   await englishArticle.getByRole('button', { name: 'Landing time', exact: true }).click()
   const englishSheet = page.getByRole('dialog')
