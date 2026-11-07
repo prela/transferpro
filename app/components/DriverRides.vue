@@ -110,9 +110,10 @@ function toggleRide(rideId: string) {
 
 /**
  * The sheet closes on save, cancel, and Escape. Focus goes back to the
- * landing control on that Ride after the list has settled.
+ * landing control on that Ride after the list has settled. `finishingLanding`
+ * ignores the drawer's close event that this function itself causes.
  */
-let landingClose = false
+let finishingLanding = false
 
 function restoreLandingFocus(rideId: string | undefined) {
   if (rideId === undefined)
@@ -124,13 +125,13 @@ function restoreLandingFocus(rideId: string | undefined) {
 
 async function finishLanding(saved: boolean) {
   const ride = recordingLanding.value
-  if (landingClose || ride === null)
+  if (finishingLanding || ride === null)
     return
-  landingClose = true
+  finishingLanding = true
   recordingLanding.value = null
   if (saved)
     await refresh()
-  landingClose = false
+  finishingLanding = false
   restoreLandingFocus(ride.rideId)
 }
 
@@ -139,7 +140,7 @@ function onLandingOpen(open: boolean) {
     void finishLanding(false)
 }
 
-/** The field, not the sheet chrome, takes focus once the sheet has opened. */
+/** The field takes focus once the sheet has opened. The animation runs after the first tick and moves focus again, so both paths aim at the field. */
 function focusLandingField() {
   document.getElementById('landing-time')?.focus()
 }
@@ -668,6 +669,8 @@ async function confirmDecline() {
     <!--
       The entry sits over the list, on the Ride that was tapped. A form
       after the list would make the Driver scroll past every later Ride.
+      The sheet reads the form's pending flag, the same way the office
+      slideover does, and stays up while the form posts.
     -->
     <UDrawer
       v-if="recordingLanding"
