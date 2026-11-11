@@ -39,7 +39,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0021 | Operational day | accepted; partially superseded by ADR-0025 |
 | ADR-0022 | In progress is not a Ride state | accepted |
 | ADR-0023 | Unassigned alarm | accepted; partially superseded by ADR-0039 |
-| ADR-0024 | One office home read | accepted; partially superseded by ADR-0039 |
+| ADR-0024 | One office home read | accepted; partially superseded by ADR-0039 and ADR-0062 |
 | ADR-0025 | Operational-day start | accepted |
 | ADR-0026 | Driver work-order email | accepted; partially superseded by ADR-0045, ADR-0054, and ADR-0058 |
 | ADR-0027 | Unclosed mark | accepted; partially superseded by ADR-0039 and ADR-0055 |
@@ -54,7 +54,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0036 | The Transfer is the order, and who owns the v1 modules | accepted; partially superseded by ADR-0051 |
 | ADR-0037 | Console mailer on preview | accepted; partially superseded by ADR-0042 |
 | ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted; partially superseded by ADR-0041, ADR-0042, ADR-0055, ADR-0056, and ADR-0058 |
-| ADR-0039 | Urgent and warning tiers, and live refresh | accepted; partially superseded by ADR-0045, ADR-0046, ADR-0051, and ADR-0055 |
+| ADR-0039 | Urgent and warning tiers, and live refresh | accepted; partially superseded by ADR-0045, ADR-0046, ADR-0051, ADR-0055, and ADR-0062 |
 | ADR-0040 | Theme tokens and contrast rules | accepted |
 | ADR-0041 | Revoke a pending invitation | accepted |
 | ADR-0042 | Password change and password reset | accepted; partially superseded by ADR-0044 |
@@ -70,8 +70,9 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0052 | Maps Embed from the stored place id | accepted; partially superseded by ADR-0058 |
 | ADR-0053 | A Transfer whose Price is 0 is never invoiced | accepted |
 | ADR-0054 | An extra vehicle linked to its main Transfer | accepted |
-| ADR-0055 | Unclosed mark follows the occupied end | accepted; partially superseded by ADR-0058 |
+| ADR-0055 | Unclosed mark follows the occupied end | accepted; partially superseded by ADR-0058 and ADR-0062 |
 | ADR-0056 | Tenant gate, switch, and the per-Tenant draft | accepted |
 | ADR-0057 | Office and driver session lengths | accepted |
 | ADR-0058 | Stops and an escort on one Transfer | accepted |
 | ADR-0059 | A Vehicle seat count and a passenger warning | accepted |
+| ADR-0062 | Partner confirmation of a handed-off Ride | accepted |
