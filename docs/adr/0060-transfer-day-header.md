@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Damir accepted this on 11 November 2026, in the grill of #564. It partially supersedes ADR-0038: in its Transfers section, the sentence that lists the toolbar ("The toolbar has `◀ Danas ▶` and a date picker, … and Client and Driver filters."). The rest of ADR-0038 stands, including the seven-day note, the occupation strip, and the phone rule. ADR-0039 stands: "Ažurirano u" sits beside Osvježi, the automatic refresh switch sits beside the time, and no page shows a strip of alarms across its top. The filter logic of #546 (AND, the URL keys, the empty state) is unchanged.
+The owner accepted this on 11 November 2026, in the grill of #564. It partially supersedes ADR-0038: in its Transfers section, the sentence that lists the toolbar ("The toolbar has `◀ Danas ▶` and a date picker, … and Client and Driver filters."). The rest of ADR-0038 stands, including the seven-day note, the occupation strip, and the phone rule. ADR-0039 stands: "Ažurirano u" sits beside Osvježi, the automatic refresh switch sits beside the time, and no page shows a strip of alarms across its top. The filter logic of #546 (AND, the URL keys, the empty state) is unchanged.
 
 ## Context
 
