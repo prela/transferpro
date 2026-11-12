@@ -3,7 +3,7 @@ import { loadEnvFile } from 'node:process'
 import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { EXPIRING_DOCUMENT_KINDS, instantFromWallClock } from '../../shared'
+import { addCalendarDays, calendarDateInTimeZone, EXPIRING_DOCUMENT_KINDS, instantFromWallClock } from '../../shared'
 import { createClient } from '../modules/clients'
 import { createDriver, loadDriverDocumentExpiry, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
@@ -96,8 +96,19 @@ afterAll(async () => {
   await ownerPool.end()
 })
 
+/**
+ * The October walls stay as written. The calendar day moves with today so
+ * the pickup stays inside the window, and a licence date moves with it.
+ */
+const warningOriginMs = Date.parse('2026-10-20T00:00:00.000Z')
+const warningAnchor = addCalendarDays(calendarDateInTimeZone(zone, new Date()), 3)
+function warningDay(isoDate: string): string {
+  const day = Date.parse(`${isoDate}T00:00:00.000Z`)
+  return addCalendarDays(warningAnchor, Math.round((day - warningOriginMs) / 86_400_000))
+}
 function at(wall: string): string {
-  return instantFromWallClock(wall, zone).toISOString()
+  const [date, time] = wall.split('T')
+  return instantFromWallClock(`${warningDay(date ?? '')}T${time}`, zone).toISOString()
 }
 
 async function tenant(slug: string) {
@@ -249,10 +260,10 @@ async function warnings(session: Headers, day: string, guestName: string) {
 
 it('names each expired document in kind order, and a document valid on the pickup day stays quiet', async () => {
   const places = await office('hbw-docs')
-  const lapsed = await driver(places.dispatcher, 'Ivo Lapsed', '+385910000201', '2026-10-19', '2026-10-18')
-  const quiet = await driver(places.dispatcher, 'Tea Quiet', '+385910000202', '2026-10-20', '2026-10-20')
-  const lapsedCar = await vehicle(places.dispatcher, 'DU201AA', '2026-10-17', '2026-10-16', '2026-10-15')
-  const quietCar = await vehicle(places.dispatcher, 'DU202AA', '2026-10-20', '2026-10-20', '2026-10-20')
+  const lapsed = await driver(places.dispatcher, 'Ivo Lapsed', '+385910000201', warningDay('2026-10-19'), warningDay('2026-10-18'))
+  const quiet = await driver(places.dispatcher, 'Tea Quiet', '+385910000202', warningDay('2026-10-20'), warningDay('2026-10-20'))
+  const lapsedCar = await vehicle(places.dispatcher, 'DU201AA', warningDay('2026-10-17'), warningDay('2026-10-16'), warningDay('2026-10-15'))
+  const quietCar = await vehicle(places.dispatcher, 'DU202AA', warningDay('2026-10-20'), warningDay('2026-10-20'), warningDay('2026-10-20'))
   await ride(places.dispatcher, places, 'Lapsed Ivo', at('2026-10-20T12:00'), lapsed.id, lapsedCar.id)
   await ride(places.dispatcher, places, 'Quiet Tea', at('2026-10-20T15:00'), quiet.id, quietCar.id)
   const recorded = await createTransfer(places.dispatcher, {
@@ -273,17 +284,17 @@ it('names each expired document in kind order, and a document valid on the picku
   expect(recorded.ride.state).toBe('unassigned')
 
   const before = await auditCount(places.tenantId)
-  expect(await warnings(places.dispatcher, '2026-10-20', 'Lapsed Ivo')).toEqual({
+  expect(await warnings(places.dispatcher, warningDay('2026-10-20'), 'Lapsed Ivo')).toEqual({
     expiredDocuments: [...EXPIRING_DOCUMENT_KINDS],
     rosterMismatch: false,
     overlappingRideIds: [],
   })
-  expect(await warnings(places.admin, '2026-10-20', 'Quiet Tea')).toEqual({
+  expect(await warnings(places.admin, warningDay('2026-10-20'), 'Quiet Tea')).toEqual({
     expiredDocuments: [],
     rosterMismatch: false,
     overlappingRideIds: [],
   })
-  expect(await warnings(places.dispatcher, '2026-10-20', 'Open Una')).toEqual({
+  expect(await warnings(places.dispatcher, warningDay('2026-10-20'), 'Open Una')).toEqual({
     expiredDocuments: [],
     rosterMismatch: false,
     overlappingRideIds: [],
@@ -294,9 +305,9 @@ it('names each expired document in kind order, and a document valid on the picku
 it('judges a 02:00 pickup by its calendar date, and an accepted in-progress ride keeps the warning', async () => {
   const places = await office('hbw-date')
   const driverUserId = await addMember(places.tenantId, 'hbw-date-driver@example.test', 'Drago Driver', 'driver')
-  const early = await driver(places.dispatcher, 'Ivo Early', '+385910000211', '2026-10-20', '2026-10-21', driverUserId)
+  const early = await driver(places.dispatcher, 'Ivo Early', '+385910000211', warningDay('2026-10-20'), warningDay('2026-10-21'), driverUserId)
   await updateDriver(places.admin, early.id, { mustAccept: true })
-  const running = await driver(places.dispatcher, 'Ivo Running', '+385910000212', '2026-10-12', validOn)
+  const running = await driver(places.dispatcher, 'Ivo Running', '+385910000212', warningDay('2026-10-12'), validOn)
   const car = await vehicle(places.dispatcher, 'DU211AA', validOn, validOn, validOn)
   const otherCar = await vehicle(places.dispatcher, 'DU212AA', validOn, validOn, validOn)
   // 02:00 on 21 October is listed on the operational day of 20 October.
@@ -306,12 +317,12 @@ it('judges a 02:00 pickup by its calendar date, and an accepted in-progress ride
   await acceptRide(driverSession, saved.rideId, {})
   await ride(places.dispatcher, places, 'Running Ivo', at('2026-10-13T12:00'), running.id, otherCar.id)
 
-  expect(await warnings(places.dispatcher, '2026-10-20', 'Early Ivo')).toMatchObject({
+  expect(await warnings(places.dispatcher, warningDay('2026-10-20'), 'Early Ivo')).toMatchObject({
     expiredDocuments: ['driving_licence'],
     rosterMismatch: false,
     overlappingRideIds: [],
   })
-  expect(await warnings(places.dispatcher, '2026-10-13', 'Running Ivo')).toMatchObject({
+  expect(await warnings(places.dispatcher, warningDay('2026-10-13'), 'Running Ivo')).toMatchObject({
     expiredDocuments: ['driving_licence'],
     rosterMismatch: false,
     overlappingRideIds: [],
@@ -322,38 +333,38 @@ it('follows a roster change, including a stored row for an archived vehicle, and
   const places = await office('hbw-roster')
   const ana = await driver(places.dispatcher, 'Ana Ana', '+385910000221', validOn, validOn)
   const branko = await driver(places.dispatcher, 'Branko Branko', '+385910000222', validOn, validOn)
-  const shared = await vehicle(places.dispatcher, 'DU221AA', '2026-10-01', validOn, validOn)
+  const shared = await vehicle(places.dispatcher, 'DU221AA', warningDay('2026-10-01'), validOn, validOn)
   const other = await vehicle(places.dispatcher, 'DU222AA', validOn, validOn, validOn)
   const free = await vehicle(places.dispatcher, 'DU223AA', validOn, validOn, validOn)
   await ride(places.dispatcher, places, 'Roster Ana', at('2026-10-20T12:00'), ana.id, shared.id)
   await ride(places.dispatcher, places, 'Free Ana', at('2026-10-20T16:00'), ana.id, free.id)
   await setRosterDay(places.dispatcher, {
-    rosterDate: '2026-10-20',
+    rosterDate: warningDay('2026-10-20'),
     driverId: ana.id,
     vehicleId: other.id,
   })
 
-  expect((await warnings(places.dispatcher, '2026-10-20', 'Roster Ana')).rosterMismatch).toBe(false)
-  expect((await warnings(places.dispatcher, '2026-10-20', 'Free Ana')).rosterMismatch).toBe(false)
+  expect((await warnings(places.dispatcher, warningDay('2026-10-20'), 'Roster Ana')).rosterMismatch).toBe(false)
+  expect((await warnings(places.dispatcher, warningDay('2026-10-20'), 'Free Ana')).rosterMismatch).toBe(false)
 
   await setRosterDay(places.dispatcher, {
-    rosterDate: '2026-10-20',
+    rosterDate: warningDay('2026-10-20'),
     driverId: branko.id,
     vehicleId: shared.id,
   })
-  expect((await warnings(places.dispatcher, '2026-10-20', 'Roster Ana')).rosterMismatch).toBe(true)
-  expect((await warnings(places.dispatcher, '2026-10-20', 'Roster Ana')).expiredDocuments).toEqual(['vehicle_registration'])
+  expect((await warnings(places.dispatcher, warningDay('2026-10-20'), 'Roster Ana')).rosterMismatch).toBe(true)
+  expect((await warnings(places.dispatcher, warningDay('2026-10-20'), 'Roster Ana')).expiredDocuments).toEqual(['vehicle_registration'])
 
   await archiveVehicle(places.dispatcher, shared.id)
-  expect((await warnings(places.dispatcher, '2026-10-20', 'Roster Ana')).rosterMismatch).toBe(true)
-  expect((await warnings(places.dispatcher, '2026-10-20', 'Roster Ana')).expiredDocuments).toEqual(['vehicle_registration'])
+  expect((await warnings(places.dispatcher, warningDay('2026-10-20'), 'Roster Ana')).rosterMismatch).toBe(true)
+  expect((await warnings(places.dispatcher, warningDay('2026-10-20'), 'Roster Ana')).expiredDocuments).toEqual(['vehicle_registration'])
 
   await setRosterDay(places.dispatcher, {
-    rosterDate: '2026-10-20',
+    rosterDate: warningDay('2026-10-20'),
     driverId: branko.id,
     vehicleId: null,
   })
-  expect((await warnings(places.dispatcher, '2026-10-20', 'Roster Ana')).rosterMismatch).toBe(false)
+  expect((await warnings(places.dispatcher, warningDay('2026-10-20'), 'Roster Ana')).rosterMismatch).toBe(false)
 })
 
 it('shows an overlap across the operational-day boundary, after a correction, and when the relocation gap changes', async () => {
@@ -366,16 +377,16 @@ it('shows an overlap across the operational-day boundary, after a correction, an
   const early = await ride(places.dispatcher, places, 'Early Ana', at('2026-10-21T04:30'), ana.id, lateCar.id)
   const next = await ride(places.dispatcher, places, 'Next Ana', at('2026-10-21T05:10'), ana.id, nextCar.id, true)
 
-  const earlyDay = await listTransferDay(places.dispatcher, '2026-10-20')
+  const earlyDay = await listTransferDay(places.dispatcher, warningDay('2026-10-20'))
   expect(earlyDay.rides.map(row => row.guestName)).toEqual(['Early Ana'])
   expect(earlyDay.rides[0]?.warnings.overlappingRideIds).toEqual([next.rideId])
-  const nextDay = await listTransferDay(places.dispatcher, '2026-10-21')
+  const nextDay = await listTransferDay(places.dispatcher, warningDay('2026-10-21'))
   expect(nextDay.rides.map(row => row.guestName)).toEqual(['Next Ana'])
   expect(nextDay.rides[0]?.warnings.overlappingRideIds).toEqual([early.rideId])
 
   const noon = await ride(places.dispatcher, places, 'Noon Ana', at('2026-10-22T12:00'), ana.id, lateCar.id)
   const later = await ride(places.dispatcher, places, 'Later Ana', at('2026-10-22T15:00'), ana.id, nextCar.id)
-  expect((await warnings(places.dispatcher, '2026-10-22', 'Noon Ana')).overlappingRideIds).toEqual([])
+  expect((await warnings(places.dispatcher, warningDay('2026-10-22'), 'Noon Ana')).overlappingRideIds).toEqual([])
   await correctTransfer(places.dispatcher, noon.transferId, {
     clientId: places.clientId,
     pickupAt: at('2026-10-22T14:30'),
@@ -394,25 +405,25 @@ it('shows an overlap across the operational-day boundary, after a correction, an
     // The move is a true overlap. The board warning is what a confirmed save leaves behind.
     confirm: true,
   })
-  expect(await warnings(places.dispatcher, '2026-10-22', 'Noon Ana')).toMatchObject({
+  expect(await warnings(places.dispatcher, warningDay('2026-10-22'), 'Noon Ana')).toMatchObject({
     overlappingRideIds: [later.rideId],
   })
-  expect(await warnings(places.dispatcher, '2026-10-22', 'Later Ana')).toMatchObject({
+  expect(await warnings(places.dispatcher, warningDay('2026-10-22'), 'Later Ana')).toMatchObject({
     overlappingRideIds: [noon.rideId],
   })
 
   const first = await ride(places.dispatcher, places, 'Gap Ana', at('2026-10-23T12:00'), ana.id, lateCar.id)
   const second = await ride(places.dispatcher, places, 'Gap After', at('2026-10-23T13:20'), ana.id, nextCar.id)
-  expect((await warnings(places.dispatcher, '2026-10-23', 'Gap Ana')).overlappingRideIds).toEqual([])
+  expect((await warnings(places.dispatcher, warningDay('2026-10-23'), 'Gap Ana')).overlappingRideIds).toEqual([])
   await updateTenantSettings(places.admin, { relocationGapMinutes: 30 })
-  expect(await warnings(places.dispatcher, '2026-10-23', 'Gap Ana')).toMatchObject({
+  expect(await warnings(places.dispatcher, warningDay('2026-10-23'), 'Gap Ana')).toMatchObject({
     overlappingRideIds: [second.rideId],
   })
-  expect(await warnings(places.dispatcher, '2026-10-23', 'Gap After')).toMatchObject({
+  expect(await warnings(places.dispatcher, warningDay('2026-10-23'), 'Gap After')).toMatchObject({
     overlappingRideIds: [first.rideId],
   })
   await updateTenantSettings(places.admin, { relocationGapMinutes: 20 })
-  expect((await warnings(places.dispatcher, '2026-10-23', 'Gap Ana')).overlappingRideIds).toEqual([])
+  expect((await warnings(places.dispatcher, warningDay('2026-10-23'), 'Gap Ana')).overlappingRideIds).toEqual([])
 })
 
 it('a landing that starts before the search window and ends after it still warns', async () => {
@@ -429,7 +440,7 @@ it('a landing that starts before the search window and ends after it still warns
   )
   const listed = await ride(places.dispatcher, places, 'Listed Ana', at('2026-10-20T12:00'), ana.id, dayCar.id, true)
 
-  const day = await listTransferDay(places.dispatcher, '2026-10-20')
+  const day = await listTransferDay(places.dispatcher, warningDay('2026-10-20'))
   expect(day.rides.map(row => row.guestName)).toEqual(['Listed Ana'])
   expect(day.rides[0]?.warnings.overlappingRideIds).toEqual([spanned.rideId])
   expect(JSON.stringify(day)).not.toContain('Spanned Ana')
@@ -447,12 +458,12 @@ it('a finished ride neither shows nor causes an overlap', async () => {
   await ride(places.dispatcher, places, 'Live Ana', at('2026-10-20T12:30'), ana.id, other.id, true)
   await ownerPool.query(`update app.rides set state = 'done' where id = $1`, [done.rideId])
 
-  expect(await warnings(places.dispatcher, '2026-10-20', 'Done Ana')).toEqual({
+  expect(await warnings(places.dispatcher, warningDay('2026-10-20'), 'Done Ana')).toEqual({
     expiredDocuments: [],
     rosterMismatch: false,
     overlappingRideIds: [],
   })
-  expect((await warnings(places.dispatcher, '2026-10-20', 'Live Ana')).overlappingRideIds).toEqual([])
+  expect((await warnings(places.dispatcher, warningDay('2026-10-20'), 'Live Ana')).overlappingRideIds).toEqual([])
 })
 
 it('refuses a driver on each day-board warning read and still returns those rows to the office', async () => {
@@ -462,7 +473,7 @@ it('refuses a driver on each day-board warning read and still returns those rows
   const ana = await driver(places.dispatcher, 'Ana Ana', '+385910000271', '2026-04-04', '2026-05-05')
   const car = await vehicle(places.dispatcher, 'DU271AA', '2026-06-06', '2026-07-07', '2026-08-08')
   await setRosterDay(places.dispatcher, {
-    rosterDate: '2026-10-20',
+    rosterDate: warningDay('2026-10-20'),
     driverId: ana.id,
     vehicleId: car.id,
   })
@@ -470,7 +481,7 @@ it('refuses a driver on each day-board warning read and still returns those rows
   await withTenantFromSession(driverSession, async ({ actor, transaction }) => {
     await expect(loadDriverDocumentExpiry(transaction, actor.role, [ana.id])).rejects.toMatchObject({ statusCode: 403 })
     await expect(loadVehicleDocumentExpiry(transaction, actor.role, [car.id])).rejects.toMatchObject({ statusCode: 403 })
-    await expect(rosteredDriversOnDates(transaction, actor.role, ['2026-10-20'])).rejects.toMatchObject({ statusCode: 403 })
+    await expect(rosteredDriversOnDates(transaction, actor.role, [warningDay('2026-10-20')])).rejects.toMatchObject({ statusCode: 403 })
   })
 
   await withTenantFromSession(places.dispatcher, async ({ actor, transaction }) => {
@@ -485,8 +496,8 @@ it('refuses a driver on each day-board warning read and still returns those rows
       technicalInspectionExpiresOn: '2026-07-07',
       insuranceExpiresOn: '2026-08-08',
     }])
-    await expect(rosteredDriversOnDates(transaction, actor.role, ['2026-10-20'])).resolves.toEqual([{
-      rosterDate: '2026-10-20',
+    await expect(rosteredDriversOnDates(transaction, actor.role, [warningDay('2026-10-20')])).resolves.toEqual([{
+      rosterDate: warningDay('2026-10-20'),
       vehicleId: car.id,
       driverId: ana.id,
     }])
@@ -513,13 +524,13 @@ it('refuses a driver and keeps another tenant out of the warnings', async () => 
   const otherCar = await vehicle(other.dispatcher, 'ST251AA', '2020-01-01', '2020-01-01', '2020-01-01')
   const foreign = await ride(other.dispatcher, other, 'Foreign Ivo', at('2026-10-20T12:10'), lapsed.id, otherCar.id)
   await setRosterDay(other.dispatcher, {
-    rosterDate: '2026-10-20',
+    rosterDate: warningDay('2026-10-20'),
     driverId: lapsed.id,
     vehicleId: otherCar.id,
   })
 
-  await expect(listTransferDay(driverSession, '2026-10-20')).rejects.toMatchObject({ statusCode: 403 })
-  const home = await listTransferDay(places.dispatcher, '2026-10-20')
+  await expect(listTransferDay(driverSession, warningDay('2026-10-20'))).rejects.toMatchObject({ statusCode: 403 })
+  const home = await listTransferDay(places.dispatcher, warningDay('2026-10-20'))
   expect(home.rides.map(row => row.guestName)).toEqual(['Home Ana'])
   expect(home.rides[0]?.warnings).toEqual({
     expiredDocuments: [],

@@ -386,7 +386,8 @@ it('counts the stored hour, and a pickup before that hour stays on the unassigne
     'update app.tenant_settings set operational_day_start_hour = 6 where tenant_id = $1',
     [created.tenantId],
   )
-  const calendar = '2026-10-08'
+  // Noon on today's Zagreb date. A fixed calendar date ages out of the pickup window.
+  const calendar = calendarDateInTimeZone(zone, new Date())
   const now = instantFromWallClock(`${calendar}T12:00`, zone)
   const client = await createClient(admin, { name: 'Agencija Mora', kind: 'agency' })
   const start = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
@@ -412,7 +413,7 @@ it('counts the stored hour, and a pickup before that hour stays on the unassigne
 
   await record('Before six', `${calendar}T05:30`)
   await setRideState(await record('At six', `${calendar}T06:00`), 'done')
-  await setRideState(await record('Next morning', '2026-10-09T05:30'), 'done')
+  await setRideState(await record('Next morning', `${addCalendarDays(calendar, 1)}T05:30`), 'done')
 
   const snapshot = officeHomeSchema.parse(await readOfficeHome(admin, now))
   expect(snapshot.unassigned.map(row => row.guestName)).toEqual(['Before six'])

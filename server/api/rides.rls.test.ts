@@ -4,7 +4,7 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../../shared'
+import { addCalendarDays, calendarDateInTimeZone, formatInstant, instantFromWallClock, operationalDateInTimeZone } from '../../shared'
 import { captureLogs } from '../core/testing'
 import { createClient } from '../modules/clients'
 import { archiveDriver, createDriver, updateDriver } from '../modules/drivers'
@@ -391,6 +391,27 @@ function zagrebMidnightBoundary() {
   }
 }
 
+/**
+ * Zagreb wall time a few days ahead. A fixed October instant ages out of
+ * the pickup window. 00:30 local is the clock the work-order mail names.
+ */
+const mailDay = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 4)
+function mailPickup(dayOffset: number, time: string): string {
+  return instantFromWallClock(`${addCalendarDays(mailDay, dayOffset)}T${time}`, 'Europe/Zagreb').toISOString()
+}
+const midnightDeparture = formatInstant(
+  instantFromWallClock(`${mailDay}T00:30`, 'Europe/Zagreb'),
+  'Europe/Zagreb',
+  'hr',
+)
+
+/** Keep the gap from 2026-11-02T10:00Z, on a clock two days ahead. */
+const overlapOriginMs = Date.parse('2026-11-02T10:00:00.000Z')
+const overlapBaseMs = Date.now() + 2 * 24 * 60 * 60 * 1000
+function overlapAt(iso: string): string {
+  return new Date(overlapBaseMs + (Date.parse(iso) - overlapOriginMs)).toISOString()
+}
+
 function transferBody(world: Awaited<ReturnType<typeof office>>, pickupAt: string) {
   return {
     // Fresh entry key. The create stays idempotent once the key is required.
@@ -524,9 +545,9 @@ it('an overlapping assign is 409 and writes nothing, and another Tenant Ride is 
   await createVehicle(world.dispatcher, vehicleBody('ZG184CC'))
   const otherDriver = await createDriver(other.dispatcher, { ...driverBody, phone: '+385911110185' })
   const otherVehicle = await createVehicle(other.dispatcher, vehicleBody('ZG184BB'))
-  const held = await createTransfer(world.dispatcher, transferBody(world, '2026-11-02T10:00:00.000Z'))
-  const next = await createTransfer(world.dispatcher, transferBody(world, '2026-11-02T10:30:00.000Z'))
-  const foreign = await createTransfer(other.dispatcher, transferBody(other, '2026-11-02T10:00:00.000Z'))
+  const held = await createTransfer(world.dispatcher, transferBody(world, overlapAt('2026-11-02T10:00:00.000Z')))
+  const next = await createTransfer(world.dispatcher, transferBody(world, overlapAt('2026-11-02T10:30:00.000Z')))
+  const foreign = await createTransfer(other.dispatcher, transferBody(other, overlapAt('2026-11-02T10:00:00.000Z')))
   expect((await call('POST', `/api/rides/${held.ride.id}/assign`, world.dispatcher, {
     driverId: driver.id,
     vehicleId: vehicle.id,
@@ -578,7 +599,7 @@ it('emails an assigned work order in the tenant locale, and a rejected send leav
     description: 'Mercedes Vito',
   })
   const recorded = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-15T22:30:00.000Z'),
+    ...transferBody(world, mailPickup(0, '00:30')),
     guestName,
     passengerCount: 2,
     luggageCount: 1,
@@ -609,7 +630,7 @@ it('emails an assigned work order in the tenant locale, and a rejected send leav
   expect(JSON.stringify(assigned)).not.toContain(address)
   expect(sent).toHaveLength(1)
   expect(sent[0]?.to).toBe(address)
-  expect(sent[0]?.subject).toBe('Dodijeljeno · 16. 10. 2026. 00:30 · Zračna luka Dubrovnik')
+  expect(sent[0]?.subject).toBe(`Dodijeljeno · ${midnightDeparture} · Zračna luka Dubrovnik`)
   expect(sent[0]?.text).toContain('Gost: Gost Tajna')
   expect(sent[0]?.text).toContain('Tabla: TABLA-TAJNA')
   expect(sent[0]?.text).toContain('Let: OU412')
@@ -637,7 +658,7 @@ it('emails an assigned work order in the tenant locale, and a rejected send leav
 
   const logs = captureLogs()
   const failedRide = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-16T22:30:00.000Z'),
+    ...transferBody(world, mailPickup(1, '00:30')),
     guestName,
     price: 77.5,
     tabla,
@@ -700,7 +721,7 @@ it('emails each vehicle of a group its own count and reference, and an extra veh
     async sendPasswordReset() {},
   }
   const main = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-15T08:00:00.000Z'),
+    ...transferBody(world, mailPickup(0, '10:00')),
     guestName: 'Iva Glavni',
     passengerCount: 3,
     price: 40,
@@ -708,7 +729,7 @@ it('emails each vehicle of a group its own count and reference, and an extra veh
     clientReference: 'V-19',
   })
   const extraCash = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-15T12:00:00.000Z'),
+    ...transferBody(world, mailPickup(0, '14:00')),
     guestName: 'Iva Dodatna',
     passengerCount: 2,
     price: 0,
@@ -719,7 +740,7 @@ it('emails each vehicle of a group its own count and reference, and an extra veh
     mainVersion: 0,
   })
   const extraCard = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-15T16:00:00.000Z'),
+    ...transferBody(world, mailPickup(0, '18:00')),
     guestName: 'Iva Plastika',
     passengerCount: 1,
     price: 0,
@@ -728,7 +749,7 @@ it('emails each vehicle of a group its own count and reference, and an extra veh
     mainTransferId: main.transfer.id,
   })
   const extraInvoice = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-15T20:00:00.000Z'),
+    ...transferBody(world, mailPickup(0, '22:00')),
     guestName: 'Iva Racun',
     passengerCount: 4,
     price: 0,
@@ -789,7 +810,7 @@ it('emails a changed work order with the cash price, and a rejected send leaves 
   const kept = await createVehicle(world.dispatcher, { ...vehicleBody('ZG9181AA'), description: 'Stari kombi' })
   const next = await createVehicle(world.dispatcher, { ...vehicleBody('ZG9181BB'), description: 'Novi kombi' })
   const recorded = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-15T22:30:00.000Z'),
+    ...transferBody(world, mailPickup(0, '00:30')),
     guestName,
     price: 42.5,
     payment: 'cash',
@@ -816,7 +837,7 @@ it('emails a changed work order with the cash price, and a rejected send leaves 
   expect(JSON.stringify(changed)).not.toContain(address)
   expect(sent).toHaveLength(1)
   expect(sent[0]?.to).toBe(address)
-  expect(sent[0]?.subject).toBe('Promijenjeno · 16. 10. 2026. 00:30 · Zračna luka Dubrovnik')
+  expect(sent[0]?.subject).toBe(`Promijenjeno · ${midnightDeparture} · Zračna luka Dubrovnik`)
   expect(sent[0]?.text.startsWith('Promijenjeno\n')).toBe(true)
   expect(sent[0]?.text).toContain('Vozilo: Novi kombi')
   expect(sent[0]?.text).toContain('Registracija: ZG9181BB')
@@ -880,7 +901,7 @@ it('reports each Driver on a reassign, and a clear states no price even when the
   const oldVehicle = await createVehicle(world.dispatcher, { ...vehicleBody('ZG9182AA'), description: 'Stari kombi' })
   const newVehicle = await createVehicle(world.dispatcher, { ...vehicleBody('ZG9182BB'), description: 'Novi kombi' })
   const recorded = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-15T22:30:00.000Z'),
+    ...transferBody(world, mailPickup(0, '00:30')),
     guestName,
     price: 42.5,
     payment: 'cash',
@@ -931,7 +952,7 @@ it('reports each Driver on a reassign, and a clear states no price even when the
   expect(JSON.stringify(audits[0]?.data)).not.toContain(previous.id)
 
   const card = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-16T22:30:00.000Z'),
+    ...transferBody(world, mailPickup(1, '00:30')),
     guestName: 'Gost Kartica',
     price: 88,
     payment: 'card',
@@ -983,7 +1004,7 @@ it('reports each Driver on a reassign, and a clear states no price even when the
   expect(await rideRow(card.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null, vehicle_id: null })
 
   const cashClear = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-17T22:30:00.000Z'),
+    ...transferBody(world, mailPickup(2, '00:30')),
     guestName,
     price: 42.5,
     payment: 'cash',
@@ -3066,7 +3087,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
   })
   const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG9185AA'))
   const recorded = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-15T22:30:00.000Z'),
+    ...transferBody(world, mailPickup(0, '00:30')),
     guestName,
     price: 42.5,
     payment: 'cash',
@@ -3095,7 +3116,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
   expect(JSON.stringify(cancelled)).not.toContain(address)
   expect(sent).toHaveLength(1)
   expect(sent[0]?.to).toBe(address)
-  expect(sent[0]?.subject).toBe('Otkazano · 16. 10. 2026. 00:30 · Zračna luka Dubrovnik')
+  expect(sent[0]?.subject).toBe(`Otkazano · ${midnightDeparture} · Zračna luka Dubrovnik`)
   expect(sent[0]?.text.startsWith('Otkazano\n')).toBe(true)
   expect(sent[0]?.text).toContain(`Polazište: ${pickup}`)
   expect(sent[0]?.text).toContain(`Odredište: ${dropOff}`)
@@ -3113,7 +3134,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
   expect(JSON.stringify(audits)).not.toContain('email')
 
   const quiet = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-16T22:30:00.000Z'),
+    ...transferBody(world, mailPickup(1, '00:30')),
     guestName,
     tabla,
   })
@@ -3135,7 +3156,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
   expect(untouched).toEqual([])
 
   const blankRide = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-17T22:30:00.000Z'),
+    ...transferBody(world, mailPickup(2, '00:30')),
     guestName,
     price: 42.5,
     payment: 'cash',
@@ -3162,7 +3183,7 @@ it('emails a cancelled work order with no price, and a rejected send leaves the 
 
   const logs = captureLogs()
   const failedRide = await createTransfer(world.dispatcher, {
-    ...transferBody(world, '2026-10-18T22:30:00.000Z'),
+    ...transferBody(world, mailPickup(3, '00:30')),
     guestName,
     price: 42.5,
     payment: 'cash',

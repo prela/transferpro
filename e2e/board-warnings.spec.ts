@@ -1,12 +1,13 @@
 import type { APIResponse } from '@playwright/test'
-import { instantFromWallClock } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
 import { hydrated, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
 const timeZone = 'Europe/Zagreb'
-const day = '2026-10-20'
+// A few days ahead. A fixed 20 October ages out of the pickup window.
+const day = addCalendarDays(calendarDateInTimeZone(timeZone, new Date()), 2)
 const validOn = '2031-01-01'
 
 async function createdId(response: APIResponse): Promise<string> {
@@ -34,7 +35,7 @@ test('the day board shows an expired document, a roster mismatch, and an overlap
       name: 'Ivo Istek',
       kind: 'own',
       phone: '+38595555212',
-      drivingLicenceExpiresOn: '2026-10-19',
+      drivingLicenceExpiresOn: addCalendarDays(day, -1),
       transportLicenceExpiresOn: validOn,
     },
   }))
@@ -63,7 +64,7 @@ test('the day board shows an expired document, a roster mismatch, and an overlap
       seatCount: 4,
       registrationExpiresOn: validOn,
       technicalInspectionExpiresOn: validOn,
-      insuranceExpiresOn: '2026-10-01',
+      insuranceExpiresOn: addCalendarDays(day, -19),
     },
   }))
   const cleanVehicleId = await createdId(await page.request.post('/api/vehicles', {

@@ -4,7 +4,7 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { instantFromWallClock } from '../../../../shared'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../../../../shared'
 import getPartnerWindows from '../../../api/partners/[id]/unavailability.get'
 import postHandOff from '../../../api/rides/[id]/hand-off.post'
 import postPartner from '../../../api/rides/[id]/partner.post'
@@ -113,8 +113,19 @@ afterAll(async () => {
   await appPool.end()
 })
 
+/**
+ * The November wall stays as written. The calendar day moves with today so
+ * the pickup stays inside the window. The board date moves with it.
+ */
+const partnerOriginMs = Date.parse('2026-11-10T00:00:00.000Z')
+const partnerAnchor = addCalendarDays(calendarDateInTimeZone(zone, new Date()), 3)
+function partnerDay(isoDate: string): string {
+  const day = Date.parse(`${isoDate}T00:00:00.000Z`)
+  return addCalendarDays(partnerAnchor, Math.round((day - partnerOriginMs) / 86_400_000))
+}
 function at(wall: string): Date {
-  return instantFromWallClock(wall, zone)
+  const [date, time] = wall.split('T')
+  return instantFromWallClock(`${partnerDay(date ?? '')}T${time}`, zone)
 }
 
 async function signIn(email: string): Promise<Headers> {
@@ -287,18 +298,18 @@ it('shows the board warning while the Partner window covers the handed-off Ride,
   const recorded = await world.transfer('Ana Anić')
   expect((await handOff(world.dispatcher, recorded.ride.id, partner.id)).status).toBe(200)
 
-  const quiet = await call('GET', '/api/transfers?date=2026-11-10', world.dispatcher)
+  const quiet = await call('GET', `/api/transfers?date=${partnerDay('2026-11-10')}`, world.dispatcher)
   expect(quiet.status).toBe(200)
   const before = (await quiet.json()).rides.find((ride: { rideId: string }) => ride.rideId === recorded.ride.id)
   expect(before.warnings.unavailable).toBeUndefined()
 
   const saved = await (await call('POST', '/api/unavailability', world.dispatcher, { partnerId: partner.id, ...windowTimes })).json()
-  const covered = await call('GET', '/api/transfers?date=2026-11-10', world.dispatcher)
+  const covered = await call('GET', `/api/transfers?date=${partnerDay('2026-11-10')}`, world.dispatcher)
   const warned = (await covered.json()).rides.find((ride: { rideId: string }) => ride.rideId === recorded.ride.id)
   expect(warned.warnings.unavailable).toEqual(['partner'])
 
   expect((await call('POST', `/api/unavailability/${saved.window.id}/remove`, world.dispatcher)).status).toBe(204)
-  const cleared = await call('GET', '/api/transfers?date=2026-11-10', world.dispatcher)
+  const cleared = await call('GET', `/api/transfers?date=${partnerDay('2026-11-10')}`, world.dispatcher)
   const after = (await cleared.json()).rides.find((ride: { rideId: string }) => ride.rideId === recorded.ride.id)
   expect(after.warnings.unavailable).toBeUndefined()
 })
