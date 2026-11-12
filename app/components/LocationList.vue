@@ -254,7 +254,7 @@ function openEdit(location: OfficeLocation) {
   addressUntouched.value = true
 }
 
-const suggestionItems = computed(() => suggestions.value.map(suggestion => suggestion.text))
+const suggestionItems = computed(() => suggestions.value.map(suggestion => suggestion.label))
 
 /**
  * The button follows the Embed URL from the last save. An address edit
@@ -284,10 +284,10 @@ function onAddressInput(value: string | number | null | undefined) {
     if (next !== (location?.address ?? ''))
       addressUntouched.value = false
   }
-  const match = suggestions.value.find(suggestion => suggestion.text === next)
-  // A pick is the suggested text. Anything else, including Enter, keeps the typed address.
+  const match = suggestions.value.find(suggestion => suggestion.label === next)
+  // A pick is the suggested label. Anything else, including Enter, keeps the typed address.
   if (match) {
-    pickedText.value = match.text
+    pickedText.value = match.label
     heldPlace.value = { provider: match.provider, placeRef: match.placeRef }
     sessionToken.value = null
     dropPendingSuggestions()
@@ -650,6 +650,7 @@ onMounted(loadLocations)
                 <p
                   v-if="attribution"
                   class="px-3 py-2 text-sm text-muted"
+                  translate="no"
                 >
                   {{ attribution }}
                 </p>

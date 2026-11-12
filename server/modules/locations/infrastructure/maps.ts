@@ -1,5 +1,5 @@
 import type { MapsPort, PlaceReferenceCheck, SuggestAddressesQuery } from '../maps-port'
-import { LOCATION_ADDRESS_MAX_LENGTH } from '../../../../shared'
+import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH } from '../../../../shared'
 import { nodeEnv } from '../../../core/index'
 import { embeddable } from '../maps-port'
 import { createGoogleMaps, GOOGLE_ATTRIBUTION } from './google-maps'
@@ -8,6 +8,33 @@ import { createNoneMaps } from './none-maps'
 
 /** Stable reference the office e2e can pick and the Driver link can assert. */
 export const FAKE_PLACE_REF = 'ChIJfakeDubrovnik'
+
+/** The street-address row. Distinct from {@link FAKE_PLACE_REF} so a test can pick either. */
+export const FAKE_STREET_PLACE_REF = 'ChIJfakeStreet'
+
+/**
+ * A street name built from the typed text. It stays within the name limit
+ * and is never the establishment name, including when that name is already
+ * 200 characters and starts with the mark.
+ */
+function streetName(text: string): string {
+  if (text.length < LOCATION_NAME_MAX_LENGTH)
+    return `${text}·`
+  return text.startsWith('·') ? `x${text.slice(1)}` : `·${text.slice(1)}`
+}
+
+/**
+ * The list label. A tail that would pass the address limit is swapped
+ * onto the first character, so the two fake rows stay different.
+ */
+function withTail(text: string, tail: string): string {
+  const joined = `${text}, ${tail}`
+  if (joined.length <= LOCATION_ADDRESS_MAX_LENGTH)
+    return joined
+  if (text.length === 0)
+    return tail.slice(0, 1)
+  return `${tail.slice(0, 1)}${text.slice(1)}`
+}
 
 const queries: SuggestAddressesQuery[] = []
 let unavailable = false
@@ -73,18 +100,31 @@ export function createFakeMaps(): MapsPort {
       queries.push(query)
       if (unavailable)
         return { available: false }
-      const suffix = ', Dubrovnik'
-      const text = query.text.length + suffix.length <= LOCATION_ADDRESS_MAX_LENGTH
-        ? `${query.text}${suffix}`
-        : query.text
+      // One establishment and one street, both built from the typed text,
+      // so a later pick can choose either (ADR-0061).
+      const establishmentLabel = withTail(query.text, 'Dubrovnik')
+      const streetLabel = withTail(query.text, 'ulica')
       return {
         available: true,
         attribution: GOOGLE_ATTRIBUTION,
-        suggestions: [{
-          text,
-          provider: 'google',
-          placeRef: FAKE_PLACE_REF,
-        }],
+        suggestions: [
+          {
+            label: establishmentLabel,
+            name: query.text,
+            address: 'Dubrovnik',
+            establishment: true,
+            provider: 'google',
+            placeRef: FAKE_PLACE_REF,
+          },
+          {
+            label: streetLabel,
+            name: streetName(query.text),
+            address: streetLabel,
+            establishment: false,
+            provider: 'google',
+            placeRef: FAKE_STREET_PLACE_REF,
+          },
+        ],
       }
     },
     navigationLink,

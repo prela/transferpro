@@ -1,6 +1,6 @@
 import type { EmbedTarget, MapsPort, PlaceReferenceCheck, SuggestAddressesResult } from '../maps-port'
 import { z } from 'zod'
-import { LOCATION_ADDRESS_MAX_LENGTH, PLACE_REF_MAX_LENGTH } from '../../../../shared'
+import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH, PLACE_REF_MAX_LENGTH } from '../../../../shared'
 import { nodeEnv } from '../../../core/index'
 import { embeddable } from '../maps-port'
 import { navigationLink } from './navigation-link'
@@ -30,7 +30,26 @@ const EMBED_URL = 'https://www.google.com/maps/embed/v1/place'
 const PLACES_TIMEOUT_MS = 4000
 
 /** Named on the suggestion list whenever Google supplied the rows. */
-export const GOOGLE_ATTRIBUTION = 'Google'
+export const GOOGLE_ATTRIBUTION = 'Google Maps'
+
+/**
+ * A prediction is an establishment when its types contain one of these.
+ * Google does not promise `establishment` on every place, so the transfer
+ * types are listed too (ADR-0061). The list is this adapter's, not the domain's.
+ */
+const ESTABLISHMENT_TYPES = new Set<string>([
+  'establishment',
+  'point_of_interest',
+  'airport',
+  'international_airport',
+  'train_station',
+  'bus_station',
+  'transit_station',
+  'ferry_terminal',
+  'marina',
+  'lodging',
+  'hotel',
+])
 
 export interface PlacesHttpResponse {
   readonly status: number
@@ -59,13 +78,20 @@ const placeErrorSchema = z.object({
   }).optional(),
 })
 
+const predictionTextSchema = z.object({
+  text: z.string(),
+})
+
 const autocompleteSchema = z.object({
   suggestions: z.array(z.object({
     placePrediction: z.object({
       placeId: z.string(),
-      text: z.object({
-        text: z.string(),
-      }),
+      text: predictionTextSchema,
+      structuredFormat: z.object({
+        mainText: predictionTextSchema.optional(),
+        secondaryText: predictionTextSchema.optional(),
+      }).optional(),
+      types: z.array(z.string()).optional(),
     }).optional(),
   })).optional(),
 })
@@ -191,6 +217,17 @@ function readErrorStatus(body: string): string | null {
   return parsed.success ? parsed.data.error?.status ?? null : null
 }
 
+/** Empty is dropped. Longer than the field allows is dropped. */
+function nonEmptyWithin(value: string, max: number): boolean {
+  return value.length > 0 && value.length <= max
+}
+
+/**
+ * Name is `mainText`. An establishment's address is `secondaryText` when
+ * that field is present, including a blank one, which is then dropped.
+ * A missing `secondaryText` uses the full text. A street address always
+ * uses the full text. One autocomplete answer; no Place Details call.
+ */
 function mapSuggestions(body: string): SuggestAddressesResult {
   let json: unknown
   try {
@@ -207,13 +244,30 @@ function mapSuggestions(body: string): SuggestAddressesResult {
     const prediction = row.placePrediction
     if (!prediction)
       continue
-    const text = prediction.text.text.trim()
+    const label = prediction.text.text.trim()
+    const name = prediction.structuredFormat?.mainText?.text.trim() ?? ''
+    const establishment = (prediction.types ?? []).some(type => ESTABLISHMENT_TYPES.has(type))
+    const secondary = prediction.structuredFormat?.secondaryText
+    const address = !establishment || secondary === undefined
+      ? label
+      : secondary.text.trim()
     const placeRef = prediction.placeId.trim()
-    if (text.length === 0 || text.length > LOCATION_ADDRESS_MAX_LENGTH)
+    if (!nonEmptyWithin(label, LOCATION_ADDRESS_MAX_LENGTH))
       continue
-    if (placeRef.length === 0 || placeRef.length > PLACE_REF_MAX_LENGTH)
+    if (!nonEmptyWithin(name, LOCATION_NAME_MAX_LENGTH))
       continue
-    suggestions.push({ text, provider: 'google' as const, placeRef })
+    if (!nonEmptyWithin(address, LOCATION_ADDRESS_MAX_LENGTH))
+      continue
+    if (!nonEmptyWithin(placeRef, PLACE_REF_MAX_LENGTH))
+      continue
+    suggestions.push({
+      label,
+      name,
+      address,
+      establishment,
+      provider: 'google' as const,
+      placeRef,
+    })
   }
   return {
     available: true,
