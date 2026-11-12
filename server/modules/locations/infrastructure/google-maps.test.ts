@@ -28,17 +28,45 @@ function client(answer: { status: number, body: string } | Error) {
   }
 }
 
+const label = 'Kuća Primjer 12, Grad Primjer, Zemlja Primjer'
+
+/**
+ * One autocomplete prediction. `secondary` omitted means the field is absent.
+ * `secondary: ''` is present and blank.
+ */
+function prediction(options: {
+  placeId?: string
+  label: string
+  name?: string
+  secondary?: string
+  types?: readonly string[]
+}) {
+  const structuredFormat: { mainText?: { text: string }, secondaryText?: { text: string } } = {}
+  if (options.name !== undefined)
+    structuredFormat.mainText = { text: options.name }
+  if (options.secondary !== undefined)
+    structuredFormat.secondaryText = { text: options.secondary }
+  return {
+    placePrediction: {
+      placeId: options.placeId ?? placeRef,
+      text: { text: options.label },
+      ...(options.name !== undefined || options.secondary !== undefined ? { structuredFormat } : {}),
+      ...(options.types !== undefined ? { types: [...options.types] } : {}),
+    },
+  }
+}
+
 it('sends the session token and the language, and maps the suggestions', async () => {
   const { http, seen } = client({
     status: 200,
     body: JSON.stringify({
       suggestions: [
-        {
-          placePrediction: {
-            placeId: placeRef,
-            text: { text: 'Villa Rosa 12, Čilipi, Hrvatska' },
-          },
-        },
+        prediction({
+          label,
+          name: 'Kuća Primjer 12',
+          secondary: 'Grad Primjer, Zemlja Primjer',
+          types: ['street_address', 'geocode'],
+        }),
         { queryPrediction: { text: { text: 'villa' } } },
       ],
     }),
@@ -52,11 +80,15 @@ it('sends the session token and the language, and maps the suggestions', async (
     available: true,
     attribution: GOOGLE_ATTRIBUTION,
     suggestions: [{
-      text: 'Villa Rosa 12, Čilipi, Hrvatska',
+      label,
+      name: 'Kuća Primjer 12',
+      address: label,
+      establishment: false,
       provider: 'google',
       placeRef,
     }],
   })
+  expect(GOOGLE_ATTRIBUTION).toBe('Google Maps')
   expect(seen).toHaveLength(1)
   expect(seen[0]?.url).toBe('https://places.googleapis.com/v1/places:autocomplete')
   expect(seen[0]?.key).toBe('test-maps-key')
@@ -65,6 +97,152 @@ it('sends the session token and the language, and maps the suggestions', async (
     sessionToken,
     languageCode: 'hr',
   })
+  expect(seen[0]?.body).not.toContain('includedRegionCodes')
+  expect(seen[0]?.body).not.toContain('locationBias')
+})
+
+it('marks an establishment from the prediction types, including no types', async () => {
+  const cases: Array<{ types?: readonly string[], establishment: boolean }> = [
+    { types: ['airport'], establishment: true },
+    { types: ['train_station', 'transit_station'], establishment: true },
+    { types: ['bus_station'], establishment: true },
+    { types: ['ferry_terminal'], establishment: true },
+    { types: ['marina'], establishment: true },
+    { types: ['lodging', 'hotel'], establishment: true },
+    { types: ['street_address', 'geocode'], establishment: false },
+    { types: ['premise'], establishment: false },
+    { establishment: false },
+  ]
+  const { http, seen } = client({
+    status: 200,
+    body: JSON.stringify({
+      suggestions: cases.map((entry, index) => prediction({
+        placeId: `ChIJtype${index}`,
+        label: `Place ${index}, town`,
+        name: `Place ${index}`,
+        secondary: `Town ${index}`,
+        ...(entry.types !== undefined ? { types: entry.types } : {}),
+      })),
+    }),
+  })
+  const result = await createGoogleMaps('test-maps-key', http).suggestAddresses({
+    text,
+    sessionToken,
+    language: 'hr',
+  })
+  expect(result).toMatchObject({ available: true, attribution: 'Google Maps' })
+  if (!result.available)
+    return
+  expect(result.suggestions.map(suggestion => suggestion.establishment)).toEqual(
+    cases.map(entry => entry.establishment),
+  )
+  expect(result.suggestions.map(suggestion => suggestion.address)).toEqual(
+    cases.map((entry, index) => entry.establishment ? `Town ${index}` : `Place ${index}, town`),
+  )
+  expect(seen).toHaveLength(1)
+})
+
+it('takes the name from mainText and the address from the establishment rules', async () => {
+  const { http, seen } = client({
+    status: 200,
+    body: JSON.stringify({
+      suggestions: [
+        prediction({
+          placeId: 'ChIJhotel',
+          label: 'Hotel Primjer, Ulica Primjera 1, Grad Primjer',
+          name: 'Hotel Primjer',
+          secondary: 'Ulica Primjera 1, Grad Primjer',
+          types: ['lodging', 'hotel'],
+        }),
+        prediction({
+          placeId: 'ChIJairport',
+          label: 'Zračna luka Primjer, Grad Primjer',
+          name: 'Zračna luka Primjer',
+          types: ['airport'],
+        }),
+        prediction({
+          placeId: 'ChIJstreet',
+          label: 'Ulica Primjera 12, Grad Primjer',
+          name: 'Ulica Primjera 12',
+          secondary: 'Grad Primjer',
+          types: ['street_address', 'geocode'],
+        }),
+      ],
+    }),
+  })
+  await expect(createGoogleMaps('test-maps-key', http).suggestAddresses({
+    text,
+    sessionToken,
+    language: 'en',
+  })).resolves.toMatchObject({
+    available: true,
+    suggestions: [
+      {
+        label: 'Hotel Primjer, Ulica Primjera 1, Grad Primjer',
+        name: 'Hotel Primjer',
+        address: 'Ulica Primjera 1, Grad Primjer',
+        establishment: true,
+      },
+      {
+        label: 'Zračna luka Primjer, Grad Primjer',
+        name: 'Zračna luka Primjer',
+        address: 'Zračna luka Primjer, Grad Primjer',
+        establishment: true,
+      },
+      {
+        label: 'Ulica Primjera 12, Grad Primjer',
+        name: 'Ulica Primjera 12',
+        address: 'Ulica Primjera 12, Grad Primjer',
+        establishment: false,
+      },
+    ],
+  })
+  expect(seen).toHaveLength(1)
+})
+
+it('drops a suggestion whose label, name, or address is empty or too long', async () => {
+  const tooLong = 'a'.repeat(201)
+  const kept = prediction({
+    placeId: 'ChIJkept',
+    label: 'Marina Primjer, Grad Primjer',
+    name: 'Marina Primjer',
+    secondary: 'Grad Primjer',
+    types: ['marina'],
+  })
+  const { http, seen } = client({
+    status: 200,
+    body: JSON.stringify({
+      suggestions: [
+        prediction({ label: '   ', name: 'Blank label', secondary: 'Town', types: ['hotel'] }),
+        prediction({ label: tooLong, name: 'Long label', secondary: 'Town', types: ['hotel'] }),
+        prediction({ label: 'Named, town', name: '   ', secondary: 'Town', types: ['hotel'] }),
+        prediction({ label: 'Named long, town', name: tooLong, secondary: 'Town', types: ['hotel'] }),
+        prediction({ label: 'Hotel, town', name: 'Hotel', secondary: '   ', types: ['hotel'] }),
+        prediction({ label: 'Hotel long, town', name: 'Hotel', secondary: tooLong, types: ['hotel'] }),
+        { queryPrediction: { text: { text: 'villa' } } },
+        kept,
+      ],
+    }),
+  })
+  const result = await createGoogleMaps('test-maps-key', http).suggestAddresses({
+    text,
+    sessionToken,
+    language: 'hr',
+  })
+  expect(result).toEqual({
+    available: true,
+    attribution: 'Google Maps',
+    suggestions: [{
+      label: 'Marina Primjer, Grad Primjer',
+      name: 'Marina Primjer',
+      address: 'Grad Primjer',
+      establishment: true,
+      provider: 'google',
+      placeRef: 'ChIJkept',
+    }],
+  })
+  expect(seen).toHaveLength(1)
+  expect(JSON.stringify(result)).not.toContain(tooLong)
 })
 
 it('turns an error, a timeout, and a quota answer into unavailable without echoing the text', async () => {

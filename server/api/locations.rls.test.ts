@@ -4,7 +4,7 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { FAKE_PLACE_REF, lastTestMapsQuery, setTestMapsEmbedOff, setTestMapsUnavailable, TEST_SUGGESTIONS_UNAVAILABLE_COOKIE } from '../modules/locations'
+import { FAKE_PLACE_REF, FAKE_STREET_PLACE_REF, lastTestMapsQuery, setTestMapsEmbedOff, setTestMapsUnavailable, TEST_SUGGESTIONS_UNAVAILABLE_COOKIE } from '../modules/locations'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
 import getLocations from './locations.get'
 import postLocation from './locations.post'
@@ -453,12 +453,25 @@ it('suggests for the office in the Tenant language, refuses a driver, and does n
   expect(suggested.status).toBe(200)
   expect(await suggested.json()).toEqual({
     available: true,
-    attribution: 'Google',
-    suggestions: [{
-      text: `${typed}, Dubrovnik`,
-      provider: 'google',
-      placeRef: FAKE_PLACE_REF,
-    }],
+    attribution: 'Google Maps',
+    suggestions: [
+      {
+        label: `${typed}, Dubrovnik`,
+        name: typed,
+        address: 'Dubrovnik',
+        establishment: true,
+        provider: 'google',
+        placeRef: FAKE_PLACE_REF,
+      },
+      {
+        label: `${typed}, ulica`,
+        name: `${typed}·`,
+        address: `${typed}, ulica`,
+        establishment: false,
+        provider: 'google',
+        placeRef: FAKE_STREET_PLACE_REF,
+      },
+    ],
   })
   expect(lastTestMapsQuery()).toEqual({ text: typed, sessionToken: token, language: 'hr' })
 

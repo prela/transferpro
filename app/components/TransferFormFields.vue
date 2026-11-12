@@ -220,11 +220,11 @@ const suggestionsUnavailable = ref(false)
 let suggestTimer = 0
 let suggestGeneration = 0
 let sessionToken: string | null = null
-const suggestionItems = computed(() => suggestions.value.map(suggestion => suggestion.text))
+const suggestionItems = computed(() => suggestions.value.map(suggestion => suggestion.label))
 
 function onAddressInput(value: string | number | null | undefined) {
   const next = value == null ? '' : String(value)
-  const match = suggestions.value.find(suggestion => suggestion.text === next)
+  const match = suggestions.value.find(suggestion => suggestion.label === next)
   if (match) {
     heldPlace.value = { provider: match.provider, placeRef: match.placeRef }
     sessionToken = null
@@ -470,6 +470,7 @@ onUnmounted(() => {
           <p
             v-if="attribution"
             class="px-3 py-2 text-sm text-muted"
+            translate="no"
           >
             {{ attribution }}
           </p>

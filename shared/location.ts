@@ -247,8 +247,16 @@ export interface SuggestAddressesInput {
   readonly sessionToken: string
 }
 
+/**
+ * One place the office can pick. `label` is the full prediction text the
+ * list shows. The name, the address, and the establishment mark come from
+ * the same answer (ADR-0061). The route still accepts only typed `text`.
+ */
 export const addressSuggestionSchema = z.object({
-  text: z.string().min(1).max(LOCATION_ADDRESS_MAX_LENGTH),
+  label: z.string().min(1).max(LOCATION_ADDRESS_MAX_LENGTH),
+  name: z.string().min(1).max(LOCATION_NAME_MAX_LENGTH),
+  address: z.string().min(1).max(LOCATION_ADDRESS_MAX_LENGTH),
+  establishment: z.boolean(),
   provider: placeProviderSchema,
   placeRef: z.string().min(1).max(PLACE_REF_MAX_LENGTH),
 })

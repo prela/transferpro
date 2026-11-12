@@ -3,8 +3,16 @@
  * port. Adapters live in infrastructure. The domain does not know a provider.
  */
 
+/**
+ * One place from autocomplete (ADR-0061). The label is the prediction's
+ * full text, which the list shows. The adapter chooses the name, the
+ * address, and the establishment mark. The form does not.
+ */
 export interface AddressSuggestion {
-  readonly text: string
+  readonly label: string
+  readonly name: string
+  readonly address: string
+  readonly establishment: boolean
   readonly provider: string
   readonly placeRef: string
 }
@@ -68,7 +76,7 @@ export type PlaceReferenceCheck
     | { readonly outcome: 'unavailable' }
 
 /**
- * Suggest addresses, or say the provider is unavailable.
+ * Suggest places for typed text, or say the provider is unavailable.
  * Build a navigation link for a Location. The link calls nothing.
  * Build an Embed URL for a Location and a language, or say there is none.
  * That URL calls nothing (ADR-0052).

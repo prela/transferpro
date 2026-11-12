@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
+import { LOCATION_NAME_MAX_LENGTH } from '../../../../shared'
 import { nodeEnv } from '../../../core/index'
-import { FAKE_PLACE_REF, lastTestMapsQuery, lastTestPlaceReference, mapsForApp, setTestMapsEmbedOff, setTestMapsUnavailable, setTestPlaceReferenceCheck, TEST_SUGGESTIONS_UNAVAILABLE_COOKIE, testSuggestionsForcedOff } from './maps'
+import { FAKE_PLACE_REF, FAKE_STREET_PLACE_REF, lastTestMapsQuery, lastTestPlaceReference, mapsForApp, setTestMapsEmbedOff, setTestMapsUnavailable, setTestPlaceReferenceCheck, TEST_SUGGESTIONS_UNAVAILABLE_COOKIE, testSuggestionsForcedOff } from './maps'
 import { createNoneMaps } from './none-maps'
 
 const text = 'Villa Rosa 12'
@@ -29,15 +30,61 @@ it('uses the fake in test even when MAPS=google and a key are set', async () => 
       sessionToken: 'a1b2c3d4-5555-4555-8555-555555555555',
       language: 'hr',
     })
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       available: true,
-      suggestions: [{ provider: 'google', placeRef: FAKE_PLACE_REF }],
+      attribution: 'Google Maps',
+      suggestions: [
+        {
+          label: `${text}, Dubrovnik`,
+          name: text,
+          address: 'Dubrovnik',
+          establishment: true,
+          provider: 'google',
+          placeRef: FAKE_PLACE_REF,
+        },
+        {
+          label: `${text}, ulica`,
+          name: `${text}·`,
+          address: `${text}, ulica`,
+          establishment: false,
+          provider: 'google',
+          placeRef: FAKE_STREET_PLACE_REF,
+        },
+      ],
     })
     expect(calls).toEqual([])
     expect(lastTestMapsQuery()?.language).toBe('hr')
   }
   finally {
     globalThis.fetch = original
+    restoreNodeEnv(previous)
+  }
+})
+
+it('keeps the two fake suggestions distinct when the typed text is already at the name limit', async () => {
+  const previous = process.env.NODE_ENV
+  process.env.NODE_ENV = 'test'
+  const typed = `·${'a'.repeat(LOCATION_NAME_MAX_LENGTH - 1)}`
+  try {
+    setTestMapsUnavailable(false)
+    const result = await mapsForApp({ MAPS: 'none' }).suggestAddresses({
+      text: typed,
+      sessionToken: 'a1b2c3d4-5555-4555-8555-555555555555',
+      language: 'hr',
+    })
+    expect(result.available).toBe(true)
+    if (!result.available)
+      return
+    const [establishment, street] = result.suggestions
+    expect(establishment?.establishment).toBe(true)
+    expect(street?.establishment).toBe(false)
+    expect(establishment?.name).not.toBe(street?.name)
+    expect(establishment?.address).not.toBe(street?.address)
+    expect(establishment?.placeRef).not.toBe(street?.placeRef)
+    expect(establishment?.name.length).toBeLessThanOrEqual(LOCATION_NAME_MAX_LENGTH)
+    expect(street?.name.length).toBeLessThanOrEqual(LOCATION_NAME_MAX_LENGTH)
+  }
+  finally {
     restoreNodeEnv(previous)
   }
 })

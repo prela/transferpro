@@ -55,6 +55,8 @@ const PERSONAL_KEYS = new Set([
   'tabla',
   // The suggestion lookup sends the typed address as `text`.
   'text',
+  // The suggestion list shows the prediction's full text as `label`.
+  'label',
   // A place reference is an address. The audit row stores the field name only.
   'placeref',
   // Postgres `detail` carries the row values that caused the error.
