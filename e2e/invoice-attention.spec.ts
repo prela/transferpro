@@ -16,29 +16,31 @@ import { hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
 const zone = 'Europe/Zagreb'
 
 /**
- * Noon on a Tenant day from the 15th through the 20th, inside the pickup
- * window. The payment reminder is only those calendar days. A fixed
- * 15 October ages out of the window and the create returns 400.
+ * A Tenant instant on the 15th through the 20th, not ahead of the real
+ * clock. The payment reminder is only those calendar days, and a browser
+ * clock in the future drops the session cookie. The pickup is that same
+ * day, so it stays inside the 30-day window. A fixed 15 October ages out.
  */
-function reportingNoon(now = new Date()): Date {
+function reportingInstant(now = new Date()): Date {
   const today = calendarDateInTimeZone(zone, now)
   const [year, month, day] = today.split('-').map(Number)
+  const todayDay = day ?? 1
+  if (todayDay >= 15 && todayDay <= 20)
+    return now
   let targetYear = year ?? 0
   let targetMonth = month ?? 1
-  const todayDay = day ?? 1
-  if (todayDay > 20) {
-    targetMonth += 1
-    if (targetMonth > 12) {
-      targetMonth = 1
-      targetYear += 1
+  if (todayDay < 15) {
+    targetMonth -= 1
+    if (targetMonth < 1) {
+      targetMonth = 12
+      targetYear -= 1
     }
   }
-  const targetDay = todayDay >= 15 && todayDay <= 20 ? todayDay : 15
-  const iso = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`
+  const iso = `${targetYear}-${String(targetMonth).padStart(2, '0')}-20`
   return instantFromWallClock(`${iso}T12:00`, zone)
 }
 
-const pinned = reportingNoon()
+const pinned = reportingInstant()
 
 function required(name: string): string {
   const value = process.env[name]
