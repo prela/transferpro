@@ -194,11 +194,11 @@ test('dispatcher adds a location and the screen shows the tenant name', async ({
 
   await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
   const dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Ime').fill('Hotel Park')
+  await dialog.getByLabel('Ime').fill('Hotel Test')
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
   await dialog.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
   await expect(dialog).toBeHidden()
-  await expect(page.getByRole('button', { name: 'Radnje: Hotel Park' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Radnje: Hotel Test' })).toBeVisible()
 })
 
 test('the office picks a suggestion, a hand edit drops it, and a typed address still saves when suggestions are off', async ({ page }) => {
@@ -397,13 +397,13 @@ test('the office picks a place by its name or its address', async ({ page }) => 
     await pastSuggestPause(page)
     expect(lookups).toEqual([])
 
-    await dialog.getByLabel('Ime').fill('Hotel Bellevue')
-    await expect(dialog.getByRole('option', { name: 'Hotel Bellevue, Dubrovnik' })).toBeVisible()
+    await dialog.getByLabel('Ime').fill('Hotel Primjer')
+    await expect(dialog.getByRole('option', { name: 'Hotel Primjer, Dubrovnik' })).toBeVisible()
     await expect(dialog.getByText('Google Maps', { exact: true })).toBeVisible()
     await page.mouse.move(0, 0)
     await expectNoAxeViolations(page)
-    await dialog.getByRole('option', { name: 'Hotel Bellevue, Dubrovnik' }).click()
-    await expect(dialog.getByLabel('Ime')).toHaveValue('Hotel Bellevue')
+    await dialog.getByRole('option', { name: 'Hotel Primjer, Dubrovnik' }).click()
+    await expect(dialog.getByLabel('Ime')).toHaveValue('Hotel Primjer')
     await expect(dialog.getByLabel('Adresa')).toHaveValue('Dubrovnik')
     await expect(dialog.getByText('Google Maps', { exact: true })).toHaveCount(0)
     await dialog.getByRole('button', { name: 'Dodaj lokaciju', exact: true }).click()
@@ -412,24 +412,24 @@ test('the office picks a place by its name or its address', async ({ page }) => 
     const picked = await (await page.request.get('/api/locations')).json() as {
       locations: { name: string, address: string | null, place: { placeRef: string } | null }[]
     }
-    const row = picked.locations.find(location => location.name === 'Hotel Bellevue')
+    const row = picked.locations.find(location => location.name === 'Hotel Primjer')
     expect(row?.address).toBe('Dubrovnik')
     expect(row?.place?.placeRef).toBe(placeRef)
 
-    await page.getByRole('button', { name: 'Hotel Bellevue', exact: true }).click()
+    await page.getByRole('button', { name: 'Hotel Primjer', exact: true }).click()
     dialog = page.getByRole('dialog')
     await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toBeVisible()
-    await dialog.getByLabel('Ime').fill('Bellevue')
+    await dialog.getByLabel('Ime').fill('Primjer')
     await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
     await expect(dialog).toBeHidden()
-    await page.getByRole('button', { name: 'Bellevue', exact: true }).click()
+    await page.getByRole('button', { name: 'Primjer', exact: true }).click()
     dialog = page.getByRole('dialog')
     await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toBeVisible()
     await dialog.getByLabel('Adresa').fill('Put 9')
     await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toHaveCount(0)
     await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
     await expect(dialog).toBeHidden()
-    await page.getByRole('button', { name: 'Bellevue', exact: true }).click()
+    await page.getByRole('button', { name: 'Primjer', exact: true }).click()
     dialog = page.getByRole('dialog')
     await expect(dialog.getByRole('button', { name: 'Prikaži na karti', exact: true })).toHaveCount(0)
     await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
@@ -463,12 +463,12 @@ test('the office picks a place by its name or its address', async ({ page }) => 
     await expect(dialog.getByRole('option', { name: 'Put 7, Dubrovnik' })).toBeVisible()
 
     await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
-    await dialog.getByLabel('Ime').fill('Hotel Park')
-    const nameList = dialog.getByRole('option', { name: 'Hotel Park, Dubrovnik' })
+    await dialog.getByLabel('Ime').fill('Hotel Test')
+    const nameList = dialog.getByRole('option', { name: 'Hotel Test, Dubrovnik' })
     await expect(nameList).toBeVisible()
     await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Adresa')
     await expect(nameList).toHaveCount(0)
-    await expect(dialog.getByLabel('Ime')).toHaveValue('Hotel Park')
+    await expect(dialog.getByLabel('Ime')).toHaveValue('Hotel Test')
     await expect(dialog.getByLabel('Adresa')).toHaveValue('Put 7')
 
     await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
@@ -483,7 +483,7 @@ test('the office picks a place by its name or its address', async ({ page }) => 
     expect(typedRow?.name).toBe('Hotel Tipka')
     expect(typedRow?.place).toBeNull()
 
-    const nameToken = lookups.find(lookup => lookup.text === 'Hotel Bellevue')?.sessionToken
+    const nameToken = lookups.find(lookup => lookup.text === 'Hotel Primjer')?.sessionToken
     const addressToken = lookups.find(lookup => lookup.text === 'Obala 8')?.sessionToken
     expect(nameToken).toBeTruthy()
     expect(addressToken).toBeTruthy()

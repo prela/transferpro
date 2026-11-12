@@ -169,8 +169,8 @@ it('shows the saved Embed URL only while the address field is untouched', () => 
 })
 
 const establishment = {
-  name: 'Hotel Excelsior',
-  address: 'Frana Supila 12',
+  name: 'Hotel Primjer',
+  address: 'Ulica Primjera 1',
   establishment: true,
   provider: 'google' as const,
   placeRef: 'ChIJhotel',
@@ -190,8 +190,8 @@ it('fills the name and the address from a name pick, replacing either address', 
   const fromTyped = fillLocationFromPick('name', establishment, { name: 'Hotel Ex', address: typed })
   const fromPicked = fillLocationFromPick('name', establishment, { name: 'Hotel Ex', address: picked })
   expect(fromTyped).toEqual({
-    name: 'Hotel Excelsior',
-    address: 'Frana Supila 12',
+    name: 'Hotel Primjer',
+    address: 'Ulica Primjera 1',
     place: { provider: 'google', placeRef: 'ChIJhotel' },
   })
   expect(fromPicked).toEqual(fromTyped)
@@ -201,14 +201,14 @@ it('fills the name and the address from a name pick, replacing either address', 
 
 it('fills an empty name from an establishment on the address, and keeps a typed name', () => {
   const filled = fillLocationFromPick('address', establishment, { name: '', address: 'nista' })
-  expect(filled.name).toBe('Hotel Excelsior')
-  expect(filled.address).toBe('Frana Supila 12')
+  expect(filled.name).toBe('Hotel Primjer')
+  expect(filled.address).toBe('Ulica Primjera 1')
   expect(filled.place).toEqual({ provider: 'google', placeRef: 'ChIJhotel' })
   const blank = fillLocationFromPick('address', establishment, { name: '   ', address: '' })
-  expect(blank.name).toBe('Hotel Excelsior')
-  const kept = fillLocationFromPick('address', establishment, { name: 'Villa Rosa', address: 'nista' })
-  expect(kept.name).toBe('Villa Rosa')
-  expect(kept.address).toBe('Frana Supila 12')
+  expect(blank.name).toBe('Hotel Primjer')
+  const kept = fillLocationFromPick('address', establishment, { name: 'Vila Test', address: 'nista' })
+  expect(kept.name).toBe('Vila Test')
+  expect(kept.address).toBe('Ulica Primjera 1')
 })
 
 it('leaves the name alone when a street address is picked', () => {
