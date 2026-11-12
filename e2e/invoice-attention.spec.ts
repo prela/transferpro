@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import pg from 'pg'
-import { instantFromWallClock } from '../shared/date'
+import { calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
@@ -13,8 +13,32 @@ import { hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
  * block. The desktop project runs it too.
  */
 
-const pinned = new Date('2026-10-15T10:00:00.000Z')
 const zone = 'Europe/Zagreb'
+
+/**
+ * Noon on a Tenant day from the 15th through the 20th, inside the pickup
+ * window. The payment reminder is only those calendar days. A fixed
+ * 15 October ages out of the window and the create returns 400.
+ */
+function reportingNoon(now = new Date()): Date {
+  const today = calendarDateInTimeZone(zone, now)
+  const [year, month, day] = today.split('-').map(Number)
+  let targetYear = year ?? 0
+  let targetMonth = month ?? 1
+  const todayDay = day ?? 1
+  if (todayDay > 20) {
+    targetMonth += 1
+    if (targetMonth > 12) {
+      targetMonth = 1
+      targetYear += 1
+    }
+  }
+  const targetDay = todayDay >= 15 && todayDay <= 20 ? todayDay : 15
+  const iso = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`
+  return instantFromWallClock(`${iso}T12:00`, zone)
+}
+
+const pinned = reportingNoon()
 
 function required(name: string): string {
   const value = process.env[name]
@@ -92,7 +116,7 @@ test.describe('@phone', () => {
       const clientId = await createdId(page, '/api/clients', { name: 'Agencija Pozornost', kind: 'agency' })
       const startLocationId = await createdId(page, '/api/locations', { name: 'Zračna luka', kind: 'airport' })
       const endLocationId = await createdId(page, '/api/locations', { name: 'Hotel Park', kind: 'hotel' })
-      const day = '2026-10-15'
+      const day = calendarDateInTimeZone(zone, pinned)
       const pickup = instantFromWallClock(`${day}T12:00`, zone).toISOString()
       async function record(guestName: string): Promise<string> {
         const response = await page.request.post('/api/transfers', {
