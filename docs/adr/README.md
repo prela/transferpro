@@ -46,7 +46,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0028 | Live flight | accepted; partially superseded by ADR-0055 |
 | ADR-0029 | Ride occupation | accepted; partially superseded by ADR-0034 and ADR-0058 |
 | ADR-0030 | Landing alarm | superseded by ADR-0055 |
-| ADR-0031 | Maps for Locations behind a port | accepted; partially superseded by ADR-0052 |
+| ADR-0031 | Maps for Locations behind a port | accepted; partially superseded by ADR-0052 and ADR-0061 |
 | ADR-0032 | Board warnings are derived on read | accepted |
 | ADR-0033 | v1 scope: price list, invoices through a provider, Client card, and Partner record | accepted |
 | ADR-0034 | Capacity as a module | accepted; partially superseded by ADR-0058 and ADR-0059 |
@@ -75,3 +75,4 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0057 | Office and driver session lengths | accepted |
 | ADR-0058 | Stops and an escort on one Transfer | accepted |
 | ADR-0059 | A Vehicle seat count and a passenger warning | accepted |
+| ADR-0061 | Pick a place by its name or its address | accepted |
