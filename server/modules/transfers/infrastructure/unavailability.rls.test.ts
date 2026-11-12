@@ -6,7 +6,7 @@ import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
-import { instantFromWallClock } from '../../../../shared'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, mondayOfWeek } from '../../../../shared'
 import getDriverWindows from '../../../api/drivers/[id]/unavailability.get'
 import postAcceptByPhone from '../../../api/rides/[id]/accept-by-phone.post'
 import postAssign from '../../../api/rides/[id]/assign.post'
@@ -128,8 +128,19 @@ afterAll(async () => {
   await appPool.end()
 })
 
+/**
+ * November walls stay as written. The calendar day moves onto a later
+ * Monday week so a pickup stays inside the window. A week query moves with it.
+ */
+const windowOriginMs = Date.parse('2026-11-09T00:00:00.000Z')
+const windowAnchor = mondayOfWeek(addCalendarDays(calendarDateInTimeZone(zone, new Date()), 14))
+function windowDay(isoDate: string): string {
+  const day = Date.parse(`${isoDate}T00:00:00.000Z`)
+  return addCalendarDays(windowAnchor, Math.round((day - windowOriginMs) / 86_400_000))
+}
 function at(wall: string): Date {
-  return instantFromWallClock(wall, zone)
+  const [date, time] = wall.split('T')
+  return instantFromWallClock(`${windowDay(date ?? '')}T${time}`, zone)
 }
 
 async function signIn(email: string): Promise<Headers> {
@@ -323,8 +334,8 @@ it('records, lists, moves, and removes a window, returns the Rides it covers, an
 
   expect(await json(await call('GET', `/api/drivers/${driver.id}/unavailability`, world.admin))).toEqual({ windows: [saved.window] })
   expect(await json(await call('GET', `/api/vehicles/${vehicle.id}/unavailability`, world.admin))).toEqual({ windows: [] })
-  expect(await json(await call('GET', '/api/unavailability?week=2026-11-09', world.dispatcher))).toEqual({ windows: [saved.window] })
-  expect(await json(await call('GET', '/api/unavailability?week=2026-11-16', world.dispatcher))).toEqual({ windows: [] })
+  expect(await json(await call('GET', `/api/unavailability?week=${windowDay('2026-11-09')}`, world.dispatcher))).toEqual({ windows: [saved.window] })
+  expect(await json(await call('GET', `/api/unavailability?week=${windowDay('2026-11-16')}`, world.dispatcher))).toEqual({ windows: [] })
 
   const movedEnd = at('2026-11-13T00:00')
   const moved = await json(await call('PATCH', `/api/unavailability/${windowId}`, world.admin, { startsAt: startsAt.toISOString(), endsAt: movedEnd.toISOString() }))
@@ -377,11 +388,11 @@ it('refuses a bad body, a Driver role, no session, an archived Driver, and a win
   expect((await call('POST', '/api/unavailability', world.dispatcher, windowBody({ driverId: driver.id }, endsAt, startsAt))).status).toBe(400)
   expect((await call('POST', '/api/unavailability', world.dispatcher, windowBody({ driverId: driver.id, vehicleId: vehicle.id }, startsAt, endsAt))).status).toBe(400)
   expect((await call('POST', '/api/unavailability', world.dispatcher, { ...windowBody({ driverId: driver.id }, startsAt, endsAt), reason: 'bolovanje' })).status).toBe(400)
-  expect((await call('GET', '/api/unavailability?week=2026-11-10', world.dispatcher)).status).toBe(400)
+  expect((await call('GET', `/api/unavailability?week=${windowDay('2026-11-10')}`, world.dispatcher)).status).toBe(400)
   expect((await call('POST', '/api/unavailability', world.driverSession, windowBody({ driverId: driver.id }, startsAt, endsAt))).status).toBe(403)
   expect((await call('GET', `/api/drivers/${driver.id}/unavailability`, world.driverSession)).status).toBe(403)
   expect((await call('GET', `/api/vehicles/${vehicle.id}/unavailability`, world.driverSession)).status).toBe(403)
-  expect((await call('GET', '/api/unavailability?week=2026-11-09', world.driverSession)).status).toBe(403)
+  expect((await call('GET', `/api/unavailability?week=${windowDay('2026-11-09')}`, world.driverSession)).status).toBe(403)
   expect((await call('POST', '/api/unavailability', new Headers(), windowBody({ driverId: driver.id }, startsAt, endsAt))).status).toBe(401)
 
   const saved = await json(await call('POST', '/api/unavailability', world.dispatcher, windowBody({ vehicleId: vehicle.id }, startsAt, endsAt)))
@@ -408,7 +419,7 @@ it('keeps another Tenant out of every window read and write', async () => {
 
   expect((await call('GET', `/api/drivers/${driver.id}/unavailability`, other.admin)).status).toBe(404)
   expect((await call('GET', `/api/vehicles/${vehicle.id}/unavailability`, other.admin)).status).toBe(404)
-  expect(await json(await call('GET', '/api/unavailability?week=2026-11-09', other.dispatcher))).toEqual({ windows: [] })
+  expect(await json(await call('GET', `/api/unavailability?week=${windowDay('2026-11-09')}`, other.dispatcher))).toEqual({ windows: [] })
   expect((await call('POST', '/api/unavailability', other.dispatcher, windowBody({ driverId: driver.id }, startsAt, endsAt))).status).toBe(404)
   expect((await call('POST', '/api/unavailability', other.dispatcher, windowBody({ vehicleId: vehicle.id }, startsAt, endsAt))).status).toBe(404)
   expect((await call('PATCH', `/api/unavailability/${saved.window.id}`, other.admin, { startsAt: startsAt.toISOString(), endsAt: at('2026-11-10T12:00').toISOString() })).status).toBe(404)
@@ -546,23 +557,23 @@ it('the board shows the unavailability warning while a window covers the Ride, a
   const ride = await world.transfer(pickup)
   expect((await assign(world.dispatcher, ride.ride.id, driver.id, car.id)).status).toBe(200)
   const quiet = { expiredDocuments: [], rosterMismatch: false, overlappingRideIds: [] }
-  expect(await boardWarnings(world.dispatcher, '2026-11-26', ride.ride.id)).toEqual(quiet)
+  expect(await boardWarnings(world.dispatcher, windowDay('2026-11-26'), ride.ride.id)).toEqual(quiet)
 
   const saved = await json(await call('POST', '/api/unavailability', world.dispatcher, windowBody({ vehicleId: car.id }, at('2026-11-26T12:30'), at('2026-11-26T15:00'))))
   expect(saved.coveredRides).toEqual([{ rideId: ride.ride.id, pickupAt: pickup.toISOString() }])
-  expect(await boardWarnings(world.dispatcher, '2026-11-26', ride.ride.id)).toEqual({ ...quiet, unavailable: ['vehicle'] })
+  expect(await boardWarnings(world.dispatcher, windowDay('2026-11-26'), ride.ride.id)).toEqual({ ...quiet, unavailable: ['vehicle'] })
 
   // Moved to start where the occupied window ends: half-open, so the Ride is free.
   await json(await call('PATCH', `/api/unavailability/${saved.window.id}`, world.dispatcher, {
     startsAt: at('2026-11-26T13:00').toISOString(),
     endsAt: at('2026-11-26T15:00').toISOString(),
   }))
-  expect(await boardWarnings(world.dispatcher, '2026-11-26', ride.ride.id)).toEqual(quiet)
+  expect(await boardWarnings(world.dispatcher, windowDay('2026-11-26'), ride.ride.id)).toEqual(quiet)
 
   const driverWindow = await json(await call('POST', '/api/unavailability', world.admin, windowBody({ driverId: driver.id }, at('2026-11-26T00:00'), at('2026-11-27T00:00'))))
-  expect(await boardWarnings(world.admin, '2026-11-26', ride.ride.id)).toEqual({ ...quiet, unavailable: ['driver'] })
+  expect(await boardWarnings(world.admin, windowDay('2026-11-26'), ride.ride.id)).toEqual({ ...quiet, unavailable: ['driver'] })
   expect((await call('POST', `/api/unavailability/${driverWindow.window.id}/remove`, world.admin)).status).toBe(204)
-  expect(await boardWarnings(world.admin, '2026-11-26', ride.ride.id)).toEqual(quiet)
+  expect(await boardWarnings(world.admin, windowDay('2026-11-26'), ride.ride.id)).toEqual(quiet)
 })
 
 const backendRows = z.object({ rows: z.array(z.object({ pid: z.number().int() })) })
@@ -620,5 +631,5 @@ it('reads the week in the Tenant time zone and keeps the hour of the half-open e
   // Ends exactly at local midnight that starts the week: it does not touch it.
   await json(await call('POST', '/api/unavailability', world.dispatcher, windowBody({ vehicleId: vehicle.id }, at('2026-11-08T20:00'), at('2026-11-09T00:00'))))
   const inside = await json(await call('POST', '/api/unavailability', world.dispatcher, windowBody({ vehicleId: vehicle.id }, at('2026-11-15T23:00'), at('2026-11-16T02:00'))))
-  expect(await json(await call('GET', '/api/unavailability?week=2026-11-09', world.dispatcher))).toEqual({ windows: [inside.window] })
+  expect(await json(await call('GET', `/api/unavailability?week=${windowDay('2026-11-09')}`, world.dispatcher))).toEqual({ windows: [inside.window] })
 })

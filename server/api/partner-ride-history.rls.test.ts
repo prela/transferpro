@@ -4,7 +4,7 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { addCalendarDays, instantFromWallClock, operationalDateInTimeZone, RIDE_HISTORY_PAGE_SIZE, rideHistorySchema, transferDaySchema } from '../../shared'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone, RIDE_HISTORY_PAGE_SIZE, rideHistorySchema, transferDaySchema } from '../../shared'
 import { createClient } from '../modules/clients'
 import { createDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
@@ -212,8 +212,24 @@ function call(method: string, path: string, session?: Headers, body?: unknown) {
   }))
 }
 
+/**
+ * October walls stay as written. The calendar day moves with today so a
+ * pickup stays inside the window. History order follows the same offsets.
+ */
+const historyOriginMs = Date.parse('2026-10-23T00:00:00.000Z')
+const historyAnchor = addCalendarDays(calendarDateInTimeZone(zone, new Date()), 2)
+function historyDay(isoDate: string): string {
+  const day = Date.parse(`${isoDate}T00:00:00.000Z`)
+  return addCalendarDays(historyAnchor, Math.round((day - historyOriginMs) / 86_400_000))
+}
+function historyWall(wall: string): string {
+  const [date, time] = wall.split('T')
+  return `${historyDay(date ?? '')}T${time}`
+}
 function at(wall: string): string {
-  return instantFromWallClock(wall, zone).toISOString()
+  // A wall that is already relative to today, such as yesterday at 08:00, stays put.
+  const shifted = wall.startsWith('2026-10-') ? historyWall(wall) : wall
+  return instantFromWallClock(shifted, zone).toISOString()
 }
 
 interface OfficeWorld {
@@ -386,8 +402,8 @@ it('lists open and closed Rides newest first, keeps an archived Partner, and cou
 
   const open = body.rides.find(ride => ride.guestName === 'Predani gost')
   expect(open).toMatchObject({
-    pickupWall: '2026-10-23T09:00',
-    operationalDay: '2026-10-23',
+    pickupWall: historyWall('2026-10-23T09:00'),
+    operationalDay: historyDay('2026-10-23'),
     start: 'Zračna luka Dubrovnik',
     end: 'Hotel Excelsior',
     state: 'handed_off',
@@ -499,19 +515,19 @@ it('returns the Partner phone and email on a handed-off Ride, and the Driver rea
   const assignedId = await recordRide(world.dispatcher, world, 'Dodijeljeni gost', '2026-10-23T14:00')
   await assignRide(world.admin, { rideId: assignedId, driverId: linked.id, vehicleId: vehicle.id, version: 0 })
 
-  const handedDay = transferDaySchema.parse(await (await call('GET', '/api/transfers?date=2026-10-22', world.dispatcher)).json())
+  const handedDay = transferDaySchema.parse(await (await call('GET', `/api/transfers?date=${historyDay('2026-10-22')}`, world.dispatcher)).json())
   expect(handedDay.partnerBriefs).toEqual([{ partnerId: partner.id, phone, email }])
   expect(JSON.stringify(handedDay)).not.toContain(note)
-  const assignedDay = transferDaySchema.parse(await (await call('GET', '/api/transfers?date=2026-10-23', world.admin)).json())
+  const assignedDay = transferDaySchema.parse(await (await call('GET', `/api/transfers?date=${historyDay('2026-10-23')}`, world.admin)).json())
   expect(assignedDay.partnerBriefs).toEqual([])
   expect(JSON.stringify(assignedDay)).not.toContain(phone)
   expect(JSON.stringify(assignedDay)).not.toContain(email)
 
   await archivePartner(world.admin, partner.id)
-  const archivedDay = transferDaySchema.parse(await (await call('GET', '/api/transfers?date=2026-10-22', world.admin)).json())
+  const archivedDay = transferDaySchema.parse(await (await call('GET', `/api/transfers?date=${historyDay('2026-10-22')}`, world.admin)).json())
   expect(archivedDay.partnerBriefs).toEqual([{ partnerId: partner.id, phone, email }])
 
-  const refused = await call('GET', '/api/transfers?date=2026-10-22', driver)
+  const refused = await call('GET', `/api/transfers?date=${historyDay('2026-10-22')}`, driver)
   expect(refused.status).toBe(403)
   expect(await refused.text()).not.toContain(phone)
 

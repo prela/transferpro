@@ -4,6 +4,7 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, getMethod, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../../../../shared'
 import postAssign from '../../../api/rides/[id]/assign.post'
 import postHandOff from '../../../api/rides/[id]/hand-off.post'
 import postPartner from '../../../api/rides/[id]/partner.post'
@@ -45,9 +46,14 @@ const authUrl = required('BETTER_AUTH_URL')
 const password = 'fully-booked-password'
 const authPool = new pg.Pool({ connectionString: authDatabaseUrl })
 const ownerPool = new pg.Pool({ connectionString: migrateDatabaseUrl })
-const pickup = '2026-11-12T12:00:00.000Z'
-const later = '2026-11-12T16:00:00.000Z'
-const covered = { startsAt: '2026-11-12T00:00:00.000Z', endsAt: '2026-11-13T00:00:00.000Z' }
+// Local noon-ish, a couple of days ahead. A fixed UTC day ages out of the pickup window.
+const bookedDay = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 2)
+const pickup = instantFromWallClock(`${bookedDay}T13:00`, 'Europe/Zagreb').toISOString()
+const later = instantFromWallClock(`${bookedDay}T17:00`, 'Europe/Zagreb').toISOString()
+const covered = {
+  startsAt: instantFromWallClock(`${bookedDay}T00:00`, 'Europe/Zagreb').toISOString(),
+  endsAt: instantFromWallClock(`${addCalendarDays(bookedDay, 1)}T00:00`, 'Europe/Zagreb').toISOString(),
+}
 
 const app = createApp()
 app.use('/api/rides', (event) => {
@@ -243,7 +249,7 @@ async function transferRow(rideId: string) {
 }
 
 async function boardFullyBooked(session: Headers, rideId: string): Promise<boolean> {
-  const response = await call('GET', '/api/transfers?date=2026-11-12', session)
+  const response = await call('GET', `/api/transfers?date=${bookedDay}`, session)
   expect(response.status).toBe(200)
   const body = await response.json() as { rides: Array<{ rideId: string, warnings: { fullyBooked?: boolean } }> }
   return body.rides.find(ride => ride.rideId === rideId)?.warnings.fullyBooked === true
