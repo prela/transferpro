@@ -554,3 +554,34 @@ it('better Auth\'s own member routes under /api/auth are off, so the lock, the c
     await closeTenantRuntime()
   }
 })
+
+it('better Auth listMembers returns an empty list when the filter matches no member', async () => {
+  const tenant = await createTenant({
+    name: 'Tenant Empty Filter',
+    slug: 'mm-tenant-empty-filter',
+    adminEmail: 'mm-admin-empty-filter@example.test',
+    adminName: 'Admin Empty',
+    password: 'password-empty',
+    authDatabaseUrl,
+    migrateDatabaseUrl,
+  })
+  try {
+    const headers = await signIn('mm-admin-empty-filter@example.test', 'password-empty')
+    await setActiveTenant(headers, tenant.tenantId)
+    // 1.7.19 fixed a PostgreSQL syntax error on this empty match.
+    // The HTTP route stays 404. This is the server API the plugin still exposes.
+    const listed = await handle.auth.api.listMembers({
+      headers,
+      query: {
+        organizationId: tenant.tenantId,
+        filterField: 'role',
+        filterOperator: 'eq',
+        filterValue: 'no-such-role',
+      },
+    })
+    expect(listed).toEqual({ members: [], total: 0 })
+  }
+  finally {
+    await closeTenantRuntime()
+  }
+})

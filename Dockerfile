@@ -5,7 +5,7 @@
 # MAPS_EMBED_KEY. A build ARG would stay in image history (BuildKit
 # SecretsUsedInArgOrEnv). `nuxi build` does not read them.
 
-FROM node:24.22.1-bookworm-slim AS build
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS build
 
 WORKDIR /src
 
@@ -19,7 +19,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm exec nuxi build
 
-FROM node:24.22.1-bookworm-slim AS runtime
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS runtime
 
 WORKDIR /app
 
