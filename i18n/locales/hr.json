@@ -505,7 +505,7 @@
     "forbidden": "Vozač ne može dodavati ni ispravljati lokacije.",
     "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",
     "saveFailed": "Lokacija nije spremljena. Pokušajte ponovno.",
-    "suggestionsUnavailable": "Prijedlozi adresa nisu dostupni. Adresu i dalje možete upisati.",
+    "suggestionsUnavailable": "Prijedlozi mjesta nisu dostupni. Naziv i adresu i dalje možete upisati.",
     "showMap": "Prikaži na karti",
     "hideMap": "Sakrij kartu",
     "mapTitle": "Karta: {name}",

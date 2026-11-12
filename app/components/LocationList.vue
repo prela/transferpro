@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, FormSubmitEvent } from '@nuxt/ui'
-import type { AddressSuggestion, LocationKind, LocationPlace, OfficeLocation } from '../../shared'
+import type { LocationKind, LocationPlace, OfficeLocation } from '../../shared'
 import { z } from 'zod'
-import { catalogSearchMatches, LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, LOCATION_SUGGEST_MIN_LENGTH, locationAddressSchema, locationIataError, locationIataSchema, locationPanelEmbedUrl, locationSchema, officeLocationListSchema, suggestAddressesResponseSchema } from '../../shared'
+import { catalogSearchMatches, LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, locationAddressSchema, locationIataError, locationIataSchema, locationPanelEmbedUrl, locationSchema, officeLocationListSchema } from '../../shared'
 import { commandControlClass, commandControlSize, commandInputClass } from '../ride-detail'
 
 const { t } = useI18n()
@@ -39,19 +39,31 @@ const state = reactive<{ name: string, kind?: LocationKind, address: string, iat
   iata: '',
 })
 
-/**
- * A pick holds the place until the next keystroke. The pause keeps the list
- * from flickering and spends the quota once per pause, not once per key.
- */
-const SUGGEST_PAUSE_MS = 300
+/** A pick holds the place until an address keystroke (ADR-0031, ADR-0061). */
 const heldPlace = ref<LocationPlace | null>(null)
-const pickedText = ref<string | null>(null)
-const sessionToken = ref<string | null>(null)
-const suggestions = ref<AddressSuggestion[]>([])
-const attribution = ref<string | null>(null)
-const suggestionsUnavailable = ref(false)
-let suggestTimer: number | undefined
-let suggestGeneration = 0
+const {
+  nameMaySuggest,
+  suggestionNotice,
+  nameSuggestionItems,
+  nameAttribution,
+  nameSuggestionsUnavailable,
+  addressSuggestionItems,
+  addressAttribution,
+  addressSuggestionsUnavailable,
+  onNameInput,
+  onAddressInput,
+  closeSuggestionsForSubmit,
+  reset: resetSuggestions,
+  keepPlaceAddress,
+} = useLocationPlaceForm({
+  name: () => state.name,
+  setName: (value) => { state.name = value },
+  kind: () => state.kind,
+  address: () => state.address,
+  setAddress: (value) => { state.address = value },
+  setPlace: (value) => { heldPlace.value = value },
+  onAddressText: next => noteAddressEdited(next),
+})
 
 type LocationFailure = 'locations.loadFailed' | 'locations.rejected' | 'locations.notFound' | 'locations.forbidden' | 'locations.signedOut' | 'locations.saveFailed' | 'locations.archivedLocked' | 'locations.iataTaken'
 interface LocationForm {
@@ -193,17 +205,6 @@ async function loadLocations() {
 }
 
 /**
- * A lookup that is already in flight must not fill a later field.
- * The generation is what the response checks.
- */
-function dropPendingSuggestions() {
-  suggestGeneration += 1
-  window.clearTimeout(suggestTimer)
-  suggestions.value = []
-  attribution.value = null
-}
-
-/**
  * Three ASCII letters become uppercase as they are typed. Anything else
  * stays as typed so `ß` cannot turn into a code that then passes.
  */
@@ -218,10 +219,7 @@ function resetForm() {
   state.address = ''
   state.iata = ''
   heldPlace.value = null
-  pickedText.value = null
-  sessionToken.value = null
-  suggestionsUnavailable.value = false
-  dropPendingSuggestions()
+  resetSuggestions()
   formErrorKey.value = null
 }
 
@@ -244,17 +242,13 @@ function openEdit(location: OfficeLocation) {
   state.address = location.address ?? ''
   state.iata = location.iata ?? ''
   heldPlace.value = location.place
-  pickedText.value = location.address
-  sessionToken.value = null
-  suggestionsUnavailable.value = false
-  dropPendingSuggestions()
+  resetSuggestions()
+  keepPlaceAddress(location.address)
   formErrorKey.value = null
   formMode.value = 'edit'
   // A field update while the panel opens is not an edit.
   addressUntouched.value = true
 }
-
-const suggestionItems = computed(() => suggestions.value.map(suggestion => suggestion.label))
 
 /**
  * The button follows the Embed URL from the last save. An address edit
@@ -275,71 +269,17 @@ watch(mapEmbedUrl, (url) => {
     mapOpen.value = false
 })
 
-function onAddressInput(value: string | number | null | undefined) {
-  const next = value == null ? '' : String(value)
-  if (formMode.value === 'edit' && editingId.value !== null) {
-    const location = locations.value.find(item => item.id === editingId.value)
-    // Stay hidden after the first difference. Restoring the text does not
-    // restore the place the next save would send.
-    if (next !== (location?.address ?? ''))
-      addressUntouched.value = false
-  }
-  const match = suggestions.value.find(suggestion => suggestion.label === next)
-  // A pick is the suggested label. Anything else, including Enter, keeps the typed address.
-  if (match) {
-    pickedText.value = match.label
-    heldPlace.value = { provider: match.provider, placeRef: match.placeRef }
-    sessionToken.value = null
-    dropPendingSuggestions()
+/**
+ * The map follows the address from the last save. The first difference
+ * hides it until the panel is opened again, including a pick that replaces
+ * the address. Typing the saved text back does not restore it (ADR-0052).
+ */
+function noteAddressEdited(next: string) {
+  if (formMode.value !== 'edit' || editingId.value === null)
     return
-  }
-  if (next !== pickedText.value)
-    heldPlace.value = null
-  window.clearTimeout(suggestTimer)
-  suggestTimer = window.setTimeout(() => {
-    void lookupSuggestions()
-  }, SUGGEST_PAUSE_MS)
-}
-
-/** Enter submits the typed address. It must not store the highlighted row. */
-function closeSuggestionsForSubmit() {
-  dropPendingSuggestions()
-}
-
-async function lookupSuggestions() {
-  const text = state.address.trim()
-  if (text.length < LOCATION_SUGGEST_MIN_LENGTH) {
-    dropPendingSuggestions()
-    return
-  }
-  // One token for this typing run. A pick clears it so the next run is new.
-  if (sessionToken.value === null)
-    sessionToken.value = crypto.randomUUID()
-  const generation = ++suggestGeneration
-  try {
-    const result = suggestAddressesResponseSchema.parse(await $fetch('/api/locations/suggestions', {
-      method: 'POST',
-      body: { text, sessionToken: sessionToken.value },
-    }))
-    if (generation !== suggestGeneration)
-      return
-    if (!result.available) {
-      suggestions.value = []
-      attribution.value = null
-      suggestionsUnavailable.value = true
-      return
-    }
-    suggestionsUnavailable.value = false
-    suggestions.value = [...result.suggestions]
-    attribution.value = result.suggestions.length > 0 ? result.attribution : null
-  }
-  catch {
-    if (generation !== suggestGeneration)
-      return
-    suggestions.value = []
-    attribution.value = null
-    suggestionsUnavailable.value = true
-  }
+  const location = locations.value.find(item => item.id === editingId.value)
+  if (next !== (location?.address ?? ''))
+    addressUntouched.value = false
 }
 
 function locationBody(data: LocationForm) {
@@ -586,26 +526,6 @@ onMounted(loadLocations)
           @error="formErrorKey = null"
         >
           <UFormField
-            :label="t('locations.name')"
-            name="name"
-            :size="phone ? 'xl' : 'sm'"
-          >
-            <UInput
-              v-model="state.name"
-              name="name"
-              type="text"
-              autocomplete="off"
-              class="w-full"
-              :disabled="archivedView"
-            />
-            <template #error="{ error }">
-              <span
-                v-if="error"
-                role="alert"
-              >{{ error }}</span>
-            </template>
-          </UFormField>
-          <UFormField
             :label="t('locations.kind')"
             name="kind"
             :size="phone ? 'xl' : 'sm'"
@@ -626,19 +546,77 @@ onMounted(loadLocations)
             </template>
           </UFormField>
           <UFormField
+            :label="t('locations.name')"
+            name="name"
+            :size="phone ? 'xl' : 'sm'"
+          >
+            <!--
+              A plain field until the kind is airport, hotel, or other.
+              Opening the panel and choosing a kind do not look anything up.
+              An archived Location stays plain and disabled.
+            -->
+            <UInputMenu
+              v-if="nameMaySuggest && !archivedView"
+              v-model="state.name"
+              mode="autocomplete"
+              name="name"
+              autocomplete="off"
+              :size="phone ? 'xl' : 'sm'"
+              class="w-full"
+              :items="nameSuggestionItems"
+              :ignore-filter="true"
+              :trailing-icon="false"
+              :portal="false"
+              :content="{ hideWhenEmpty: true }"
+              @update:model-value="onNameInput"
+              @keydown.enter.capture="closeSuggestionsForSubmit"
+            >
+              <template #content-bottom>
+                <p
+                  v-if="nameAttribution"
+                  class="px-3 py-2 text-sm text-muted"
+                  translate="no"
+                >
+                  {{ nameAttribution }}
+                </p>
+              </template>
+            </UInputMenu>
+            <UInput
+              v-else
+              v-model="state.name"
+              name="name"
+              type="text"
+              autocomplete="off"
+              class="w-full"
+              :disabled="archivedView"
+            />
+            <p
+              v-if="suggestionNotice === 'name' && nameSuggestionsUnavailable"
+              class="mt-1 text-sm text-muted"
+            >
+              {{ t('locations.suggestionsUnavailable') }}
+            </p>
+            <template #error="{ error }">
+              <span
+                v-if="error"
+                role="alert"
+              >{{ error }}</span>
+            </template>
+          </UFormField>
+          <UFormField
             :label="t('locations.address')"
             name="address"
             :size="phone ? 'xl' : 'sm'"
           >
             <UInputMenu
+              v-if="!archivedView"
               v-model="state.address"
               mode="autocomplete"
               name="address"
               autocomplete="off"
               :size="phone ? 'xl' : 'sm'"
               class="w-full"
-              :disabled="archivedView"
-              :items="suggestionItems"
+              :items="addressSuggestionItems"
               :ignore-filter="true"
               :trailing-icon="false"
               :portal="false"
@@ -648,16 +626,25 @@ onMounted(loadLocations)
             >
               <template #content-bottom>
                 <p
-                  v-if="attribution"
+                  v-if="addressAttribution"
                   class="px-3 py-2 text-sm text-muted"
                   translate="no"
                 >
-                  {{ attribution }}
+                  {{ addressAttribution }}
                 </p>
               </template>
             </UInputMenu>
+            <UInput
+              v-else
+              v-model="state.address"
+              name="address"
+              type="text"
+              autocomplete="off"
+              class="w-full"
+              disabled
+            />
             <p
-              v-if="suggestionsUnavailable"
+              v-if="suggestionNotice === 'address' && addressSuggestionsUnavailable"
               class="mt-1 text-sm text-muted"
             >
               {{ t('locations.suggestionsUnavailable') }}

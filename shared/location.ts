@@ -146,6 +146,51 @@ export function locationPanelEmbedUrl(
   return embedUrl
 }
 
+/** The field the office picked from. The two directions fill differently (ADR-0061). */
+export type LocationPickField = 'name' | 'address'
+
+/**
+ * What a pick writes. The place is the suggestion's provider and reference.
+ * The kind is absent: the office chooses it, and a pick never sets it.
+ */
+export interface LocationPickFill {
+  readonly name: string
+  readonly address: string
+  readonly place: LocationPlace
+}
+
+/**
+ * Rules for one pick (ADR-0061). A name pick fills both fields and replaces
+ * the address, typed or previously picked, because the reference and the
+ * address describe one place. An establishment picked from the address fills
+ * the name only when that name is empty or whitespace. A street address
+ * never changes the name, even when the name is blank. A typed name is kept
+ * as it stands, spaces included.
+ */
+export function fillLocationFromPick(
+  field: LocationPickField,
+  suggestion: Pick<AddressSuggestion, 'name' | 'address' | 'establishment' | 'provider' | 'placeRef'>,
+  current: { readonly name: string, readonly address: string },
+): LocationPickFill {
+  const place = { provider: suggestion.provider, placeRef: suggestion.placeRef }
+  if (field === 'name') {
+    return { name: suggestion.name, address: suggestion.address, place }
+  }
+  const name = suggestion.establishment && current.name.trim() === ''
+    ? suggestion.name
+    : current.name
+  return { name, address: suggestion.address, place }
+}
+
+/**
+ * The name field may ask for places only once the kind is airport, hotel,
+ * or other. No kind, or the kind address, stays a plain field so a guest's
+ * name is not sent (ADR-0061).
+ */
+export function locationNameMaySuggest(kind: LocationKind | undefined): boolean {
+  return kind === 'airport' || kind === 'hotel' || kind === 'other'
+}
+
 /**
  * POST /api/locations. Archive is absent: a new Location starts on the list.
  * An unknown key is refused.
