@@ -55,7 +55,7 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
     notes: 'allergic to nuts',
     tabla: 'GOSPOĐA HORVAT',
     text: 'Villa Rosa 12, Čilipi',
-    label: 'Hotel Excelsior, Frana Supila 12',
+    label: 'Hotel Primjer, Ulica Primjera 1',
     placeRef: 'ChIJsecretPlace',
     MAPS_API_KEY: 'maps-live-key',
     cookie: 'better-auth.session=abc',
@@ -94,8 +94,8 @@ it('redacts charter personal-data and secret fields at any key shape', () => {
   expect(text).not.toContain('allergic to nuts')
   expect(text).not.toContain('GOSPOĐA HORVAT')
   expect(text).not.toContain('Villa Rosa')
-  expect(text).not.toContain('Hotel Excelsior')
-  expect(text).not.toContain('Frana Supila')
+  expect(text).not.toContain('Hotel Primjer')
+  expect(text).not.toContain('Ulica Primjera')
   expect(text).not.toContain('ChIJsecretPlace')
   expect(text).not.toContain('maps-live-key')
 })

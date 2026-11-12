@@ -28,7 +28,7 @@ function client(answer: { status: number, body: string } | Error) {
   }
 }
 
-const label = 'Villa Rosa 12, Čilipi, Hrvatska'
+const label = 'Kuća Primjer 12, Grad Primjer, Zemlja Primjer'
 
 /**
  * One autocomplete prediction. `secondary` omitted means the field is absent.
@@ -63,8 +63,8 @@ it('sends the session token and the language, and maps the suggestions', async (
       suggestions: [
         prediction({
           label,
-          name: 'Villa Rosa 12',
-          secondary: 'Čilipi, Hrvatska',
+          name: 'Kuća Primjer 12',
+          secondary: 'Grad Primjer, Zemlja Primjer',
           types: ['street_address', 'geocode'],
         }),
         { queryPrediction: { text: { text: 'villa' } } },
@@ -81,7 +81,7 @@ it('sends the session token and the language, and maps the suggestions', async (
     attribution: GOOGLE_ATTRIBUTION,
     suggestions: [{
       label,
-      name: 'Villa Rosa 12',
+      name: 'Kuća Primjer 12',
       address: label,
       establishment: false,
       provider: 'google',
@@ -149,22 +149,22 @@ it('takes the name from mainText and the address from the establishment rules', 
       suggestions: [
         prediction({
           placeId: 'ChIJhotel',
-          label: 'Hotel Excelsior, Frana Supila 12, Dubrovnik',
-          name: 'Hotel Excelsior',
-          secondary: 'Frana Supila 12, Dubrovnik',
+          label: 'Hotel Primjer, Ulica Primjera 1, Grad Primjer',
+          name: 'Hotel Primjer',
+          secondary: 'Ulica Primjera 1, Grad Primjer',
           types: ['lodging', 'hotel'],
         }),
         prediction({
           placeId: 'ChIJairport',
-          label: 'Zračna luka Dubrovnik, Čilipi',
-          name: 'Zračna luka Dubrovnik',
+          label: 'Zračna luka Primjer, Grad Primjer',
+          name: 'Zračna luka Primjer',
           types: ['airport'],
         }),
         prediction({
           placeId: 'ChIJstreet',
-          label: 'Put od Republike 12, Čilipi',
-          name: 'Put od Republike 12',
-          secondary: 'Čilipi',
+          label: 'Ulica Primjera 12, Grad Primjer',
+          name: 'Ulica Primjera 12',
+          secondary: 'Grad Primjer',
           types: ['street_address', 'geocode'],
         }),
       ],
@@ -178,21 +178,21 @@ it('takes the name from mainText and the address from the establishment rules', 
     available: true,
     suggestions: [
       {
-        label: 'Hotel Excelsior, Frana Supila 12, Dubrovnik',
-        name: 'Hotel Excelsior',
-        address: 'Frana Supila 12, Dubrovnik',
+        label: 'Hotel Primjer, Ulica Primjera 1, Grad Primjer',
+        name: 'Hotel Primjer',
+        address: 'Ulica Primjera 1, Grad Primjer',
         establishment: true,
       },
       {
-        label: 'Zračna luka Dubrovnik, Čilipi',
-        name: 'Zračna luka Dubrovnik',
-        address: 'Zračna luka Dubrovnik, Čilipi',
+        label: 'Zračna luka Primjer, Grad Primjer',
+        name: 'Zračna luka Primjer',
+        address: 'Zračna luka Primjer, Grad Primjer',
         establishment: true,
       },
       {
-        label: 'Put od Republike 12, Čilipi',
-        name: 'Put od Republike 12',
-        address: 'Put od Republike 12, Čilipi',
+        label: 'Ulica Primjera 12, Grad Primjer',
+        name: 'Ulica Primjera 12',
+        address: 'Ulica Primjera 12, Grad Primjer',
         establishment: false,
       },
     ],
@@ -204,9 +204,9 @@ it('drops a suggestion whose label, name, or address is empty or too long', asyn
   const tooLong = 'a'.repeat(201)
   const kept = prediction({
     placeId: 'ChIJkept',
-    label: 'Marina Frapa, Dubrovnik',
-    name: 'Marina Frapa',
-    secondary: 'Dubrovnik',
+    label: 'Marina Primjer, Grad Primjer',
+    name: 'Marina Primjer',
+    secondary: 'Grad Primjer',
     types: ['marina'],
   })
   const { http, seen } = client({
@@ -233,9 +233,9 @@ it('drops a suggestion whose label, name, or address is empty or too long', asyn
     available: true,
     attribution: 'Google Maps',
     suggestions: [{
-      label: 'Marina Frapa, Dubrovnik',
-      name: 'Marina Frapa',
-      address: 'Dubrovnik',
+      label: 'Marina Primjer, Grad Primjer',
+      name: 'Marina Primjer',
+      address: 'Grad Primjer',
       establishment: true,
       provider: 'google',
       placeRef: 'ChIJkept',
