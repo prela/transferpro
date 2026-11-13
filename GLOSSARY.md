@@ -267,6 +267,10 @@ _Avoid_: passenger, customer, client
 A place a Ride starts or ends. An airport Location may carry an optional IATA code of three letters. At most one active Location in a Tenant holds a given code. A Ride shows that code beside the Location name when the code is set. A hotel, an address, or any other kind does not carry a code. A Location may carry a reference to its place on a map, set when the office picks a suggested place by its name or its address. Changing the address by hand removes that reference. The office can show a Location that has that reference on a map. The reference is checked again after a year, and removed when the place no longer exists.
 _Avoid_: place, stop
 
+**Operating area**:
+A circle a Tenant works in: a point, a radius, and a name. Place suggestions prefer places inside it, and it excludes nothing. It is not where a Driver or a Vehicle is. In Croatian it is Područje rada.
+_Avoid_: office, base, region, zone, service area
+
 **Landing time**:
 The actual time the aircraft landed, on an airport pickup. It stays empty until then. A live status writes it only while it is empty and the time is not still in the future. A time a person recorded stays until they clear it. The expected arrival is a different fact and does not start the airport wait.
 _Avoid_: expected arrival, ETA
