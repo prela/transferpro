@@ -71,13 +71,13 @@ async function openRide(page: Page, day: string, rideId: string, guest: string) 
   await expect(page.locator('#ride-detail').getByRole('heading', { name: guest })).toBeVisible()
 }
 
-async function pickPartner(page: Page, name: string) {
+async function pickPartner(page: Page, name: string, label = 'Podizvođač') {
   const detail = page.locator('#ride-detail')
   if (isPhone(page)) {
     await detail.getByRole('button', { name, exact: true }).click()
     return
   }
-  await chooseOption(page, detail.getByRole('combobox', { name: 'Podizvođač' }), name)
+  await chooseOption(page, detail.getByRole('combobox', { name: label }), name)
 }
 
 async function handOff(page: Page, partner: string) {
@@ -140,7 +140,7 @@ test.describe('@phone', () => {
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       const guest = 'Iva Predaja'
       const first = 'Mora Transfer'
-      const second = 'Jadran Prijevoz'
+      const second = 'Proba Prijevoz'
       await createdId(page, '/api/partners', { name: first })
       await createdId(page, '/api/partners', { name: second })
       const { rideId, day } = await recordTodayRide(page, guest)
@@ -366,6 +366,117 @@ test.describe('@phone', () => {
         throw new Error(`${closed.status()} ${await closed.text()}`)
       await dialog.getByRole('button', { name: copy.submit, exact: true }).click()
       await expect(dialog.getByRole('alert')).toContainText(copy.gone)
+    })
+  }
+})
+
+const agreedCopy = {
+  hr: {
+    more: 'Više',
+    handOff: 'Predaj podizvođaču',
+    handOffSubmit: 'Predaj vožnju',
+    change: 'Promijeni podizvođača',
+    changeTitle: 'Promjena podizvođača',
+    changeSubmit: 'Promijeni podizvođača',
+    partner: 'Podizvođač',
+    box: 'Podizvođač je već potvrdio',
+    help: 'Uključite samo ako ste ovu vožnju već dogovorili s podizvođačem.',
+    confirmed: 'Podizvođač potvrdio',
+    handed: 'Predano podizvođaču',
+    changed: 'Podizvođač promijenjen',
+    unavailable: 'Ovaj vozač, vozilo ili podizvođač je tada nedostupan',
+    continue: 'Nastavi svejedno',
+  },
+  en: {
+    more: 'More',
+    handOff: 'Hand off to a subcontractor',
+    handOffSubmit: 'Hand off the ride',
+    change: 'Change subcontractor',
+    changeTitle: 'Change the subcontractor',
+    changeSubmit: 'Change subcontractor',
+    partner: 'Subcontractor',
+    box: 'The subcontractor has already confirmed',
+    help: 'Tick only if you have already agreed this ride with the subcontractor.',
+    confirmed: 'Subcontractor confirmed',
+    handed: 'Handed off',
+    changed: 'Subcontractor changed',
+    unavailable: 'This driver, vehicle, or subcontractor is unavailable then',
+    continue: 'Continue anyway',
+  },
+} as const
+
+test.describe('@phone', () => {
+  test.beforeEach(async ({ page }) => {
+    await pinOnOperationalDay(page, '15:00')
+  })
+
+  for (const { theme, locale } of [
+    { theme: 'light', locale: 'hr' },
+    { theme: 'dark', locale: 'en' },
+  ] as const) {
+    test(`ticks an already-agreed handoff and keeps the box across the resend in ${theme} ${locale}`, async ({ page }) => {
+      test.setTimeout(180_000)
+      const phone = isPhone(page)
+      if (!phone)
+        await page.setViewportSize({ width: 1440, height: 900 })
+      const copy = agreedCopy[locale]
+      const tenant = await seedTenant(`agree-${theme}-${locale}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      if (locale === 'en')
+        await switchLocale(page, 'en')
+      const away = 'Mora Transfer'
+      const free = 'Proba Prijevoz'
+      const awayId = await createdId(page, '/api/partners', { name: away })
+      await createdId(page, '/api/partners', { name: free })
+      const guest = 'Iva Dogovor'
+      const { rideId, day } = await recordTodayRide(page, guest)
+      const windowSaved = await page.request.post('/api/unavailability', {
+        data: {
+          partnerId: awayId,
+          startsAt: instantFromWallClock(`${day}T11:00`, zone).toISOString(),
+          endsAt: instantFromWallClock(`${day}T14:00`, zone).toISOString(),
+        },
+      })
+      if (!windowSaved.ok())
+        throw new Error(`${windowSaved.status()} ${await windowSaved.text()}`)
+
+      await openRide(page, day, rideId, guest)
+      const detail = page.locator('#ride-detail')
+      await detail.getByRole('button', { name: copy.more, exact: true }).click()
+      await page.getByRole('menuitem', { name: copy.handOff, exact: true }).click()
+      await expect(detail.getByRole('heading', { name: copy.handOff })).toBeVisible()
+      const box = detail.getByRole('checkbox', { name: copy.box })
+      await expect(box).not.toBeChecked()
+      await expect(detail.getByText(copy.help)).toBeVisible()
+      await expectNoAxeViolations(page)
+      await box.check()
+      await expect(box).toBeChecked()
+      await pickPartner(page, away, copy.partner)
+      await detail.getByRole('button', { name: copy.handOffSubmit, exact: true }).click()
+      const confirm = page.getByRole('dialog', { name: copy.unavailable })
+      await expect(confirm).toBeVisible()
+      // The dialog hides the form from the accessibility tree. The control stays ticked.
+      await expect(page.locator('#partner-already-confirmed')).toHaveAttribute('aria-checked', 'true')
+      await expectNoAxeViolations(page)
+      await confirm.getByRole('button', { name: copy.continue, exact: true }).click()
+      await expect(page.getByRole('status').filter({ hasText: copy.handed })).toBeVisible()
+      await expect(rideRow(page, guest)).toContainText(copy.confirmed)
+
+      await openRide(page, day, rideId, guest)
+      await detail.getByRole('button', { name: copy.more, exact: true }).click()
+      await page.getByRole('menuitem', { name: copy.change, exact: true }).click()
+      await expect(detail.getByRole('heading', { name: copy.changeTitle })).toBeVisible()
+      const changeBox = detail.getByRole('checkbox', { name: copy.box })
+      await expect(changeBox).not.toBeChecked()
+      await expect(detail.getByText(copy.help)).toBeVisible()
+      await expectNoAxeViolations(page)
+      await changeBox.check()
+      await pickPartner(page, free, copy.partner)
+      await detail.getByRole('button', { name: copy.changeSubmit, exact: true }).click()
+      await expect(page.getByRole('status').filter({ hasText: copy.changed })).toBeVisible()
+      await expect(rideRow(page, guest)).toContainText(copy.confirmed)
+      await expect(rideRow(page, guest)).toContainText(free)
     })
   }
 })

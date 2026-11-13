@@ -24,6 +24,15 @@ it('parses a partner command with a version, and refuses an extra key or a missi
   expect(parseChangeRidePartner(rideId, { partnerId, version: 3 })).toEqual({ rideId, partnerId, version: 3 })
   expect(() => parseHandOffRide(rideId, { partnerId })).toThrow(RideCommandInputError)
   expect(parseHandOffRide(rideId, { partnerId, version: 0, confirm: true })).toEqual({ rideId, partnerId, version: 0, confirm: true })
+  expect(parseHandOffRide(rideId, { partnerId, version: 0, partnerConfirmed: true })).toEqual({ rideId, partnerId, version: 0, partnerConfirmed: true })
+  expect(parseChangeRidePartner(rideId, { partnerId, version: 1, confirm: true, partnerConfirmed: true })).toEqual({
+    rideId,
+    partnerId,
+    version: 1,
+    confirm: true,
+    partnerConfirmed: true,
+  })
+  expect(() => parseHandOffRide(rideId, { partnerId, version: 0, partnerConfirmed: false })).toThrow(RideCommandInputError)
   expect(() => parseHandOffRide(rideId, { partnerId, version: 0, confirm: 'yes' })).toThrow(RideCommandInputError)
   expect(() => parseHandOffRide('not-a-ride', { partnerId, version: 0 })).toThrow(RideCommandInputError)
   expect(() => parseChangeRidePartner(rideId, { partnerId, version: 1, phone: '+385911111111' })).toThrow(RideCommandInputError)

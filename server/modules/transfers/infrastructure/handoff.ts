@@ -13,6 +13,7 @@ import { mailerForApp, TenantAccessError, withOfficeWrite } from '../../tenancy'
 import { RideNotFoundError } from './assign'
 import { checkPartnerCapacity } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
+import { appendPartnerConfirmed } from './partner-confirmation'
 import { claimTransferVersion, refuseStaleVersion } from './transfer-version'
 import { deliverStagedWorkOrder, readAssignedWorkOrder, stageWorkOrder } from './work-order'
 
@@ -133,6 +134,7 @@ export async function handOffRide(
  * Give a handed-off Ride to another active Partner. The body is parsed
  * first. A driver is 403. The version bumps. No mail is sent. An unavailable
  * Partner is 409 `ride_unavailable` unless `confirm` is set (ADR-0034).
+ * `partnerConfirmed: true` records the agreement on that same version.
  */
 export async function changeRidePartner(
   headers: Headers,
@@ -168,8 +170,10 @@ export async function takeBackRide(
  * Ride, then the refusals that need no other row, then the Tenant capacity
  * lock, then the Partner. An archived Partner is refused before the window
  * is read. An unavailable Partner is 409 `ride_unavailable` and writes
- * nothing; `confirm: true` passes it. The version is claimed only after
- * that, so a refusal does not bump it.
+ * nothing; `confirm: true` passes it. `partnerConfirmed: true` is separate:
+ * it sets the flag and appends `ride.partner_confirmed` beside the handoff
+ * entry, still on the one version claim. A refusal, including one that
+ * carried the flag, writes neither entry (ADR-0062).
  */
 export async function handOffRideForOffice(
   transaction: TenantTransaction,
@@ -208,7 +212,8 @@ export async function handOffRideForOffice(
         partner_id = ${input.partnerId},
         driver_id = null,
         vehicle_id = null,
-        must_accept = null
+        must_accept = null,
+        partner_confirmed = ${input.partnerConfirmed === true}
     where id = ${input.rideId}
       and state in ('unassigned', 'assigned', 'accepted')
       and driver_id is not distinct from ${current.driverId}
@@ -249,6 +254,9 @@ export async function handOffRideForOffice(
           ],
         },
   }), 'Ride handoff failed')
+  // The agreement is the second entry. The version was already claimed once.
+  if (input.partnerConfirmed === true)
+    await appendPartnerConfirmed(transaction, actorUserId, updated.id, input.partnerId, 'Ride handoff failed')
   return { ride: updated, released }
 }
 
@@ -280,12 +288,14 @@ export async function changeRidePartnerForOffice(
     confirm: input.confirm === true,
   })
 
-  // A new Partner has not agreed. The flag clears with no clearing audit entry (ADR-0062).
+  // Without the box the new Partner has not agreed, so the flag clears and
+  // no clearing entry is written. With the box the same update records the
+  // agreement, and the confirmation entry follows the Partner change (ADR-0062).
   await claimTransferVersion(transaction, current.transferId, input.version, actorUserId, 'Ride partner change failed')
   const updated = storedRows.parse(await runStep(transaction, sql`
     update app.rides
     set partner_id = ${input.partnerId},
-        partner_confirmed = false
+        partner_confirmed = ${input.partnerConfirmed === true}
     where id = ${input.rideId}
       and state = 'handed_off'
       and partner_id = ${partnerId}
@@ -312,6 +322,8 @@ export async function changeRidePartnerForOffice(
       fields: [RIDE_PARTNER_CHANGED_FIELDS[0]],
     },
   }), 'Ride partner change failed')
+  if (input.partnerConfirmed === true)
+    await appendPartnerConfirmed(transaction, actorUserId, updated.id, input.partnerId, 'Ride partner change failed')
   return updated
 }
 

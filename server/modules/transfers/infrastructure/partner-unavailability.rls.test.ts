@@ -216,7 +216,7 @@ async function versionOf(rideId: string) {
 
 async function rideRow(rideId: string) {
   const result = await ownerPool.query(
-    `select state, partner_id, driver_id, vehicle_id from app.rides where id = $1`,
+    `select state, partner_id, driver_id, vehicle_id, partner_confirmed from app.rides where id = $1`,
     [rideId],
   )
   return result.rows[0]
@@ -259,7 +259,11 @@ it('refuses a handoff and a Partner change onto an unavailable Partner, and conf
   const beforeRide = await rideRow(second.ride.id)
   const beforeVersion = await versionOf(second.ride.id)
   const beforeCounts = await counts(world.tenantId)
-  const refused = await handOff(world.dispatcher, second.ride.id, away.id)
+  const refused = await call('POST', `/api/rides/${second.ride.id}/hand-off`, world.dispatcher, {
+    partnerId: away.id,
+    version: beforeVersion,
+    partnerConfirmed: true,
+  })
   expect(refused.status).toBe(409)
   expect(await refused.json()).toMatchObject({ data: { code: 'ride_unavailable' } })
   expect(await rideRow(second.ride.id)).toEqual(beforeRide)
@@ -267,7 +271,7 @@ it('refuses a handoff and a Partner change onto an unavailable Partner, and conf
   expect(await counts(world.tenantId)).toEqual(beforeCounts)
 
   expect((await handOff(world.dispatcher, second.ride.id, away.id, true)).status).toBe(200)
-  expect(await rideRow(second.ride.id)).toMatchObject({ state: 'handed_off', partner_id: away.id })
+  expect(await rideRow(second.ride.id)).toMatchObject({ state: 'handed_off', partner_id: away.id, partner_confirmed: false })
 
   expect((await handOff(world.dispatcher, third.ride.id, free.id)).status).toBe(200)
   const changeBefore = await rideRow(third.ride.id)
@@ -276,6 +280,7 @@ it('refuses a handoff and a Partner change onto an unavailable Partner, and conf
   const change = await call('POST', `/api/rides/${third.ride.id}/partner`, world.dispatcher, {
     partnerId: away.id,
     version: changeVersion,
+    partnerConfirmed: true,
   })
   expect(change.status).toBe(409)
   expect(await change.json()).toMatchObject({ data: { code: 'ride_unavailable' } })
@@ -289,7 +294,7 @@ it('refuses a handoff and a Partner change onto an unavailable Partner, and conf
     confirm: true,
   })
   expect(passed.status).toBe(200)
-  expect(await rideRow(third.ride.id)).toMatchObject({ state: 'handed_off', partner_id: away.id })
+  expect(await rideRow(third.ride.id)).toMatchObject({ state: 'handed_off', partner_id: away.id, partner_confirmed: false })
 })
 
 it('shows the board warning while the Partner window covers the handed-off Ride, and drops it when the window is removed', async () => {

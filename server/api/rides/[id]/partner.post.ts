@@ -13,6 +13,8 @@ import { rideHttpError } from '../http'
  * active Partner is 409 `ride_partner_unchanged`. An archived Partner is
  * 409 `ride_partner_archived`. An unavailable Partner is 409
  * `ride_unavailable` and writes nothing; `confirm: true` passes it.
+ * `partnerConfirmed: true` records the new Partner's agreement on the
+ * same version. Without it the flag clears. A refusal writes neither.
  * Another Tenant's Partner or Ride is 404.
  * Nothing is written on a refusal. No mail is sent. The body is the Ride,
  * including `partnerId`, and an empty work-order list.

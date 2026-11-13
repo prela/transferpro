@@ -1094,6 +1094,8 @@
     "handOffTitle": "Predaj podizvođaču",
     "handOffSubmit": "Predaj vožnju",
     "handOffClearsCrew": "Predaja uklanja vozača i vozilo.",
+    "partnerAlreadyConfirmed": "Podizvođač je već potvrdio",
+    "partnerAlreadyConfirmedHelp": "Uključite samo ako ste ovu vožnju već dogovorili s podizvođačem.",
     "handingOff": "Predaja",
     "handedOff": "Predano podizvođaču",
     "changePartner": "Promijeni podizvođača",

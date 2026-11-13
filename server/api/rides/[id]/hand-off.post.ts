@@ -12,8 +12,10 @@ import { rideHttpError } from '../http'
  * `unassigned`, `assigned`, and `accepted` can be handed off. Anything else
  * is 409 `ride_not_handoffable`. An archived Partner is 409
  * `ride_partner_archived`. An unavailable Partner is 409 `ride_unavailable`
- * and writes nothing; `confirm: true` passes it. Another Tenant's Partner
- * or Ride is 404.
+ * and writes nothing; `confirm: true` passes it. `partnerConfirmed: true`
+ * is separate: the Ride is handed off already confirmed, with both audit
+ * entries and one version change. A refusal writes nothing, the
+ * confirmation included. Another Tenant's Partner or Ride is 404.
  * Nothing is written on a refusal, and no work order is staged.
  * From `assigned` or `accepted` the Driver is mailed no longer yours.
  * A Partner is not mailed. The body is the Ride, including `partnerId`,

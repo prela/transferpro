@@ -85,8 +85,16 @@ const partnerVersionBody = z.strictObject({
   /**
    * Set after 409 `ride_unavailable`. One confirmation passes a window over
    * the Partner (ADR-0034). It does not pass a fully booked window.
+   * This is not the Partner's agreement. That is `partnerConfirmed`.
    */
   confirm: z.boolean().optional(),
+  /**
+   * The office already agreed this Ride with the Partner, so the handoff
+   * or the change records the agreement in the same request (ADR-0062).
+   * Only `true` is accepted. Absent leaves the Ride waiting, or clears a
+   * previous agreement on a change of Partner. `false` is a bad body.
+   */
+  partnerConfirmed: z.literal(true).optional(),
 })
 
 const versionBody = z.strictObject({
@@ -98,12 +106,15 @@ export interface HandOffRideInput {
   readonly partnerId: string
   readonly version: number
   readonly confirm?: boolean
+  /** Present only when the body said the Partner already agreed. */
+  readonly partnerConfirmed?: true
 }
 
 /**
  * POST /api/rides/:id/hand-off. The path is the Ride. The body is the
- * Partner and the version. `confirm` is optional. Any other key, or a
- * missing version, throws first, so the caller does not open a session.
+ * Partner and the version. `confirm` and `partnerConfirmed` are optional
+ * and mean different things. Any other key, or a missing version, throws
+ * first, so the caller does not open a session.
  */
 export function parseHandOffRide(rideId: unknown, body: unknown): HandOffRideInput {
   return parsePartnerCommand(rideId, body)
@@ -146,6 +157,7 @@ function parsePartnerCommand(rideId: unknown, body: unknown): HandOffRideInput {
     partnerId: payload.data.partnerId,
     version: payload.data.version,
     ...(payload.data.confirm === undefined ? {} : { confirm: payload.data.confirm }),
+    ...(payload.data.partnerConfirmed === undefined ? {} : { partnerConfirmed: true as const }),
   }
 }
 

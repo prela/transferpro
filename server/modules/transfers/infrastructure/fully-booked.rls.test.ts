@@ -233,7 +233,7 @@ async function counts(tenantId: string) {
 
 async function rideRow(rideId: string) {
   return (await ownerPool.query(
-    `select state, driver_id, vehicle_id, partner_id from app.rides where id = $1`,
+    `select state, driver_id, vehicle_id, partner_id, partner_confirmed from app.rides where id = $1`,
     [rideId],
   )).rows[0]
 }
@@ -404,6 +404,7 @@ it('assign, a vehicle change, a reassignment, a handoff, and a partner change ar
     partnerId: otherPartner.id,
     version: beforeHandoff.version,
     confirm: true,
+    partnerConfirmed: true,
   })
   expect(await refusedHandoff.json()).toMatchObject({ statusCode: 409, data: { code: 'fully_booked' } })
   expect(await rideRow(freshBody.ride.id)).toEqual(beforeHandoff.ride)
@@ -416,6 +417,7 @@ it('assign, a vehicle change, a reassignment, a handoff, and a partner change ar
     partnerId: otherPartner.id,
     version: beforePartner.version,
     confirm: true,
+    partnerConfirmed: true,
   })
   expect(await refusedPartner.json()).toMatchObject({ statusCode: 409, data: { code: 'fully_booked' } })
   expect(await rideRow(handedBody.ride.id)).toEqual(beforePartner.ride)

@@ -253,8 +253,9 @@ async function rideRow(rideId: string) {
     vehicle_id: string | null
     must_accept: boolean | null
     partner_id: string | null
+    partner_confirmed: boolean
   }>(
-    `select state, driver_id, vehicle_id, must_accept, partner_id from app.rides where id = $1`,
+    `select state, driver_id, vehicle_id, must_accept, partner_id, partner_confirmed from app.rides where id = $1`,
     [rideId],
   )
   const row = result.rows[0]
@@ -291,6 +292,18 @@ async function mailCount(tenantId: string) {
     [tenantId],
   )
   return Number(result.rows[0]?.count)
+}
+
+async function rideAudits(tenantId: string, rideId: string) {
+  const result = await ownerPool.query<{ action: string, actor_user_id: string, data: unknown }>(
+    `select action::text as action, actor_user_id, data from app.audit_entry
+     where tenant_id = $1
+       and data->>'rideId' = $2
+       and action::text in ('ride.handed_off', 'ride.partner_changed', 'ride.partner_confirmed', 'ride.partner_confirmation_cleared')
+     order by action`,
+    [tenantId, rideId],
+  )
+  return result.rows
 }
 
 async function handoffAudits(tenantId: string) {
@@ -391,6 +404,7 @@ it('a driver is 403, and an office handoff from unassigned names the Partner and
     vehicle_id: null,
     must_accept: null,
     partner_id: partner.id,
+    partner_confirmed: false,
   })
   expect(await versionOf(recorded.ride.id)).toEqual({
     version: opened.version + 1,
@@ -443,6 +457,7 @@ it('handoff from assigned and accepted clears the crew and mails no longer yours
     vehicle_id: null,
     must_accept: null,
     partner_id: partner.id,
+    partner_confirmed: false,
   })
   expect(await versionOf(assignedRide.ride.id)).toMatchObject({
     version: assignedVersion.version + 1,
@@ -616,6 +631,7 @@ it('changes the Partner, then takes the Ride back, without mail', async () => {
     vehicle_id: null,
     must_accept: null,
     partner_id: null,
+    partner_confirmed: false,
   })
   expect(await versionOf(recorded.ride.id)).toMatchObject({ version: takenVersion.version + 1 })
   const audits = await handoffAudits(world.tenantId)
@@ -899,4 +915,128 @@ it('drops a handed-off Ride from the Driver list and lets a correction through w
     driver_id: null,
     vehicle_id: null,
   })
+})
+
+it('records the Partner confirmation with the handoff or the change, and a refusal writes none', async () => {
+  const world = await office('hoff-agreed')
+  await addMember(world.tenantId, 'hoff-agreed-driver@example.test', 'Drago Driver', 'driver')
+  const driverSession = await signIn('hoff-agreed-driver@example.test')
+  const partnerName = 'Mora Potvrda'
+  const partnerPhone = '+38591111571'
+  const partner = await createPartner(world.dispatcher, { name: partnerName, phone: partnerPhone })
+  const next = await createPartner(world.dispatcher, { name: 'Proba Prijevoz' })
+  const archived = await createPartner(world.dispatcher, { name: 'Stara Mora' })
+  await archivePartner(world.dispatcher, archived.id)
+  const waiting = await createTransfer(world.dispatcher, transferBody(world, hoursAhead(8), 'Ana Anić'))
+  const agreed = await createTransfer(world.dispatcher, transferBody(world, hoursAhead(9), 'Iva Ivić'))
+  const waitingVersion = await versionOf(waiting.ride.id)
+  const agreedVersion = await versionOf(agreed.ride.id)
+
+  const driverRefused = await unchanged(world.tenantId, waiting.ride.id, () => call(
+    'POST',
+    `/api/rides/${waiting.ride.id}/hand-off`,
+    driverSession,
+    { partnerId: partner.id, version: waitingVersion.version, partnerConfirmed: true },
+  ))
+  expect(driverRefused.status).toBe(403)
+  expect(await driverRefused.text()).not.toContain(partnerPhone)
+
+  const stale = await unchanged(world.tenantId, waiting.ride.id, () => call(
+    'POST',
+    `/api/rides/${waiting.ride.id}/hand-off`,
+    world.dispatcher,
+    { partnerId: partner.id, version: waitingVersion.version + 9, partnerConfirmed: true },
+  ))
+  expect(stale.status).toBe(409)
+  expect(await stale.json()).toMatchObject({ data: { code: 'stale_save' } })
+
+  const archivedHand = await unchanged(world.tenantId, agreed.ride.id, () => call(
+    'POST',
+    `/api/rides/${agreed.ride.id}/hand-off`,
+    world.dispatcher,
+    { partnerId: archived.id, version: agreedVersion.version, partnerConfirmed: true },
+  ))
+  expect(archivedHand.status).toBe(409)
+  expect(await archivedHand.json()).toMatchObject({ data: { code: 'ride_partner_archived' } })
+  expect(await rideAudits(world.tenantId, waiting.ride.id)).toEqual([])
+  expect(await rideAudits(world.tenantId, agreed.ride.id)).toEqual([])
+
+  const plain = await call('POST', `/api/rides/${waiting.ride.id}/hand-off`, world.dispatcher, {
+    partnerId: partner.id,
+    version: waitingVersion.version,
+  })
+  expect(plain.status).toBe(200)
+  expect(await rideRow(waiting.ride.id)).toMatchObject({ state: 'handed_off', partner_id: partner.id, partner_confirmed: false })
+  expect(await versionOf(waiting.ride.id)).toMatchObject({ version: waitingVersion.version + 1, dataChangedBy: world.dispatcherId })
+  expect(await rideAudits(world.tenantId, waiting.ride.id)).toEqual([{
+    action: 'ride.handed_off',
+    actor_user_id: world.dispatcherId,
+    data: { rideId: waiting.ride.id, partnerId: partner.id, fields: ['state', 'partnerId'] },
+  }])
+
+  const ticked = await call('POST', `/api/rides/${agreed.ride.id}/hand-off`, world.dispatcher, {
+    partnerId: partner.id,
+    version: agreedVersion.version,
+    partnerConfirmed: true,
+  })
+  expect(ticked.status).toBe(200)
+  const tickedBody = await ticked.text()
+  expect(tickedBody).not.toContain(partnerName)
+  expect(tickedBody).not.toContain(partnerPhone)
+  expect(await rideRow(agreed.ride.id)).toMatchObject({ state: 'handed_off', partner_id: partner.id, partner_confirmed: true })
+  expect(await versionOf(agreed.ride.id)).toMatchObject({ version: agreedVersion.version + 1, dataChangedBy: world.dispatcherId })
+  const agreedAudits = await rideAudits(world.tenantId, agreed.ride.id)
+  expect(agreedAudits).toEqual([
+    {
+      action: 'ride.handed_off',
+      actor_user_id: world.dispatcherId,
+      data: { rideId: agreed.ride.id, partnerId: partner.id, fields: ['state', 'partnerId'] },
+    },
+    {
+      action: 'ride.partner_confirmed',
+      actor_user_id: world.dispatcherId,
+      data: { rideId: agreed.ride.id, partnerId: partner.id, fields: ['partnerConfirmed'] },
+    },
+  ])
+  const agreedStored = JSON.stringify(agreedAudits)
+  expect(agreedStored).not.toContain(partnerName)
+  expect(agreedStored).not.toContain(partnerPhone)
+
+  const clearedVersion = await versionOf(agreed.ride.id)
+  const cleared = await call('POST', `/api/rides/${agreed.ride.id}/partner`, world.dispatcher, {
+    partnerId: next.id,
+    version: clearedVersion.version,
+  })
+  expect(cleared.status).toBe(200)
+  expect(await rideRow(agreed.ride.id)).toMatchObject({ state: 'handed_off', partner_id: next.id, partner_confirmed: false })
+  expect(await versionOf(agreed.ride.id)).toMatchObject({ version: clearedVersion.version + 1 })
+  expect((await rideAudits(world.tenantId, agreed.ride.id)).map(row => row.action)).toEqual([
+    'ride.handed_off',
+    'ride.partner_changed',
+    'ride.partner_confirmed',
+  ])
+
+  const changedVersion = await versionOf(waiting.ride.id)
+  const changed = await call('POST', `/api/rides/${waiting.ride.id}/partner`, world.admin, {
+    partnerId: next.id,
+    version: changedVersion.version,
+    partnerConfirmed: true,
+  })
+  expect(changed.status).toBe(200)
+  const changedBody = await changed.text()
+  expect(changedBody).not.toContain(partnerName)
+  expect(changedBody).not.toContain(partnerPhone)
+  expect(await rideRow(waiting.ride.id)).toMatchObject({ state: 'handed_off', partner_id: next.id, partner_confirmed: true })
+  expect(await versionOf(waiting.ride.id)).toMatchObject({ version: changedVersion.version + 1, dataChangedBy: world.adminUserId })
+  const changedAudits = await rideAudits(world.tenantId, waiting.ride.id)
+  expect(changedAudits.map(row => row.action)).toEqual(['ride.handed_off', 'ride.partner_changed', 'ride.partner_confirmed'])
+  expect(changedAudits.find(row => row.action === 'ride.partner_confirmed')).toEqual({
+    action: 'ride.partner_confirmed',
+    actor_user_id: world.adminUserId,
+    data: { rideId: waiting.ride.id, partnerId: next.id, fields: ['partnerConfirmed'] },
+  })
+  const changedStored = JSON.stringify(changedAudits)
+  expect(changedStored).not.toContain(partnerName)
+  expect(changedStored).not.toContain('Proba Prijevoz')
+  expect(changedStored).not.toContain(partnerPhone)
 })
