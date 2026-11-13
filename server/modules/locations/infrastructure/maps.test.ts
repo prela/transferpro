@@ -35,9 +35,9 @@ it('uses the fake in test even when MAPS=google and a key are set', async () => 
       attribution: 'Google Maps',
       suggestions: [
         {
-          label: `${text}, Dubrovnik`,
+          label: `${text}, Grad Proba`,
           name: text,
-          address: 'Dubrovnik',
+          address: 'Grad Proba',
           establishment: true,
           provider: 'google',
           placeRef: FAKE_PLACE_REF,

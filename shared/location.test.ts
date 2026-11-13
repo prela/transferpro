@@ -178,7 +178,7 @@ const establishment = {
 
 const street = {
   name: 'Ulica 1·',
-  address: 'Ulica 1, Dubrovnik',
+  address: 'Ulica 1, Grad Proba',
   establishment: false,
   provider: 'google' as const,
   placeRef: 'ChIJstreet',
@@ -214,7 +214,7 @@ it('fills an empty name from an establishment on the address, and keeps a typed 
 it('leaves the name alone when a street address is picked', () => {
   const empty = fillLocationFromPick('address', street, { name: '', address: '' })
   expect(empty.name).toBe('')
-  expect(empty.address).toBe('Ulica 1, Dubrovnik')
+  expect(empty.address).toBe('Ulica 1, Grad Proba')
   expect(empty.place.placeRef).toBe('ChIJstreet')
   const named = fillLocationFromPick('address', street, { name: '   ', address: 'staro' })
   expect(named.name).toBe('   ')
