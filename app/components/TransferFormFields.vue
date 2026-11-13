@@ -188,9 +188,9 @@ function rejectFreeText(value: string | undefined) {
 }
 
 /**
- * The create row calls preventDefault, so the menu would stay open and
- * keep the caret in a search that shows the same name. A key there is not
- * a key in the quick add, and the name field would never ask for a place.
+ * The create row calls preventDefault, so the menu would stay open on the
+ * typed name. A later open would still be filtered to that name, and a key
+ * in that search is not a key in the quick add.
  */
 const clientOpen = ref(false)
 const startOpen = ref(false)
@@ -198,6 +198,7 @@ const endOpen = ref(false)
 
 function onCreateClient(item: string) {
   clientOpen.value = false
+  clientSearch.value = ''
   openClient(item)
   void nextTick(() => {
     if (rejectFreeText(clientId.value))
@@ -207,6 +208,7 @@ function onCreateClient(item: string) {
 
 function onCreateStart(item: string) {
   startOpen.value = false
+  startSearch.value = ''
   openPlace('start', item)
   void nextTick(() => {
     if (rejectFreeText(startLocationId.value))
@@ -216,6 +218,7 @@ function onCreateStart(item: string) {
 
 function onCreateEnd(item: string) {
   endOpen.value = false
+  endSearch.value = ''
   openPlace('end', item)
   void nextTick(() => {
     if (rejectFreeText(endLocationId.value))
