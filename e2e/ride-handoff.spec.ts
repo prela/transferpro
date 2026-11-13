@@ -140,7 +140,7 @@ test.describe('@phone', () => {
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       const guest = 'Iva Predaja'
       const first = 'Mora Transfer'
-      const second = 'Jadran Prijevoz'
+      const second = 'Proba Prijevoz'
       await createdId(page, '/api/partners', { name: first })
       await createdId(page, '/api/partners', { name: second })
       const { rideId, day } = await recordTodayRide(page, guest)
@@ -426,7 +426,7 @@ test.describe('@phone', () => {
       if (locale === 'en')
         await switchLocale(page, 'en')
       const away = 'Mora Transfer'
-      const free = 'Jadran Prijevoz'
+      const free = 'Proba Prijevoz'
       const awayId = await createdId(page, '/api/partners', { name: away })
       await createdId(page, '/api/partners', { name: free })
       const guest = 'Iva Dogovor'

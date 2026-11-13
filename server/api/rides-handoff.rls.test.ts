@@ -924,7 +924,7 @@ it('records the Partner confirmation with the handoff or the change, and a refus
   const partnerName = 'Mora Potvrda'
   const partnerPhone = '+38591111571'
   const partner = await createPartner(world.dispatcher, { name: partnerName, phone: partnerPhone })
-  const next = await createPartner(world.dispatcher, { name: 'Jadran Prijevoz' })
+  const next = await createPartner(world.dispatcher, { name: 'Proba Prijevoz' })
   const archived = await createPartner(world.dispatcher, { name: 'Stara Mora' })
   await archivePartner(world.dispatcher, archived.id)
   const waiting = await createTransfer(world.dispatcher, transferBody(world, hoursAhead(8), 'Ana Anić'))
@@ -1037,6 +1037,6 @@ it('records the Partner confirmation with the handoff or the change, and a refus
   })
   const changedStored = JSON.stringify(changedAudits)
   expect(changedStored).not.toContain(partnerName)
-  expect(changedStored).not.toContain('Jadran Prijevoz')
+  expect(changedStored).not.toContain('Proba Prijevoz')
   expect(changedStored).not.toContain(partnerPhone)
 })
