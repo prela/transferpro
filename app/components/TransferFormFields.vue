@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ClientOfficeBrief } from '../../shared'
 import { z } from 'zod'
-import { transferMoreHasValue } from '../../shared'
+import { locationNameMaySuggest, transferMoreHasValue } from '../../shared'
 import { transferFormKey } from '../composables/transfer-form'
 import { commandInputClass } from '../ride-detail'
 
@@ -187,7 +187,18 @@ function rejectFreeText(value: string | undefined) {
   return value !== undefined && !z.uuid().safeParse(value).success
 }
 
+/**
+ * The create row calls preventDefault, so the menu would stay open on the
+ * typed name. A later open would still be filtered to that name, and a key
+ * in that search is not a key in the quick add.
+ */
+const clientOpen = ref(false)
+const startOpen = ref(false)
+const endOpen = ref(false)
+
 function onCreateClient(item: string) {
+  clientOpen.value = false
+  clientSearch.value = ''
   openClient(item)
   void nextTick(() => {
     if (rejectFreeText(clientId.value))
@@ -196,6 +207,8 @@ function onCreateClient(item: string) {
 }
 
 function onCreateStart(item: string) {
+  startOpen.value = false
+  startSearch.value = ''
   openPlace('start', item)
   void nextTick(() => {
     if (rejectFreeText(startLocationId.value))
@@ -204,12 +217,26 @@ function onCreateStart(item: string) {
 }
 
 function onCreateEnd(item: string) {
+  endOpen.value = false
+  endSearch.value = ''
   openPlace('end', item)
   void nextTick(() => {
     if (rejectFreeText(endLocationId.value))
       endLocationId.value = undefined
   })
 }
+
+/**
+ * The kind list puts the caret back on itself when it closes. The name is
+ * the next field, and only a key there asks for a place (ADR-0061).
+ */
+watch(placeKind, (kind) => {
+  if (!locationNameMaySuggest(kind))
+    return
+  window.setTimeout(() => {
+    document.getElementById('place-name')?.focus()
+  }, 0)
+})
 
 // The kind still has to be chosen. A prefilled name does not look anything
 // up until a keystroke. The rules live in one composable (ADR-0061).
@@ -535,6 +562,7 @@ watch(placeTarget, () => {
         <USelectMenu
           id="transfer-client"
           v-model="clientId"
+          v-model:open="clientOpen"
           v-model:search-term="clientSearch"
           name="client"
           value-key="value"
@@ -592,6 +620,7 @@ watch(placeTarget, () => {
         <USelectMenu
           id="transfer-start"
           v-model="startLocationId"
+          v-model:open="startOpen"
           v-model:search-term="startSearch"
           name="start"
           value-key="value"
@@ -619,6 +648,7 @@ watch(placeTarget, () => {
         <USelectMenu
           id="transfer-end"
           v-model="endLocationId"
+          v-model:open="endOpen"
           v-model:search-term="endSearch"
           name="end"
           value-key="value"

@@ -102,7 +102,7 @@ export function createFakeMaps(): MapsPort {
         return { available: false }
       // One establishment and one street, both built from the typed text,
       // so a later pick can choose either (ADR-0061).
-      const establishmentLabel = withTail(query.text, 'Dubrovnik')
+      const establishmentLabel = withTail(query.text, 'Grad Proba')
       const streetLabel = withTail(query.text, 'ulica')
       return {
         available: true,
@@ -111,7 +111,7 @@ export function createFakeMaps(): MapsPort {
           {
             label: establishmentLabel,
             name: query.text,
-            address: 'Dubrovnik',
+            address: 'Grad Proba',
             establishment: true,
             provider: 'google',
             placeRef: FAKE_PLACE_REF,

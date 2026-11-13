@@ -456,9 +456,9 @@ it('suggests for the office in the Tenant language, refuses a driver, and does n
     attribution: 'Google Maps',
     suggestions: [
       {
-        label: `${typed}, Dubrovnik`,
+        label: `${typed}, Grad Proba`,
         name: typed,
-        address: 'Dubrovnik',
+        address: 'Grad Proba',
         establishment: true,
         provider: 'google',
         placeRef: FAKE_PLACE_REF,
@@ -484,7 +484,7 @@ it('suggests for the office in the Tenant language, refuses a driver, and does n
   const picked = await call('POST', '/api/locations', dispatcher, {
     name: 'Villa Rosa',
     kind: 'address',
-    address: `${typed}, Dubrovnik`,
+    address: `${typed}, Grad Proba`,
     place: { provider: 'google', placeRef: FAKE_PLACE_REF },
   })
   expect(picked.status).toBe(200)
