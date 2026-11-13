@@ -627,9 +627,11 @@ it('records a Partner confirmation and its clearing, and refuses a name or a wro
   const fact = { rideId, partnerId, fields: ['partnerConfirmed'] }
   await inSession(appPool, tenant, client => client.query(append, ['ride.partner_confirmed', actor, JSON.stringify(fact)]))
   await inSession(appPool, tenant, client => client.query(append, ['ride.partner_confirmation_cleared', actor, JSON.stringify(fact)]))
-  expect(await entriesOf(tenant)).toEqual([
-    { tenant_id: tenant, action: 'ride.partner_confirmed', actor_user_id: actor, subject_user_id: null, data: fact },
+  // The two rows can share one timestamp, so the table read has no stable order.
+  const rows = (await entriesOf(tenant)).sort((left, right) => left.action.localeCompare(right.action))
+  expect(rows).toEqual([
     { tenant_id: tenant, action: 'ride.partner_confirmation_cleared', actor_user_id: actor, subject_user_id: null, data: fact },
+    { tenant_id: tenant, action: 'ride.partner_confirmed', actor_user_id: actor, subject_user_id: null, data: fact },
   ])
   const extra = { ...fact, partnerName: 'Mora' }
   const missing = { rideId, fields: ['partnerConfirmed'] }
