@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { instantFromWallClock } from '../shared/date'
+import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
@@ -12,12 +12,16 @@ import { chooseOption, hydrated, signIn, switchLocale, useTheme } from './fixtur
  * The phone project runs this block. The desktop project runs it too.
  */
 
-test.beforeEach(async ({ page }) => {
-  await pinOperationalClock(page)
-})
+const zone = 'Europe/Zagreb'
 
 function isPhone(page: Page): boolean {
   return (page.viewportSize()?.width ?? 1280) < 1024
+}
+
+/** 09:00 is before the noon pickup. 15:00 is after it. The day is today's operational day. */
+function pinOnOperationalDay(page: Page, time: '09:00' | '15:00') {
+  const day = operationalDateInTimeZone(zone, new Date())
+  return pinOperationalClock(page, instantFromWallClock(`${day}T${time}`, zone))
 }
 
 async function recordTodayRide(page: Page, guest: string): Promise<{ rideId: string, day: string }> {
@@ -120,6 +124,11 @@ async function countValue(region: ReturnType<Page['getByRole']>, label: string):
 }
 
 test.describe('@phone', () => {
+  // Noon pickup is already past, so done stays the primary action (ADR-0062).
+  test.beforeEach(async ({ page }) => {
+    await pinOnOperationalDay(page, '15:00')
+  })
+
   for (const theme of ['light', 'dark'] as const) {
     test(`hands a ride to a partner, changes it, takes it back, and closes it in ${theme}`, async ({ page }) => {
       test.setTimeout(180_000)
@@ -147,7 +156,8 @@ test.describe('@phone', () => {
       await detail.getByRole('button', { name: 'Predaj vožnju', exact: true }).click()
       await expect(page.getByRole('status').filter({ hasText: 'Predano podizvođaču' })).toBeVisible()
       await expect(rideRow(page, guest)).toContainText(first)
-      await expect(rideRow(page, guest)).toContainText('Predano podizvođaču')
+      // The state column now says the handoff is waiting, not the stored state word.
+      await expect(rideRow(page, guest)).toContainText('Čeka potvrdu podizvođača')
 
       await balanceAddsUp(page, guest)
 
@@ -166,7 +176,7 @@ test.describe('@phone', () => {
       if (theme === 'light') {
         await openRide(page, day, rideId, guest)
         await switchLocale(page, 'en')
-        await expect(detail.getByText('Handed off').first()).toBeVisible()
+        await expect(detail.getByText('Awaiting subcontractor').first()).toBeVisible()
         await detail.getByRole('button', { name: 'More', exact: true }).click()
         await expect(page.getByRole('menuitem', { name: 'Change subcontractor', exact: true })).toBeVisible()
         await page.keyboard.press('Escape')
@@ -209,6 +219,7 @@ const licence = '2031-01-01'
 
 test('handing off an assigned ride says the driver and vehicle are cleared', async ({ page }) => {
   test.setTimeout(120_000)
+  await pinOnOperationalDay(page, '15:00')
   await page.setViewportSize({ width: 1440, height: 900 })
   const tenant = await seedTenant('handoff-clears-crew')
   await useTheme(page, 'light')
@@ -247,4 +258,114 @@ test('handing off an assigned ride says the driver and vehicle are cleared', asy
   await detail.getByRole('button', { name: 'More', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Hand off to a subcontractor', exact: true }).click()
   await expect(detail.getByText('Handing off clears the driver and the vehicle.')).toBeVisible()
+})
+
+const confirmationCopy = {
+  hr: {
+    record: 'Zabilježi potvrdu podizvođača',
+    body: 'Ovo bilježi da je podizvođač potvrdio vožnju telefonom ili porukom.',
+    submit: 'Zabilježi potvrdu',
+    recorded: 'Podizvođač potvrdio',
+    done: 'Obavljeno',
+    more: 'Više',
+    gone: 'Ova vožnja više ne čeka potvrdu podizvođača.',
+  },
+  en: {
+    record: 'Record subcontractor confirmation',
+    body: 'This records that the subcontractor confirmed the ride by phone or message.',
+    submit: 'Record confirmation',
+    recorded: 'Subcontractor confirmed',
+    done: 'Done',
+    more: 'More',
+    gone: 'This ride is no longer waiting on the subcontractor\'s confirmation.',
+  },
+} as const
+
+test.describe('@phone', () => {
+  // Noon pickup is still ahead, so recording the confirmation is the primary action.
+  test.beforeEach(async ({ page }) => {
+    await pinOnOperationalDay(page, '09:00')
+  })
+
+  for (const { theme, locale } of [
+    { theme: 'light', locale: 'hr' },
+    { theme: 'dark', locale: 'en' },
+  ] as const) {
+    test(`records a subcontractor confirmation from the detail in ${theme} ${locale}`, async ({ page }) => {
+      test.setTimeout(180_000)
+      const phone = isPhone(page)
+      if (!phone)
+        await page.setViewportSize({ width: 1440, height: 900 })
+      const copy = confirmationCopy[locale]
+      const tenant = await seedTenant(`pconf-am-${theme}-${locale}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      if (locale === 'en')
+        await switchLocale(page, 'en')
+      const partnerId = await createdId(page, '/api/partners', { name: 'Mora Transfer' })
+      const recorded = await recordTodayRide(page, 'Ana Potvrda')
+      const handed = await page.request.post(`/api/rides/${recorded.rideId}/hand-off`, {
+        data: { partnerId, version: 0 },
+      })
+      if (!handed.ok())
+        throw new Error(`${handed.status()} ${await handed.text()}`)
+
+      await openRide(page, recorded.day, recorded.rideId, 'Ana Potvrda')
+      const detail = page.locator('#ride-detail')
+      await detail.getByRole('button', { name: copy.record, exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: copy.record })
+      await expect(dialog.getByText(copy.body)).toBeVisible()
+      await expectNoAxeViolations(page)
+      await dialog.getByRole('button', { name: copy.submit, exact: true }).click()
+      await expect(page.getByRole('status').filter({ hasText: copy.recorded })).toBeVisible()
+      await expect(rideRow(page, 'Ana Potvrda')).toContainText(copy.recorded)
+    })
+  }
+})
+
+test.describe('@phone', () => {
+  // Noon pickup is already past, so done is primary and the confirmation sits under More.
+  // The clock stays put: jumping it signs the session out.
+  test.beforeEach(async ({ page }) => {
+    await pinOnOperationalDay(page, '15:00')
+  })
+
+  for (const { theme, locale } of [
+    { theme: 'light', locale: 'hr' },
+    { theme: 'dark', locale: 'en' },
+  ] as const) {
+    test(`moves the confirmation under more after pickup in ${theme} ${locale}`, async ({ page }) => {
+      test.setTimeout(180_000)
+      const phone = isPhone(page)
+      if (!phone)
+        await page.setViewportSize({ width: 1440, height: 900 })
+      const copy = confirmationCopy[locale]
+      const tenant = await seedTenant(`pconf-pm-${theme}-${locale}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      if (locale === 'en')
+        await switchLocale(page, 'en')
+      const partnerId = await createdId(page, '/api/partners', { name: 'Mora Transfer' })
+      const recorded = await recordTodayRide(page, 'Ivo Kasnije')
+      const handed = await page.request.post(`/api/rides/${recorded.rideId}/hand-off`, {
+        data: { partnerId, version: 0 },
+      })
+      if (!handed.ok())
+        throw new Error(`${handed.status()} ${await handed.text()}`)
+
+      await openRide(page, recorded.day, recorded.rideId, 'Ivo Kasnije')
+      const detail = page.locator('#ride-detail')
+      await expect(detail.getByRole('button', { name: copy.done, exact: true })).toBeVisible()
+      await detail.getByRole('button', { name: copy.more, exact: true }).click()
+      await page.getByRole('menuitem', { name: copy.record, exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: copy.record })
+      await expect(dialog.getByText(copy.body)).toBeVisible()
+      await expectNoAxeViolations(page)
+      const closed = await page.request.post(`/api/rides/${recorded.rideId}/done`, { data: {} })
+      if (!closed.ok())
+        throw new Error(`${closed.status()} ${await closed.text()}`)
+      await dialog.getByRole('button', { name: copy.submit, exact: true }).click()
+      await expect(dialog.getByRole('alert')).toContainText(copy.gone)
+    })
+  }
 })

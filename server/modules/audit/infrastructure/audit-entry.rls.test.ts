@@ -618,6 +618,32 @@ it('append_entry accepts a handoff, a partner change, and a take-back, and refus
   expect(await entriesOf(tenant)).toHaveLength(4)
 })
 
+it('records a Partner confirmation and its clearing, and refuses a name or a wrong field list', async () => {
+  const tenant = crypto.randomUUID()
+  const actor = crypto.randomUUID()
+  const rideId = crypto.randomUUID()
+  const partnerId = crypto.randomUUID()
+  const append = `select audit.append_entry($1, $2, null, $3::jsonb)`
+  const fact = { rideId, partnerId, fields: ['partnerConfirmed'] }
+  await inSession(appPool, tenant, client => client.query(append, ['ride.partner_confirmed', actor, JSON.stringify(fact)]))
+  await inSession(appPool, tenant, client => client.query(append, ['ride.partner_confirmation_cleared', actor, JSON.stringify(fact)]))
+  // The two rows can share one timestamp, so the table read has no stable order.
+  const rows = (await entriesOf(tenant)).sort((left, right) => left.action.localeCompare(right.action))
+  expect(rows).toEqual([
+    { tenant_id: tenant, action: 'ride.partner_confirmation_cleared', actor_user_id: actor, subject_user_id: null, data: fact },
+    { tenant_id: tenant, action: 'ride.partner_confirmed', actor_user_id: actor, subject_user_id: null, data: fact },
+  ])
+  const extra = { ...fact, partnerName: 'Mora' }
+  const missing = { rideId, fields: ['partnerConfirmed'] }
+  const wrongFields = { rideId, partnerId, fields: ['state'] }
+  for (const action of ['ride.partner_confirmed', 'ride.partner_confirmation_cleared']) {
+    expect(await refusal(appPool, tenant, append, [action, actor, JSON.stringify(extra)])).toMatchObject({ code: '23514' })
+    expect(await refusal(appPool, tenant, append, [action, actor, JSON.stringify(missing)])).toMatchObject({ code: '23514' })
+    expect(await refusal(appPool, tenant, append, [action, actor, JSON.stringify(wrongFields)])).toMatchObject({ code: '23514' })
+  }
+  expect(await entriesOf(tenant)).toHaveLength(2)
+})
+
 it('the owner cannot update, delete, or truncate an entry either', async () => {
   const tenant = crypto.randomUUID()
   await appendRemoval(appPool, tenant, crypto.randomUUID(), crypto.randomUUID())

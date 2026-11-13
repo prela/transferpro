@@ -167,7 +167,9 @@ function detailText(entry: AuditEntry): string {
     case 'ride.handed_off':
     case 'ride.partner_changed':
     case 'ride.taken_back':
-      // Field names only. The Partner id stays on the row. A name is not joined.
+    case 'ride.partner_confirmed':
+    case 'ride.partner_confirmation_cleared':
+      // Field names only. The Partner id stays on the row. A name is not joined (ADR-0062).
       return entry.data.fields.map(field => t(`ride.handoffFields.${field}`)).join(', ')
     case 'roster.assigned':
     case 'roster.changed':

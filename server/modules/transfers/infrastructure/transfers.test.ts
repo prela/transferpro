@@ -119,6 +119,7 @@ function fakeTransaction(options: {
             changedAt: null,
             changedByName: null,
             partnerId: null,
+            partnerConfirmed: false,
             mainTransferId: null,
             groupPassengerCount: null,
             unfinishedExtraVehicleCount: 0,

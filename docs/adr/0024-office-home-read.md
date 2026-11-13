@@ -1,6 +1,6 @@
 # One office home read
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0039 and ADR-0062
 
 Damir accepted this on 10 October 2026.
 

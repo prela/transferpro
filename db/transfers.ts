@@ -177,6 +177,10 @@ export const rides = tenantTable('rides', {
   mustAccept: boolean('must_accept'),
   // Set only while `handed_off`. Nullable, no default, so existing rows are not rewritten.
   partnerId: uuid('partner_id'),
+  // False until the office records that the Partner agreed. A constant
+  // default, so adding the column rewrites no row (ADR-0062). True is
+  // allowed only while the state is `handed_off`.
+  partnerConfirmed: boolean('partner_confirmed').notNull().default(false),
 }, table => [
   uniqueIndex('rides_transfer_id').on(table.transferId),
   // A decline alert references this Ride by (tenant_id, id). The id is already the key; this pair is what that foreign key needs.
@@ -208,4 +212,6 @@ export const rides = tenantTable('rides', {
   check('rides_accepted_pair', sql`${table.state} <> 'accepted' or (${table.driverId} is not null and ${table.vehicleId} is not null and ${table.mustAccept} is true)`),
   // Both directions: handed off exactly when a Partner is set and the crew is clear (ADR-0048).
   check('rides_handed_off_partner', sql`(${table.state} = 'handed_off') = (${table.partnerId} is not null and ${table.driverId} is null and ${table.vehicleId} is null)`),
+  // True only on a handoff that is still waiting, or that the Partner agreed (ADR-0062).
+  check('rides_partner_confirmed_handed_off', sql`${table.partnerConfirmed} = false or ${table.state} = 'handed_off'`),
 ], { oneRowPerTenant: false })

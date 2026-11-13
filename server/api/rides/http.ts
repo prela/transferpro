@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
-import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, FullyBookedError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotHandedOffError, RideNotHandoffableError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
+import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, FullyBookedError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotAwaitingPartnerConfirmationError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotHandedOffError, RideNotHandoffableError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
 import { rethrowTenantChanged } from '../tenant-changed'
 
 /**
@@ -38,6 +38,8 @@ import { rethrowTenantChanged } from '../tenant-changed'
  * take-back when the Ride is not `handed_off`. `ride_partner_archived` is an
  * archived Partner. `ride_partner_unchanged` is the Partner already on the
  * Ride. Each of those writes nothing.
+ * `ride_not_awaiting_partner_confirmation` is a Partner confirmation on a
+ * Ride that is not a handoff waiting on one. Nothing was written.
  */
 export function rideHttpError(error: unknown): never {
   rethrowTenantChanged(error)
@@ -78,6 +80,7 @@ export function rideHttpError(error: unknown): never {
     || error instanceof RideNotHandedOffError
     || error instanceof RidePartnerArchivedError
     || error instanceof RidePartnerUnchangedError
+    || error instanceof RideNotAwaitingPartnerConfirmationError
   ) {
     throw createError({
       statusCode: error.statusCode,

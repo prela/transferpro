@@ -23,6 +23,7 @@ export function rideFormStamp(ride: TransferDayRide): string {
     ride.driverId ?? '',
     ride.vehicleId ?? '',
     ride.partnerId ?? '',
+    ride.partnerConfirmed ? '1' : '0',
     ride.mustAccept === null ? '' : String(ride.mustAccept),
     ride.pickupAt,
     ride.landingAt ?? '',

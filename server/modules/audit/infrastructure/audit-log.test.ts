@@ -120,6 +120,10 @@ it('lists a ride.assigned entry with the Driver name and Vehicle plate from the 
   expect(queries[0]?.sql).toContain('as "driverName"')
   expect(queries[0]?.sql).toContain('as "vehiclePlate"')
   expect(queries[0]?.sql).not.toContain('phone')
+  // A Partner confirmation joins no Partner name. The driver join stays on the assignment actions.
+  expect(queries[0]?.sql).not.toContain('app.partners')
+  expect(queries[0]?.sql).not.toContain('ride.partner_confirmed')
+  expect(queries[0]?.sql).not.toContain('ride.partner_confirmation_cleared')
 })
 
 it('lists a ride.accepted entry with the Driver name and does not join the plate', async () => {

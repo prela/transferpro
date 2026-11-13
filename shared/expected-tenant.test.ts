@@ -7,6 +7,8 @@ it('names the refusal and the office writes, and leaves the session commands alo
   expect(isOfficeWrite('post', '/api/transfers')).toBe(true)
   expect(isOfficeWrite('PATCH', `/api/transfers/${id}`)).toBe(true)
   expect(isOfficeWrite('POST', `/api/rides/${id}/accept-by-phone`)).toBe(true)
+  expect(isOfficeWrite('POST', `/api/rides/${id}/partner`)).toBe(true)
+  expect(isOfficeWrite('POST', `/api/rides/${id}/partner-confirmation`)).toBe(true)
   expect(isOfficeWrite('PUT', '/api/roster')).toBe(true)
   expect(isOfficeWrite('DELETE', `/api/members/${id}`)).toBe(true)
   expect(isOfficeWrite('POST', '/api/invitations')).toBe(true)

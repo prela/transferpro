@@ -22,6 +22,38 @@ export const RIDE_PARTNER_CHANGED_FIELDS = ['partnerId'] as const
 /** Taking the Ride back clears the Partner and returns it to `unassigned`. */
 export const RIDE_TAKEN_BACK_FIELDS = ['state', 'partnerId'] as const
 
+/**
+ * A Partner confirmation, and the correction that clears one, name this
+ * field only. The Partner id is a separate key. A name is not a field.
+ */
+export const RIDE_PARTNER_CONFIRMATION_FIELDS = ['partnerConfirmed'] as const
+
+/** What the Ride detail puts in the primary slot for a handed-off Ride. */
+export type HandedOffDetailPrimary = 'recordPartnerConfirmation' | 'done'
+
+/**
+ * Primary action on a handed-off Ride (ADR-0062). Waiting on Partner
+ * confirmation is primary while the scheduled pickup is not in the past,
+ * including at that instant. Once the instant is past, done is primary and
+ * the confirmation sits in Više. A confirmed handoff keeps done. The
+ * landing is not an input: the edge is the scheduled pickup (ADR-0022).
+ * Any other state is null, so the caller keeps its own primary.
+ */
+export function handedOffDetailPrimary(
+  ride: { readonly state: string, readonly partnerConfirmed: boolean, readonly pickupAt: string },
+  nowMs: number,
+): HandedOffDetailPrimary | null {
+  if (ride.state !== 'handed_off')
+    return null
+  if (ride.partnerConfirmed)
+    return 'done'
+  const pickupMs = new Date(ride.pickupAt).getTime()
+  // A pickup that is not a time cannot be "still ahead". Done stays primary.
+  if (Number.isNaN(pickupMs))
+    return 'done'
+  return pickupMs < nowMs ? 'done' : 'recordPartnerConfirmation'
+}
+
 /** ADR-0048. The office may hand off from these three states only. */
 export function canHandOffRide(state: string): boolean {
   return state === 'unassigned' || state === 'assigned' || state === 'accepted'
@@ -84,6 +116,19 @@ export function parseChangeRidePartner(rideId: unknown, body: unknown): HandOffR
 
 /** POST /api/rides/:id/take-back. The body is only the version. */
 export function parseTakeBackRide(rideId: unknown, body: unknown): { rideId: string, version: number } {
+  return parseVersionCommand(rideId, body)
+}
+
+/**
+ * POST /api/rides/:id/partner-confirmation. The body is the version the
+ * form was opened with, and nothing else. A missing version is 400 before
+ * a session opens (ADR-0062).
+ */
+export function parseRecordPartnerConfirmation(rideId: unknown, body: unknown): { rideId: string, version: number } {
+  return parseVersionCommand(rideId, body)
+}
+
+function parseVersionCommand(rideId: unknown, body: unknown): { rideId: string, version: number } {
   const id = z.uuid().safeParse(rideId)
   const payload = versionBody.safeParse(body)
   if (!id.success || !payload.success)

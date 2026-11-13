@@ -13,6 +13,12 @@ function ride(rideId: string, vehicleId: string | null, pickupAt: string) {
   return { rideId, vehicleId, pickupAt }
 }
 
+it('carries no ride state, so a confirmed handoff prints like any other Ride', () => {
+  const groups = groupDayPrint([ride('handed-off', VEHICLE_A, '2026-10-16T08:00:00.000Z')])
+  expect(groups).toEqual([{ vehicleId: VEHICLE_A, rideIds: ['handed-off'] }])
+  expect(Object.keys(groups[0] ?? {})).toEqual(['vehicleId', 'rideIds'])
+})
+
 it('groups by Vehicle, orders groups by earliest pickup, and leaves unassigned last', () => {
   const groups = groupDayPrint([
     ride('unassigned-early', null, '2026-10-16T06:00:00.000Z'),
