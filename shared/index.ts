@@ -60,6 +60,8 @@ export { buildOfficeHome, failedMailResendSchema, HOME_ATTENTION_KINDS, OFFICE_H
 export type { HomeAttentionKind, OfficeHome, OfficeHomeAttentionGroup, OfficeHomeBlockRide, OfficeHomeBlocks, OfficeHomeCountKey, OfficeHomeDecline, OfficeHomeMark, OfficeHomeRide } from './office-home'
 export { accountInitials, officeNav, officePhoneBar } from './office-nav'
 export type { OfficeNavGroup, OfficeNavLabels, OfficeNavLink, OfficeNavRole } from './office-nav'
+export { OPERATING_AREA_FIELDS, OPERATING_AREA_LATITUDE_MAX, OPERATING_AREA_LATITUDE_MIN, OPERATING_AREA_LONGITUDE_MAX, OPERATING_AREA_LONGITUDE_MIN, OPERATING_AREA_RADIUS_MAX_KM, OPERATING_AREA_RADIUS_MAX_M, OPERATING_AREA_RADIUS_MIN_KM, OPERATING_AREA_RADIUS_MIN_M, operatingAreaArchivedFieldsSchema, operatingAreaFieldsSchema } from './operating-area'
+export type { OperatingAreaCircle, OperatingAreaField } from './operating-area'
 export { parseCreatePartner, parsePartnerPatch, PARTNER_CHANGED_FIELD_LISTS, PARTNER_CREATED_FIELD_LISTS, PARTNER_FIELDS, PARTNER_NAME_MAX_LENGTH, PARTNER_NOTE_MAX_LENGTH, partnerChangedFields, partnerChangedFieldsSchema, partnerCreatedFields, partnerCreatedFieldsSchema, PartnerInputError, partnerListSchema, partnerNameSchema, partnerNoteSchema, partnerOfficeContactSchema, partnerSchema } from './partner'
 export type { CreatePartner, Partner, PartnerField, PartnerList, PartnerOfficeContact, PartnerPatch } from './partner'
 export { companyAccountListSchema, companyAccountSchema, isPlatformTenantsPath, parsePlatformTenantListQuery, parseRenameTenantAccount, PLATFORM_TENANT_PAGE_SIZE, PlatformInputError, platformShellSchema, SUPERADMIN_SESSION_SECONDS } from './platform-account'

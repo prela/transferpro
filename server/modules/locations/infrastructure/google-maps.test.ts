@@ -56,7 +56,7 @@ function prediction(options: {
   }
 }
 
-it('sends the session token and the language, and maps the suggestions', async () => {
+it('sends today\'s body when the Tenant has no area and no country, and maps the suggestions', async () => {
   const { http, seen } = client({
     status: 200,
     body: JSON.stringify({
@@ -97,8 +97,77 @@ it('sends the session token and the language, and maps the suggestions', async (
     sessionToken,
     languageCode: 'hr',
   })
+  // ADR-0063: this body stays free of a bias only when the Tenant has neither.
+  // A Tenant with an area or a country is covered below. A restriction is never sent.
   expect(seen[0]?.body).not.toContain('includedRegionCodes')
+  expect(seen[0]?.body).not.toContain('locationRestriction')
   expect(seen[0]?.body).not.toContain('locationBias')
+  expect(seen[0]?.body).not.toContain('regionCode')
+})
+
+it('prefers the operating area and the country, and maps GB to uk', async () => {
+  const { http, seen } = client({ status: 200, body: JSON.stringify({ suggestions: [] }) })
+  await createGoogleMaps('test-maps-key', http).suggestAddresses({
+    text,
+    sessionToken,
+    language: 'hr',
+    area: { latitude: 12.5, longitude: -7.25, radiusM: 15000 },
+    country: 'GB',
+  })
+  expect(JSON.parse(seen[0]?.body ?? '{}')).toEqual({
+    input: text,
+    sessionToken,
+    languageCode: 'hr',
+    locationBias: {
+      circle: {
+        center: { latitude: 12.5, longitude: -7.25 },
+        radius: 15000,
+      },
+    },
+    regionCode: 'uk',
+  })
+  expect(seen[0]?.body).not.toContain('locationRestriction')
+  expect(seen[0]?.body).not.toContain('includedRegionCodes')
+})
+
+it('sends the circle without a region when the Tenant has an area and no country', async () => {
+  const { http, seen } = client({ status: 200, body: JSON.stringify({ suggestions: [] }) })
+  await createGoogleMaps('test-maps-key', http).suggestAddresses({
+    text,
+    sessionToken,
+    language: 'en',
+    area: { latitude: 12.5, longitude: -7.25, radiusM: 1000 },
+  })
+  const body = JSON.parse(seen[0]?.body ?? '{}') as Record<string, unknown>
+  expect(body.locationBias).toEqual({
+    circle: {
+      center: { latitude: 12.5, longitude: -7.25 },
+      radius: 1000,
+    },
+  })
+  expect(body).not.toHaveProperty('regionCode')
+  expect(seen[0]?.body).not.toContain('locationRestriction')
+  expect(seen[0]?.body).not.toContain('includedRegionCodes')
+})
+
+it('sends the region only when the Tenant has a country and no area', async () => {
+  const { http, seen } = client({ status: 200, body: JSON.stringify({ suggestions: [] }) })
+  await createGoogleMaps('test-maps-key', http).suggestAddresses({
+    text,
+    sessionToken,
+    language: 'hr',
+    country: 'HR',
+  })
+  const body = JSON.parse(seen[0]?.body ?? '{}') as Record<string, unknown>
+  expect(body).toEqual({
+    input: text,
+    sessionToken,
+    languageCode: 'hr',
+    regionCode: 'hr',
+  })
+  expect(body).not.toHaveProperty('locationBias')
+  expect(seen[0]?.body).not.toContain('locationRestriction')
+  expect(seen[0]?.body).not.toContain('includedRegionCodes')
 })
 
 it('marks an establishment from the prediction types, including no types', async () => {

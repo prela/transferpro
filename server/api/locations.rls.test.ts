@@ -724,3 +724,67 @@ it('saves a typed address as plain text when suggestions are off', async () => {
     setTestMapsUnavailable(false)
   }
 })
+
+it('passes this Tenant\'s active area and country, and never another Tenant\'s', async () => {
+  const areaA = await tenant('hlc-bias-a', 'Admin Primjer')
+  const areaB = await tenant('hlc-bias-b', 'Admin Drugi')
+  await addMember(areaA.tenantId, 'hlc-bias-a-dispatcher@example.test', 'Dispečer Primjer', 'dispatcher')
+  await addMember(areaB.tenantId, 'hlc-bias-b-dispatcher@example.test', 'Dispečer Drugi', 'dispatcher')
+  await ownerPool.query(
+    `insert into app.operating_area (tenant_id, name, center_lat, center_lng, radius_m)
+     values ($1, 'Područje Primjer', 12.50000, -7.25000, 15000)`,
+    [areaA.tenantId],
+  )
+  await ownerPool.query(`update app.tenant_settings set country_code = 'GB' where tenant_id = $1`, [areaA.tenantId])
+  await ownerPool.query(`update app.tenant_settings set country_code = 'HR' where tenant_id = $1`, [areaB.tenantId])
+
+  const typed = 'Hotel Primjer'
+  const sessionToken = 'c1c2c3d4-5555-4555-8555-555555555555'
+  const body = { text: typed, sessionToken }
+  const dispatcherA = await signIn('hlc-bias-a-dispatcher@example.test')
+  const suggestedA = await call('POST', '/api/locations/suggestions', dispatcherA, body)
+  expect(suggestedA.status).toBe(200)
+  expect(await suggestedA.json()).toMatchObject({
+    available: true,
+    attribution: 'Google Maps',
+    suggestions: [
+      { label: `${typed}, Grad Proba`, establishment: true },
+      { label: `${typed}, ulica`, establishment: false },
+    ],
+  })
+  expect(lastTestMapsQuery()).toEqual({
+    text: typed,
+    sessionToken,
+    language: 'hr',
+    area: { latitude: 12.5, longitude: -7.25, radiusM: 15000 },
+    country: 'GB',
+  })
+
+  const dispatcherB = await signIn('hlc-bias-b-dispatcher@example.test')
+  const suggestedB = await call('POST', '/api/locations/suggestions', dispatcherB, body)
+  expect(suggestedB.status).toBe(200)
+  expect(lastTestMapsQuery()).toEqual({
+    text: typed,
+    sessionToken,
+    language: 'hr',
+    country: 'HR',
+  })
+
+  await ownerPool.query(
+    `update app.operating_area set archived_at = now() where tenant_id = $1 and archived_at is null`,
+    [areaA.tenantId],
+  )
+  const archived = await call('POST', '/api/locations/suggestions', dispatcherA, body)
+  expect(archived.status).toBe(200)
+  expect(lastTestMapsQuery()).toEqual({
+    text: typed,
+    sessionToken,
+    language: 'hr',
+    country: 'GB',
+  })
+
+  await ownerPool.query(`update app.tenant_settings set country_code = null where tenant_id = $1`, [areaA.tenantId])
+  const neither = await call('POST', '/api/locations/suggestions', dispatcherA, body)
+  expect(neither.status).toBe(200)
+  expect(lastTestMapsQuery()).toEqual({ text: typed, sessionToken, language: 'hr' })
+})

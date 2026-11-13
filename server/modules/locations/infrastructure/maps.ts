@@ -76,7 +76,7 @@ export function setTestMapsEmbedOff(value: boolean): void {
   embedOff = value
 }
 
-/** The last lookup the fake saw. Tests assert the language and the text. */
+/** The last lookup the fake saw. Tests assert the language, the text, and any area or country. */
 export function lastTestMapsQuery(): SuggestAddressesQuery | null {
   return queries.at(-1) ?? null
 }

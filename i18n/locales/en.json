@@ -189,6 +189,12 @@
     "formerMember": "Former member",
     "refresh": "Refresh",
     "rideAssignedDetail": "{driver} · {vehicle}",
+    "countryUnset": "Not set",
+    "operatingAreaFields": {
+      "name": "Name",
+      "center": "Center",
+      "radiusM": "Radius"
+    },
     "actions": {
       "member": {
         "invited": "Member invited",
@@ -202,7 +208,10 @@
         "time_zone_changed": "Time zone changed",
         "operational_day_start_changed": "Operational day start changed",
         "transfer_duration_changed": "Transfer duration changed",
-        "relocation_gap_changed": "Relocation gap changed"
+        "relocation_gap_changed": "Relocation gap changed",
+        "operating_area_set": "Operating area set",
+        "operating_area_archived": "Operating area archived",
+        "country_changed": "Country changed"
       },
       "client": {
         "created": "Client added",
