@@ -274,7 +274,7 @@ const confirmationCopy = {
 } as const
 
 test.describe('@phone', () => {
-  // Pickup is noon. Morning keeps the confirmation primary; afternoon moves done up (ADR-0062).
+  // Noon pickup is still ahead, so recording the confirmation is the primary action.
   test.beforeEach(async ({ page }) => {
     await pinOperationalClock(page, instantFromWallClock('2026-11-13T09:00', 'Europe/Zagreb'))
   })
@@ -289,21 +289,18 @@ test.describe('@phone', () => {
       if (!phone)
         await page.setViewportSize({ width: 1440, height: 900 })
       const copy = confirmationCopy[locale]
-      const tenant = await seedTenant(`pconf-${theme}-${locale}`)
+      const tenant = await seedTenant(`pconf-am-${theme}-${locale}`)
       await useTheme(page, theme)
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       if (locale === 'en')
         await switchLocale(page, 'en')
       const partnerId = await createdId(page, '/api/partners', { name: 'Mora Transfer' })
       const recorded = await recordTodayRide(page, 'Ana Potvrda')
-      const later = await recordTodayRide(page, 'Ivo Kasnije')
-      for (const rideId of [recorded.rideId, later.rideId]) {
-        const handed = await page.request.post(`/api/rides/${rideId}/hand-off`, {
-          data: { partnerId, version: 0 },
-        })
-        if (!handed.ok())
-          throw new Error(`${handed.status()} ${await handed.text()}`)
-      }
+      const handed = await page.request.post(`/api/rides/${recorded.rideId}/hand-off`, {
+        data: { partnerId, version: 0 },
+      })
+      if (!handed.ok())
+        throw new Error(`${handed.status()} ${await handed.text()}`)
 
       await openRide(page, recorded.day, recorded.rideId, 'Ana Potvrda')
       const detail = page.locator('#ride-detail')
@@ -314,14 +311,49 @@ test.describe('@phone', () => {
       await dialog.getByRole('button', { name: copy.submit, exact: true }).click()
       await expect(page.getByRole('status').filter({ hasText: copy.recorded })).toBeVisible()
       await expect(rideRow(page, 'Ana Potvrda')).toContainText(copy.recorded)
+    })
+  }
+})
 
-      await page.clock.setSystemTime(instantFromWallClock('2026-11-13T15:00', 'Europe/Zagreb'))
-      await openRide(page, later.day, later.rideId, 'Ivo Kasnije')
+test.describe('@phone', () => {
+  // Noon pickup is already past, so done is primary and the confirmation sits under More.
+  // The clock stays put: jumping it signs the session out.
+  test.beforeEach(async ({ page }) => {
+    await pinOperationalClock(page, instantFromWallClock('2026-11-13T15:00', 'Europe/Zagreb'))
+  })
+
+  for (const { theme, locale } of [
+    { theme: 'light', locale: 'hr' },
+    { theme: 'dark', locale: 'en' },
+  ] as const) {
+    test(`moves the confirmation under more after pickup in ${theme} ${locale}`, async ({ page }) => {
+      test.setTimeout(180_000)
+      const phone = isPhone(page)
+      if (!phone)
+        await page.setViewportSize({ width: 1440, height: 900 })
+      const copy = confirmationCopy[locale]
+      const tenant = await seedTenant(`pconf-pm-${theme}-${locale}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      if (locale === 'en')
+        await switchLocale(page, 'en')
+      const partnerId = await createdId(page, '/api/partners', { name: 'Mora Transfer' })
+      const recorded = await recordTodayRide(page, 'Ivo Kasnije')
+      const handed = await page.request.post(`/api/rides/${recorded.rideId}/hand-off`, {
+        data: { partnerId, version: 0 },
+      })
+      if (!handed.ok())
+        throw new Error(`${handed.status()} ${await handed.text()}`)
+
+      await openRide(page, recorded.day, recorded.rideId, 'Ivo Kasnije')
+      const detail = page.locator('#ride-detail')
       await expect(detail.getByRole('button', { name: copy.done, exact: true })).toBeVisible()
       await detail.getByRole('button', { name: copy.more, exact: true }).click()
       await page.getByRole('menuitem', { name: copy.record, exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: copy.record })
       await expect(dialog.getByText(copy.body)).toBeVisible()
-      const closed = await page.request.post(`/api/rides/${later.rideId}/done`, { data: {} })
+      await expectNoAxeViolations(page)
+      const closed = await page.request.post(`/api/rides/${recorded.rideId}/done`, { data: {} })
       if (!closed.ok())
         throw new Error(`${closed.status()} ${await closed.text()}`)
       await dialog.getByRole('button', { name: copy.submit, exact: true }).click()
