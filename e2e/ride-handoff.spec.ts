@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { instantFromWallClock } from '../shared/date'
+import { instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
@@ -12,8 +12,16 @@ import { chooseOption, hydrated, signIn, switchLocale, useTheme } from './fixtur
  * The phone project runs this block. The desktop project runs it too.
  */
 
+const zone = 'Europe/Zagreb'
+
 function isPhone(page: Page): boolean {
   return (page.viewportSize()?.width ?? 1280) < 1024
+}
+
+/** 09:00 is before the noon pickup. 15:00 is after it. The day is today's operational day. */
+function pinOnOperationalDay(page: Page, time: '09:00' | '15:00') {
+  const day = operationalDateInTimeZone(zone, new Date())
+  return pinOperationalClock(page, instantFromWallClock(`${day}T${time}`, zone))
 }
 
 async function recordTodayRide(page: Page, guest: string): Promise<{ rideId: string, day: string }> {
@@ -118,7 +126,7 @@ async function countValue(region: ReturnType<Page['getByRole']>, label: string):
 test.describe('@phone', () => {
   // Noon pickup is already past, so done stays the primary action (ADR-0062).
   test.beforeEach(async ({ page }) => {
-    await pinOperationalClock(page, instantFromWallClock('2026-11-13T15:00', 'Europe/Zagreb'))
+    await pinOnOperationalDay(page, '15:00')
   })
 
   for (const theme of ['light', 'dark'] as const) {
@@ -211,7 +219,7 @@ const licence = '2031-01-01'
 
 test('handing off an assigned ride says the driver and vehicle are cleared', async ({ page }) => {
   test.setTimeout(120_000)
-  await pinOperationalClock(page, instantFromWallClock('2026-11-13T15:00', 'Europe/Zagreb'))
+  await pinOnOperationalDay(page, '15:00')
   await page.setViewportSize({ width: 1440, height: 900 })
   const tenant = await seedTenant('handoff-clears-crew')
   await useTheme(page, 'light')
@@ -276,7 +284,7 @@ const confirmationCopy = {
 test.describe('@phone', () => {
   // Noon pickup is still ahead, so recording the confirmation is the primary action.
   test.beforeEach(async ({ page }) => {
-    await pinOperationalClock(page, instantFromWallClock('2026-11-13T09:00', 'Europe/Zagreb'))
+    await pinOnOperationalDay(page, '09:00')
   })
 
   for (const { theme, locale } of [
@@ -319,7 +327,7 @@ test.describe('@phone', () => {
   // Noon pickup is already past, so done is primary and the confirmation sits under More.
   // The clock stays put: jumping it signs the session out.
   test.beforeEach(async ({ page }) => {
-    await pinOperationalClock(page, instantFromWallClock('2026-11-13T15:00', 'Europe/Zagreb'))
+    await pinOnOperationalDay(page, '15:00')
   })
 
   for (const { theme, locale } of [

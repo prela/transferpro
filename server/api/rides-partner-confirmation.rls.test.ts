@@ -212,8 +212,8 @@ async function office(slug: string) {
   const dispatcher = await signIn(`${slug}-dispatcher@example.test`)
   const admin = await signIn(`${slug}-admin@example.test`)
   const client = await createClient(dispatcher, { name: 'Agencija Mora', kind: 'agency' })
-  const start = await createLocation(dispatcher, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
-  const end = await createLocation(dispatcher, { name: 'Hotel Park', kind: 'hotel' })
+  const start = await createLocation(dispatcher, { name: 'Polazak Proba', kind: 'airport' })
+  const end = await createLocation(dispatcher, { name: 'Dolazak Proba', kind: 'hotel' })
   return { ...created, dispatcherId, dispatcher, admin, client, start, end }
 }
 
