@@ -27,18 +27,29 @@ async function createdId(page: Page, path: string, data: unknown): Promise<strin
   return body.id
 }
 
+function isPhone(page: Page): boolean {
+  return (page.viewportSize()?.width ?? 1280) < 1024
+}
+
+/** Below 1024 px the day is a list of cards, not a table. */
+function rideRow(page: Page, guest: string) {
+  if (isPhone(page))
+    return page.getByRole('listitem').filter({ hasText: guest })
+  return page.getByRole('row', { name: guest })
+}
+
 async function record(page: Page, guest: string, day: string, wall: string, spot: {
   clientId: string
   startLocationId: string
   endLocationId: string
-}, extra?: { flightNumber?: string, tabla?: string, clientReference?: string }) {
+}, extra?: { flightNumber?: string, tabla?: string, clientReference?: string, passengerCount?: number }) {
   const recorded = await recordTransfer(page.request, {
     data: {
       clientId: spot.clientId,
       pickupAt: instantFromWallClock(`${day}T${wall}`, 'Europe/Zagreb').toISOString(),
       startLocationId: spot.startLocationId,
       endLocationId: spot.endLocationId,
-      passengerCount: 1,
+      passengerCount: extra?.passengerCount ?? 1,
       guestName: guest,
       flightNumber: extra?.flightNumber ?? null,
       price: 10,
@@ -264,8 +275,7 @@ test.describe('@phone', () => {
         startLocationId,
         endLocationId,
       })
-      const phone = (page.viewportSize()?.width ?? 1280) < 1024
-      if (!phone)
+      if (!isPhone(page))
         await page.setViewportSize({ width: 1366, height: 768 })
       await page.goto('/transfers')
       await hydrated(page)
@@ -274,9 +284,7 @@ test.describe('@phone', () => {
       await expect(page.getByRole('button', { name: 'Stanje vožnje', exact: true })).toBeVisible()
       await expect(page.getByRole('button', { name: 'sutra 1', exact: true })).toBeVisible()
       await page.getByRole('button', { name: 'sutra 1', exact: true }).click()
-      const card = phone
-        ? page.getByRole('listitem').filter({ hasText: 'Sutra Telefon' })
-        : page.getByRole('row', { name: 'Sutra Telefon' })
+      const card = rideRow(page, 'Sutra Telefon')
       const expand = card.getByRole('button', { name: /detalje: Sutra Telefon/ })
       await expand.click()
       await expect(expand).toHaveAttribute('aria-expanded', 'true')
@@ -292,4 +300,83 @@ test.describe('@phone', () => {
       }
     })
   }
+
+  /**
+   * ADR-0064: every view count follows every active filter and never the
+   * chosen view, while Hitno counts every Ride of the shown day. On the day
+   * before, every Ride is urgent: the unassigned one is past its pickup and
+   * the assigned ones carry the unclosed mark. Six passengers in a four-seat
+   * Vehicle is the warning, so Upozorenja differs between the two Drivers.
+   */
+  test('view counts follow the Driver filter, never the chosen view, and Hitno counts the whole day', async ({ page }) => {
+    const tenant = await seedTenant('transfers-counts')
+    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+    const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Brojač', kind: 'address' })
+    const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Brojač', kind: 'hotel' })
+    const clientId = await createdId(page, '/api/clients', { name: 'Agencija Brojač', kind: 'agency' })
+    const crew = async (name: string, phone: string, registrationPlate: string) => ({
+      driverId: await createdId(page, '/api/drivers', {
+        name,
+        kind: 'own',
+        phone,
+        drivingLicenceExpiresOn: licence,
+        transportLicenceExpiresOn: licence,
+      }),
+      vehicleId: await createdId(page, '/api/vehicles', {
+        registrationPlate,
+        kind: 'fixed',
+        seatCount: 4,
+        registrationExpiresOn: licence,
+        technicalInspectionExpiresOn: licence,
+        insuranceExpiresOn: licence,
+      }),
+    })
+    const crewOne = await crew('Vozač Jedan', '+385910000587', 'ZG587AA')
+    const crewTwo = await crew('Vozač Dva', '+385910000588', 'ZG587BB')
+    const spot = { clientId, startLocationId, endLocationId }
+    const day = addCalendarDays(operationalDay(page), -1)
+    const crowded = await record(page, 'Gost Jedan Puni', day, '09:00', spot, { passengerCount: 6 })
+    const calm = await record(page, 'Gost Jedan Mirni', day, '13:00', spot)
+    const otherCrowded = await record(page, 'Gost Dva Puni', day, '09:00', spot, { passengerCount: 6 })
+    await record(page, 'Gost Bez Vozača', day, '17:00', spot)
+    for (const [rideId, assignment] of [[crowded, crewOne], [calm, crewOne], [otherCrowded, crewTwo]] as const) {
+      const assigned = await page.request.post(`/api/rides/${rideId}/assign`, { data: { version: 0, ...assignment } })
+      expect(assigned.ok()).toBeTruthy()
+    }
+
+    const expectChips = async (chips: readonly string[]) => {
+      for (const name of chips)
+        await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
+    }
+
+    await page.goto(`/transfers?day=${day}`)
+    await hydrated(page)
+    await expectChips(['Sve (4)', 'Hitno (4)', 'Upozorenja (2)', 'Nedodijeljeno (1)'])
+
+    await chooseOption(page, page.getByRole('button', { name: 'Vozač', exact: true }), 'Vozač Jedan')
+    await expect(page).toHaveURL(new RegExp(`driver=${crewOne.driverId}`))
+    await expect(rideRow(page, 'Gost Jedan Puni')).toBeVisible()
+    await expect(rideRow(page, 'Gost Jedan Mirni')).toBeVisible()
+    await expect(rideRow(page, 'Gost Dva Puni')).toHaveCount(0)
+    await expect(rideRow(page, 'Gost Bez Vozača')).toHaveCount(0)
+    const filtered = ['Sve (2)', 'Hitno (4)', 'Upozorenja (1)', 'Nedodijeljeno (0)'] as const
+    await expectChips(filtered)
+
+    const unassigned = page.getByRole('button', { name: 'Nedodijeljeno (0)', exact: true })
+    await unassigned.click()
+    await expect(page).toHaveURL(/filter=unassigned/)
+    await expect(unassigned).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByText('Nema vožnji za ovaj filtar.')).toBeVisible()
+    await expectChips(filtered)
+
+    await page.getByRole('button', { name: 'Upozorenja (1)', exact: true }).click()
+    await expect(page).toHaveURL(/filter=warnings/)
+    await expect(rideRow(page, 'Gost Jedan Puni')).toBeVisible()
+    await expect(rideRow(page, 'Gost Jedan Mirni')).toHaveCount(0)
+    await expectChips(filtered)
+
+    await switchLocale(page, 'en')
+    await expect(page).toHaveURL(new RegExp(`driver=${crewOne.driverId}`))
+    await expectChips(['All (2)', 'Urgent (4)', 'Warnings (1)', 'Unassigned (0)'])
+  })
 })
