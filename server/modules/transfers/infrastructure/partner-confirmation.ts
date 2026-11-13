@@ -96,21 +96,36 @@ export async function recordPartnerConfirmationForOffice(
   if (!updated)
     throw new RideNotAwaitingPartnerConfirmationError()
 
-  await hideDatabaseError(() => appendAuditEntry(transaction, {
-    action: 'ride.partner_confirmed',
-    actorUserId,
-    subjectUserId: null,
-    data: {
-      rideId: updated.id,
-      partnerId,
-      fields: [RIDE_PARTNER_CONFIRMATION_FIELDS[0]],
-    },
-  }), 'Partner confirmation failed')
+  await appendPartnerConfirmed(transaction, actorUserId, updated.id, partnerId, 'Partner confirmation failed')
   return recordedSchema.parse({
     rideId: updated.id,
     partnerConfirmed: true,
     version: version + 1,
   })
+}
+
+/**
+ * `ride.partner_confirmed` for a confirmation on its own and for one
+ * recorded with a handoff or a change of Partner. The entry names the
+ * Ride, the Partner, and the field. No name and no contact (ADR-0062).
+ */
+export async function appendPartnerConfirmed(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  rideId: string,
+  partnerId: string,
+  failure: string,
+): Promise<void> {
+  await hideDatabaseError(() => appendAuditEntry(transaction, {
+    action: 'ride.partner_confirmed',
+    actorUserId,
+    subjectUserId: null,
+    data: {
+      rideId,
+      partnerId,
+      fields: [RIDE_PARTNER_CONFIRMATION_FIELDS[0]],
+    },
+  }), failure)
 }
 
 function officeOnly(role: string): void {

@@ -1085,6 +1085,8 @@
     "handOffTitle": "Hand off to a subcontractor",
     "handOffSubmit": "Hand off the ride",
     "handOffClearsCrew": "Handing off clears the driver and the vehicle.",
+    "partnerAlreadyConfirmed": "The subcontractor has already confirmed",
+    "partnerAlreadyConfirmedHelp": "Tick only if you have already agreed this ride with the subcontractor.",
     "handingOff": "Handing off",
     "handedOff": "Handed off",
     "changePartner": "Change subcontractor",

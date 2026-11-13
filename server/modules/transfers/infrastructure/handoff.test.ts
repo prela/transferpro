@@ -157,6 +157,36 @@ it('a Partner change locks before the read, and the same active Partner writes n
   expect(moved.steps()).toEqual(['lock', 'capacity', 'partner', 'version', 'update', 'audit'])
 })
 
+it('a ticked Partner confirmation is a second audit, and a refusal writes neither', async () => {
+  vi.mocked(checkPartnerCapacity).mockRejectedValueOnce(new RideUnavailableError())
+  const refused = fakeTransaction({})
+  await expect(handOffRideForOffice(refused.transaction, actorUserId, {
+    rideId,
+    partnerId,
+    version: 4,
+    partnerConfirmed: true,
+  })).rejects.toBeInstanceOf(RideUnavailableError)
+  expect(refused.steps()).toEqual(['lock', 'capacity', 'partner'])
+
+  const handed = fakeTransaction({})
+  await handOffRideForOffice(handed.transaction, actorUserId, {
+    rideId,
+    partnerId,
+    version: 4,
+    partnerConfirmed: true,
+  })
+  expect(handed.steps()).toEqual(['lock', 'capacity', 'partner', 'version', 'update', 'audit', 'audit'])
+
+  const moved = fakeTransaction({ state: 'handed_off', partnerId })
+  await changeRidePartnerForOffice(moved.transaction, actorUserId, {
+    rideId,
+    partnerId: nextPartnerId,
+    version: 4,
+    partnerConfirmed: true,
+  })
+  expect(moved.steps()).toEqual(['lock', 'capacity', 'partner', 'version', 'update', 'audit', 'audit'])
+})
+
 it('take-back claims the version without the capacity lock or a Partner read', async () => {
   const world = fakeTransaction({ state: 'handed_off', partnerId })
   await takeBackRideForOffice(world.transaction, actorUserId, rideId, 4)

@@ -46,6 +46,11 @@ const { notifyAuditChanged } = useAuditRefresh()
 const titleId = useId()
 
 const partnerId = ref<string | undefined>()
+/**
+ * Off until the office ticks it. A 409 `ride_unavailable` resends through
+ * `save(true)` and leaves this as the office set it (ADR-0062).
+ */
+const partnerConfirmed = ref(false)
 const pending = ref(false)
 const formErrorKey = ref<HandOffFailure | null>(null)
 const { refusalOpen, refusalReason, handleCapacityRefusal } = useCapacityRefusal({
@@ -109,7 +114,9 @@ function failureKey(error: unknown): HandOffFailure {
  * version. A fully booked window is 409 `fully_booked` and the dialog
  * offers no confirmation. An unavailable Partner is 409 `ride_unavailable`
  * and writes nothing; the same body with `confirm: true` passes that
- * window (ADR-0034).
+ * window (ADR-0034). `partnerConfirmed` is the Partner's agreement, not
+ * that pass. It is sent only when ticked, and it is not cleared here, so
+ * the resend keeps the box.
  * A Partner is not mailed. From assigned or accepted the Driver gets no
  * longer yours.
  */
@@ -127,6 +134,7 @@ async function save(confirm = false) {
         partnerId: chosen,
         version: props.version,
         ...(confirm ? { confirm: true } : {}),
+        ...(partnerConfirmed.value ? { partnerConfirmed: true } : {}),
       },
     }))
     refusalOpen.value = false
@@ -231,6 +239,16 @@ async function save(confirm = false) {
         class="w-full"
       />
     </UFormField>
+    <UCheckbox
+      id="partner-already-confirmed"
+      v-model="partnerConfirmed"
+      name="partner-already-confirmed"
+      class="mb-4"
+      :size="controlSize"
+      :disabled="pending"
+      :label="t('ride.partnerAlreadyConfirmed')"
+      :description="t('ride.partnerAlreadyConfirmedHelp')"
+    />
     <div class="flex flex-wrap gap-2">
       <UButton
         type="submit"
