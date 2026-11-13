@@ -121,11 +121,16 @@ test('quick add picks a place from the name or the address', async ({ page }) =>
     const dialog = await openForm(page)
     const before = lookups.length
     await createFromSelect(page, dialog, 'Polazište', 'Hotel Brzi')
+    // The create row used to leave this menu open, so the next key stayed in its search.
+    await expect(page.locator('[role="listbox"][data-state="open"]')).toHaveCount(0)
     await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
     await pastSuggestPause(page)
     expect(lookups.length).toBe(before)
 
-    await dialog.getByLabel('Ime', { exact: true }).fill('Hotel Brziq')
+    const prefilledName = dialog.getByLabel('Ime', { exact: true })
+    await expect(prefilledName).toBeFocused()
+    await prefilledName.press('End')
+    await prefilledName.press('q')
     await expect(dialog.getByRole('option', { name: 'Hotel Brziq, Dubrovnik' })).toBeVisible()
     await expect(dialog.getByText('Google Maps', { exact: true })).toBeVisible()
     await page.mouse.move(0, 0)
@@ -138,7 +143,7 @@ test('quick add picks a place from the name or the address', async ({ page }) =>
 
     await createFromSelect(page, dialog, 'Odredište', 'Vila Ana')
     await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
-    await dialog.getByLabel('Adresa', { exact: true }).fill('Obala 4')
+    await dialog.getByLabel('Adresa', { exact: true }).pressSequentially('Obala 4')
     await expect(dialog.getByRole('option', { name: 'Obala 4, Dubrovnik' })).toBeVisible()
     await page.mouse.move(0, 0)
     await expectNoAxeViolations(page)
@@ -170,9 +175,12 @@ test('quick add picks a place from the name or the address', async ({ page }) =>
     await expect(dialog.getByRole('button', { name: 'Odredište', exact: true })).toContainText('Gost Anica')
 
     const saved = await (await page.request.get('/api/locations')).json() as {
-      locations: { name: string, address: string | null, place: { placeRef: string } | null }[]
+      locations: { name: string, address: string | null, place: { provider: string, placeRef: string } | null }[]
     }
-    expect(saved.locations.find(location => location.name === 'Hotel Brziq')?.place?.placeRef).toBe('ChIJfakeDubrovnik')
+    expect(saved.locations.find(location => location.name === 'Hotel Brziq')?.place).toEqual({
+      provider: 'google',
+      placeRef: 'ChIJfakeDubrovnik',
+    })
     expect(saved.locations.find(location => location.name === 'Gost Anica')?.place).toBeNull()
 
     const nameToken = lookups.find(lookup => lookup.text === 'Hotel Brziq')?.sessionToken
@@ -205,11 +213,14 @@ test('quick add picks a place from the name or the address', async ({ page }) =>
     const english = page.getByRole('dialog')
     await createFromSelect(page, english, 'Where it starts', 'Hotel English', '+ Add ‘Hotel English’')
     await chooseOption(page, english.getByRole('combobox', { name: 'Kind' }), 'Hotel')
-    await english.getByLabel('Name', { exact: true }).fill('Hotel English 2')
+    const englishName = english.getByLabel('Name', { exact: true })
+    await expect(englishName).toBeFocused()
+    await englishName.press('End')
+    await englishName.pressSequentially(' 2')
     await expect(english.getByRole('option', { name: 'Hotel English 2, Dubrovnik' })).toBeVisible()
     await page.mouse.move(0, 0)
     await expectNoAxeViolations(page)
-    await english.getByLabel('Address', { exact: true }).fill('Shore 5')
+    await english.getByLabel('Address', { exact: true }).pressSequentially('Shore 5')
     await expect(english.getByRole('option', { name: 'Shore 5, Dubrovnik' })).toBeVisible()
     await page.mouse.move(0, 0)
     await expectNoAxeViolations(page)
@@ -222,7 +233,10 @@ test('quick add picks a place from the name or the address', async ({ page }) =>
     const dark = page.getByRole('dialog')
     await createFromSelect(page, dark, 'Where it starts', 'Hotel Dark', '+ Add ‘Hotel Dark’')
     await chooseOption(page, dark.getByRole('combobox', { name: 'Kind' }), 'Hotel')
-    await dark.getByLabel('Name', { exact: true }).fill('Hotel Dark 2')
+    const darkName = dark.getByLabel('Name', { exact: true })
+    await expect(darkName).toBeFocused()
+    await darkName.press('End')
+    await darkName.pressSequentially(' 2')
     await expect(dark.getByRole('option', { name: 'Hotel Dark 2, Dubrovnik' })).toBeVisible()
     await page.mouse.move(0, 0)
     await expectNoAxeViolations(page)
@@ -409,11 +423,14 @@ test.describe('@phone', () => {
     const dialog = page.getByRole('dialog').or(page.getByRole('region', { name: 'Zabilježi transfer' }))
     await createFromSelect(page, dialog, 'Polazište', 'Hotel Telefon')
     await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
-    await dialog.getByLabel('Ime', { exact: true }).fill('Hotel Telefon 2')
+    const phoneName = dialog.getByLabel('Ime', { exact: true })
+    await expect(phoneName).toBeFocused()
+    await phoneName.press('End')
+    await phoneName.pressSequentially(' 2')
     await expect(dialog.getByRole('option', { name: 'Hotel Telefon 2, Dubrovnik' })).toBeVisible()
     await page.mouse.move(0, 0)
     await expectNoAxeViolations(page)
-    await dialog.getByLabel('Adresa', { exact: true }).fill('Obala 6')
+    await dialog.getByLabel('Adresa', { exact: true }).pressSequentially('Obala 6')
     await expect(dialog.getByRole('option', { name: 'Obala 6, Dubrovnik' })).toBeVisible()
     await page.mouse.move(0, 0)
     await expectNoAxeViolations(page)
