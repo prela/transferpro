@@ -92,6 +92,7 @@ export { RecordLandingInputError, recordRideLanding, RideLandingClosedError, Rid
 export { closeMailOutboxQueue, mailOutboxQueue, mailOutboxStore, startMailOutboxWorker } from './infrastructure/mail-outbox-worker'
 export { markNoShow, MarkNoShowInputError, NoShowTooEarlyError, RideNotNoShowError } from './infrastructure/no-show'
 export { readOfficeHome } from './infrastructure/office-home-access'
+export { recordPartnerConfirmation, RideNotAwaitingPartnerConfirmationError } from './infrastructure/partner-confirmation'
 export { changeVehicle, clearRide, reassignRide, RideNotOpenError, RideSameDriverError, RideVehicleUnchangedError } from './infrastructure/ride-change'
 export { exportRides } from './infrastructure/ride-export'
 export { listClientRideHistory, listPartnerRideHistory } from './infrastructure/ride-history'

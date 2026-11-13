@@ -163,7 +163,7 @@ it('files a handed-off Ride under the unclosed mark the day read returned, and n
   expect(classifyRideAttention(at, [], NOW)).toEqual([
     { tier: 'urgent', kind: 'unclosed-mark' },
   ])
-  expect(rideStateMark(at, NOW).key).toBe('handedOff')
+  expect(rideStateMark(at, NOW).key).toBe('awaitingPartnerConfirmation')
   const before = source({
     state: 'handed_off',
     pickupAt: new Date(NOW - UNCLOSED_MARK_MS + 1).toISOString(),
@@ -208,6 +208,18 @@ it('paints a Ride state as icon-ready text: waiting outlined, in progress, finis
     driverId: '00000000-0000-4000-8000-000000000010',
     pickupAt: new Date(NOW - 60_000).toISOString(),
   }), NOW)).toEqual({ key: 'inProgress', color: 'info', variant: 'subtle', muted: false })
+  expect(rideStateMark(source({ state: 'handed_off', partnerConfirmed: false }), NOW)).toEqual({
+    key: 'awaitingPartnerConfirmation',
+    color: 'warning',
+    variant: 'outline',
+    muted: false,
+  })
+  expect(rideStateMark(source({ state: 'handed_off', partnerConfirmed: true }), NOW)).toEqual({
+    key: 'partnerConfirmed',
+    color: 'primary',
+    variant: 'subtle',
+    muted: false,
+  })
   expect(rideStateMark(source({ state: 'cancelled' }), NOW)).toEqual({
     key: 'cancelled',
     color: 'neutral',

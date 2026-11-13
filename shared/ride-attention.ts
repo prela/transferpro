@@ -60,6 +60,11 @@ export interface RideAttentionSource {
   readonly pickupAt: string
   readonly driverId: string | null
   readonly mustAccept: boolean | null
+  /**
+   * Set on the office day read. Absent means the handoff is still waiting:
+   * that is the column default (ADR-0062).
+   */
+  readonly partnerConfirmed?: boolean
   /** The day read's unclosed mark. This classification does not keep a second clock. */
   readonly unclosedMark: boolean
   readonly warnings: {
@@ -262,7 +267,7 @@ export function transferDayFilterCounts(
 }
 
 export interface RideStateMark {
-  readonly key: 'unassigned' | 'waiting' | 'assigned' | 'accepted' | 'handedOff' | 'inProgress' | 'done' | 'noShow' | 'cancelled'
+  readonly key: 'unassigned' | 'waiting' | 'assigned' | 'accepted' | 'awaitingPartnerConfirmation' | 'partnerConfirmed' | 'inProgress' | 'done' | 'noShow' | 'cancelled'
   readonly color: 'warning' | 'neutral' | 'primary' | 'info' | 'success' | 'error'
   readonly variant: 'subtle' | 'outline'
   readonly muted: boolean
@@ -281,8 +286,13 @@ export function rideStateMark(ride: RideAttentionSource, nowMs: number): RideSta
     return { key: 'cancelled', color: 'neutral', variant: 'subtle', muted: true }
   if (ride.state === 'unassigned')
     return { key: 'unassigned', color: 'warning', variant: 'outline', muted: false }
-  if (ride.state === 'handed_off')
-    return { key: 'handedOff', color: 'neutral', variant: 'outline', muted: false }
+  // Waiting is drawn as acceptance is. Confirmed is drawn as accepted is.
+  // "Predano podizvođaču" stays the state name in filters, not this mark (ADR-0062).
+  if (ride.state === 'handed_off') {
+    if (ride.partnerConfirmed === true)
+      return { key: 'partnerConfirmed', color: 'primary', variant: 'subtle', muted: false }
+    return { key: 'awaitingPartnerConfirmation', color: 'warning', variant: 'outline', muted: false }
+  }
   if (waitingOnAcceptance(ride))
     return { key: 'waiting', color: 'warning', variant: 'outline', muted: false }
   const pickup = pickupMillis(ride.pickupAt)

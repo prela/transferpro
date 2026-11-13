@@ -172,7 +172,8 @@ async function closeHandedOffDone(
   const updated = handedOffDoneRows.parse(await runDoneStep(transaction, sql`
     update app.rides
     set state = 'done',
-        partner_id = null
+        partner_id = null,
+        partner_confirmed = false
     where id = ${rideId}
       and state = 'handed_off'
       and partner_id = ${partnerId}

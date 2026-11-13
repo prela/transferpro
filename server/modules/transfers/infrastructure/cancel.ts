@@ -261,7 +261,9 @@ async function cancelLocked(
  * Sets `cancelled` only while the Ride is still cancellable. The Driver,
  * the Vehicle, and the flag are not rewritten. `partner_id` is cleared:
  * the other states already have it null, and `handed_off` must drop it
- * or the check fails. Zero rows means a concurrent command won.
+ * or the check fails. `partner_confirmed` is cleared in the same write:
+ * true is allowed only while the state is `handed_off` (ADR-0062).
+ * Closing does not change the version. Zero rows means a concurrent command won.
  */
 async function writeCancelledRide(
   transaction: TenantTransaction,
@@ -270,7 +272,8 @@ async function writeCancelledRide(
   return cancelledRows.parse(await runCancelStep(transaction, sql`
     update app.rides
     set state = 'cancelled',
-        partner_id = null
+        partner_id = null,
+        partner_confirmed = false
     where id = ${rideId}
       and state in (${cancellableRideStatesSql})
     returning

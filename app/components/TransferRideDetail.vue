@@ -2,7 +2,7 @@
 import type { DropdownMenuItem } from '@nuxt/ui'
 import type { Client, ClientOfficeBrief, DisplayLocale, Driver, LiveRefreshOutcome, OfficeLocation, Partner, PartnerOfficeContact, TransferDayRide, TransferGroupMember, Vehicle } from '../../shared'
 import type { RideDetailCommand } from '../ride-detail'
-import { canAddExtraVehicle, canRecordLandingTime, classifyRideAttention, formatInstant, locationLabel, officeCanCorrectTransfer, recordedSeatCount, rideDetailEmbedUrls, rideDetailMapOpen, transferAwaitingInvoice, transferGroupRole, transferGroupSchema } from '../../shared'
+import { canAddExtraVehicle, canRecordLandingTime, classifyRideAttention, formatInstant, handedOffDetailPrimary, locationLabel, officeCanCorrectTransfer, recordedSeatCount, rideDetailEmbedUrls, rideDetailMapOpen, rideStateMark, transferAwaitingInvoice, transferGroupRole, transferGroupSchema } from '../../shared'
 import { useKeptWorkOrders } from '../composables/kept-work-orders'
 import { commandControlClass, commandControlSize, rideFormStamp } from '../ride-detail'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -53,6 +53,7 @@ const emit = defineEmits<{
   cancelRide: []
   clear: []
   takeBack: []
+  recordPartnerConfirmation: []
   duplicate: []
   returnJourney: []
   extraVehicle: []
@@ -321,12 +322,18 @@ function clock(instant: string): string {
   return formatInstant(new Date(instant), props.timeZone, props.locale)
 }
 
-const primary = computed<'assign' | 'accept' | 'done' | null>(() => {
+const handedOffPrimary = computed(() => handedOffDetailPrimary(props.ride, props.nowMs))
+
+const primary = computed<'assign' | 'accept' | 'done' | 'recordPartnerConfirmation' | null>(() => {
+  // A handoff waiting on Partner confirmation leads with that record while
+  // the pickup is not past. Live refresh moves it once the instant is past (ADR-0062).
+  if (handedOffPrimary.value === 'recordPartnerConfirmation')
+    return 'recordPartnerConfirmation'
   if (props.ride.state === 'unassigned')
     return 'assign'
   if (canRecordAcceptanceByPhone(props.ride))
     return 'accept'
-  if (canFinish(props.ride))
+  if (handedOffPrimary.value === 'done' || canFinish(props.ride))
     return 'done'
   return null
 })
@@ -355,7 +362,10 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     items.push({ label: t('ride.changePartner'), icon: 'i-lucide-handshake', onSelect: () => emit('command', 'changePartner') })
   if (canTakeBack(ride))
     items.push({ label: t('ride.takeBack'), icon: 'i-lucide-corner-up-left', onSelect: () => emit('takeBack') })
-  if (primary.value === null && canFinish(ride))
+  // After the pickup, done is primary and the confirmation sits here (ADR-0062).
+  if (handedOffPrimary.value === 'done' && ride.partnerConfirmed === false)
+    items.push({ label: t('ride.recordPartnerConfirmation'), icon: 'i-lucide-phone', onSelect: () => emit('recordPartnerConfirmation') })
+  if (primary.value !== 'done' && canFinish(ride))
     items.push({ label: t('ride.markDone'), onSelect: () => emit('done') })
   // Adds a linked Transfer. On an extra vehicle this names its main Transfer.
   if (canAddExtraVehicle(ride))
@@ -374,8 +384,19 @@ function runPrimary() {
     emit('command', 'assign')
   else if (primary.value === 'accept')
     emit('command', 'accept')
+  else if (primary.value === 'recordPartnerConfirmation')
+    emit('recordPartnerConfirmation')
   else if (primary.value === 'done')
     emit('done')
+}
+
+function stateText(): string {
+  const mark = rideStateMark(props.ride, props.nowMs)
+  if (mark.key === 'awaitingPartnerConfirmation')
+    return t('transfers.partnerConfirmation.awaiting')
+  if (mark.key === 'partnerConfirmed')
+    return t('transfers.partnerConfirmation.confirmed')
+  return t(`transfers.states.${props.ride.state}`)
 }
 
 const groupMembers = ref<TransferGroupMember[] | null>(null)
@@ -478,6 +499,8 @@ const primaryLabel = computed(() => {
     return t('ride.assign')
   if (primary.value === 'accept')
     return t('transfers.rowAccept')
+  if (primary.value === 'recordPartnerConfirmation')
+    return t('ride.recordPartnerConfirmation')
   if (primary.value === 'done')
     return t('transfers.rowDone')
   return ''
@@ -733,7 +756,7 @@ const primaryLabel = computed(() => {
         </dd>
       </template>
       <dt>{{ t('transfers.status') }}</dt>
-      <dd>{{ t(`transfers.states.${ride.state}`) }}</dd>
+      <dd>{{ stateText() }}</dd>
       <dt>{{ t('transfers.fields.price') }}</dt>
       <dd class="tabular-nums">
         {{ priceLabel(ride.price) }} · {{ t(`transfers.payments.${ride.payment}`) }}

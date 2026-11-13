@@ -245,7 +245,9 @@
         "reassigned": "Ride reassigned",
         "handed_off": "Ride handed to a subcontractor",
         "partner_changed": "Subcontractor changed",
-        "taken_back": "Ride taken back"
+        "taken_back": "Ride taken back",
+        "partner_confirmed": "Office confirmed for the subcontractor",
+        "partner_confirmation_cleared": "Subcontractor confirmation cleared by a correction"
       },
       "roster": {
         "assigned": "Vehicle given for the day",
@@ -765,6 +767,10 @@
       "no-show": "No-show",
       "cancelled": "Cancelled"
     },
+    "partnerConfirmation": {
+      "awaiting": "Awaiting subcontractor",
+      "confirmed": "Subcontractor confirmed"
+    },
     "warnings": {
       "expiredDocuments": "Expired documents: {documents}",
       "rosterMismatch": "Roster mismatch",
@@ -1071,7 +1077,8 @@
       "partnerId": "Subcontractor",
       "driverId": "Driver",
       "vehicleId": "Vehicle",
-      "mustAccept": "Must accept"
+      "mustAccept": "Must accept",
+      "partnerConfirmed": "Subcontractor confirmation"
     },
     "partner": "Subcontractor",
     "handOff": "Hand off to a subcontractor",
@@ -1102,6 +1109,14 @@
     "takenBack": "Ride taken back",
     "takeBackFailed": "The ride was not taken back. Try again.",
     "takeBackConflict": "This ride can no longer be taken back.",
+    "recordPartnerConfirmation": "Record subcontractor confirmation",
+    "recordPartnerConfirmationTitle": "Record subcontractor confirmation",
+    "recordPartnerConfirmationBody": "This records that the subcontractor confirmed the ride by phone or message.",
+    "recordPartnerConfirmationSubmit": "Record confirmation",
+    "recordingPartnerConfirmation": "Recording",
+    "partnerConfirmationRecorded": "Subcontractor confirmed",
+    "notAwaitingPartnerConfirmation": "This ride is no longer waiting on the subcontractor's confirmation.",
+    "partnerConfirmationFailed": "The confirmation was not recorded. Try again.",
     "chooseDriver": "Choose a driver",
     "chooseVehicle": "Choose a vehicle",
     "fromRoster": "From the roster for that day",

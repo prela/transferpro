@@ -12,7 +12,7 @@ const officeWrites: ReadonlyArray<{ readonly method: string, readonly pattern: R
   { method: 'POST', pattern: /^\/api\/transfers$/ },
   { method: 'PATCH', pattern: new RegExp(`^/api/transfers/${uuid}$`, 'i') },
   { method: 'POST', pattern: new RegExp(`^/api/transfers/${uuid}/invoice(?:/(?:retry|storno|withdraw))?$`, 'i') },
-  { method: 'POST', pattern: new RegExp(`^/api/rides/${uuid}/(?:assign|accept|accept-by-phone|done|no-show|cancel|decline|landing|vehicle|clear|reassign|hand-off|partner|take-back)$`, 'i') },
+  { method: 'POST', pattern: new RegExp(`^/api/rides/${uuid}/(?:assign|accept|accept-by-phone|done|no-show|cancel|decline|landing|vehicle|clear|reassign|hand-off|partner|partner-confirmation|take-back)$`, 'i') },
   { method: 'POST', pattern: /^\/api\/clients$/ },
   { method: 'PATCH', pattern: new RegExp(`^/api/clients/${uuid}$`, 'i') },
   { method: 'POST', pattern: new RegExp(`^/api/clients/${uuid}/contact-persons$`, 'i') },

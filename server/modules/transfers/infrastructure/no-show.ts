@@ -201,7 +201,8 @@ async function closeHandedOffNoShow(
   const updated = handedOffNoShowRows.parse(await runNoShowStep(transaction, sql`
     update app.rides
     set state = 'no-show',
-        partner_id = null
+        partner_id = null,
+        partner_confirmed = false
     where id = ${current.id}
       and state = 'handed_off'
       and partner_id = ${partnerId}

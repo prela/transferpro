@@ -245,7 +245,9 @@
         "reassigned": "Vožnja prebačena",
         "handed_off": "Vožnja predana podizvođaču",
         "partner_changed": "Podizvođač promijenjen",
-        "taken_back": "Vožnja vraćena iz predaje"
+        "taken_back": "Vožnja vraćena iz predaje",
+        "partner_confirmed": "Ured potvrdio u ime podizvođača",
+        "partner_confirmation_cleared": "Potvrda podizvođača poništena ispravkom"
       },
       "roster": {
         "assigned": "Vozilo dodijeljeno za dan",
@@ -765,6 +767,10 @@
       "no-show": "Nedolazak",
       "cancelled": "Otkazano"
     },
+    "partnerConfirmation": {
+      "awaiting": "Čeka potvrdu podizvođača",
+      "confirmed": "Podizvođač potvrdio"
+    },
     "warnings": {
       "expiredDocuments": "Istekli dokumenti: {documents}",
       "rosterMismatch": "Nesklad rasporeda",
@@ -1071,7 +1077,8 @@
       "partnerId": "Podizvođač",
       "driverId": "Vozač",
       "vehicleId": "Vozilo",
-      "mustAccept": "Mora prihvatiti"
+      "mustAccept": "Mora prihvatiti",
+      "partnerConfirmed": "Potvrda podizvođača"
     },
     "partner": "Podizvođač",
     "handOff": "Predaj podizvođaču",
@@ -1102,6 +1109,14 @@
     "takenBack": "Vožnja vraćena",
     "takeBackFailed": "Vožnja nije vraćena. Pokušajte ponovno.",
     "takeBackConflict": "Ovu vožnju više nije moguće vratiti.",
+    "recordPartnerConfirmation": "Zabilježi potvrdu podizvođača",
+    "recordPartnerConfirmationTitle": "Zabilježi potvrdu podizvođača",
+    "recordPartnerConfirmationBody": "Ovo bilježi da je podizvođač potvrdio vožnju telefonom ili porukom.",
+    "recordPartnerConfirmationSubmit": "Zabilježi potvrdu",
+    "recordingPartnerConfirmation": "Bilježenje",
+    "partnerConfirmationRecorded": "Podizvođač potvrdio",
+    "notAwaitingPartnerConfirmation": "Ova vožnja više ne čeka potvrdu podizvođača.",
+    "partnerConfirmationFailed": "Potvrda nije zabilježena. Pokušajte ponovno.",
     "chooseDriver": "Odaberite vozača",
     "chooseVehicle": "Odaberite vozilo",
     "fromRoster": "Iz rasporeda za taj dan",

@@ -157,6 +157,10 @@ test.describe('@phone', () => {
       throw new Error('Partner Ride history seed is short.')
 
     await handOffAll(page, ids, partnerId)
+    // A confirmed handoff still shows the stored state word, not the confirmation mark.
+    const confirmed = await page.request.post(`/api/rides/${newestId}/partner-confirmation`, { data: { version: 1 } })
+    if (!confirmed.ok())
+      throw new Error(`${confirmed.status()} ${await confirmed.text()}`)
     await postEmpty(page, `/api/rides/${doneId}/done`)
     await postEmpty(page, `/api/rides/${noShowId}/no-show`)
     await postEmpty(page, `/api/rides/${cancelledId}/cancel`)
@@ -238,6 +242,9 @@ test.describe('@phone', () => {
     const wall = rideHistoryClock().englishWall
     const rideId = await book(page, { clientId, startLocationId, endLocationId }, 'Iva English', wall, 10, 'cash')
     await handOff(page, rideId, partnerId)
+    const confirmed = await page.request.post(`/api/rides/${rideId}/partner-confirmation`, { data: { version: 1 } })
+    if (!confirmed.ok())
+      throw new Error(`${confirmed.status()} ${await confirmed.text()}`)
 
     await page.goto('/partners')
     await hydrated(page)

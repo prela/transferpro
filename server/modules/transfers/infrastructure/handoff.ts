@@ -280,10 +280,12 @@ export async function changeRidePartnerForOffice(
     confirm: input.confirm === true,
   })
 
+  // A new Partner has not agreed. The flag clears with no clearing audit entry (ADR-0062).
   await claimTransferVersion(transaction, current.transferId, input.version, actorUserId, 'Ride partner change failed')
   const updated = storedRows.parse(await runStep(transaction, sql`
     update app.rides
-    set partner_id = ${input.partnerId}
+    set partner_id = ${input.partnerId},
+        partner_confirmed = false
     where id = ${input.rideId}
       and state = 'handed_off'
       and partner_id = ${partnerId}
@@ -327,8 +329,8 @@ export async function takeBackRideForOffice(
   if (!canTakeBackHandedOffRide(current.state) || partnerId === null)
     throw new RideNotHandedOffError()
 
-  // Take-back frees the Partner. It takes no capacity lock and does not read the Partner,
-  // so an archived Partner can still be taken back (ADR-0048, ADR-0049).
+  // Take-back frees the Partner and clears the confirmation. It takes no capacity lock and does not read the Partner,
+  // so an archived Partner can still be taken back (ADR-0048, ADR-0049, ADR-0062). The existing entry is unchanged.
   await claimTransferVersion(transaction, current.transferId, version, actorUserId, 'Ride take-back failed')
   const updated = storedRows.parse(await runStep(transaction, sql`
     update app.rides
@@ -336,7 +338,8 @@ export async function takeBackRideForOffice(
         partner_id = null,
         driver_id = null,
         vehicle_id = null,
-        must_accept = null
+        must_accept = null,
+        partner_confirmed = false
     where id = ${rideId}
       and state = 'handed_off'
       and partner_id = ${partnerId}

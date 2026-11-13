@@ -52,7 +52,8 @@ const stateIcon = {
   waiting: 'i-lucide-phone',
   assigned: 'i-lucide-user',
   accepted: 'i-lucide-circle-check',
-  handedOff: 'i-lucide-handshake',
+  awaitingPartnerConfirmation: 'i-lucide-phone',
+  partnerConfirmed: 'i-lucide-circle-check',
   inProgress: 'i-lucide-car',
   done: 'i-lucide-check',
   noShow: 'i-lucide-user-x',
@@ -91,10 +92,15 @@ function mark() {
 
 function stateLabel(): string {
   const ride = rideOf()
-  // Waiting is the only label that is not the stored state. In progress keeps
-  // the stored word so a ride recorded at noon does not change name after noon.
+  // Waiting and a Partner confirmation are not the stored state word.
+  // "Predano podizvođaču" stays the filter and the Home count (ADR-0062).
+  // In progress keeps the stored word so a ride recorded at noon does not change name after noon.
   if (mark().key === 'waiting')
     return t('transfers.filters.waiting')
+  if (mark().key === 'awaitingPartnerConfirmation')
+    return t('transfers.partnerConfirmation.awaiting')
+  if (mark().key === 'partnerConfirmed')
+    return t('transfers.partnerConfirmation.confirmed')
   return t(`transfers.states.${ride.state}`)
 }
 

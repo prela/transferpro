@@ -135,6 +135,22 @@ it('accepts 366 calendar days and refuses a longer or reversed range', () => {
   expect(() => parseRideExportQuery({ from: '2026-10-01' })).toThrow(/Bad request/)
 })
 
+it('keeps the plain handed-off word for a confirmed and an unconfirmed handoff', () => {
+  // The export row has no confirmation flag, so a confirmed handoff and an
+  // unconfirmed one are the same stored state. The confirmation sentences stay out.
+  const csv = buildRideExportCsv([
+    ride({ state: 'handed_off' }),
+    ride({ state: 'handed_off' }),
+  ], 'Europe/Zagreb', 'hr')
+  const english = buildRideExportCsv([ride({ state: 'handed_off' })], 'Europe/Zagreb', 'en')
+  expect(csv).toContain('Predano podizvođaču')
+  expect(english).toContain('Handed off')
+  expect(csv).not.toContain('Čeka potvrdu')
+  expect(csv).not.toContain('Podizvođač potvrdio')
+  expect(english).not.toContain('Awaiting subcontractor')
+  expect(english).not.toContain('Subcontractor confirmed')
+})
+
 it('names the file from the range', () => {
   expect(rideExportFilename('2026-10-01', '2026-10-31')).toBe('rides-2026-10-01-2026-10-31.csv')
 })

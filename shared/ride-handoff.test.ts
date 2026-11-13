@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { RideCommandInputError } from './ride-assignment'
-import { canChangeHandedOffPartner, canCloseHandedOffRide, canHandOffRide, canTakeBackHandedOffRide, parseChangeRidePartner, parseHandOffRide, parseTakeBackRide } from './ride-handoff'
+import { canChangeHandedOffPartner, canCloseHandedOffRide, canHandOffRide, canTakeBackHandedOffRide, handedOffDetailPrimary, parseChangeRidePartner, parseHandOffRide, parseRecordPartnerConfirmation, parseTakeBackRide } from './ride-handoff'
 
 const rideId = '11111111-1111-4111-8111-111111111111'
 const partnerId = '22222222-2222-4222-8222-222222222222'
@@ -33,4 +33,23 @@ it('parses a take-back version, and refuses a missing one', () => {
   expect(parseTakeBackRide(rideId, { version: 2 })).toEqual({ rideId, version: 2 })
   expect(() => parseTakeBackRide(rideId, {})).toThrow(RideCommandInputError)
   expect(() => parseTakeBackRide(rideId, { version: 2, partnerId })).toThrow(RideCommandInputError)
+})
+
+it('parses a partner confirmation as a version only', () => {
+  expect(parseRecordPartnerConfirmation(rideId, { version: 4 })).toEqual({ rideId, version: 4 })
+  expect(() => parseRecordPartnerConfirmation(rideId, {})).toThrow(RideCommandInputError)
+  expect(() => parseRecordPartnerConfirmation(rideId, { version: 4, confirm: true })).toThrow(RideCommandInputError)
+  expect(() => parseRecordPartnerConfirmation(rideId, { version: 4, partnerId })).toThrow(RideCommandInputError)
+})
+
+const pickup = '2026-11-13T11:00:00.000Z'
+const atPickup = new Date(pickup).getTime()
+
+it('keeps recording the Partner confirmation primary before and at the pickup, and done after it', () => {
+  const waiting = { state: 'handed_off', partnerConfirmed: false, pickupAt: pickup }
+  expect(handedOffDetailPrimary(waiting, atPickup - 1)).toBe('recordPartnerConfirmation')
+  expect(handedOffDetailPrimary(waiting, atPickup)).toBe('recordPartnerConfirmation')
+  expect(handedOffDetailPrimary(waiting, atPickup + 1)).toBe('done')
+  expect(handedOffDetailPrimary({ ...waiting, partnerConfirmed: true }, atPickup - 1)).toBe('done')
+  expect(handedOffDetailPrimary({ state: 'assigned', partnerConfirmed: false, pickupAt: pickup }, atPickup)).toBeNull()
 })

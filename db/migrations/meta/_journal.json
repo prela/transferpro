@@ -491,6 +491,13 @@
       "when": 1793278910959,
       "tag": "0069_vehicle_seat_count",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1793278911959,
+      "tag": "0070_partner_confirmed",
+      "breakpoints": true
     }
   ]
 }

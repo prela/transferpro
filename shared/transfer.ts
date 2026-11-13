@@ -450,6 +450,9 @@ export const transferDayRideSchema = transferSchema.omit({ id: true }).extend({
   // a take-back or a close. The screen names the Partner from the catalog.
   // The board warning is derived from this id (ADR-0048).
   partnerId: z.uuid().nullable(),
+  // False until the office records that the Partner agreed. True only while
+  // the Ride is handed off (ADR-0062). The state column reads it.
+  partnerConfirmed: z.boolean(),
   // Empty until the aircraft has landed. Shown in the Tenant time zone.
   landingAt: z.iso.datetime().nullable(),
   // The live estimate. Shown in the Tenant time zone. Empty until the status reports one.

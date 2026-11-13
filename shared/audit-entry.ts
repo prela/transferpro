@@ -7,7 +7,7 @@ import { invoicingSettingsFieldsSchema } from './invoicing-settings'
 import { locationFieldSchema } from './location'
 import { partnerChangedFieldsSchema, partnerCreatedFieldsSchema } from './partner'
 import { RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideAssignmentFieldSchema, rideVehicleChangeFieldSchema } from './ride-assignment'
-import { RIDE_HANDOFF_CLEAR_FIELDS, RIDE_HANDOFF_OPEN_FIELDS, RIDE_PARTNER_CHANGED_FIELDS, RIDE_TAKEN_BACK_FIELDS } from './ride-handoff'
+import { RIDE_HANDOFF_CLEAR_FIELDS, RIDE_HANDOFF_OPEN_FIELDS, RIDE_PARTNER_CHANGED_FIELDS, RIDE_PARTNER_CONFIRMATION_FIELDS, RIDE_TAKEN_BACK_FIELDS } from './ride-handoff'
 import { rosterDateSchema } from './roster'
 import { tenantRoleSchema } from './tenant-role'
 import { ianaTimeZoneSchema, operationalDayStartHourSchema, storedTimeZoneSchema, waitMinutesSchema } from './tenant-settings'
@@ -60,6 +60,8 @@ export const auditActions = [
   'ride.handed_off',
   'ride.partner_changed',
   'ride.taken_back',
+  'ride.partner_confirmed',
+  'ride.partner_confirmation_cleared',
   'roster.assigned',
   'roster.changed',
   'roster.cleared',
@@ -863,6 +865,26 @@ const rideTakenBack = z.object({
   }),
 })
 
+/**
+ * The office recorded that the Partner agreed, or a correction cleared that
+ * record. The same three keys. A name, a contact, or a guest is not one
+ * (ADR-0062). The actor is the office member. `subjectUserId` stays null.
+ */
+function partnerConfirmationFact(action: 'ride.partner_confirmed' | 'ride.partner_confirmation_cleared') {
+  return z.object({
+    action: z.literal(action),
+    subjectUserId: z.null(),
+    data: z.strictObject({
+      rideId,
+      partnerId,
+      fields: z.tuple([z.literal(RIDE_PARTNER_CONFIRMATION_FIELDS[0])]),
+    }),
+  })
+}
+
+const ridePartnerConfirmed = partnerConfirmationFact('ride.partner_confirmed')
+const ridePartnerConfirmationCleared = partnerConfirmationFact('ride.partner_confirmation_cleared')
+
 /** What happened: the action, the member it was done to, and its data. */
 export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
@@ -904,6 +926,8 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   rideHandedOff,
   ridePartnerChanged,
   rideTakenBack,
+  ridePartnerConfirmed,
+  ridePartnerConfirmationCleared,
   rosterAssigned,
   rosterChanged,
   rosterCleared,
@@ -1062,6 +1086,9 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   }),
   ridePartnerChanged.extend(listed),
   rideTakenBack.extend(listed),
+  // No Partner name is joined. The detail shows the field label (ADR-0062).
+  ridePartnerConfirmed.extend(listed),
+  ridePartnerConfirmationCleared.extend(listed),
   rosterAssigned.extend(listed),
   rosterChanged.extend(listed),
   rosterCleared.extend(listed),
