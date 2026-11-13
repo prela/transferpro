@@ -210,7 +210,7 @@ test('the office picks a suggestion, a hand edit drops it, and a typed address s
     await page.getByRole('button', { name: '+ Dodaj', exact: true }).click()
     let dialog = page.getByRole('dialog')
     await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Adresa')
-    await dialog.getByLabel('Ime').fill('Villa Rosa')
+    await dialog.getByLabel('Ime').fill('Hotel Uzorak')
     await dialog.getByLabel('Adresa').fill('Obala 12')
     await expect(dialog.getByRole('option', { name: 'Obala 12, Dubrovnik' })).toBeVisible()
     await expect(dialog.getByText('Google Maps', { exact: true })).toBeVisible()
@@ -222,11 +222,11 @@ test('the office picks a suggestion, a hand edit drops it, and a typed address s
 
     const picked = await page.request.get('/api/locations')
     const pickedBody = await picked.json() as { locations: { id: string, name: string, address: string | null, place: { placeRef: string } | null }[] }
-    const row = pickedBody.locations.find(location => location.name === 'Villa Rosa')
+    const row = pickedBody.locations.find(location => location.name === 'Hotel Uzorak')
     expect(row?.address).toBe('Dubrovnik')
     expect(row?.place?.placeRef).toBe('ChIJfakeDubrovnik')
 
-    await page.getByRole('button', { name: 'Villa Rosa', exact: true }).click()
+    await page.getByRole('button', { name: 'Hotel Uzorak', exact: true }).click()
     dialog = page.getByRole('dialog')
     await dialog.getByLabel('Adresa').fill('Obala 12, kat 2')
     await dialog.getByRole('button', { name: 'Spremi', exact: true }).click()
@@ -234,7 +234,7 @@ test('the office picks a suggestion, a hand edit drops it, and a typed address s
 
     const edited = await page.request.get('/api/locations')
     const editedBody = await edited.json() as { locations: { name: string, address: string | null, place: unknown }[] }
-    const corrected = editedBody.locations.find(location => location.name === 'Villa Rosa')
+    const corrected = editedBody.locations.find(location => location.name === 'Hotel Uzorak')
     expect(corrected?.address).toBe('Obala 12, kat 2')
     expect(corrected?.place).toBeNull()
 
