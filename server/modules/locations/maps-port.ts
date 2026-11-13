@@ -1,3 +1,5 @@
+import type { OperatingAreaCircle } from '../../../shared'
+
 /**
  * Maps for Locations (ADR-0031). Domain and application code depend on this
  * port. Adapters live in infrastructure. The domain does not know a provider.
@@ -57,10 +59,20 @@ export function embeddable(target: EmbedTarget): target is EmbedTarget & {
   return place !== null && place.provider === 'google' && place.placeRef !== ''
 }
 
+/**
+ * The Tenant's active operating area, when it has one (ADR-0063).
+ * The centre and the radius are metres on WGS84. The port does not know a provider.
+ */
+export type SuggestionArea = OperatingAreaCircle
+
 export interface SuggestAddressesQuery {
   readonly text: string
   readonly sessionToken: string
   readonly language: string
+  /** Present when the Tenant has an active operating area. Absent means no area. */
+  readonly area?: SuggestionArea
+  /** ISO 3166-1 alpha-2. Present when the Tenant has a country. Absent means none. */
+  readonly country?: string
 }
 
 /**

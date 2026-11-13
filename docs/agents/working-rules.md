@@ -50,6 +50,8 @@ The charter lists the personal-data keys. Rationale for the logger shape is ADR-
 
 `pnpm tenant:create --name --slug --admin-email --admin-name` creates the pilot Tenant. The password comes from the terminal, or from the first line of stdin when there is no terminal. It stays off the argument list and off disk. A duplicate slug or email exits 1 with a fixed sentence that omits the email.
 
+`pnpm tenant:operating-area --slug <slug>` sets the operating area (ADR-0063). The area is `--name`, `--lat`, `--lng`, and `--radius-km` (a whole number from 1 to 50, stored in metres), with an optional `--country`. `--country` alone sets the ISO country and leaves the area. `--archive` archives the active area. The same values write nothing and exit 0. Archiving when none is active does nothing and exits 0. It runs as `transferpro_owner` and sets `tenant_id` explicitly. An unknown slug or a value out of bounds exits 1 with a fixed sentence that does not echo the value. The centre comes from a public source that is not Google. The app shows the area nowhere; the audit entry is its only trace.
+
 The auth URL is `transferpro_auth` (no grant on schema `app`). The migrate URL is `transferpro_owner`, which sets `tenant_id` on `app.tenant_settings` explicitly because that role bypasses RLS. A wrong role exits before any insert. The script sets `default_locale` `hr` and the Tenant settings defaults. The settings row is written before the login and removed if the login insert fails. A crash between the two can leave an unused settings row; a retry still creates the Tenant.
 
 `scripts/ts-loader.mjs` is what `scripts/register-ts.mjs` loads. Passing `--password` is refused; pnpm then reprints the command line, so the value would appear there.

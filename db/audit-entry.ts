@@ -1,7 +1,7 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { check, index, jsonb, text, timestamp, uuid } from 'drizzle-orm/pg-core'
-import { auditActions, BILLING_DETAILS_FIELD_LISTS, CLIENT_KINDS, CONTACT_PERSON_ADDED_FIELD_LISTS, CONTACT_PERSON_CHANGED_FIELD_LISTS, DRIVER_FIELDS, INVOICING_SETTINGS_FIELD_LISTS, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, PARTNER_CHANGED_FIELD_LISTS, PARTNER_CREATED_FIELD_LISTS, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_HANDOFF_CLEAR_FIELDS, RIDE_HANDOFF_OPEN_FIELDS, RIDE_LANDING_FIELDS, RIDE_PARTNER_CHANGED_FIELDS, RIDE_PARTNER_CONFIRMATION_FIELDS, RIDE_TAKEN_BACK_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { auditActions, BILLING_DETAILS_FIELD_LISTS, CLIENT_KINDS, CONTACT_PERSON_ADDED_FIELD_LISTS, CONTACT_PERSON_CHANGED_FIELD_LISTS, DRIVER_FIELDS, INVOICING_SETTINGS_FIELD_LISTS, ISO_3166_1_ALPHA_2, LOCATION_FIELDS, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, PARTNER_CHANGED_FIELD_LISTS, PARTNER_CREATED_FIELD_LISTS, RIDE_ACCEPTED_FIELDS, RIDE_ASSIGNMENT_FIELDS, RIDE_HANDOFF_CLEAR_FIELDS, RIDE_HANDOFF_OPEN_FIELDS, RIDE_LANDING_FIELDS, RIDE_PARTNER_CHANGED_FIELDS, RIDE_PARTNER_CONFIRMATION_FIELDS, RIDE_TAKEN_BACK_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, tenantRoleSchema, TIME_ZONE_MAX_LENGTH, TRANSFER_CORRECTION_FIELDS, TRANSFER_FIELDS, VEHICLE_FIELDS, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { appSchema, tenantTable } from './tenant-table'
 
 export const auditAction = appSchema.enum('audit_action', auditActions)
@@ -313,6 +313,35 @@ function invoicingSettingsChanged(data: AnyPgColumn) {
 }
 
 /**
+ * An operating-area set or archive records the three field names, never the values.
+ * Equality refuses a subset, a name, a coordinate, or a different order (ADR-0063).
+ */
+function operatingAreaFields(data: AnyPgColumn) {
+  return sql`${keysOnly(data, 'fields')} and ${data} -> 'fields' = '["name","center","radiusM"]'::jsonb`
+}
+
+const isoCountries = sql.raw(ISO_3166_1_ALPHA_2.map(code => `'${code}'`).join(', '))
+
+/** One side of a country change: JSON null, or an assigned alpha-2 code. */
+function countrySide(data: AnyPgColumn, key: 'from' | 'to') {
+  const name = sql.raw(`'${key}'`)
+  return sql`(jsonb_typeof(${data} -> ${name}) = 'null' or ${data} ->> ${name} in (${isoCountries}))`
+}
+
+/**
+ * A country change is from and to, and the two sides differ.
+ * A code that is not assigned, or a name, cannot sit on the row.
+ */
+function countryFromTo(data: AnyPgColumn) {
+  return sql.join([
+    fromToOnly(data),
+    countrySide(data, 'from'),
+    countrySide(data, 'to'),
+    sql`${data} -> 'from' is distinct from ${data} -> 'to'`,
+  ], sql` and `)
+}
+
+/**
  * An invoice records its id and the Transfer reference. A number, an amount,
  * a link, or a guest cannot be a key (ADR-0051).
  */
@@ -445,5 +474,8 @@ export const auditEntry = tenantTable('audit_entry', {
     when 'tenant.renamed' then ${table.subjectUserId} is null and ${emptyData(table.data)}
     when 'tenant.suspended' then ${table.subjectUserId} is null and ${emptyData(table.data)}
     when 'tenant.reactivated' then ${table.subjectUserId} is null and ${emptyData(table.data)}
+    when 'settings.operating_area_set' then ${table.subjectUserId} is null and ${operatingAreaFields(table.data)}
+    when 'settings.operating_area_archived' then ${table.subjectUserId} is null and ${operatingAreaFields(table.data)}
+    when 'settings.country_changed' then ${table.subjectUserId} is null and ${countryFromTo(table.data)}
     else false end) is true`),
 ], { oneRowPerTenant: false })

@@ -189,6 +189,12 @@
     "formerMember": "Bivši član",
     "refresh": "Osvježi",
     "rideAssignedDetail": "{driver} · {vehicle}",
+    "countryUnset": "Nije postavljeno",
+    "operatingAreaFields": {
+      "name": "Naziv",
+      "center": "Središte",
+      "radiusM": "Polumjer"
+    },
     "actions": {
       "member": {
         "invited": "Član pozvan",
@@ -202,7 +208,10 @@
         "time_zone_changed": "Promijenjena vremenska zona",
         "operational_day_start_changed": "Promijenjen sat početka operativnog dana",
         "transfer_duration_changed": "Promijenjeno trajanje transfera",
-        "relocation_gap_changed": "Promijenjen razmak za premještaj"
+        "relocation_gap_changed": "Promijenjen razmak za premještaj",
+        "operating_area_set": "Postavljeno područje rada",
+        "operating_area_archived": "Arhivirano područje rada",
+        "country_changed": "Promijenjena država"
       },
       "client": {
         "created": "Klijent dodan",

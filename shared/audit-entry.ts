@@ -1,10 +1,11 @@
 import { z } from 'zod'
-import { billingDetailsFieldsSchema } from './billing-details'
+import { billingDetailsFieldsSchema, isoCountrySchema } from './billing-details'
 import { clientKindSchema } from './client'
 import { contactPersonAddedFieldsSchema, contactPersonChangedFieldsSchema } from './contact-person'
 import { driverFieldSchema } from './driver'
 import { invoicingSettingsFieldsSchema } from './invoicing-settings'
 import { locationFieldSchema } from './location'
+import { operatingAreaArchivedFieldsSchema, operatingAreaFieldsSchema } from './operating-area'
 import { partnerChangedFieldsSchema, partnerCreatedFieldsSchema } from './partner'
 import { RIDE_ASSIGNMENT_FIELDS, RIDE_VEHICLE_CHANGE_FIELDS, rideAssignmentFieldSchema, rideVehicleChangeFieldSchema } from './ride-assignment'
 import { RIDE_HANDOFF_CLEAR_FIELDS, RIDE_HANDOFF_OPEN_FIELDS, RIDE_PARTNER_CHANGED_FIELDS, RIDE_PARTNER_CONFIRMATION_FIELDS, RIDE_TAKEN_BACK_FIELDS } from './ride-handoff'
@@ -88,6 +89,9 @@ export const auditActions = [
   'invoice.failed',
   'invoice.cancelled',
   'invoice.withdrawn',
+  'settings.operating_area_set',
+  'settings.operating_area_archived',
+  'settings.country_changed',
 ] as const
 
 export const auditActionSchema = z.enum(auditActions)
@@ -885,6 +889,34 @@ function partnerConfirmationFact(action: 'ride.partner_confirmed' | 'ride.partne
 const ridePartnerConfirmed = partnerConfirmationFact('ride.partner_confirmed')
 const ridePartnerConfirmationCleared = partnerConfirmationFact('ride.partner_confirmation_cleared')
 
+/*
+ * The area audit stores field names only. A name or a coordinate would
+ * stay forever on a row that is never deleted (ADR-0063). A set and an
+ * archive both record name, center, and radiusM, because the command
+ * writes the whole area.
+ */
+const settingsOperatingAreaSet = z.object({
+  action: z.literal('settings.operating_area_set'),
+  subjectUserId: z.null(),
+  data: z.strictObject({ fields: operatingAreaFieldsSchema }),
+})
+
+const settingsOperatingAreaArchived = z.object({
+  action: z.literal('settings.operating_area_archived'),
+  subjectUserId: z.null(),
+  data: z.strictObject({ fields: operatingAreaArchivedFieldsSchema }),
+})
+
+/** The previous country and the next one. Null is no country. No member is named. */
+const settingsCountryChanged = z.object({
+  action: z.literal('settings.country_changed'),
+  subjectUserId: z.null(),
+  data: z.strictObject({
+    from: isoCountrySchema.nullable(),
+    to: isoCountrySchema.nullable(),
+  }).refine(value => value.from !== value.to),
+})
+
 /** What happened: the action, the member it was done to, and its data. */
 export const auditFactSchema = z.discriminatedUnion('action', [
   memberInvited,
@@ -954,6 +986,9 @@ export const auditFactSchema = z.discriminatedUnion('action', [
   invoiceFailed,
   invoiceCancelled,
   invoiceWithdrawn,
+  settingsOperatingAreaSet,
+  settingsOperatingAreaArchived,
+  settingsCountryChanged,
 ])
 
 export type AuditFact = z.infer<typeof auditFactSchema>
@@ -1115,6 +1150,9 @@ export const auditEntrySchema = z.discriminatedUnion('action', [
   invoiceFailed.extend(listed),
   invoiceCancelled.extend(listed),
   invoiceWithdrawn.extend(listed),
+  settingsOperatingAreaSet.extend(listed),
+  settingsOperatingAreaArchived.extend(listed),
+  settingsCountryChanged.extend(listed),
 ])
 
 export type AuditEntry = z.infer<typeof auditEntrySchema>

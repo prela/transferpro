@@ -903,6 +903,66 @@ it('records an invoicing settings change by field names, never the values', () =
   expect(auditFactSchema.safeParse({ ...changed, subjectUserId: memberId }).success).toBe(false)
 })
 
+it('records an operating area by field names and a country change by codes, never the place', () => {
+  const set = {
+    action: 'settings.operating_area_set' as const,
+    subjectUserId: null,
+    data: { fields: ['name', 'center', 'radiusM'] as const },
+  }
+  expect(auditFactSchema.parse(set)).toEqual(set)
+  expect(auditFactSchema.safeParse({
+    ...set,
+    data: { fields: ['radiusM'] },
+  }).success).toBe(false)
+  const archived = {
+    action: 'settings.operating_area_archived' as const,
+    subjectUserId: null,
+    data: { fields: ['name', 'center', 'radiusM'] as const },
+  }
+  expect(auditFactSchema.parse(archived)).toEqual(archived)
+  const country = {
+    action: 'settings.country_changed' as const,
+    subjectUserId: null,
+    data: { from: null, to: 'HR' as const },
+  }
+  expect(auditFactSchema.parse(country)).toEqual(country)
+  expect(auditFactSchema.parse({
+    ...country,
+    data: { from: 'HR', to: 'GB' },
+  }).data).toEqual({ from: 'HR', to: 'GB' })
+
+  // The name, a coordinate, and an email would stay on a row that is never deleted.
+  expect(auditFactSchema.safeParse({
+    ...set,
+    data: { fields: ['name', 'center', 'radiusM'], name: 'Područje Primjer' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...set,
+    data: { fields: ['center'], latitude: 12.5 },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...archived,
+    data: { fields: ['radiusM'] },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...country,
+    data: { from: 'HR', to: 'HR' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...country,
+    data: { from: null, to: null },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...country,
+    data: { from: null, to: 'UK' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({
+    ...country,
+    data: { from: null, to: 'HR', email: 'desk@example.test' },
+  }).success).toBe(false)
+  expect(auditFactSchema.safeParse({ ...set, subjectUserId: memberId }).success).toBe(false)
+})
+
 it('records a Partner by id and field names, and refuses the name, the phone, the email, and the note', () => {
   const partnerId = '2e3d4c5b-7777-4777-8777-777777777777'
   const created = {

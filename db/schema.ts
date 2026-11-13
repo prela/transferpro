@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { check, integer, text } from 'drizzle-orm/pg-core'
-import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, RELOCATION_GAP_DEFAULT_MINUTES, TIME_ZONE_MAX_LENGTH, TRANSFER_DURATION_DEFAULT_MINUTES, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
+import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, ISO_3166_1_ALPHA_2, OPERATIONAL_DAY_START_DEFAULT, OPERATIONAL_DAY_START_MAX, OPERATIONAL_DAY_START_MIN, RELOCATION_GAP_DEFAULT_MINUTES, TIME_ZONE_MAX_LENGTH, TRANSFER_DURATION_DEFAULT_MINUTES, WAIT_MINUTES_MAX, WAIT_MINUTES_MIN } from '../shared'
 import { tenantTable } from './tenant-table'
 
 export { auditAction, auditEntry } from './audit-entry'
@@ -14,6 +14,7 @@ export { invoices, invoicingCreateGate } from './invoices'
 export { invoicingSettings } from './invoicing-settings'
 export { locations } from './locations'
 export { mailOutbox } from './mail-outbox'
+export { operatingAreas } from './operating-area'
 export { partners } from './partners'
 export { rideAlerts } from './ride-alert'
 export { roster } from './roster'
@@ -31,8 +32,11 @@ export { vehicles } from './vehicles'
  * `operational_day_start_hour` is the local hour that starts the operational day.
  * `transfer_duration_minutes` is how long a Ride occupies its Driver and Vehicle.
  * `relocation_gap_minutes` is the gap that warns, and does not block.
+ * `country_code` is the Tenant's ISO country, or null when none is set (ADR-0063).
  * FORCE RLS is already on this table (0000). The policy is the row, so the new columns are covered.
  */
+
+const countries = sql.raw(ISO_3166_1_ALPHA_2.map(code => `'${code}'`).join(', '))
 
 const waitMin = sql.raw(String(WAIT_MINUTES_MIN))
 const waitMax = sql.raw(String(WAIT_MINUTES_MAX))
@@ -48,6 +52,8 @@ export const tenantSettings = tenantTable('tenant_settings', {
   operationalDayStartHour: integer('operational_day_start_hour').notNull().default(OPERATIONAL_DAY_START_DEFAULT),
   transferDurationMinutes: integer('transfer_duration_minutes').notNull().default(TRANSFER_DURATION_DEFAULT_MINUTES),
   relocationGapMinutes: integer('relocation_gap_minutes').notNull().default(RELOCATION_GAP_DEFAULT_MINUTES),
+  // Null until the platform owner sets a country. Existing rows stay null.
+  countryCode: text('country_code'),
 }, table => [
   check(
     'tenant_settings_default_locale',
@@ -76,5 +82,9 @@ export const tenantSettings = tenantTable('tenant_settings', {
   check(
     'tenant_settings_relocation_gap_minutes',
     sql`${table.relocationGapMinutes} between ${waitMin} and ${waitMax}`,
+  ),
+  check(
+    'tenant_settings_country_code',
+    sql`${table.countryCode} is null or ${table.countryCode} in (${countries})`,
   ),
 ])

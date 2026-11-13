@@ -498,6 +498,13 @@
       "when": 1793278911959,
       "tag": "0070_partner_confirmed",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1793278912959,
+      "tag": "0071_operating_area",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import type { EmbedTarget, MapsPort, PlaceReferenceCheck, SuggestAddressesResult } from '../maps-port'
+import type { EmbedTarget, MapsPort, PlaceReferenceCheck, SuggestAddressesQuery, SuggestAddressesResult } from '../maps-port'
 import { z } from 'zod'
 import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH, PLACE_REF_MAX_LENGTH } from '../../../../shared'
 import { nodeEnv } from '../../../core/index'
@@ -100,8 +100,10 @@ const autocompleteSchema = z.object({
  * Google Places autocomplete, plus the Embed URL.
  * The Places key stays in the header. The Embed key is a second key and
  * is the `key` query of the Embed URL only. Suggestions do not use it.
- * The body has the typed text, the session token, and the language, and
- * nothing that would restrict a country or bias a region.
+ * The body has the typed text, the session token, and the language.
+ * An operating area adds `locationBias.circle`. A country adds `regionCode`.
+ * Neither is a restriction: the body never carries `locationRestriction`
+ * or `includedRegionCodes` (ADR-0063). With neither, the body is as before.
  */
 export function createGoogleMaps(
   apiKey: string,
@@ -112,11 +114,7 @@ export function createGoogleMaps(
     async suggestAddresses(query) {
       try {
         const response = await http(AUTOCOMPLETE_URL, {
-          body: JSON.stringify({
-            input: query.text,
-            sessionToken: query.sessionToken,
-            languageCode: query.language,
-          }),
+          body: JSON.stringify(autocompleteBody(query)),
           method: 'POST',
           headers: {
             'content-type': 'application/json',
@@ -155,6 +153,54 @@ export function createGoogleMaps(
       }
     },
   }
+}
+
+/**
+ * Today's body, plus a circle when the Tenant has an area and a ccTLD when
+ * it has a country. The circle prefers that area and still returns places
+ * outside it. `regionCode` is Google's code, not the ISO code the domain stores.
+ */
+function autocompleteBody(query: SuggestAddressesQuery): {
+  input: string
+  sessionToken: string
+  languageCode: string
+  locationBias?: {
+    circle: {
+      center: { latitude: number, longitude: number }
+      radius: number
+    }
+  }
+  regionCode?: string
+} {
+  return {
+    input: query.text,
+    sessionToken: query.sessionToken,
+    languageCode: query.language,
+    ...(query.area === undefined
+      ? {}
+      : {
+          locationBias: {
+            circle: {
+              center: {
+                latitude: query.area.latitude,
+                longitude: query.area.longitude,
+              },
+              radius: query.area.radiusM,
+            },
+          },
+        }),
+    ...(query.country === undefined ? {} : { regionCode: googleRegionCode(query.country) }),
+  }
+}
+
+/**
+ * Google's ccTLD. The United Kingdom is `uk`; every other assigned alpha-2
+ * we store is already the ccTLD in lowercase (ADR-0063).
+ */
+function googleRegionCode(iso: string): string {
+  if (iso === 'GB')
+    return 'uk'
+  return iso.toLowerCase()
 }
 
 /**

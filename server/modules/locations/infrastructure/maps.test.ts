@@ -220,6 +220,31 @@ it('reads the suggestions-off cookie only in test, and only for that caller', ()
   }
 })
 
+it('records an operating area and a country, and still returns both suggestions', async () => {
+  const previous = process.env.NODE_ENV
+  process.env.NODE_ENV = 'test'
+  setTestMapsUnavailable(false)
+  const area = { latitude: 12.5, longitude: -7.25, radiusM: 15000 }
+  const query = {
+    text: 'Hotel Primjer',
+    sessionToken: 'a1b2c3d4-5555-4555-8555-555555555555',
+    language: 'hr',
+    area,
+    country: 'HR',
+  }
+  try {
+    const result = await mapsForApp({ MAPS: 'google', MAPS_API_KEY: 'live-key' }).suggestAddresses(query)
+    expect(result.available).toBe(true)
+    if (!result.available)
+      return
+    expect(result.suggestions).toHaveLength(2)
+    expect(lastTestMapsQuery()).toEqual(query)
+  }
+  finally {
+    restoreNodeEnv(previous)
+  }
+})
+
 it('builds no Embed URL for MAPS=none, and a place URL when google has an Embed key', () => {
   const previous = process.env.NODE_ENV
   process.env.NODE_ENV = 'development'

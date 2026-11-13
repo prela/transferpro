@@ -96,6 +96,12 @@ function detailText(entry: AuditEntry): string {
     case 'settings.transfer_duration_changed':
     case 'settings.relocation_gap_changed':
       return t('audit.minutesChange', { from: entry.data.from, to: entry.data.to })
+    case 'settings.operating_area_set':
+    case 'settings.operating_area_archived':
+      // Field names only. The name, the centre, and the radius stay off the row (ADR-0063).
+      return entry.data.fields.map(field => t(`audit.operatingAreaFields.${field}`)).join(', ')
+    case 'settings.country_changed':
+      return `${entry.data.from ?? t('audit.countryUnset')} → ${entry.data.to ?? t('audit.countryUnset')}`
     case 'settings.operational_day_start_changed':
       return `${formatOperationalDayStart(entry.data.from)} → ${formatOperationalDayStart(entry.data.to)}`
     case 'client.created':

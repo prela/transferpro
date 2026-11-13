@@ -2,7 +2,7 @@ import type { Location, OfficeLocation, OfficeLocationList } from '../../../../s
 import type { TenantTransaction } from '../../../core/index'
 import { officeLocationSchema, parseCreateLocation, parseLocationPatch, parseSuggestAddresses, resolveDisplayLocale, suggestAddressesResponseSchema } from '../../../../shared'
 import { loadAppEnv } from '../../../core/index'
-import { loadTenantDefaultLocale, readUserLocale, TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
+import { loadSuggestionBias, loadTenantDefaultLocale, readUserLocale, TenantAccessError, withOfficeWrite, withTenantFromSession } from '../../tenancy'
 import { addLocation, archiveStoredLocation, correctLocation, loadLocations, LocationArchivedError, LocationIataTakenError, LocationNotFoundError } from './locations'
 import { mapsForApp, testSuggestionsForcedOff } from './maps'
 
@@ -108,11 +108,15 @@ export async function suggestAddresses(headers: Headers, raw: unknown) {
     if (testSuggestionsForcedOff(headers.get('cookie')))
       return unavailable
     const language = await loadTenantDefaultLocale(transaction)
+    // The same tenant transaction as the language, so another Tenant's area cannot be read.
+    const bias = await loadSuggestionBias(transaction)
     try {
       const result = await mapsForApp(loadAppEnv()).suggestAddresses({
         text: input.text,
         sessionToken: input.sessionToken,
         language,
+        ...(bias.area === null ? {} : { area: bias.area }),
+        ...(bias.country === null ? {} : { country: bias.country }),
       })
       if (!result.available)
         return unavailable
