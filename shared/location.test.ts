@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { LOCATION_ADDRESS_MAX_LENGTH, LOCATION_NAME_MAX_LENGTH, locationAddressError, locationIataError, LocationInputError, locationKindError, locationLabel, locationListSchema, locationNameError, locationPanelEmbedUrl, parseCreateLocation, parseLocationPatch, parseSuggestAddresses } from './location'
+import { fillLocationFromPick, LOCATION_ADDRESS_MAX_LENGTH, LOCATION_KINDS, LOCATION_NAME_MAX_LENGTH, locationAddressError, locationIataError, LocationInputError, locationKindError, locationLabel, locationListSchema, locationNameError, locationNameMaySuggest, locationPanelEmbedUrl, parseCreateLocation, parseLocationPatch, parseSuggestAddresses } from './location'
 
 const name = 'Zračna luka Dubrovnik'
 const address = 'Dobrota bb, Čilipi'
@@ -166,6 +166,67 @@ it('shows the saved Embed URL only while the address field is untouched', () => 
   expect(locationPanelEmbedUrl(null, true)).toBeNull()
   expect(locationPanelEmbedUrl(embedUrl, false)).toBeNull()
   expect(locationPanelEmbedUrl(null, false)).toBeNull()
+})
+
+const establishment = {
+  name: 'Hotel Primjer',
+  address: 'Ulica Primjera 1',
+  establishment: true,
+  provider: 'google' as const,
+  placeRef: 'ChIJhotel',
+}
+
+const street = {
+  name: 'Ulica 1·',
+  address: 'Ulica 1, Dubrovnik',
+  establishment: false,
+  provider: 'google' as const,
+  placeRef: 'ChIJstreet',
+}
+
+it('fills the name and the address from a name pick, replacing either address', () => {
+  const typed = 'Obala 3'
+  const picked = 'Stara 2, Grad'
+  const fromTyped = fillLocationFromPick('name', establishment, { name: 'Hotel Ex', address: typed })
+  const fromPicked = fillLocationFromPick('name', establishment, { name: 'Hotel Ex', address: picked })
+  expect(fromTyped).toEqual({
+    name: 'Hotel Primjer',
+    address: 'Ulica Primjera 1',
+    place: { provider: 'google', placeRef: 'ChIJhotel' },
+  })
+  expect(fromPicked).toEqual(fromTyped)
+  expect(fromTyped.address).not.toBe(typed)
+  expect(fromPicked.address).not.toBe(picked)
+})
+
+it('fills an empty name from an establishment on the address, and keeps a typed name', () => {
+  const filled = fillLocationFromPick('address', establishment, { name: '', address: 'nista' })
+  expect(filled.name).toBe('Hotel Primjer')
+  expect(filled.address).toBe('Ulica Primjera 1')
+  expect(filled.place).toEqual({ provider: 'google', placeRef: 'ChIJhotel' })
+  const blank = fillLocationFromPick('address', establishment, { name: '   ', address: '' })
+  expect(blank.name).toBe('Hotel Primjer')
+  const kept = fillLocationFromPick('address', establishment, { name: 'Vila Test', address: 'nista' })
+  expect(kept.name).toBe('Vila Test')
+  expect(kept.address).toBe('Ulica Primjera 1')
+})
+
+it('leaves the name alone when a street address is picked', () => {
+  const empty = fillLocationFromPick('address', street, { name: '', address: '' })
+  expect(empty.name).toBe('')
+  expect(empty.address).toBe('Ulica 1, Dubrovnik')
+  expect(empty.place.placeRef).toBe('ChIJstreet')
+  const named = fillLocationFromPick('address', street, { name: '   ', address: 'staro' })
+  expect(named.name).toBe('   ')
+})
+
+it('suggests from the name only for an airport, a hotel, or other', () => {
+  expect(locationNameMaySuggest('airport')).toBe(true)
+  expect(locationNameMaySuggest('hotel')).toBe(true)
+  expect(locationNameMaySuggest('other')).toBe(true)
+  expect(locationNameMaySuggest('address')).toBe(false)
+  expect(locationNameMaySuggest(undefined)).toBe(false)
+  expect(LOCATION_KINDS.filter(kind => locationNameMaySuggest(kind))).toEqual(['airport', 'hotel', 'other'])
 })
 
 it('reads a list of Locations, including one that is archived', () => {

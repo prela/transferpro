@@ -3,7 +3,7 @@ import { expectNoAxeViolations } from './fixtures/axe'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, hydrated, openListbox, signIn, signOut, switchLocale, useTheme } from './fixtures/ui'
+import { chooseOption, hydrated, openListbox, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 test.beforeEach(async ({ page }) => {
   // One instant for the seed and the board, including across 05:00.
@@ -34,11 +34,11 @@ async function openForm(page: Page): Promise<Locator> {
   return dialog
 }
 
-async function createFromSelect(page: Page, dialog: Locator, field: string, name: string) {
+async function createFromSelect(page: Page, dialog: Locator, field: string, name: string, addLabel = `+ Dodaj ‘${name}’`) {
   const trigger = dialog.getByRole('button', { name: field, exact: true })
   const listbox = await openListbox(page, trigger)
   await listbox.locator('input').fill(name)
-  const created = listbox.getByRole('option', { name: `+ Dodaj ‘${name}’` })
+  const created = listbox.getByRole('option', { name: addLabel })
   await expect(created).toBeVisible()
   await created.click()
   return trigger
@@ -94,9 +94,143 @@ test('quick add returns the new Client and the new Location selected', async ({ 
 
   const place = await createFromSelect(page, dialog, 'Polazište', 'Hotel Brzi')
   await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
-  await dialog.getByLabel('Adresa').fill('Obala 1')
+  await dialog.getByLabel('Adresa', { exact: true }).fill('Obala 1')
   await dialog.getByRole('button', { name: 'Dodaj mjesto', exact: true }).click()
   await expect(place).toContainText('Hotel Brzi')
+})
+
+/** The suggestion pause is 300ms. This waits past it so a missing request is real. */
+async function pastSuggestPause(page: Page) {
+  await page.evaluate(() => new Promise<void>(resolve => window.setTimeout(resolve, 500)))
+}
+
+test('quick add picks a place from the name or the address', async ({ page }) => {
+  test.setTimeout(180_000)
+  const tenant = await seedTenant('transfer-place-pick')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await page.request.post('/api/locations/suggestions-mode', { data: { unavailable: false } })
+  const lookups: { text: string, sessionToken: string }[] = []
+  page.on('request', (request) => {
+    if (request.method() !== 'POST' || !request.url().includes('/api/locations/suggestions'))
+      return
+    const body = request.postDataJSON() as { text?: string, sessionToken?: string }
+    if (body.text && body.sessionToken)
+      lookups.push({ text: body.text, sessionToken: body.sessionToken })
+  })
+  try {
+    const dialog = await openForm(page)
+    const before = lookups.length
+    await createFromSelect(page, dialog, 'Polazište', 'Hotel Brzi')
+    await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
+    await pastSuggestPause(page)
+    expect(lookups.length).toBe(before)
+
+    await dialog.getByLabel('Ime', { exact: true }).fill('Hotel Brziq')
+    await expect(dialog.getByRole('option', { name: 'Hotel Brziq, Dubrovnik' })).toBeVisible()
+    await expect(dialog.getByText('Google Maps', { exact: true })).toBeVisible()
+    await page.mouse.move(0, 0)
+    await expectNoAxeViolations(page)
+    await dialog.getByRole('option', { name: 'Hotel Brziq, Dubrovnik' }).click()
+    await expect(dialog.getByLabel('Ime', { exact: true })).toHaveValue('Hotel Brziq')
+    await expect(dialog.getByLabel('Adresa', { exact: true })).toHaveValue('Dubrovnik')
+    await dialog.getByRole('button', { name: 'Dodaj mjesto', exact: true }).click()
+    await expect(dialog.getByRole('button', { name: 'Polazište', exact: true })).toContainText('Hotel Brziq')
+
+    await createFromSelect(page, dialog, 'Odredište', 'Vila Ana')
+    await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
+    await dialog.getByLabel('Adresa', { exact: true }).fill('Obala 4')
+    await expect(dialog.getByRole('option', { name: 'Obala 4, Dubrovnik' })).toBeVisible()
+    await page.mouse.move(0, 0)
+    await expectNoAxeViolations(page)
+    await dialog.getByRole('option', { name: 'Obala 4, Dubrovnik' }).click()
+    await expect(dialog.getByLabel('Ime', { exact: true })).toHaveValue('Vila Ana')
+    await expect(dialog.getByLabel('Adresa', { exact: true })).toHaveValue('Dubrovnik')
+    await dialog.getByLabel('Adresa', { exact: true }).fill('Ulica 9')
+    await dialog.getByRole('option', { name: 'Ulica 9, ulica' }).click()
+    await expect(dialog.getByLabel('Ime', { exact: true })).toHaveValue('Vila Ana')
+    await expect(dialog.getByLabel('Adresa', { exact: true })).toHaveValue('Ulica 9, ulica')
+    await dialog.getByLabel('Ime', { exact: true }).fill('   ')
+    await dialog.getByLabel('Adresa', { exact: true }).fill('Riva 2')
+    await dialog.getByRole('option', { name: 'Riva 2, Dubrovnik' }).click()
+    await expect(dialog.getByLabel('Ime', { exact: true })).toHaveValue('Riva 2')
+    await expect(dialog.getByLabel('Adresa', { exact: true })).toHaveValue('Dubrovnik')
+
+    const beforeKind = lookups.length
+    await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Adresa')
+    await dialog.getByLabel('Ime', { exact: true }).fill('Gost Ana')
+    await pastSuggestPause(page)
+    expect(lookups.length).toBe(beforeKind)
+    await expect(dialog.getByRole('option', { name: 'Gost Ana, Dubrovnik' })).toHaveCount(0)
+    await dialog.getByLabel('Adresa', { exact: true }).fill('Put 7')
+    await expect(dialog.getByRole('option', { name: 'Put 7, Dubrovnik' })).toBeVisible()
+    await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
+    await dialog.getByLabel('Ime', { exact: true }).fill('Gost Anica')
+    await expect(dialog.getByRole('option', { name: 'Gost Anica, Dubrovnik' })).toBeVisible()
+    await dialog.getByLabel('Ime', { exact: true }).press('Enter')
+    await expect(dialog.getByRole('button', { name: 'Odredište', exact: true })).toContainText('Gost Anica')
+
+    const saved = await (await page.request.get('/api/locations')).json() as {
+      locations: { name: string, address: string | null, place: { placeRef: string } | null }[]
+    }
+    expect(saved.locations.find(location => location.name === 'Hotel Brziq')?.place?.placeRef).toBe('ChIJfakeDubrovnik')
+    expect(saved.locations.find(location => location.name === 'Gost Anica')?.place).toBeNull()
+
+    const nameToken = lookups.find(lookup => lookup.text === 'Hotel Brziq')?.sessionToken
+    const addressToken = lookups.find(lookup => lookup.text === 'Obala 4')?.sessionToken
+    expect(nameToken).toBeTruthy()
+    expect(addressToken).toBeTruthy()
+    expect(nameToken).not.toBe(addressToken)
+
+    await page.request.post('/api/locations/suggestions-mode', { data: { unavailable: true } })
+    await createFromSelect(page, dialog, 'Polazište', 'Hotel Tiho')
+    await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
+    await dialog.getByLabel('Ime', { exact: true }).fill('Hotel Tišina')
+    const notice = 'Prijedlozi mjesta nisu dostupni. Naziv i adresu i dalje možete upisati.'
+    await expect(dialog.getByText(notice)).toBeVisible()
+    await expect(dialog.getByText(notice)).toHaveCount(1)
+    await dialog.getByLabel('Adresa', { exact: true }).fill('Put 2')
+    await expect(dialog.getByText(notice)).toHaveCount(1)
+    await dialog.getByRole('button', { name: 'Dodaj mjesto', exact: true }).click()
+    await expect(dialog.getByRole('button', { name: 'Polazište', exact: true })).toContainText('Hotel Tišina')
+    const plain = await (await page.request.get('/api/locations')).json() as {
+      locations: { name: string, place: unknown }[]
+    }
+    expect(plain.locations.find(location => location.name === 'Hotel Tišina')?.place).toBeNull()
+
+    await page.request.post('/api/locations/suggestions-mode', { data: { unavailable: false } })
+    await switchLocale(page, 'en')
+    await page.goto('/transfers')
+    await hydrated(page)
+    await page.getByRole('button', { name: 'Record a transfer', exact: true }).click()
+    const english = page.getByRole('dialog')
+    await createFromSelect(page, english, 'Where it starts', 'Hotel English', '+ Add ‘Hotel English’')
+    await chooseOption(page, english.getByRole('combobox', { name: 'Kind' }), 'Hotel')
+    await english.getByLabel('Name', { exact: true }).fill('Hotel English 2')
+    await expect(english.getByRole('option', { name: 'Hotel English 2, Dubrovnik' })).toBeVisible()
+    await page.mouse.move(0, 0)
+    await expectNoAxeViolations(page)
+    await english.getByLabel('Address', { exact: true }).fill('Shore 5')
+    await expect(english.getByRole('option', { name: 'Shore 5, Dubrovnik' })).toBeVisible()
+    await page.mouse.move(0, 0)
+    await expectNoAxeViolations(page)
+
+    await switchTheme(page, 'dark')
+    await page.goto('/transfers')
+    await hydrated(page)
+    await expect(page.locator('html')).toHaveClass(/dark/)
+    await page.getByRole('button', { name: 'Record a transfer', exact: true }).click()
+    const dark = page.getByRole('dialog')
+    await createFromSelect(page, dark, 'Where it starts', 'Hotel Dark', '+ Add ‘Hotel Dark’')
+    await chooseOption(page, dark.getByRole('combobox', { name: 'Kind' }), 'Hotel')
+    await dark.getByLabel('Name', { exact: true }).fill('Hotel Dark 2')
+    await expect(dark.getByRole('option', { name: 'Hotel Dark 2, Dubrovnik' })).toBeVisible()
+    await page.mouse.move(0, 0)
+    await expectNoAxeViolations(page)
+    await switchTheme(page, 'light')
+  }
+  finally {
+    await page.request.post('/api/locations/suggestions-mode', { data: { unavailable: false } })
+  }
 })
 
 test('a validation error keeps every typed value and focuses the summary', async ({ page }) => {
@@ -264,6 +398,27 @@ test.describe('an already saved entry', () => {
 })
 
 test.describe('@phone', () => {
+  test('quick add suggestions pass axe on a phone', async ({ page }) => {
+    test.setTimeout(120_000)
+    const tenant = await seedTenant('transfer-place-pick-phone')
+    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+    await useTheme(page, 'dark')
+    await page.goto('/transfers')
+    await hydrated(page)
+    await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+    const dialog = page.getByRole('dialog').or(page.getByRole('region', { name: 'Zabilježi transfer' }))
+    await createFromSelect(page, dialog, 'Polazište', 'Hotel Telefon')
+    await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
+    await dialog.getByLabel('Ime', { exact: true }).fill('Hotel Telefon 2')
+    await expect(dialog.getByRole('option', { name: 'Hotel Telefon 2, Dubrovnik' })).toBeVisible()
+    await page.mouse.move(0, 0)
+    await expectNoAxeViolations(page)
+    await dialog.getByLabel('Adresa', { exact: true }).fill('Obala 6')
+    await expect(dialog.getByRole('option', { name: 'Obala 6, Dubrovnik' })).toBeVisible()
+    await page.mouse.move(0, 0)
+    await expectNoAxeViolations(page)
+  })
+
   for (const theme of ['light', 'dark'] as const) {
     test(`the transfer form follows ${theme} and passes axe`, async ({ page }) => {
       test.setTimeout(120_000)

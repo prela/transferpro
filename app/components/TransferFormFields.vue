@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { AddressSuggestion, ClientOfficeBrief } from '../../shared'
+import type { ClientOfficeBrief } from '../../shared'
 import { z } from 'zod'
-import { LOCATION_SUGGEST_MIN_LENGTH, suggestAddressesResponseSchema, transferMoreHasValue } from '../../shared'
+import { transferMoreHasValue } from '../../shared'
 import { transferFormKey } from '../composables/transfer-form'
 import { commandInputClass } from '../ride-detail'
 
@@ -211,71 +211,32 @@ function onCreateEnd(item: string) {
   })
 }
 
-// Address suggestions for the Location quick-add. The existing create write
-// still requires a kind, so the small form asks for one.
-const SUGGEST_PAUSE_MS = 300
-const suggestions = ref<AddressSuggestion[]>([])
-const attribution = ref<string | null>(null)
-const suggestionsUnavailable = ref(false)
-let suggestTimer = 0
-let suggestGeneration = 0
-let sessionToken: string | null = null
-const suggestionItems = computed(() => suggestions.value.map(suggestion => suggestion.label))
+// The kind still has to be chosen. A prefilled name does not look anything
+// up until a keystroke. The rules live in one composable (ADR-0061).
+const {
+  nameMaySuggest,
+  suggestionNotice,
+  nameSuggestionItems,
+  nameAttribution,
+  nameSuggestionsUnavailable,
+  addressSuggestionItems,
+  addressAttribution,
+  addressSuggestionsUnavailable,
+  onNameInput,
+  onAddressInput,
+  closeSuggestionsForSubmit,
+  reset: resetSuggestions,
+} = useLocationPlaceForm({
+  name: () => placeName.value,
+  setName: (value) => { placeName.value = value },
+  kind: () => placeKind.value,
+  address: () => placeAddress.value,
+  setAddress: (value) => { placeAddress.value = value },
+  setPlace: (value) => { heldPlace.value = value },
+})
 
-function onAddressInput(value: string | number | null | undefined) {
-  const next = value == null ? '' : String(value)
-  const match = suggestions.value.find(suggestion => suggestion.label === next)
-  if (match) {
-    heldPlace.value = { provider: match.provider, placeRef: match.placeRef }
-    sessionToken = null
-    suggestions.value = []
-    return
-  }
-  heldPlace.value = null
-  window.clearTimeout(suggestTimer)
-  suggestTimer = window.setTimeout(() => {
-    void lookupSuggestions()
-  }, SUGGEST_PAUSE_MS)
-}
-
-async function lookupSuggestions() {
-  const text = placeAddress.value.trim()
-  if (text.length < LOCATION_SUGGEST_MIN_LENGTH) {
-    suggestions.value = []
-    attribution.value = null
-    return
-  }
-  if (sessionToken === null)
-    sessionToken = crypto.randomUUID()
-  const generation = ++suggestGeneration
-  try {
-    const result = suggestAddressesResponseSchema.parse(await $fetch('/api/locations/suggestions', {
-      method: 'POST',
-      body: { text, sessionToken },
-    }))
-    if (generation !== suggestGeneration)
-      return
-    if (!result.available) {
-      suggestions.value = []
-      attribution.value = null
-      suggestionsUnavailable.value = true
-      return
-    }
-    suggestionsUnavailable.value = false
-    suggestions.value = [...result.suggestions]
-    attribution.value = result.suggestions.length > 0 ? result.attribution : null
-  }
-  catch {
-    if (generation !== suggestGeneration)
-      return
-    suggestions.value = []
-    attribution.value = null
-    suggestionsUnavailable.value = true
-  }
-}
-
-onUnmounted(() => {
-  window.clearTimeout(suggestTimer)
+watch(placeTarget, () => {
+  resetSuggestions()
 })
 </script>
 
@@ -410,25 +371,6 @@ onUnmounted(() => {
       {{ placeTarget === 'start' ? t('transfers.placeForStart') : t('transfers.placeForEnd') }}
     </h3>
     <UFormField
-      :label="t('locations.name')"
-      name="place-name"
-      class="mb-4"
-      :size="controlSize"
-      :error="placeNameErrorKey ? t(placeNameErrorKey) : false"
-    >
-      <UInput
-        id="place-name"
-        v-model="placeName"
-        name="place-name"
-        type="text"
-        autocomplete="off"
-        class="w-full"
-      />
-      <template #error="{ error }">
-        <span role="alert">{{ error }}</span>
-      </template>
-    </UFormField>
-    <UFormField
       :label="t('locations.kind')"
       name="place-kind"
       class="mb-4"
@@ -448,6 +390,63 @@ onUnmounted(() => {
       </template>
     </UFormField>
     <UFormField
+      :label="t('locations.name')"
+      name="place-name"
+      class="mb-4"
+      :size="controlSize"
+      :error="placeNameErrorKey ? t(placeNameErrorKey) : false"
+    >
+      <!--
+        Plain until the kind is airport, hotel, or other. The name that
+        opened this form is already filled, and choosing a kind must not
+        send it.
+      -->
+      <UInputMenu
+        v-if="nameMaySuggest"
+        id="place-name"
+        v-model="placeName"
+        mode="autocomplete"
+        name="place-name"
+        autocomplete="off"
+        class="w-full"
+        :items="nameSuggestionItems"
+        :ignore-filter="true"
+        :trailing-icon="false"
+        :portal="false"
+        :content="{ hideWhenEmpty: true }"
+        @update:model-value="onNameInput"
+        @keydown.enter.capture="closeSuggestionsForSubmit"
+      >
+        <template #content-bottom>
+          <p
+            v-if="nameAttribution"
+            class="px-3 py-2 text-sm text-muted"
+            translate="no"
+          >
+            {{ nameAttribution }}
+          </p>
+        </template>
+      </UInputMenu>
+      <UInput
+        v-else
+        id="place-name"
+        v-model="placeName"
+        name="place-name"
+        type="text"
+        autocomplete="off"
+        class="w-full"
+      />
+      <p
+        v-if="suggestionNotice === 'name' && nameSuggestionsUnavailable"
+        class="mt-1 text-sm text-muted"
+      >
+        {{ t('locations.suggestionsUnavailable') }}
+      </p>
+      <template #error="{ error }">
+        <span role="alert">{{ error }}</span>
+      </template>
+    </UFormField>
+    <UFormField
       :label="t('locations.address')"
       name="place-address"
       class="mb-4"
@@ -460,28 +459,30 @@ onUnmounted(() => {
         name="place-address"
         autocomplete="off"
         class="w-full"
-        :items="suggestionItems"
+        :items="addressSuggestionItems"
         :ignore-filter="true"
         :trailing-icon="false"
+        :portal="false"
         :content="{ hideWhenEmpty: true }"
         @update:model-value="onAddressInput"
+        @keydown.enter.capture="closeSuggestionsForSubmit"
       >
         <template #content-bottom>
           <p
-            v-if="attribution"
+            v-if="addressAttribution"
             class="px-3 py-2 text-sm text-muted"
             translate="no"
           >
-            {{ attribution }}
-          </p>
-          <p
-            v-else-if="suggestionsUnavailable"
-            class="px-3 py-2 text-sm text-muted"
-          >
-            {{ t('locations.suggestionsUnavailable') }}
+            {{ addressAttribution }}
           </p>
         </template>
       </UInputMenu>
+      <p
+        v-if="suggestionNotice === 'address' && addressSuggestionsUnavailable"
+        class="mt-1 text-sm text-muted"
+      >
+        {{ t('locations.suggestionsUnavailable') }}
+      </p>
     </UFormField>
     <UButton
       type="submit"
