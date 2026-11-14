@@ -15,11 +15,7 @@ function noticeTranslator(locale: 'hr' | 'en') {
   return (key: string, named?: Record<string, string | number>, choice?: number) => {
     const raw = catalog.transfers[key.slice('transfers.'.length)] ?? ''
     const forms = raw.split(' | ')
-    const count = typeof named?.count === 'number'
-      ? named.count
-      : typeof named?.n === 'number'
-        ? named.n
-        : choice
+    const count = typeof named?.count === 'number' ? named.count : choice
     const index = forms.length < 2 || count === undefined
       ? 0
       : locale === 'hr'
