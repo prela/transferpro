@@ -64,6 +64,8 @@ pnpm db:seed:demo
 
 That command loads `.env`, then `.env.migrate`, then `.env.seed` when the file exists. A later file overrides an earlier one, so the preview URLs and `MAILER=console` replace the local ones. A name already set in the shell wins over the files. A second run replaces the `demo` Tenant and touches nothing else.
 
+`DEMO_SEED_AREA_NAME`, `DEMO_SEED_AREA_LAT`, `DEMO_SEED_AREA_LNG`, and `DEMO_SEED_AREA_RADIUS_KM` are optional, with optional `DEMO_SEED_AREA_COUNTRY`. Leave them unset, or set all four area names. Do not write the values in the repo. The seed does not print them. See `docs/agents/working-rules.md`.
+
 Keep `DEMO_SEED_PASSWORD` only in a password manager. If you leave it unset, the command prints a generated password once. Save it. It must never go into the repo, `.env.example`, an issue, or a pull request.
 
 Verify by signing in on preview as `demo-dispatcher@example.com`, opening the office day list (rides are there and the map shows for the airport and the hotel), then signing in as `demo-driver-a@example.com` at 360px and checking the long ride.
