@@ -365,12 +365,24 @@ async function confirmedRide(page: Page, name: string, guestName: string, phone:
 
 async function correctPassengers(page: Page, guestName: string, copy: { more: string, correct: string, region: string, passengers: string, save: string }) {
   const phone = (page.viewportSize()?.width ?? 1280) < 1024
+  // A day refresh remounts the open detail and drops the menu before the click lands.
+  const refresh = page.getByRole('switch', {
+    name: copy.more === 'More' ? 'Automatic refresh' : 'Automatsko osvježavanje',
+  })
+  await expect(refresh).toBeChecked()
+  await refresh.click()
   if (phone)
     await page.getByRole('listitem').filter({ hasText: guestName }).click()
   else
     await page.getByRole('row', { name: guestName }).click()
-  await page.getByRole('button', { name: copy.more, exact: true }).click()
-  await page.getByRole('menuitem', { name: copy.correct, exact: true }).click()
+  const detail = page.locator('#ride-detail')
+  await expect(detail).toBeVisible()
+  const correct = page.getByRole('menuitem', { name: copy.correct, exact: true })
+  await expect(async () => {
+    await detail.getByRole('button', { name: copy.more, exact: true }).click()
+    await expect(correct).toBeVisible()
+  }).toPass()
+  await correct.click()
   const form = page.getByRole('region', { name: copy.region })
   await form.getByLabel(copy.passengers, { exact: true }).fill('2')
   await form.getByRole('button', { name: copy.save, exact: true }).click()

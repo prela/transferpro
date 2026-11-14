@@ -239,9 +239,19 @@ test.describe('@phone', () => {
 
     await page.goto(`/transfers?day=${seeded.day}`)
     await hydrated(page)
+    // A refresh remounts the open detail and drops the menu before the click lands.
+    const refresh = page.getByRole('switch', { name: 'Automatic refresh' })
+    await expect(refresh).toBeChecked()
+    await refresh.click()
+    const detail = page.getByRole('dialog')
     await page.getByRole('listitem').filter({ hasText: 'Ana Grupno' }).click()
-    await page.getByRole('button', { name: 'More', exact: true }).click()
-    await page.getByRole('menuitem', { name: 'Correct transfer', exact: true }).click()
+    await expect(detail).toBeVisible()
+    const correct = page.getByRole('menuitem', { name: 'Correct transfer', exact: true })
+    await expect(async () => {
+      await detail.getByRole('button', { name: 'More', exact: true }).click()
+      await expect(correct).toBeVisible()
+    }).toPass()
+    await correct.click()
     const form = page.getByRole('region', { name: 'Correct this transfer' })
     await form.getByLabel('Flight number').fill('OU392')
     await expect(form.getByRole('checkbox', { name: 'Also apply to the extra vehicles' })).toBeChecked()
