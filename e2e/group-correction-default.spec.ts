@@ -88,7 +88,7 @@ async function seedGroup(page: Page, name: string) {
     },
   })
   expect(vehicle.ok()).toBeTruthy()
-  return { day, next }
+  return { day, next, clientId, startLocationId, endLocationId, mainId }
 }
 
 async function extraFlight(page: Page, next: string): Promise<string | null> {
@@ -170,6 +170,46 @@ test.describe('@phone', () => {
     await expect(list).toContainText('Iva Dodatna')
     await expectNoAxeViolations(page)
   })
+})
+
+test('a Croatian notice names two unfinished extra vehicles', async ({ page }) => {
+  test.setTimeout(120_000)
+  await useTheme(page, 'light')
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const tenant = await seedTenant('group-two')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const seeded = await seedGroup(page, 'Dva')
+  const second = await recordTransfer(page.request, {
+    data: {
+      clientId: seeded.clientId,
+      startLocationId: seeded.startLocationId,
+      endLocationId: seeded.endLocationId,
+      pickupAt: instantFromWallClock(`${seeded.next}T11:00`, 'Europe/Zagreb').toISOString(),
+      passengerCount: 1,
+      guestName: 'Marko Dodatni',
+      flightNumber: 'OU384',
+      price: 0,
+      payment: 'invoice_to_agency',
+      airportMark: true,
+      luggageCount: 0,
+      childSeatCount: 0,
+      mainTransferId: seeded.mainId,
+    },
+  })
+  expect(second.ok()).toBeTruthy()
+
+  await page.goto(`/transfers?day=${seeded.day}`)
+  await hydrated(page)
+  await page.getByRole('row', { name: 'Ana Grupno' }).click()
+  await page.getByRole('button', { name: 'Više', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()
+  const form = page.getByRole('region', { name: 'Ispravi ovaj transfer' })
+  await form.getByLabel('Broj leta').fill('OU392')
+  await form.getByRole('checkbox', { name: 'Primijeni i na dodatna vozila' }).uncheck()
+  await form.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
+  const notice = page.getByRole('status').filter({ hasText: 'Grupa ima još 2 nedovršena dodatna vozila. Promjena nije primijenjena na njih.' })
+  await expect(notice).toBeVisible()
+  await expectNoAxeViolations(page)
 })
 
 const groupClearedHr = 'Potvrda podizvođača je poništena na 2 vožnje jer su se promijenili vrijeme, mjesto, let ili broj putnika, prtljage ili sjedalica.'

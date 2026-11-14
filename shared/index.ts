@@ -34,6 +34,8 @@ export type { ExpiringDocument, ExpiringDocumentKind, ExpiringDocumentList, Expi
 export { ARRIVAL_MOVED_MS, chooseFlightArrival, FLIGHT_ASK_EVERY_MINUTES, FLIGHT_ASK_LEAD_MS, FLIGHT_MATCH_WINDOW_MS, flightAskDates, flightDesignator, flightNumberChangeClearsLanding, landingTimeInFuture, parseFlightArrivals, rememberWillNotArrive, sameFlightDesignator, storeExpectedArrival } from './flight-landing'
 export type { FlightArrival, FlightArrivalChoice, FlightStatusName } from './flight-landing'
 export { formatCalendarDate, formatInstant } from './format-instant'
+export { groupRouteLeftNotice } from './group-route-left-notice'
+export type { GroupRouteLeftTranslate } from './group-route-left-notice'
 export { acceptErrorKey, INVITATION_MAIL_OUTCOMES, invitationAcceptBodySchema, invitationIdSchema, invitationPreviewBodySchema, invitationPreviewSchema, inviteInputSchema, inviteResultSchema, passwordLengthLimits, passwordLengthRule, pendingInvitationListSchema, pendingInvitationSchema } from './invitation'
 export type { InvitationMailOutcome, InvitationPreview, InviteResult, PasswordLengthLimits, PendingInvitation, PendingInvitationList } from './invitation'
 export { inviteLink } from './invite-link'

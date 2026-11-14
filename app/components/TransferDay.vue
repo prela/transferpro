@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DisplayLocale, LiveRefreshOutcome, TransferBoardFilter, TransferDayRide, TransferPrefill } from '../../shared'
 import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
-import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, parseTransferDayRideState, recallTransferDraft, recordedSeatCount, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferAwaitingInvoice, transferDayAttributeMatches, transferDayFilterCounts, transferDayFilterMatches, transferDaySearchMatches } from '../../shared'
+import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, groupRouteLeftNotice, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, parseTransferDayRideState, recallTransferDraft, recordedSeatCount, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferAwaitingInvoice, transferDayAttributeMatches, transferDayFilterCounts, transferDayFilterMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
 import { groupRouteLeftKey, partnerConfirmationClearedKey } from '../composables/transfer-form'
@@ -669,6 +669,19 @@ const partnerConfirmationNotice = computed(() => {
   return t('transfers.partnerConfirmationCleared')
 })
 
+const groupRouteLeftTitle = computed(() => {
+  const notice = groupRouteLeft.value
+  if (notice === null)
+    return ''
+  // Vehicle phrase: the locale plural rule. Pronoun: exactly one vehicle.
+  return groupRouteLeftNotice(
+    (key, named, choice) => choice === undefined
+      ? t(key, named ?? {})
+      : t(key, named ?? {}, choice),
+    notice.count,
+  )
+})
+
 provide(groupRouteLeftKey, noteGroupRouteLeft)
 provide(partnerConfirmationClearedKey, notePartnerConfirmationCleared)
 
@@ -957,7 +970,7 @@ onUnmounted(() => {
       variant="subtle"
       role="status"
       class="mb-4"
-      :title="t(groupRouteLeft.count === 1 ? 'transfers.groupRouteLeftOne' : 'transfers.groupRouteLeftOther', { count: groupRouteLeft.count })"
+      :title="groupRouteLeftTitle"
       :close="true"
       :ui="{ title: '!text-default !opacity-100', description: '!text-default !opacity-100' }"
       @update:open="(open: boolean) => { if (!open) dismissGroupRouteLeft() }"
