@@ -1,10 +1,11 @@
 import type { Page } from '@playwright/test'
 import { instantFromWallClock } from '../shared/date'
+import { expectNoAxeViolations } from './fixtures/axe'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
+import { hydrated, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 test.beforeEach(async ({ page }) => {
   // One instant for the seed and the board, including across 05:00.
@@ -326,4 +327,134 @@ test('the correction overlap question is in English in the dark theme', async ({
   await expect(overlap).toHaveCount(0)
   await expect(slideover).toBeVisible()
   await expect(slideover.getByLabel('Pickup time')).toHaveValue(`${day}T12:30`)
+})
+
+const clearedHr = 'Potvrda podizvođača je poništena jer su se promijenili vrijeme, mjesto, let ili broj putnika, prtljage ili sjedalica. Javite promjenu podizvođaču i ponovno zabilježite potvrdu.'
+const clearedEn = 'The subcontractor confirmation was cleared because the time, a place, the flight, or a passenger, luggage, or child-seat count changed. Tell the subcontractor and record the confirmation again.'
+
+async function confirmedRide(page: Page, name: string, guestName: string, phone: string) {
+  const clientId = await createdId(page, '/api/clients', { name: `Klijent ${name}`, kind: 'agency' })
+  const startLocationId = await createdId(page, '/api/locations', { name: `Polazak ${name}`, kind: 'airport' })
+  const endLocationId = await createdId(page, '/api/locations', { name: `Dolazak ${name}`, kind: 'hotel' })
+  const partnerId = await createdId(page, '/api/partners', { name: `Podizvođač ${name}`, phone })
+  const day = operationalDay(page)
+  const recorded = await recordTransfer(page.request, {
+    data: {
+      clientId,
+      pickupAt: instantFromWallClock(`${day}T12:00`, 'Europe/Zagreb').toISOString(),
+      startLocationId,
+      endLocationId,
+      passengerCount: 1,
+      guestName,
+      flightNumber: 'OU384',
+      price: 42.5,
+      payment: 'cash',
+      airportMark: false,
+      luggageCount: 0,
+      childSeatCount: 0,
+    },
+  })
+  expect(recorded.ok()).toBeTruthy()
+  const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
+  const handed = await page.request.post(`/api/rides/${rideId}/hand-off`, {
+    data: { partnerId, version: 0, partnerConfirmed: true },
+  })
+  expect(handed.ok()).toBeTruthy()
+  return day
+}
+
+async function correctPassengers(page: Page, guestName: string, copy: { more: string, correct: string, region: string, passengers: string, save: string }) {
+  const phone = (page.viewportSize()?.width ?? 1280) < 1024
+  if (phone)
+    await page.getByRole('listitem').filter({ hasText: guestName }).click()
+  else
+    await page.getByRole('row', { name: guestName }).click()
+  await page.getByRole('button', { name: copy.more, exact: true }).click()
+  await page.getByRole('menuitem', { name: copy.correct, exact: true }).click()
+  const form = page.getByRole('region', { name: copy.region })
+  await form.getByLabel(copy.passengers, { exact: true }).fill('2')
+  await form.getByRole('button', { name: copy.save, exact: true }).click()
+  await expect(form).toBeHidden()
+}
+
+test('a correction that changes the passenger count clears the Partner confirmation', async ({ page }) => {
+  test.setTimeout(180_000)
+  await useTheme(page, 'light')
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const tenant = await seedTenant('clear-confirm')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const day = await confirmedRide(page, 'Jedna', 'Ana Potvrda', '+385911115721')
+  await page.goto(`/transfers?day=${day}`)
+  await hydrated(page)
+  await correctPassengers(page, 'Ana Potvrda', {
+    more: 'Više',
+    correct: 'Ispravi transfer',
+    region: 'Ispravi ovaj transfer',
+    passengers: 'Putnici',
+    save: 'Spremi ispravak',
+  })
+  const noticeHr = page.getByRole('status').filter({ hasText: clearedHr })
+  await expect(noticeHr).toBeVisible()
+  await expect(noticeHr).not.toContainText('na 1 vožnji')
+  await expect(page.getByRole('row', { name: 'Ana Potvrda' })).toContainText('Čeka potvrdu podizvođača')
+  await expectNoAxeViolations(page)
+
+  await switchTheme(page, 'dark')
+  await switchLocale(page, 'en')
+  await expect(page.getByRole('row', { name: 'Ana Potvrda' })).toContainText('Awaiting subcontractor')
+  const second = await confirmedRide(page, 'Druga', 'Iva Potvrda', '+385911115724')
+  await page.goto(`/transfers?day=${second}`)
+  await hydrated(page)
+  await correctPassengers(page, 'Iva Potvrda', {
+    more: 'More',
+    correct: 'Correct transfer',
+    region: 'Correct this transfer',
+    passengers: 'Passengers',
+    save: 'Save correction',
+  })
+  await expect(page.getByRole('status').filter({ hasText: clearedEn })).toBeVisible()
+  await expect(page.getByRole('row', { name: 'Iva Potvrda' })).toContainText('Awaiting subcontractor')
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  await expectNoAxeViolations(page)
+})
+
+test.describe('@phone', () => {
+  test('a phone shows the cleared confirmation in both themes and locales', async ({ page }) => {
+    test.setTimeout(180_000)
+    await useTheme(page, 'dark')
+    await page.setViewportSize({ width: 390, height: 844 })
+    const tenant = await seedTenant('clear-confirm-phone')
+    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+    await switchLocale(page, 'en')
+    const day = await confirmedRide(page, 'Phone', 'Mia Potvrda', '+385911115725')
+    await page.goto(`/transfers?day=${day}`)
+    await hydrated(page)
+    await correctPassengers(page, 'Mia Potvrda', {
+      more: 'More',
+      correct: 'Correct transfer',
+      region: 'Correct this transfer',
+      passengers: 'Passengers',
+      save: 'Save correction',
+    })
+    await expect(page.getByRole('status').filter({ hasText: clearedEn })).toBeVisible()
+    await expect(page.getByRole('listitem').filter({ hasText: 'Mia Potvrda' })).toContainText('Awaiting subcontractor')
+    await expectNoAxeViolations(page)
+
+    await switchTheme(page, 'light')
+    await switchLocale(page, 'hr')
+    const second = await confirmedRide(page, 'Mobitel', 'Lea Potvrda', '+385911115726')
+    await page.goto(`/transfers?day=${second}`)
+    await hydrated(page)
+    await correctPassengers(page, 'Lea Potvrda', {
+      more: 'Više',
+      correct: 'Ispravi transfer',
+      region: 'Ispravi ovaj transfer',
+      passengers: 'Putnici',
+      save: 'Spremi ispravak',
+    })
+    await expect(page.getByRole('status').filter({ hasText: clearedHr })).toBeVisible()
+    await expect(page.getByRole('listitem').filter({ hasText: 'Lea Potvrda' })).toContainText('Čeka potvrdu podizvođača')
+    await expect(page.locator('html')).not.toHaveClass(/dark/)
+    await expectNoAxeViolations(page)
+  })
 })

@@ -128,6 +128,31 @@ export async function appendPartnerConfirmed(
   }), failure)
 }
 
+/**
+ * `ride.partner_confirmation_cleared` when a correction clears a
+ * confirmation that was set. The same three keys as the recording.
+ * The actor is the member who corrected the Transfer. No name and no
+ * contact (ADR-0062). A waiting handoff does not call this.
+ */
+export async function appendPartnerConfirmationCleared(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  rideId: string,
+  partnerId: string,
+  failure: string,
+): Promise<void> {
+  await hideDatabaseError(() => appendAuditEntry(transaction, {
+    action: 'ride.partner_confirmation_cleared',
+    actorUserId,
+    subjectUserId: null,
+    data: {
+      rideId,
+      partnerId,
+      fields: [RIDE_PARTNER_CONFIRMATION_FIELDS[0]],
+    },
+  }), failure)
+}
+
 function officeOnly(role: string): void {
   // Only the office speaks for a Partner. A driver is 403 (ADR-0062).
   if (role === 'admin' || role === 'dispatcher')

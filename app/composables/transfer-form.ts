@@ -43,6 +43,13 @@ export const transferFormKey: InjectionKey<ReturnType<typeof useTransferForm>> =
  */
 export const groupRouteLeftKey: InjectionKey<(count: number, rideId: string) => void> = Symbol('groupRouteLeft')
 
+/**
+ * The day board shows the cleared-confirmation notice beside the result.
+ * The form only reports how many Rides lost it, and whether the save was
+ * applied to the extra vehicles. A group uses one notice with the count.
+ */
+export const partnerConfirmationClearedKey: InjectionKey<(notice: { count: number, group: boolean } | null) => void> = Symbol('partnerConfirmationCleared')
+
 export function useTransferForm(options: {
   timeZone: () => string
   locale: () => DisplayLocale
@@ -78,6 +85,7 @@ export function useTransferForm(options: {
   const { t } = useI18n()
   const toast = useToast()
   const noteGroupRouteLeft = inject(groupRouteLeftKey, null)
+  const notePartnerConfirmationCleared = inject(partnerConfirmationClearedKey, null)
   const { present } = useWorkOrderPresenter()
   const { notifyAuditChanged } = useAuditRefresh()
 
@@ -779,6 +787,7 @@ export function useTransferForm(options: {
     const version = editingVersion.value
     options.saved.value = false
     options.corrected.value = false
+    notePartnerConfirmationCleared?.(null)
     formErrorKey.value = null
     if (version === null || !transferId || !formReady() || !clientId.value || !startLocationId.value || !endLocationId.value || !payment.value) {
       markInvalid()
@@ -798,6 +807,12 @@ export function useTransferForm(options: {
       }))
       refusalOpen.value = false
       options.corrected.value = true
+      const cleared = correction.partnerConfirmationsCleared
+      // A group correction is one notice with the count, including 1.
+      // One Ride uses the sentence without a number.
+      notePartnerConfirmationCleared?.(cleared > 0
+        ? { count: cleared, group: offerApplyToExtraVehicles.value && applyToExtraVehicles.value }
+        : null)
       notifyAuditChanged()
       warnIfFullyBooked(correction.fullyBooked)
       warnIfGroupRouteLeft(correction.unfinishedExtraVehicleCount)

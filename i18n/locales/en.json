@@ -757,6 +757,8 @@
     "saveCorrection": "Save correction",
     "savingCorrection": "Saving",
     "corrected": "Corrected.",
+    "partnerConfirmationCleared": "The subcontractor confirmation was cleared because the time, a place, the flight, or a passenger, luggage, or child-seat count changed. Tell the subcontractor and record the confirmation again.",
+    "partnerConfirmationClearedGroup": "The subcontractor confirmation was cleared on {n} ride because the time, a place, the flight, or a passenger, luggage, or child-seat count changed. Tell the subcontractor and record the confirmation again. | The subcontractor confirmation was cleared on {n} rides because the time, a place, the flight, or a passenger, luggage, or child-seat count changed. Tell the subcontractor and record the confirmation again.",
     "cancelCorrect": "Cancel",
     "closed": "That ride is finished. The transfer was not changed.",
     "locationArchived": "That place is archived. Choose one from the list.",

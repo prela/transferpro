@@ -5,7 +5,7 @@ import { operationalDay, pinOperationalClock } from './fixtures/operational-cloc
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
-import { hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
+import { hydrated, signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 /**
  * A main-Transfer correction starts with the extra vehicles included
@@ -168,6 +168,89 @@ test.describe('@phone', () => {
     const list = page.getByRole('article').getByRole('region', { name: 'Group' })
     await expect(list).toBeVisible()
     await expect(list).toContainText('Iva Dodatna')
+    await expectNoAxeViolations(page)
+  })
+})
+
+const groupClearedHr = 'Potvrda podizvođača je poništena na 2 vožnje jer su se promijenili vrijeme, mjesto, let ili broj putnika, prtljage ili sjedalica.'
+const groupClearedEn = 'The subcontractor confirmation was cleared on 2 rides because the time, a place, the flight, or a passenger, luggage, or child-seat count changed.'
+
+async function rideOnDay(page: Page, date: string, guestName: string) {
+  const response = await page.request.get(`/api/transfers?date=${date}`)
+  expect(response.ok()).toBeTruthy()
+  const ride = (await response.json() as { rides: { guestName: string, rideId: string, version: number, partnerConfirmed: boolean }[] }).rides.find(row => row.guestName === guestName)
+  if (!ride)
+    throw new Error(`missing ${guestName}`)
+  return ride
+}
+
+async function agree(page: Page, rideId: string, version: number, partnerId: string) {
+  const response = await page.request.post(`/api/rides/${rideId}/hand-off`, {
+    data: { partnerId, version, partnerConfirmed: true },
+  })
+  expect(response.ok()).toBeTruthy()
+}
+
+test('a group correction names how many Rides lost the Partner confirmation', async ({ page }) => {
+  test.setTimeout(120_000)
+  await useTheme(page, 'light')
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const tenant = await seedTenant('group-cleared')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const seeded = await seedGroup(page, 'Potvrda')
+  const partnerId = (await (await page.request.post('/api/partners', { data: { name: 'Mora Grupa', phone: '+385911115722' } })).json() as { id: string }).id
+  const main = await rideOnDay(page, seeded.day, 'Ana Grupno')
+  const extra = await rideOnDay(page, seeded.next, 'Iva Dodatna')
+  await agree(page, main.rideId, main.version, partnerId)
+  await agree(page, extra.rideId, extra.version, partnerId)
+
+  await page.goto(`/transfers?day=${seeded.day}`)
+  await hydrated(page)
+  await page.getByRole('row', { name: 'Ana Grupno' }).click()
+  await page.getByRole('button', { name: 'Više', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Ispravi transfer', exact: true }).click()
+  const form = page.getByRole('region', { name: 'Ispravi ovaj transfer' })
+  await form.getByLabel('Broj leta').fill('OU392')
+  await expect(form.getByRole('checkbox', { name: 'Primijeni i na dodatna vozila' })).toBeChecked()
+  await form.getByRole('button', { name: 'Spremi ispravak', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: groupClearedHr })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'na 3 vožnje' })).toHaveCount(0)
+  await expect(page.getByRole('row', { name: 'Ana Grupno' })).toContainText('Čeka potvrdu podizvođača')
+  expect((await rideOnDay(page, seeded.next, 'Iva Dodatna')).partnerConfirmed).toBe(false)
+  await switchTheme(page, 'dark')
+  await expect(page.getByRole('row', { name: 'Ana Grupno' })).toContainText('Čeka potvrdu podizvođača')
+  await expectNoAxeViolations(page)
+})
+
+test.describe('@phone', () => {
+  test('a phone shows the English group count', async ({ page }) => {
+    test.setTimeout(120_000)
+    await useTheme(page, 'dark')
+    await page.setViewportSize({ width: 390, height: 844 })
+    const tenant = await seedTenant('group-cleared-phone')
+    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+    await switchLocale(page, 'en')
+    const seeded = await seedGroup(page, 'Phone')
+    const partnerId = (await (await page.request.post('/api/partners', { data: { name: 'Mora Phone', phone: '+385911115723' } })).json() as { id: string }).id
+    const main = await rideOnDay(page, seeded.day, 'Ana Grupno')
+    const extra = await rideOnDay(page, seeded.next, 'Iva Dodatna')
+    await agree(page, main.rideId, main.version, partnerId)
+    await agree(page, extra.rideId, extra.version, partnerId)
+
+    await page.goto(`/transfers?day=${seeded.day}`)
+    await hydrated(page)
+    await page.getByRole('listitem').filter({ hasText: 'Ana Grupno' }).click()
+    await page.getByRole('button', { name: 'More', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Correct transfer', exact: true }).click()
+    const form = page.getByRole('region', { name: 'Correct this transfer' })
+    await form.getByLabel('Flight number').fill('OU392')
+    await expect(form.getByRole('checkbox', { name: 'Also apply to the extra vehicles' })).toBeChecked()
+    await form.getByRole('button', { name: 'Save correction', exact: true }).click()
+    await expect(page.getByRole('status').filter({ hasText: groupClearedEn })).toBeVisible()
+    await expect(page.getByRole('listitem').filter({ hasText: 'Ana Grupno' })).toContainText('Awaiting subcontractor')
+    expect((await rideOnDay(page, seeded.next, 'Iva Dodatna')).partnerConfirmed).toBe(false)
+    await switchTheme(page, 'light')
+    await expect(page.getByRole('listitem').filter({ hasText: 'Ana Grupno' })).toContainText('Awaiting subcontractor')
     await expectNoAxeViolations(page)
   })
 })

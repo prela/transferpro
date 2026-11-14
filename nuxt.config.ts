@@ -98,11 +98,12 @@ export default defineNuxtConfig({
         {
           name: 'resolve-shared-index',
           resolveId(source: string) {
-            // Vite's SSR build leaves shared/index.ts as a relative import.
+            // Vite's SSR build leaves a shared module as a relative import.
             // The relative depth does not match this cache path, so Nitro
-            // cannot load it. The file is the project shared module.
-            if (source.endsWith('/shared/index.ts'))
-              return resolve(process.cwd(), 'shared/index.ts')
+            // cannot load it. The i18n config's plural rule hits the same miss.
+            const sharedFile = source.match(/\/shared\/([^/]+\.ts)$/)
+            if (sharedFile?.[1] === 'index.ts' || sharedFile?.[1] === 'croatian-plural.ts')
+              return resolve(process.cwd(), 'shared', sharedFile[1])
             // @sentry/nuxt traces pg without the .js extension on this CJS subpath.
             if (source === 'xtend/mutable')
               return require.resolve('xtend/mutable.js')
