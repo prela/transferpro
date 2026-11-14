@@ -1,37 +1,43 @@
 import type { PoolClient } from 'pg'
+import type { DemoSeedAreaEnv, DemoSeedAreaPlan } from './demo-seed-area'
 import type { DemoPicture, DemoRide, DemoVehicleKey } from './demo-seed-picture'
 import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 import { z } from 'zod'
 import { AIRPORT_WAIT_DEFAULT_MINUTES, ELSEWHERE_WAIT_DEFAULT_MINUTES, OPERATIONAL_DAY_START_DEFAULT, passwordLengthLimits, passwordLengthRule, RELOCATION_GAP_DEFAULT_MINUTES, TRANSFER_DURATION_DEFAULT_MINUTES } from '../../../../shared'
+import { DemoSeedError, planDemoSeedArea } from './demo-seed-area'
 import { buildDemoPicture, DEMO_SLUG, DEMO_TENANT_NAME, DEMO_TIME_ZONE } from './demo-seed-picture'
+import { setOperatingArea } from './operating-area'
+import { OperatingAreaError } from './operating-area-args'
+
+export { DemoSeedError } from './demo-seed-area'
 
 /**
  * Replaces one fictional demo Tenant. The owner connection removes and
  * reinserts app rows. The auth connection owns the accounts. The app role
  * is not used, and it does not gain a DELETE grant.
  * Rows are inserted directly, so an intentional overlap is stored and no
- * mail is sent. Audit rows are not invented. A previous demo audit is
- * removed with the rest of that Tenant, then the append-only trigger is
- * turned back on before commit.
+ * mail is sent. Audit from a real session stays: this command does not
+ * disable the append-only trigger and does not invent entries for the
+ * picture. The operating area is decided before any connection. A refusal
+ * throws and writes nothing. An area is archived, never deleted, so a
+ * reseed with no area variables archives the active one, and a reseed
+ * with values goes through the operating-area command, which records the
+ * usual audit entry and does not print the coordinates.
  */
-
-export class DemoSeedError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'DemoSeedError'
-  }
-}
 
 export interface SeedDemoTenantInput {
   readonly password: string
   readonly authDatabaseUrl: string
   readonly migrateDatabaseUrl: string
+  readonly area: DemoSeedAreaEnv
 }
 
 const roleRow = z.object({ role: z.string() })
 
 export async function seedDemoTenant(input: SeedDemoTenantInput): Promise<void> {
+  // Refuse a partial or out-of-bounds area before a password check or a connection.
+  const plan = planDemoSeedArea(input.area)
   if (passwordLengthRule(input.password, passwordLengthLimits) !== null)
     throw new DemoSeedError(`Password must be ${passwordLengthLimits.minPasswordLength} to ${passwordLengthLimits.maxPasswordLength} characters.`)
 
@@ -54,6 +60,7 @@ export async function seedDemoTenant(input: SeedDemoTenantInput): Promise<void> 
     await assertDemoIdentityIsFree(urls.data.authDatabaseUrl, picture)
     await withClient(urls.data.authDatabaseUrl, client => replaceAuth(client, picture, passwordHash))
     await withClient(urls.data.migrateDatabaseUrl, client => replaceApp(client, picture))
+    await applyArea(urls.data.migrateDatabaseUrl, plan)
   }
   catch (error) {
     throw hideDatabaseDetail(error)
@@ -168,14 +175,25 @@ async function replaceApp(client: PoolClient, picture: DemoPicture): Promise<voi
   await client.query('delete from app.clients where tenant_id = $1', [tenantId])
   // Audit is append-only, including for the owner. This command writes none
   // and does not disable the trigger. Rows from a real session stay.
+  // The country is copied onto the new settings row. Dropping it would look
+  // like a change to the operating-area command, which must write nothing
+  // when the same country is set again (ADR-0063).
+  const previousCountry = await client.query<{ country_code: string | null }>(
+    'select country_code from app.tenant_settings where tenant_id = $1',
+    [tenantId],
+  )
+  if (previousCountry.rows.length > 1)
+    throw new DemoSeedError('Could not seed the demo tenant.')
+  const countryCode = previousCountry.rows[0]?.country_code ?? null
   await client.query('delete from app.tenant_settings where tenant_id = $1', [tenantId])
 
   await client.query(
     `insert into app.tenant_settings (
        tenant_id, default_locale, time_zone, airport_wait_minutes, elsewhere_wait_minutes,
-       operational_day_start_hour, transfer_duration_minutes, relocation_gap_minutes
+       operational_day_start_hour, transfer_duration_minutes, relocation_gap_minutes,
+       country_code
      )
-     values ($1, 'hr', $2, $3, $4, $5, $6, $7)`,
+     values ($1, 'hr', $2, $3, $4, $5, $6, $7, $8)`,
     [
       tenantId,
       DEMO_TIME_ZONE,
@@ -184,6 +202,7 @@ async function replaceApp(client: PoolClient, picture: DemoPicture): Promise<voi
       OPERATIONAL_DAY_START_DEFAULT,
       TRANSFER_DURATION_DEFAULT_MINUTES,
       RELOCATION_GAP_DEFAULT_MINUTES,
+      countryCode,
     ],
   )
 
@@ -353,10 +372,32 @@ async function withClient(connectionString: string, run: (client: PoolClient) =>
 
 /**
  * A Postgres detail can carry a name or an address. The operator sees a
- * fixed sentence. A refusal we already wrote is kept.
+ * fixed sentence. A refusal we already wrote is kept. The operating-area
+ * command's own sentences are fixed and do not repeat the coordinates.
  */
 function hideDatabaseDetail(error: unknown): DemoSeedError {
   if (error instanceof DemoSeedError)
     return error
+  if (error instanceof OperatingAreaError)
+    return new DemoSeedError(error.message)
   return new DemoSeedError('Could not seed the demo tenant.')
+}
+
+/**
+ * No area variables archives whatever is active, so a later reseed does
+ * not keep the previous circle. A full area or a country alone uses the
+ * same command as `pnpm tenant:operating-area`.
+ */
+async function applyArea(migrateDatabaseUrl: string, plan: DemoSeedAreaPlan): Promise<void> {
+  if (plan.mode === 'none') {
+    await setOperatingArea({
+      migrateDatabaseUrl,
+      command: { mode: 'archive', slug: DEMO_SLUG },
+    })
+    return
+  }
+  await setOperatingArea({
+    migrateDatabaseUrl,
+    command: plan.command,
+  })
 }

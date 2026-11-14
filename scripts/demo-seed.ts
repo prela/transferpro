@@ -6,11 +6,15 @@
  * process cannot send real mail. The password is DEMO_SEED_PASSWORD when
  * that variable is non-blank, and it is not printed. Otherwise a password
  * is generated and printed once, on stdout, after the seed has committed.
- * It is never an argument.
+ * It is never an argument. An optional operating area comes from
+ * DEMO_SEED_AREA_NAME, DEMO_SEED_AREA_LAT, DEMO_SEED_AREA_LNG, and
+ * DEMO_SEED_AREA_RADIUS_KM, plus optional DEMO_SEED_AREA_COUNTRY.
+ * Those values are not printed. A partial set or a value out of bounds
+ * exits before any connection.
  */
 import process from 'node:process'
 import { z } from 'zod'
-import { decideDemoSeed, DemoSeedError, demoSeedRefusalMessage, seedDemoTenant } from '../server/modules/tenancy/index'
+import { decideDemoSeed, DemoSeedError, demoSeedRefusalMessage, planDemoSeedArea, seedDemoTenant } from '../server/modules/tenancy/index'
 import { passwordLengthLimits, passwordLengthRule } from '../shared/index'
 
 const guardEnvSchema = z.object({
@@ -39,6 +43,17 @@ async function main(): Promise<void> {
   if (refusal !== null)
     throw new DemoSeedError(demoSeedRefusalMessage(refusal))
 
+  const areaEnv = {
+    DEMO_SEED_AREA_NAME: process.env.DEMO_SEED_AREA_NAME,
+    DEMO_SEED_AREA_LAT: process.env.DEMO_SEED_AREA_LAT,
+    DEMO_SEED_AREA_LNG: process.env.DEMO_SEED_AREA_LNG,
+    DEMO_SEED_AREA_RADIUS_KM: process.env.DEMO_SEED_AREA_RADIUS_KM,
+    DEMO_SEED_AREA_COUNTRY: process.env.DEMO_SEED_AREA_COUNTRY,
+  }
+  // The same check runs inside the seed. Here it refuses before the URL
+  // parse, so a partial set does not depend on the database being configured.
+  planDemoSeedArea(areaEnv)
+
   const databaseEnv = databaseEnvSchema.safeParse(process.env)
   if (!databaseEnv.success)
     throw new DemoSeedError('AUTH_DATABASE_URL and DATABASE_MIGRATE_URL must be set.')
@@ -52,6 +67,7 @@ async function main(): Promise<void> {
     password: chosen.password,
     authDatabaseUrl,
     migrateDatabaseUrl,
+    area: areaEnv,
   })
   process.stdout.write(`seeded tenant demo\n`)
   if (chosen.generated)

@@ -6,6 +6,8 @@ export { createTenant, TenantProvisionError } from './infrastructure/create-tena
 export type { CreatedTenant, CreateTenantInput } from './infrastructure/create-tenant'
 export { DemoSeedError, seedDemoTenant } from './infrastructure/demo-seed'
 export type { SeedDemoTenantInput } from './infrastructure/demo-seed'
+export { planDemoSeedArea } from './infrastructure/demo-seed-area'
+export type { DemoSeedAreaEnv, DemoSeedAreaPlan } from './infrastructure/demo-seed-area'
 export { decideDemoSeed, demoSeedRefusalMessage } from './infrastructure/demo-seed-guard'
 export type { DemoSeedDecisionInput, DemoSeedRefusal } from './infrastructure/demo-seed-guard'
 export { setHoldingRideQuery } from './infrastructure/holding-ride'
