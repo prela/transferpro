@@ -57,28 +57,38 @@ it('sets one active area, keeps it across a reseed, and refuses before a write',
     radius_m: 15000,
     country_code: 'AX',
   })
-  const audits = await ownerPool.query<{ data: unknown }>(
+  const areaAudits = await ownerPool.query<{ data: unknown }>(
     `select data from app.audit_entry
-     where tenant_id::text = $1 and action = 'settings.operating_area_set'`,
+     where tenant_id::text = $1 and action = 'settings.operating_area_set'
+     order by occurred_at desc
+     limit 1`,
     [first.tenant_id],
   )
-  expect(audits.rows).toEqual([{ data: { fields: ['name', 'center', 'radiusM'] } }])
-  expect(JSON.stringify(audits.rows)).not.toContain('12.5')
-  expect(JSON.stringify(audits.rows)).not.toContain('Područje')
+  expect(areaAudits.rows).toEqual([{ data: { fields: ['name', 'center', 'radiusM'] } }])
+  expect(JSON.stringify(areaAudits.rows)).not.toContain('12.5')
+  expect(JSON.stringify(areaAudits.rows)).not.toContain('Područje')
+  const areaAuditCount = await countAudits(first.tenant_id, 'settings.operating_area_set')
+  const countryAuditCount = await countAudits(first.tenant_id, 'settings.country_changed')
 
   await seed(area)
   const second = await readActive()
   expect(second).toEqual(first)
-  const stillOneAudit = await ownerPool.query(
-    `select id from app.audit_entry
-     where tenant_id::text = $1 and action = 'settings.operating_area_set'`,
-    [first.tenant_id],
-  )
-  expect(stillOneAudit.rows).toHaveLength(1)
+  expect(await countAudits(first.tenant_id, 'settings.operating_area_set')).toBe(areaAuditCount)
+  expect(await countAudits(first.tenant_id, 'settings.country_changed')).toBe(countryAuditCount)
 
   await seed({ DEMO_SEED_AREA_COUNTRY: 'QA' })
   const countryOnly = await readActive()
   expect(countryOnly).toEqual({ ...first, country_code: 'QA' })
+  expect(await countAudits(first.tenant_id, 'settings.operating_area_set')).toBe(areaAuditCount)
+  expect(await countAudits(first.tenant_id, 'settings.country_changed')).toBe(countryAuditCount + 1)
+  const countryAudit = await ownerPool.query(
+    `select data from app.audit_entry
+     where tenant_id::text = $1 and action = 'settings.country_changed'
+     order by occurred_at desc
+     limit 1`,
+    [first.tenant_id],
+  )
+  expect(countryAudit.rows).toEqual([{ data: { from: 'AX', to: 'QA' } }])
 
   const secret = '99.99111'
   await expect(seed({ DEMO_SEED_AREA_NAME: 'Područje Primjer' })).rejects.toThrow(DemoSeedError)
@@ -103,6 +113,15 @@ it('sets one active area, keeps it across a reseed, and refuses before a write',
   )
   expect(cleared.rows[0]?.active).toBe(0)
 }, 120_000)
+
+async function countAudits(tenantId: string, action: string): Promise<number> {
+  const selected = await ownerPool.query<{ n: number }>(
+    `select count(*)::int as n from app.audit_entry
+     where tenant_id::text = $1 and action = $2`,
+    [tenantId, action],
+  )
+  return selected.rows[0]?.n ?? 0
+}
 
 async function readActive(): Promise<{
   tenant_id: string

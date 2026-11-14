@@ -175,14 +175,25 @@ async function replaceApp(client: PoolClient, picture: DemoPicture): Promise<voi
   await client.query('delete from app.clients where tenant_id = $1', [tenantId])
   // Audit is append-only, including for the owner. This command writes none
   // and does not disable the trigger. Rows from a real session stay.
+  // The country is copied onto the new settings row. Dropping it would look
+  // like a change to the operating-area command, which must write nothing
+  // when the same country is set again (ADR-0063).
+  const previousCountry = await client.query<{ country_code: string | null }>(
+    'select country_code from app.tenant_settings where tenant_id = $1',
+    [tenantId],
+  )
+  if (previousCountry.rows.length > 1)
+    throw new DemoSeedError('Could not seed the demo tenant.')
+  const countryCode = previousCountry.rows[0]?.country_code ?? null
   await client.query('delete from app.tenant_settings where tenant_id = $1', [tenantId])
 
   await client.query(
     `insert into app.tenant_settings (
        tenant_id, default_locale, time_zone, airport_wait_minutes, elsewhere_wait_minutes,
-       operational_day_start_hour, transfer_duration_minutes, relocation_gap_minutes
+       operational_day_start_hour, transfer_duration_minutes, relocation_gap_minutes,
+       country_code
      )
-     values ($1, 'hr', $2, $3, $4, $5, $6, $7)`,
+     values ($1, 'hr', $2, $3, $4, $5, $6, $7, $8)`,
     [
       tenantId,
       DEMO_TIME_ZONE,
@@ -191,6 +202,7 @@ async function replaceApp(client: PoolClient, picture: DemoPicture): Promise<voi
       OPERATIONAL_DAY_START_DEFAULT,
       TRANSFER_DURATION_DEFAULT_MINUTES,
       RELOCATION_GAP_DEFAULT_MINUTES,
+      countryCode,
     ],
   )
 

@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   if (refusal !== null)
     throw new DemoSeedError(demoSeedRefusalMessage(refusal))
 
-  const area = {
+  const areaEnv = {
     DEMO_SEED_AREA_NAME: process.env.DEMO_SEED_AREA_NAME,
     DEMO_SEED_AREA_LAT: process.env.DEMO_SEED_AREA_LAT,
     DEMO_SEED_AREA_LNG: process.env.DEMO_SEED_AREA_LNG,
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   }
   // The same check runs inside the seed. Here it refuses before the URL
   // parse, so a partial set does not depend on the database being configured.
-  planDemoSeedArea(area)
+  planDemoSeedArea(areaEnv)
 
   const databaseEnv = databaseEnvSchema.safeParse(process.env)
   if (!databaseEnv.success)
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
     password: chosen.password,
     authDatabaseUrl,
     migrateDatabaseUrl,
-    area,
+    area: areaEnv,
   })
   process.stdout.write(`seeded tenant demo\n`)
   if (chosen.generated)
