@@ -6,10 +6,18 @@ import { useOfficeHomeFeed } from './office-home-feed'
  * Day list and the catalogs the row and the forms read.
  * A newer load wins: an older ticket does not overwrite it.
  */
-export function useTransferDayLoad(timeZone: () => string, operationalDayStartHour: () => number) {
+export function useTransferDayLoad(
+  timeZone: () => string,
+  operationalDayStartHour: () => number,
+  includeAwaitingPartner: () => boolean = () => false,
+) {
   // The board opens on the operational day that contains now.
   const day = ref(operationalDateInTimeZone(timeZone(), new Date(), operationalDayStartHour()))
   const rides = ref<TransferDayRide[]>([])
+  // Handoffs waiting on Partner confirmation, any day. Loaded with the day
+  // only while Transfers is opened on that filter (ADR-0062).
+  const awaitingPartnerRides = ref<TransferDayRide[]>([])
+  const awaitingPartnerBriefs = ref<PartnerOfficeContact[]>([])
   const declineAlerts = ref<DeclineAlert[]>([])
   // Every Client, so the form can show a note for one with no Ride today.
   const clientBriefs = ref<ClientOfficeBrief[]>([])
@@ -90,6 +98,23 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
     }))
   }
 
+  async function fetchAwaitingPartner(date: string) {
+    return transferDaySchema.parse(await $fetch('/api/transfers', {
+      query: { date, filter: 'awaitingPartner' },
+      cache: 'no-store',
+    }))
+  }
+
+  function applyAwaiting(listed: { rides: TransferDayRide[], partnerBriefs: PartnerOfficeContact[] } | null) {
+    if (!listed) {
+      awaitingPartnerRides.value = []
+      awaitingPartnerBriefs.value = []
+      return
+    }
+    awaitingPartnerRides.value = listed.rides
+    awaitingPartnerBriefs.value = listed.partnerBriefs
+  }
+
   async function loadDay(): Promise<LiveRefreshOutcome> {
     // Claim only after the date is readable. The default-argument increment
     // used to retire an in-flight loadAll when the day was blank (issue #252).
@@ -105,12 +130,16 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
       // Embed URL under an open map (ADR-0052). A failed location read keeps
       // the list already on screen. The day still updates. The other catalogs
       // stay as they were until the next full load.
-      const [dayResult, locationResult] = await Promise.allSettled([
+      const awaiting = includeAwaitingPartner()
+      const [dayResult, locationResult, awaitingResult] = await Promise.allSettled([
         fetchTransferDay(day.value),
         fetchOfficeLocations(),
+        awaiting ? fetchAwaitingPartner(day.value) : Promise.resolve(null),
       ])
       if (dayResult.status === 'rejected')
         throw dayResult.reason
+      if (awaiting && awaitingResult.status === 'rejected')
+        throw awaitingResult.reason
       if (ticket !== loadCounter)
         return 'stale'
       const listed = dayResult.value
@@ -118,6 +147,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
       declineAlerts.value = listed.declineAlerts
       clientBriefs.value = listed.clientBriefs
       partnerBriefs.value = listed.partnerBriefs
+      applyAwaiting(awaiting && awaitingResult.status === 'fulfilled' ? awaitingResult.value : null)
       if (locationResult.status === 'fulfilled')
         locations.value = locationResult.value.locations
       loadError.value = false
@@ -145,12 +175,17 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
     if (!opened)
       loading.value = true
     try {
+      const awaiting = includeAwaitingPartner()
       const dayPromise = isCalendarDate(day.value)
         ? fetchTransferDay(day.value)
         : Promise.resolve(null)
-      const [catalogs, listed] = await Promise.all([
+      const awaitingPromise = awaiting && isCalendarDate(day.value)
+        ? fetchAwaitingPartner(day.value)
+        : Promise.resolve(null)
+      const [catalogs, listed, awaitingListed] = await Promise.all([
         fetchCatalogs(),
         dayPromise,
+        awaitingPromise,
       ])
       // A day change during this load must not drop the catalogs. The newer
       // day read already replaced the rows.
@@ -163,6 +198,7 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
         clientBriefs.value = listed.clientBriefs
         partnerBriefs.value = listed.partnerBriefs
       }
+      applyAwaiting(awaiting ? awaitingListed : null)
       loadError.value = false
       opened = true
       return 'ok'
@@ -183,6 +219,8 @@ export function useTransferDayLoad(timeZone: () => string, operationalDayStartHo
   return {
     day,
     rides,
+    awaitingPartnerRides,
+    awaitingPartnerBriefs,
     declineAlerts,
     clientBriefs,
     partnerBriefs,

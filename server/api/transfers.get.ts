@@ -1,6 +1,7 @@
 import { defineEventHandler, getQuery, toWebRequest } from 'h3'
-import { transferDaySchema } from '../../shared'
+import { parseTransferListQuery, transferDaySchema } from '../../shared'
 import { listTransferDay } from '../modules/transfers'
+import { officeNow } from './office-now'
 import { transferHttpError } from './transfers/http'
 
 /**
@@ -15,10 +16,20 @@ import { transferHttpError } from './transfers/http'
  * Transfer form. A removed contact person is left out. A handed-off Ride
  * also carries that Partner's phone and email. The note is not on it.
  * A driver is 403 before those reads (ADR-0049).
+ * `filter=awaitingPartner` returns the handoffs waiting on Partner
+ * confirmation whose pickup is not past, of any day. The query is
+ * validated with `date` before a session opens.
  */
 export default defineEventHandler(async (event) => {
   try {
-    return transferDaySchema.parse(await listTransferDay(toWebRequest(event).headers, getQuery(event).date))
+    const headers = toWebRequest(event).headers
+    const query = parseTransferListQuery(getQuery(event))
+    return transferDaySchema.parse(await listTransferDay(
+      headers,
+      query.date ?? undefined,
+      officeNow(headers),
+      query.filter,
+    ))
   }
   catch (error) {
     transferHttpError(error)

@@ -830,6 +830,27 @@ export function parseTransferDay(raw: unknown): string | null {
   return raw
 }
 
+/**
+ * GET /api/transfers query. `date` is the operational day, as
+ * `parseTransferDay`. `filter=awaitingPartner` asks for the handoffs
+ * waiting on Partner confirmation, of any day. Another filter is the
+ * screen's own and is not this read. An unknown key is refused.
+ */
+const transferListQuerySchema = z.strictObject({
+  date: z.string().refine(isCalendarDate).optional(),
+  filter: z.literal('awaitingPartner').optional(),
+})
+
+export function parseTransferListQuery(raw: unknown): { date: string | null, filter: 'awaitingPartner' | null } {
+  const parsed = transferListQuerySchema.safeParse(raw)
+  if (!parsed.success)
+    throw new QueryParamError()
+  return {
+    date: parsed.data.date ?? null,
+    filter: parsed.data.filter ?? null,
+  }
+}
+
 export type GuestNameError = 'empty' | 'too-long'
 export type LineError = 'too-long'
 export type PriceError = 'invalid'

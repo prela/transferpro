@@ -53,6 +53,8 @@ const needsAttention = ref(queryText(route.query.attention) === '1')
 const {
   day,
   rides,
+  awaitingPartnerRides,
+  awaitingPartnerBriefs,
   declineAlerts,
   clientBriefs,
   partnerBriefs,
@@ -66,7 +68,11 @@ const {
   loadError,
   loadDay,
   loadAll,
-} = useTransferDayLoad(() => props.timeZone, () => props.operationalDayStartHour)
+} = useTransferDayLoad(
+  () => props.timeZone,
+  () => props.operationalDayStartHour,
+  () => filter.value === 'awaitingPartner',
+)
 
 const queryDay = queryText(route.query.day)
 if (isCalendarDate(queryDay))
@@ -129,31 +135,36 @@ function rideNeedsAttention(ride: TransferDayRide): boolean {
   return classifyRideAttention(withSeatCount(ride), declinesFor(ride.rideId), nowMs.value).length > 0
 }
 
-const narrowedRides = computed(() => rides.value.filter(ride =>
-  transferDaySearchMatches(search.value, {
-    guestName: ride.guestName,
-    flightNumber: ride.flightNumber,
-    clientReference: ride.clientReference,
-    tabla: ride.tabla,
-    clientId: ride.clientId,
-    driverId: ride.driverId,
-  }) && transferDayAttributeMatches({
-    clientId: clientId.value ?? '',
-    driverId: driverId.value ?? '',
-    vehicleId: vehicleId.value ?? '',
-    partnerId: partnerId.value ?? '',
-    rideState: rideState.value,
-    needsAttention: needsAttention.value,
-  }, {
-    clientId: ride.clientId,
-    driverId: ride.driverId,
-    vehicleId: ride.vehicleId,
-    partnerId: ride.partnerId,
-    state: ride.state,
-    mustAccept: ride.mustAccept,
-    needsAttention: rideNeedsAttention(ride),
-  }),
-))
+function narrowRows(rows: TransferDayRide[]) {
+  return rows.filter(ride =>
+    transferDaySearchMatches(search.value, {
+      guestName: ride.guestName,
+      flightNumber: ride.flightNumber,
+      clientReference: ride.clientReference,
+      tabla: ride.tabla,
+      clientId: ride.clientId,
+      driverId: ride.driverId,
+    }) && transferDayAttributeMatches({
+      clientId: clientId.value ?? '',
+      driverId: driverId.value ?? '',
+      vehicleId: vehicleId.value ?? '',
+      partnerId: partnerId.value ?? '',
+      rideState: rideState.value,
+      needsAttention: needsAttention.value,
+    }, {
+      clientId: ride.clientId,
+      driverId: ride.driverId,
+      vehicleId: ride.vehicleId,
+      partnerId: ride.partnerId,
+      state: ride.state,
+      mustAccept: ride.mustAccept,
+      needsAttention: rideNeedsAttention(ride),
+    }),
+  )
+}
+
+const narrowedRides = computed(() => narrowRows(rides.value))
+const awaitingNarrowed = computed(() => narrowRows(awaitingPartnerRides.value))
 
 function withSeatCount(ride: TransferDayRide): TransferDayRide & { seatCount: number | null } {
   return { ...ride, seatCount: recordedSeatCount(vehicles.value, ride.vehicleId) }
@@ -183,12 +194,18 @@ const counts = computed(() => {
 
 const toInvoiceCount = computed(() => narrowedRides.value.filter(ride => transferAwaitingInvoice(ride)).length)
 
-const visibleRides = computed(() => narrowedRides.value.filter((ride) => {
-  // Za fakturiranje is an extra chip. It is not one of the seven day filters.
-  if (filter.value === 'toInvoice')
-    return transferAwaitingInvoice(ride)
-  return transferDayFilterMatches(filter.value, withSeatCount(ride), declinesFor(ride.rideId), nowMs.value)
-}))
+const visibleRides = computed(() => {
+  // The server already cut this list at one instant. A second cutoff on the
+  // browser clock would drop a Ride Home still shows (ADR-0062).
+  if (filter.value === 'awaitingPartner')
+    return awaitingNarrowed.value
+  return narrowedRides.value.filter((ride) => {
+    // Za fakturiranje is an extra chip. It is not one of the seven day filters.
+    if (filter.value === 'toInvoice')
+      return transferAwaitingInvoice(ride)
+    return transferDayFilterMatches(filter.value, withSeatCount(ride), declinesFor(ride.rideId), nowMs.value)
+  })
+})
 
 const filteredEmpty = computed(() =>
   !loading.value && !loadError.value && rides.value.length > 0 && visibleRides.value.length === 0,
@@ -375,10 +392,16 @@ watch([filter, search, clientId, driverId, vehicleId, partnerId, rideState, need
   void syncQuery()
 })
 
-watch(rides, () => {
+watch(filter, (next, previous) => {
+  if (next === 'awaitingPartner' && previous !== 'awaitingPartner')
+    void loadDay()
+})
+
+watch([rides, awaitingPartnerRides, filter], () => {
   if (loading.value || !openRideId.value)
     return
-  if (!rides.value.some(ride => ride.rideId === openRideId.value)) {
+  const source = filter.value === 'awaitingPartner' ? awaitingPartnerRides.value : rides.value
+  if (!source.some(ride => ride.rideId === openRideId.value)) {
     openRideId.value = null
     command.value = null
   }
@@ -444,7 +467,16 @@ function clearFilters() {
   needsAttention.value = false
 }
 
-const openRide = computed(() => rides.value.find(ride => ride.rideId === openRideId.value) ?? null)
+const openRide = computed(() => {
+  const source = filter.value === 'awaitingPartner' ? awaitingPartnerRides.value : rides.value
+  return source.find(ride => ride.rideId === openRideId.value) ?? null
+})
+const commandRides = computed(() =>
+  filter.value === 'awaitingPartner' ? awaitingPartnerRides.value : rides.value,
+)
+const shownPartnerBriefs = computed(() =>
+  filter.value === 'awaitingPartner' ? awaitingPartnerBriefs.value : partnerBriefs.value,
+)
 
 const pageNotices = computed(() => {
   if (openRide.value)
@@ -1057,7 +1089,7 @@ onUnmounted(() => {
               v-model:locations="locations"
               v-model:clients="clients"
               :client-briefs="clientBriefs"
-              :partner-briefs="partnerBriefs"
+              :partner-briefs="shownPartnerBriefs"
               :ride="openRide"
               :command="command"
               :drivers="drivers"
@@ -1140,7 +1172,7 @@ onUnmounted(() => {
           v-model:locations="locations"
           v-model:clients="clients"
           :client-briefs="clientBriefs"
-          :partner-briefs="partnerBriefs"
+          :partner-briefs="shownPartnerBriefs"
           :ride="openRide"
           :command="command"
           :drivers="drivers"
@@ -1190,7 +1222,7 @@ onUnmounted(() => {
     <TransferRideCommands
       ref="commands"
       :drivers="drivers"
-      :rides="rides"
+      :rides="commandRides"
       :time-zone="timeZone"
       :locale="locale"
       :load-day="() => loadDay()"

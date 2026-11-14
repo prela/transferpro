@@ -1,10 +1,11 @@
 import type { APIResponse, Page } from '@playwright/test'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
+import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { plantFailedWorkOrder, seedMember, seedTenant } from './fixtures/seed'
-import { signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
+import { hydrated, signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 const licence = addCalendarDays(calendarDateInTimeZone('Europe/Zagreb', new Date()), 400)
 
@@ -53,6 +54,7 @@ test('office home loads both reads, refreshes after 60 seconds while visible, an
   await expect(unassigned).toContainText('Nema nedodijeljenih vožnji. Novi transfer otvorite na Transferima.')
   await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: 'Početna, 0', exact: true })).toBeVisible()
   await expect(waiting).toContainText('Nema vožnji koje čekaju prihvat. Dodijeljena vožnja čeka ovdje dok je vozač ne prihvati.')
+  await expect(page.getByRole('region', { name: 'Čeka potvrdu podizvođača' })).toContainText('Nema vožnji koje čekaju potvrdu podizvođača.')
   await expect(progress).toContainText('Nema vožnji u tijeku. Započeta vožnja pojavit će se ovdje.')
   await expect(page.getByRole('heading', { name: 'Dokumenti koji istječu' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Hrvatski' })).toHaveCount(0)
@@ -391,12 +393,14 @@ test.describe('@phone', () => {
       await useTheme(page, theme)
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       await expect(page.getByRole('heading', { name: 'Pozornost' })).toBeVisible()
+      await expect(page.getByRole('region', { name: 'Čeka potvrdu podizvođača' })).toContainText('Nema vožnji koje čekaju potvrdu podizvođača.')
       await expect(page.getByRole('heading', { name: 'Brojevi za operativni dan' })).toBeVisible()
       await expect(page.getByRole('navigation', { name: 'Odjeljci' }).getByRole('link', { name: /^Početna, \d+$/ })).toBeVisible()
       await expectNoAxeViolations(page)
       if (theme === 'light') {
         await switchLocale(page, 'en')
         await expect(page.getByRole('heading', { name: 'Attention' })).toBeVisible()
+        await expect(page.getByRole('region', { name: 'Awaiting subcontractor' })).toContainText('No rides are waiting on a subcontractor confirmation.')
         await expectNoAxeViolations(page)
       }
     })
@@ -431,6 +435,182 @@ test.describe('@phone', () => {
     }
   })
 })
+
+const awaitingCopy = {
+  hr: {
+    list: 'Čeka potvrdu podizvođača',
+    empty: 'Nema vožnji koje čekaju potvrdu podizvođača.',
+    record: 'Zabilježi potvrdu',
+    dialog: 'Zabilježi potvrdu podizvođača',
+    body: 'Ovo bilježi da je podizvođač potvrdio vožnju telefonom ili porukom.',
+    filters: 'Filtri dana',
+    waiting: 'Čeka prihvat',
+    all: 'Sve',
+    urgent: 'Hitno',
+    warnings: 'Upozorenja',
+    unassigned: 'Nedodijeljeno',
+    progress: 'U tijeku',
+    closed: 'Zatvoreno',
+    refresh: 'Osvježi',
+  },
+  en: {
+    list: 'Awaiting subcontractor',
+    empty: 'No rides are waiting on a subcontractor confirmation.',
+    record: 'Record confirmation',
+    dialog: 'Record subcontractor confirmation',
+    body: 'This records that the subcontractor confirmed the ride by phone or message.',
+    filters: 'Day filters',
+    waiting: 'Waiting on acceptance',
+    all: 'All',
+    urgent: 'Urgent',
+    warnings: 'Warnings',
+    unassigned: 'Unassigned',
+    progress: 'In progress',
+    closed: 'Closed',
+    refresh: 'Refresh',
+  },
+} as const
+
+test.describe('@phone', () => {
+  for (const { theme, locale } of [
+    { theme: 'light', locale: 'hr' },
+    { theme: 'dark', locale: 'en' },
+  ] as const) {
+    test(`lists a handoff waiting on the subcontractor, records it, and opens the filter in ${theme} ${locale}`, async ({ page }) => {
+      test.setTimeout(180_000)
+      const phone = (page.viewportSize()?.width ?? 1280) < 1024
+      if (!phone)
+        await page.setViewportSize({ width: 1440, height: 900 })
+      const copy = awaitingCopy[locale]
+      const day = operationalDateInTimeZone('Europe/Zagreb', new Date())
+      const pinned = instantFromWallClock(`${day}T09:00`, 'Europe/Zagreb')
+      await pinOperationalClock(page, pinned)
+      await page.context().addCookies([{
+        name: 'tp-office-now',
+        value: pinned.toISOString(),
+        domain: '127.0.0.1',
+        path: '/',
+      }])
+      const tenant = await seedTenant(`home-await-${theme}-${locale}${phone ? '-phone' : ''}`)
+      await useTheme(page, theme)
+      await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+      if (locale === 'en')
+        await switchLocale(page, 'en')
+
+      const partnerId = await createdId(await page.request.post('/api/partners', { data: { name: 'Mora Transfer' } }))
+      const clientId = await createdId(await page.request.post('/api/clients', { data: { name: 'Agencija Potvrda', kind: 'agency' } }))
+      const startLocationId = await createdId(await page.request.post('/api/locations', { data: { name: 'Polazak Potvrda', kind: 'airport' } }))
+      const endLocationId = await createdId(await page.request.post('/api/locations', { data: { name: 'Dolazak Potvrda', kind: 'hotel' } }))
+      const places = { clientId, startLocationId, endLocationId }
+      const soonId = await recordGuest(page, 'Petra Deset', `${day}T10:00`, places)
+      const waitingId = await recordGuest(page, 'Ana Čeka', `${day}T14:00`, places)
+      const tomorrow = addCalendarDays(operationalDay(page), 1)
+      await recordGuest(page, 'Ivo Sutra', `${tomorrow}T10:00`, places)
+      const confirmedId = await recordGuest(page, 'Mia Potvrđena', `${day}T16:00`, places)
+      await recordGuest(page, 'Luka Prošli', `${addCalendarDays(day, -1)}T12:00`, places)
+      expect((await page.request.post(`/api/rides/${soonId}/hand-off`, { data: { partnerId, version: 0 } })).ok()).toBeTruthy()
+      expect((await page.request.post(`/api/rides/${waitingId}/hand-off`, { data: { partnerId, version: 0 } })).ok()).toBeTruthy()
+      expect((await page.request.post(`/api/rides/${(await rideIdOf(page, tomorrow, 'Ivo Sutra'))}/hand-off`, { data: { partnerId, version: 0 } })).ok()).toBeTruthy()
+      expect((await page.request.post(`/api/rides/${confirmedId}/hand-off`, {
+        data: { partnerId, version: 0, partnerConfirmed: true },
+      })).ok()).toBeTruthy()
+      const pastId = await rideIdOf(page, addCalendarDays(day, -1), 'Luka Prošli')
+      expect((await page.request.post(`/api/rides/${pastId}/hand-off`, { data: { partnerId, version: 0 } })).ok()).toBeTruthy()
+
+      await page.goto('/')
+      await hydrated(page)
+      const list = page.getByRole('region', { name: copy.list })
+      const recordOf = (guest: string) => list.getByRole('button', { name: `${copy.record}: ${guest}` })
+      await list.scrollIntoViewIfNeeded()
+      await expect(list).not.toContainText(copy.empty)
+      // The guest name sits in a truncating flex row. On a phone the action names the guest.
+      await expect(recordOf('Petra Deset')).toBeVisible()
+      await expect(recordOf('Ana Čeka')).toBeVisible()
+      await expect(recordOf('Ivo Sutra')).toBeVisible()
+      await expect(list.getByText('Mia Potvrđena')).toHaveCount(0)
+      await expect(list.getByText('Luka Prošli')).toHaveCount(0)
+      await expect(page.getByRole('region', { name: locale === 'hr' ? 'Pozornost' : 'Attention' })).not.toContainText('Ana Čeka')
+      await expect(page.locator('[aria-live="polite"]')).not.toContainText(/Ana Čeka|Nova hitna|New urgent/)
+      await expectNoAxeViolations(page)
+
+      // The next read drops a pickup that is now in the past. The 60 s timer is the other home spec.
+      const later = instantFromWallClock(`${day}T11:00`, 'Europe/Zagreb')
+      await page.context().addCookies([{
+        name: 'tp-office-now',
+        value: later.toISOString(),
+        domain: '127.0.0.1',
+        path: '/',
+      }])
+      await page.getByRole('button', { name: copy.refresh, exact: true }).click()
+      await expect(recordOf('Petra Deset')).toHaveCount(0)
+      await expect(recordOf('Ana Čeka')).toBeVisible()
+
+      await list.getByRole('link', { name: copy.list }).click()
+      await hydrated(page)
+      await expect(page).toHaveURL(/filter=awaitingPartner/)
+      const filters = page.getByRole('group', { name: copy.filters })
+      for (const chip of [copy.all, copy.urgent, copy.warnings, copy.unassigned, copy.waiting, copy.progress, copy.closed])
+        await expect(filters.getByRole('button', { name: new RegExp(`^${chip} \\(\\d+\\)$`) })).toBeVisible()
+      await expect(filters.getByRole('button', { name: copy.list, exact: true })).toHaveCount(0)
+      const shown = phone
+        ? page.getByRole('listitem').filter({ hasText: 'Ana Čeka' })
+        : page.getByRole('row', { name: 'Ana Čeka' })
+      await expect(shown).toBeVisible()
+      await expect(page.getByText('Ivo Sutra')).toBeVisible()
+      await expect(page.getByText('Mia Potvrđena')).toHaveCount(0)
+      await expect(page.getByText('Luka Prošli')).toHaveCount(0)
+      await expectNoAxeViolations(page)
+
+      await page.goto('/')
+      await hydrated(page)
+      await list.getByRole('button', { name: `${copy.record}: Ana Čeka` }).click()
+      const dialog = page.getByRole('dialog', { name: copy.dialog })
+      await expect(dialog.getByText(copy.body)).toBeVisible()
+      await expectNoAxeViolations(page)
+      await dialog.getByRole('button', { name: copy.record, exact: true }).click()
+      await expect(dialog).toHaveCount(0)
+      await expect(recordOf('Ana Čeka')).toHaveCount(0)
+      await expect(recordOf('Ivo Sutra')).toBeVisible()
+    })
+  }
+})
+
+async function recordGuest(page: Page, guest: string, wall: string, places: {
+  clientId: string
+  startLocationId: string
+  endLocationId: string
+}): Promise<string> {
+  const recorded = await recordTransfer(page.request, {
+    data: {
+      clientId: places.clientId,
+      pickupAt: instantFromWallClock(wall, 'Europe/Zagreb').toISOString(),
+      startLocationId: places.startLocationId,
+      endLocationId: places.endLocationId,
+      passengerCount: 1,
+      guestName: guest,
+      price: 10,
+      payment: 'cash',
+      airportMark: false,
+      luggageCount: 0,
+      childSeatCount: 0,
+    },
+  })
+  if (!recorded.ok())
+    throw new Error(`${recorded.status()} ${await recorded.text()}`)
+  const body = await recorded.json() as { ride: { id: string } }
+  return body.ride.id
+}
+
+async function rideIdOf(page: Page, day: string, guest: string): Promise<string> {
+  const listed = await page.request.get(`/api/transfers?date=${day}`)
+  if (!listed.ok())
+    throw new Error(`${listed.status()} ${await listed.text()}`)
+  const body = await listed.json() as { rides: { rideId: string, guestName: string }[] }
+  const ride = body.rides.find(row => row.guestName === guest)
+  if (!ride)
+    throw new Error(`missing ${guest}`)
+  return ride.rideId
+}
 
 async function installOfficeClock(page: Page) {
   // A minute before the pause point, so page load can run its own timers.

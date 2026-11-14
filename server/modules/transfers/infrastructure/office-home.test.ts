@@ -101,6 +101,10 @@ function catalogWithoutOneDriver(failedRows: ReadonlyArray<Record<string, unknow
             landingAt: null,
             expectedArrival: null,
             tabla: '',
+            partnerConfirmed: false,
+            version: 0,
+            changedAt: null,
+            changedByName: null,
             declinedBy: [missingDriverId, presentDriverId],
           }],
         }

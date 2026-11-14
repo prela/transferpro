@@ -7,6 +7,7 @@ import {
   pickupNeedsCalendarDate,
   rideAttentionTier,
   rideStateMark,
+  TRANSFER_DAY_FILTERS,
   transferDayFilterCounts,
   transferDayFilterMatches,
 } from './ride-attention'
@@ -152,6 +153,46 @@ it('opens the Home balance parts that are not toolbar chips', () => {
   expect(transferDayFilterMatches('handedOff', source({ state: 'handed_off' }), [], NOW)).toBe(true)
   expect(transferDayFilterMatches('unassigned', source({ state: 'handed_off' }), [], NOW)).toBe(false)
   expect(transferDayFilterMatches('inProgress', source({ state: 'handed_off' }), [], NOW)).toBe(false)
+})
+
+it('accepts awaitingPartner beside the other filters and matches only a handoff still waiting', () => {
+  const waiting = source({
+    state: 'handed_off',
+    partnerConfirmed: false,
+    pickupAt: new Date(NOW + HOUR).toISOString(),
+  })
+  const atPickup = source({
+    state: 'handed_off',
+    partnerConfirmed: false,
+    pickupAt: new Date(NOW).toISOString(),
+  })
+  const past = source({
+    state: 'handed_off',
+    partnerConfirmed: false,
+    pickupAt: new Date(NOW - 1).toISOString(),
+  })
+  const confirmed = source({
+    state: 'handed_off',
+    partnerConfirmed: true,
+    pickupAt: new Date(NOW + HOUR).toISOString(),
+  })
+  const driver = source({
+    state: 'assigned',
+    mustAccept: true,
+    driverId: '00000000-0000-4000-8000-000000000010',
+    pickupAt: new Date(NOW + HOUR).toISOString(),
+  })
+  expect(parseTransferDayFilter('awaitingPartner')).toBe('awaitingPartner')
+  expect(parseTransferDayFilter('nope')).toBe('all')
+  expect(TRANSFER_DAY_FILTERS).not.toContain('awaitingPartner')
+  expect(TRANSFER_DAY_FILTERS).toHaveLength(7)
+  expect(transferDayFilterMatches('awaitingPartner', waiting, [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('awaitingPartner', atPickup, [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('awaitingPartner', past, [], NOW)).toBe(false)
+  expect(transferDayFilterMatches('awaitingPartner', confirmed, [], NOW)).toBe(false)
+  expect(transferDayFilterMatches('awaitingPartner', driver, [], NOW)).toBe(false)
+  expect(transferDayFilterMatches('waiting', driver, [], NOW)).toBe(true)
+  expect(transferDayFilterMatches('waiting', waiting, [], NOW)).toBe(false)
 })
 
 it('files a handed-off Ride under the unclosed mark the day read returned, and not as unassigned or in progress', () => {

@@ -31,6 +31,10 @@ const sourceRowSchema = z.object({
   landingAt: z.unknown().nullish(),
   expectedArrival: z.unknown().nullish(),
   tabla: z.string(),
+  partnerConfirmed: z.boolean(),
+  version: z.number().int().nonnegative(),
+  changedAt: z.unknown().nullish(),
+  changedByName: z.string().nullable(),
   // Driver ids, not names. The name is resolved with the other catalog names.
   declinedBy: z.array(z.uuid()),
 })
@@ -49,7 +53,9 @@ const MISSING_DECLINE_DRIVER = '—'
  * A Ride outside this filter is on no list and not on the operational day,
  * so leaving it out does not change the result. A handed-off Ride whose
  * pickup is already past is included even on an earlier day, so the
- * unclosed mark can still surface it (ADR-0048). Names are resolved
+ * unclosed mark can still surface it (ADR-0048). A handoff still waiting
+ * on Partner confirmation whose pickup is not past is included on any
+ * day, so Home can list it (ADR-0062). Names are resolved
  * afterwards, through each catalog module, on this same transaction
  * (ADR-0018).
  * `viewer` is the session's Tenant and role. Failed invitations are listed
@@ -85,6 +91,10 @@ export async function loadOfficeHome(
         t.landing_at as "landingAt",
         t.expected_arrival_at as "expectedArrival",
         t.tabla,
+        r.partner_confirmed as "partnerConfirmed",
+        t.version,
+        t.data_changed_at as "changedAt",
+        changed_by.name as "changedByName",
         coalesce((
           select jsonb_agg(a.driver_id order by a.created_at, a.id)
           from app.ride_alert as a
@@ -95,6 +105,9 @@ export async function loadOfficeHome(
         ), '[]'::jsonb) as "declinedBy"
       from app.rides as r
       join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
+      left join app.tenant_member as changed_by
+        on changed_by.user_id = t.data_changed_by
+       and changed_by.tenant_id = t.tenant_id
       where
         (t.pickup_at >= ${bounds.start.toISOString()} and t.pickup_at < ${bounds.end.toISOString()})
         or r.state = 'unassigned'
@@ -106,6 +119,11 @@ export async function loadOfficeHome(
           and not (r.state = 'assigned' and r.must_accept is true)
         )
         or (r.state = 'handed_off' and t.pickup_at < ${nowIso})
+        or (
+          r.state = 'handed_off'
+          and r.partner_confirmed = false
+          and t.pickup_at >= ${nowIso}
+        )
     `),
     'Office home read failed',
   ))
@@ -140,6 +158,10 @@ export async function loadOfficeHome(
       expectedArrival: row.expectedArrival == null ? null : toInstant(row.expectedArrival),
       tabla: row.tabla,
       mustAccept: row.mustAccept,
+      partnerConfirmed: row.partnerConfirmed,
+      version: row.version,
+      changedAt: row.changedAt == null ? null : toInstant(row.changedAt),
+      changedByName: row.changedByName,
       declineAlerts: row.declinedBy.map(driverId => ({ driverName: declineDriverName(driverId, drivers) })),
     }
   })
@@ -181,7 +203,13 @@ async function loadInvoiceWarnings(
   )
   const kindByTransfer = new Map(warnings.map(warning => [warning.transferReference, warning.kind]))
   const ids = sql.join(warnings.map(warning => sql`${warning.transferReference}`), sql`, `)
-  const selected = z.object({ rows: z.array(sourceRowSchema.omit({ declinedBy: true }).extend({
+  const selected = z.object({ rows: z.array(sourceRowSchema.omit({
+    declinedBy: true,
+    partnerConfirmed: true,
+    version: true,
+    changedAt: true,
+    changedByName: true,
+  }).extend({
     transferId: z.uuid(),
   })) }).parse(await hideDatabaseError(
     () => transaction.execute(sql`

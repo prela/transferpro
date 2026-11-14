@@ -393,11 +393,16 @@ export async function loadRidesForDay(
   startHour = OPERATIONAL_DAY_START_DEFAULT,
   now: Date = new Date(),
   transferDurationMinutes = TRANSFER_DURATION_DEFAULT_MINUTES,
+  scope: 'day' | 'awaitingPartner' = 'day',
 ): Promise<TransferDayRide[]> {
   const nowMs = now.getTime()
   if (Number.isNaN(nowMs))
     throw new RangeError('Instant is not a valid time.')
   const bounds = localDayBounds(day, timeZone, startHour)
+  // The pickup instant is still waiting. A confirmed handoff is not this list.
+  const where = scope === 'awaitingPartner'
+    ? sql`r.state = 'handed_off' and r.partner_confirmed = false and t.pickup_at >= ${now.toISOString()}`
+    : sql`t.pickup_at >= ${bounds.start.toISOString()} and t.pickup_at < ${bounds.end.toISOString()}`
   const selected = z.object({ rows: z.array(dayRowSchema) }).parse(await transaction.execute(sql`
     select
       r.id as "rideId",
@@ -478,7 +483,7 @@ export async function loadRidesForDay(
     left join app.tenant_member as main_changed
       on main_changed.user_id = main_transfer.data_changed_by
      and main_changed.tenant_id = main_transfer.tenant_id
-    where t.pickup_at >= ${bounds.start.toISOString()} and t.pickup_at < ${bounds.end.toISOString()}
+    where ${where}
     order by t.pickup_at, r.id
   `))
   // The invoice row belongs to invoicing. This read asks for the open ones
