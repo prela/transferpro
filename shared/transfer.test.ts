@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canAddExtraVehicle, canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, childSeatCountError, CLIENT_REFERENCE_MAX_LENGTH, correctionChangesRoute, correctionClearsPartnerConfirmation, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, luggageCountError, NOTE_MAX_LENGTH, officeGroupPassengerCount, optionalCountFromInput, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, passengerCountError, pickupAtError, priceError, ROUTE_TRANSFER_FIELDS, sameLocationError, transferGroupMemberSchema, transferGroupRole, transferGroupSchema, TransferInputError } from './transfer'
+import { canAddExtraVehicle, canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, childSeatCountError, CLIENT_REFERENCE_MAX_LENGTH, correctionChangesRoute, correctionClearsPartnerConfirmation, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, luggageCountError, NOTE_MAX_LENGTH, officeGroupPassengerCount, optionalCountFromInput, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, parseTransferListQuery, PASSENGER_COUNT_MAX, passengerCountError, pickupAtError, priceError, ROUTE_TRANSFER_FIELDS, sameLocationError, transferGroupMemberSchema, transferGroupRole, transferGroupSchema, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -300,6 +300,20 @@ it('refuses a Transfer whose start and end are the same place', () => {
   expect(sameLocationError(startLocationId, endLocationId)).toBeNull()
   expect(sameLocationError(startLocationId, startLocationId)).toBe('same')
   expect(() => parseCreateTransfer(withEntryKey({ ...body, endLocationId: startLocationId }), now)).toThrow(TransferInputError)
+})
+
+it('validates the transfers list query, including awaitingPartner, with the day', () => {
+  expect(parseTransferListQuery({})).toEqual({ date: null, filter: null })
+  expect(parseTransferListQuery({ date: '2026-10-07' })).toEqual({ date: '2026-10-07', filter: null })
+  expect(parseTransferListQuery({ date: '2026-10-07', filter: 'awaitingPartner' })).toEqual({
+    date: '2026-10-07',
+    filter: 'awaitingPartner',
+  })
+  expect(parseTransferListQuery({ filter: 'awaitingPartner' })).toEqual({ date: null, filter: 'awaitingPartner' })
+  expect(() => parseTransferListQuery({ date: '2026-02-31' })).toThrow(QueryParamError)
+  expect(() => parseTransferListQuery({ filter: 'waiting' })).toThrow(QueryParamError)
+  expect(() => parseTransferListQuery({ date: '2026-10-07', filter: 'handedOff' })).toThrow(QueryParamError)
+  expect(() => parseTransferListQuery({ date: '2026-10-07', search: 'ana' })).toThrow(QueryParamError)
 })
 
 it('leaves a missing day for the operational-day default and refuses a day that is not a calendar date', () => {

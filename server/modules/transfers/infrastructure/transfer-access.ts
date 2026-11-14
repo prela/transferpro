@@ -64,8 +64,16 @@ export async function createTransfer(headers: Headers, raw: unknown): Promise<Re
  * `now` is the clock; tests pass a fixed instant so the default does not
  * depend on the wall clock. The date is parsed first. A driver is 403.
  * Another Tenant sees none.
+ * `awaitingPartner` returns the handoffs waiting on Partner confirmation
+ * whose pickup is not past, of any day, soonest first. The date on the
+ * response stays the operational day the screen is showing.
  */
-export async function listTransferDay(headers: Headers, rawDate: unknown, now: Date = new Date()): Promise<TransferDay> {
+export async function listTransferDay(
+  headers: Headers,
+  rawDate: unknown,
+  now: Date = new Date(),
+  filter: 'awaitingPartner' | null = null,
+): Promise<TransferDay> {
   const requested = parseTransferDay(rawDate)
   return withTenantFromSession(headers, async ({ actor, transaction }) => {
     officeOnly(actor.role)
@@ -79,6 +87,7 @@ export async function listTransferDay(headers: Headers, rawDate: unknown, now: D
       startHour,
       now,
       settings.transferDurationMinutes,
+      filter === 'awaitingPartner' ? 'awaitingPartner' : 'day',
     )
     const handedTo = new Set(rides.flatMap(ride => ride.partnerId === null ? [] : [ride.partnerId]))
     return {
@@ -93,12 +102,15 @@ export async function listTransferDay(headers: Headers, rawDate: unknown, now: D
         settings.transferDurationMinutes,
         settings.relocationGapMinutes,
       ),
-      declineAlerts: await loadDeclineAlertsForDay(
-        transaction,
-        date,
-        settings.timeZone,
-        startHour,
-      ),
+      // A handed-off Ride has no decline alert. The day alerts would name another day.
+      declineAlerts: filter === 'awaitingPartner'
+        ? []
+        : await loadDeclineAlertsForDay(
+            transaction,
+            date,
+            settings.timeZone,
+            startHour,
+          ),
       // Every Client, so the Transfer form can show a note for a Client
       // with no Ride on this day. The helper refuses a driver again.
       // ADR-0049.

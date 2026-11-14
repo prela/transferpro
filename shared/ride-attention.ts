@@ -1,4 +1,5 @@
 import type { RideState } from './transfer'
+import { z } from 'zod'
 import { calendarDateInTimeZone, isCalendarDate, operationalDateInTimeZone } from './date'
 import { passengersExceedSeatCount } from './vehicle'
 
@@ -179,19 +180,29 @@ export type TransferDayFilter = (typeof TRANSFER_DAY_FILTERS)[number]
 /**
  * Toolbar chips stay the seven in ADR-0038. Home's balance also links to
  * the part that has no chip: assigned and not started, and each finished state.
+ * `awaitingPartner` is the Home list of handoffs waiting on Partner
+ * confirmation. It is not a chip (ADR-0062).
  */
-export type TransferBoardFilter = TransferDayFilter | 'assignedNotStarted' | 'handedOff' | 'done' | 'noShow' | 'cancelled' | 'toInvoice'
+export type TransferBoardFilter = TransferDayFilter | 'assignedNotStarted' | 'handedOff' | 'done' | 'noShow' | 'cancelled' | 'toInvoice' | 'awaitingPartner'
 
 const CLOSED = new Set<RideState>(['done', 'no-show', 'cancelled'])
 
-const HOME_PART_FILTERS = ['assignedNotStarted', 'handedOff', 'done', 'noShow', 'cancelled', 'toInvoice'] as const
+const BOARD_FILTERS = [
+  ...TRANSFER_DAY_FILTERS,
+  'assignedNotStarted',
+  'handedOff',
+  'done',
+  'noShow',
+  'cancelled',
+  'toInvoice',
+  'awaitingPartner',
+] as const
+
+const boardFilterSchema = z.enum(BOARD_FILTERS)
 
 export function parseTransferDayFilter(value: unknown): TransferBoardFilter {
-  if (typeof value === 'string' && (HOME_PART_FILTERS as readonly string[]).includes(value))
-    return value as TransferBoardFilter
-  if (typeof value === 'string' && (TRANSFER_DAY_FILTERS as readonly string[]).includes(value))
-    return value as TransferDayFilter
-  return 'all'
+  const parsed = boardFilterSchema.safeParse(value)
+  return parsed.success ? parsed.data : 'all'
 }
 
 function waitingOnAcceptance(ride: RideAttentionSource): boolean {
@@ -227,6 +238,12 @@ export function transferDayFilterMatches(
     return ride.state === 'no-show'
   if (filter === 'cancelled')
     return ride.state === 'cancelled'
+  // Pickup at this instant is still waiting. A confirmed handoff is not.
+  if (filter === 'awaitingPartner') {
+    if (ride.state !== 'handed_off' || ride.partnerConfirmed === true)
+      return false
+    return pickupMillis(ride.pickupAt) >= nowMs
+  }
   return CLOSED.has(ride.state)
 }
 

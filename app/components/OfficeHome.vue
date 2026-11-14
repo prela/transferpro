@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { DisplayLocale, OfficeHomeCountKey } from '../../shared'
-import { clockLabel, formatOperationalDayStart, OFFICE_HOME_COUNT_KEYS, officeHomeBlocks, officeHomeCountPath } from '../../shared'
+import type { DisplayLocale, OfficeHomeBlockRide, OfficeHomeCountKey } from '../../shared'
+import { clockLabel, formatOperationalDayStart, OFFICE_HOME_COUNT_KEYS, officeHomeAwaitingPartnerPath, officeHomeBlocks, officeHomeCountPath } from '../../shared'
 import { refreshSharedOfficeHome, useOfficeHomeFeed } from '../composables/office-home-feed'
 
 const props = defineProps<{
@@ -25,7 +25,18 @@ const countsTitleId = useId()
 const attentionTitleId = useId()
 const unassignedTitleId = useId()
 const waitingTitleId = useId()
+const awaitingTitleId = useId()
 const progressTitleId = useId()
+const confirmation = ref<{ open: (ride: {
+  rideId: string
+  guestName: string
+  version: number
+  state: OfficeHomeBlockRide['state']
+  partnerConfirmed: boolean
+  pickupAt: string
+  changedByName: string | null
+  changedAt: string | null
+}) => void } | null>(null)
 
 const countLabel: Record<OfficeHomeCountKey, string> = {
   rides: 'officeHome.countRides',
@@ -48,6 +59,41 @@ const shownTime = computed(() =>
 )
 
 const blocks = computed(() => snapshot.value ? officeHomeBlocks(snapshot.value) : null)
+const awaitingPath = computed(() =>
+  snapshot.value ? officeHomeAwaitingPartnerPath(snapshot.value.operationalDate) : '/transfers',
+)
+const confirmationRides = computed(() =>
+  (blocks.value?.awaitingPartnerConfirmation ?? []).flatMap((ride) => {
+    if (ride.version === undefined)
+      return []
+    return [{
+      rideId: ride.rideId,
+      guestName: ride.guestName,
+      version: ride.version,
+      state: ride.state,
+      partnerConfirmed: false,
+      pickupAt: ride.pickupAt,
+      changedAt: ride.changedAt ?? null,
+      changedByName: ride.changedByName ?? null,
+    }]
+  }),
+)
+
+async function refreshHome() {
+  await refreshSharedOfficeHome()
+}
+
+/** The dialog's stale path needs the live-refresh outcome. A failed read is the only one Home can see. */
+async function reloadHome() {
+  await refreshSharedOfficeHome()
+  return failed.value ? 'fail' as const : 'ok' as const
+}
+
+function recordConfirmation(ride: OfficeHomeBlockRide) {
+  const target = confirmationRides.value.find(row => row.rideId === ride.rideId)
+  if (target)
+    confirmation.value?.open(target)
+}
 const invoiceWarnings = computed(() => snapshot.value?.invoiceWarnings ?? [])
 const paymentReminder = computed(() => snapshot.value?.paymentReportingReminder === true)
 const attentionEmpty = computed(() =>
@@ -345,6 +391,45 @@ function formatOperationalDate(iso: string, locale: DisplayLocale): string {
               </li>
             </ul>
           </section>
+
+          <section
+            class="mt-6"
+            :aria-labelledby="awaitingTitleId"
+          >
+            <h2
+              :id="awaitingTitleId"
+              class="mb-3 text-sm font-semibold"
+            >
+              <NuxtLink
+                :to="awaitingPath"
+                class="underline-offset-2 hover:underline"
+              >
+                {{ t('officeHome.awaitingPartner') }}
+              </NuxtLink>
+            </h2>
+            <p v-if="blocks.awaitingPartnerConfirmation.length === 0">
+              {{ t('officeHome.emptyAwaitingPartner') }}
+            </p>
+            <ul
+              v-else
+              class="flex flex-col gap-2"
+            >
+              <li
+                v-for="ride in blocks.awaitingPartnerConfirmation"
+                :key="ride.rideId"
+                class="rounded-md border border-default px-2"
+              >
+                <OfficeHomeRow
+                  :ride="ride"
+                  :time-zone="timeZone"
+                  :locale="locale"
+                  :operational-date="snapshot.operationalDate"
+                  :operational-day-start-hour="snapshot.operationalDayStartHour"
+                  @record-confirmation="recordConfirmation(ride)"
+                />
+              </li>
+            </ul>
+          </section>
         </div>
 
         <div class="lg:col-span-2">
@@ -396,5 +481,13 @@ function formatOperationalDate(iso: string, locale: DisplayLocale): string {
         <slot name="documents" />
       </div>
     </div>
+    <RidePartnerConfirmationDialog
+      ref="confirmation"
+      :rides="confirmationRides"
+      :time-zone="timeZone"
+      :locale="locale"
+      :load-day="refreshHome"
+      :reload-day="reloadHome"
+    />
   </div>
 </template>

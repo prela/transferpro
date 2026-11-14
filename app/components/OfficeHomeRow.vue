@@ -10,6 +10,9 @@ const props = defineProps<{
   operationalDayStartHour: number
 }>()
 
+const emit = defineEmits<{
+  recordConfirmation: []
+}>()
 const { t } = useI18n()
 const router = useRouter()
 
@@ -20,6 +23,8 @@ const actionLabel = computed(() => {
     return t('ride.assign')
   if (props.ride.action === 'accept')
     return t('transfers.rowAccept')
+  if (props.ride.action === 'recordPartnerConfirmation')
+    return t('ride.recordPartnerConfirmationSubmit')
   return t('transfers.rowDone')
 })
 
@@ -77,6 +82,19 @@ function open() {
       />
     </button>
     <UButton
+      v-if="ride.action === 'recordPartnerConfirmation'"
+      type="button"
+      color="neutral"
+      variant="outline"
+      size="sm"
+      :class="controlClass"
+      :aria-label="`${actionLabel}: ${ride.guestName}`"
+      @click="emit('recordConfirmation')"
+    >
+      {{ actionLabel }}
+    </UButton>
+    <UButton
+      v-else
       :to="href"
       color="neutral"
       variant="outline"

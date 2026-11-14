@@ -4,14 +4,16 @@ import { hashPassword } from 'better-auth/crypto'
 import { createApp, toWebHandler } from 'h3'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, officeHomeSchema } from '../../shared'
+import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, officeHomeSchema, transferDaySchema } from '../../shared'
 import { createClient } from '../modules/clients'
 import { createDriver, updateDriver } from '../modules/drivers'
 import { createLocation } from '../modules/locations'
+import { createPartner } from '../modules/partners'
 import { closeTenantRuntime, createTenant, handleAuthRequest } from '../modules/tenancy'
-import { assignRide, createTransfer, declineRide, readOfficeHome } from '../modules/transfers'
+import { assignRide, createTransfer, declineRide, handOffRide, readOfficeHome, recordPartnerConfirmation } from '../modules/transfers'
 import { createVehicle } from '../modules/vehicles'
 import getOfficeHome from './office-home.get'
+import getTransfers from './transfers.get'
 
 /**
  * GET /api/office-home. The role cases use a real sign-in. The snapshot
@@ -38,6 +40,7 @@ const authUrl = required('BETTER_AUTH_URL')
 
 const app = createApp()
 app.use('/api/office-home', getOfficeHome)
+app.use('/api/transfers', getTransfers)
 const callHome = toWebHandler(app)
 
 beforeAll(async () => {
@@ -356,6 +359,7 @@ it('returns one snapshot for an admin and a dispatcher, hides another Tenant, an
     waitingOnAcceptance: [],
     inProgress: [],
     handedOff: [],
+    awaitingPartnerConfirmation: [],
     operationalDate: calendar,
     operationalDayStartHour: 5,
     counts: {
@@ -648,6 +652,148 @@ it('carries a decline alert and the Driver name for any day, drops it when the R
   expect(await auditText(foreign.tenantId)).not.toContain('Strani Vozač')
   expect(await auditText(foreign.tenantId)).not.toContain('Strana Gošća')
 })
+
+it('lists handoffs waiting on Partner confirmation through both routes, and a driver is refused', async () => {
+  const created = await tenant('ohm-await', 'Hana Admin')
+  await addMember(created.tenantId, 'ohm-await-dispatcher@example.test', 'Dino Dispatcher', 'dispatcher')
+  await addMember(created.tenantId, 'ohm-await-driver@example.test', 'Drago Driver', 'driver')
+  const admin = await signIn('ohm-await-admin@example.test')
+  const dispatcher = await signIn('ohm-await-dispatcher@example.test')
+  const driver = await signIn('ohm-await-driver@example.test')
+  await tenant('ohm-await-other', 'Iva Admin')
+  const outsider = await signIn('ohm-await-other-admin@example.test')
+
+  const calendar = calendarDateInTimeZone(zone, new Date())
+  const previous = addCalendarDays(calendar, -1)
+  const next = addCalendarDays(calendar, 1)
+  const now = instantFromWallClock(`${calendar}T12:00`, zone)
+  const client = await createClient(admin, { name: 'Agencija Mora', kind: 'agency' })
+  const start = await createLocation(admin, { name: 'Zračna luka Dubrovnik', kind: 'airport' })
+  const end = await createLocation(admin, { name: 'Hotel Excelsior', kind: 'hotel' })
+  const partner = await createPartner(admin, { name: 'Mora Transfer' })
+  const otherClient = await createClient(outsider, { name: 'Tuđa Agencija', kind: 'agency' })
+  const otherStart = await createLocation(outsider, { name: 'Tuđi polazak', kind: 'address' })
+  const otherEnd = await createLocation(outsider, { name: 'Tuđi dolazak', kind: 'hotel' })
+  const otherPartner = await createPartner(outsider, { name: 'Tuđi prijevoz' })
+
+  async function record(session: Headers, guestName: string, wall: string, places: {
+    clientId: string
+    startLocationId: string
+    endLocationId: string
+  }) {
+    const recorded = await createTransfer(session, {
+      externalId: crypto.randomUUID(),
+      clientId: places.clientId,
+      pickupAt: instantFromWallClock(wall, zone).toISOString(),
+      startLocationId: places.startLocationId,
+      endLocationId: places.endLocationId,
+      passengerCount: 1,
+      guestName,
+      price: 10,
+      payment: 'cash',
+      airportMark: false,
+      luggageCount: 0,
+      childSeatCount: 0,
+    })
+    return recorded.ride.id
+  }
+
+  const places = { clientId: client.id, startLocationId: start.id, endLocationId: end.id }
+  const soonId = await record(admin, 'Soon Ana', `${calendar}T13:00`, places)
+  const laterId = await record(admin, 'Later Ivo', `${calendar}T18:00`, places)
+  const tomorrowId = await record(admin, 'Tomorrow Eva', `${next}T09:00`, places)
+  const confirmedId = await record(admin, 'Confirmed Mia', `${calendar}T15:00`, places)
+  const pastId = await record(admin, 'Past Luka', `${previous}T12:00`, places)
+  const foreignId = await record(outsider, 'Foreign Tea', `${calendar}T14:00`, {
+    clientId: otherClient.id,
+    startLocationId: otherStart.id,
+    endLocationId: otherEnd.id,
+  })
+
+  await handOffRide(admin, soonId, { partnerId: partner.id, version: 0 })
+  await handOffRide(admin, laterId, { partnerId: partner.id, version: 0 })
+  await handOffRide(admin, tomorrowId, { partnerId: partner.id, version: 0 })
+  await handOffRide(admin, confirmedId, { partnerId: partner.id, version: 0, partnerConfirmed: true })
+  await handOffRide(admin, pastId, { partnerId: partner.id, version: 0 })
+  await handOffRide(outsider, foreignId, { partnerId: otherPartner.id, version: 0 })
+
+  const home = officeHomeSchema.parse(await (await callAt('/api/office-home', admin, now)).json())
+  const same = officeHomeSchema.parse(await (await callAt('/api/office-home', dispatcher, now)).json())
+  expect(same.awaitingPartnerConfirmation.map(row => row.guestName)).toEqual(
+    home.awaitingPartnerConfirmation.map(row => row.guestName),
+  )
+  expect(home.awaitingPartnerConfirmation.map(row => row.guestName)).toEqual([
+    'Soon Ana',
+    'Later Ivo',
+    'Tomorrow Eva',
+  ])
+  expect(home.awaitingPartnerConfirmation.every(row => !('unclosedMark' in row) && !('unassignedAlarm' in row))).toBe(true)
+  expect(home.counts).toMatchObject({
+    rides: 3,
+    handedOff: 3,
+    unassigned: 0,
+    waitingOnAcceptance: 0,
+    inProgress: 0,
+  })
+  expect(
+    home.counts.unassigned
+    + home.counts.waitingOnAcceptance
+    + home.counts.assignedNotStarted
+    + home.counts.inProgress
+    + home.counts.handedOff
+    + home.counts.done
+    + home.counts.noShow
+    + home.counts.cancelled,
+  ).toBe(home.counts.rides)
+
+  const filtered = transferDaySchema.parse(await (await callAt(
+    `/api/transfers?date=${calendar}&filter=awaitingPartner`,
+    admin,
+    now,
+  )).json())
+  expect(filtered.rides.map(ride => ride.rideId)).toEqual(home.awaitingPartnerConfirmation.map(row => row.rideId))
+  expect(filtered.rides.map(ride => ride.guestName)).not.toContain('Confirmed Mia')
+  expect(filtered.rides.map(ride => ride.guestName)).not.toContain('Past Luka')
+  expect(filtered.rides.map(ride => ride.guestName)).not.toContain('Foreign Tea')
+
+  const hidden = officeHomeSchema.parse(await (await callAt('/api/office-home', outsider, now)).json())
+  expect(hidden.awaitingPartnerConfirmation.map(row => row.guestName)).toEqual(['Foreign Tea'])
+  expect(JSON.stringify(hidden)).not.toContain('Soon Ana')
+  const hiddenFilter = transferDaySchema.parse(await (await callAt(
+    `/api/transfers?filter=awaitingPartner`,
+    outsider,
+    now,
+  )).json())
+  expect(hiddenFilter.rides.map(ride => ride.rideId)).toEqual([foreignId])
+
+  const refusedHome = await callAt('/api/office-home', driver, now)
+  expect(refusedHome.status).toBe(403)
+  const refusedFilter = await callAt(`/api/transfers?filter=awaitingPartner`, driver, now)
+  expect(refusedFilter.status).toBe(403)
+  const badFilter = await callAt('/api/transfers?filter=waiting', admin, now)
+  expect(badFilter.status).toBe(400)
+
+  const before = home.counts
+  await recordPartnerConfirmation(dispatcher, soonId, { version: 1 })
+  const after = officeHomeSchema.parse(await (await callAt('/api/office-home', admin, now)).json())
+  expect(after.counts).toEqual(before)
+  expect(after.awaitingPartnerConfirmation.map(row => row.guestName)).toEqual(['Later Ivo', 'Tomorrow Eva'])
+  const afterFilter = transferDaySchema.parse(await (await callAt(
+    `/api/transfers?filter=awaitingPartner`,
+    dispatcher,
+    now,
+  )).json())
+  expect(afterFilter.rides.map(ride => ride.rideId)).toEqual(after.awaitingPartnerConfirmation.map(row => row.rideId))
+})
+
+function callAt(path: string, session: Headers, now: Date) {
+  const headers = new Headers(session)
+  headers.set('x-office-now', now.toISOString())
+  return callHome(new Request(`http://localhost${path}`, {
+    method: 'GET',
+    headers,
+  }))
+}
 
 async function auditText(tenantId: string): Promise<string> {
   const result = await ownerPool.query<{ data: unknown }>(

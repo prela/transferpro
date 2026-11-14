@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
-import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
+import { operationalDay, operationalNow, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
@@ -380,3 +380,86 @@ test.describe('@phone', () => {
     await expectChips(['All (2)', 'Urgent (4)', 'Warnings (1)', 'Unassigned (0)'])
   })
 })
+
+test.describe('@phone', () => {
+  test('awaitingPartner shows handoffs still waiting and leaves the seven chips', async ({ page }) => {
+    test.setTimeout(120_000)
+    const now = operationalNow(page)
+    await page.context().addCookies([{
+      name: 'tp-office-now',
+      value: now.toISOString(),
+      domain: '127.0.0.1',
+      path: '/',
+    }])
+    const tenant = await seedTenant('transfers-awaiting-partner')
+    await useTheme(page, 'light')
+    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+    const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Čeka', kind: 'address' })
+    const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Čeka', kind: 'hotel' })
+    const clientId = await createdId(page, '/api/clients', { name: 'Agencija Čeka', kind: 'agency' })
+    const partnerId = await createdId(page, '/api/partners', { name: 'Prijevoz Čeka' })
+    const spot = { clientId, startLocationId, endLocationId }
+    const ahead = new Date(now.getTime() + 3 * 60 * 60 * 1000)
+    const confirmedAt = new Date(now.getTime() + 4 * 60 * 60 * 1000)
+    const past = new Date(now.getTime() - 3 * 60 * 60 * 1000)
+    const waitingId = await recordAt(page, 'Ana Još Čeka', ahead, spot)
+    const confirmedId = await recordAt(page, 'Mia Već Potvrda', confirmedAt, spot)
+    const pastId = await recordAt(page, 'Luka Već Prošao', past, spot)
+    expect((await page.request.post(`/api/rides/${waitingId}/hand-off`, { data: { partnerId, version: 0 } })).ok()).toBeTruthy()
+    expect((await page.request.post(`/api/rides/${confirmedId}/hand-off`, {
+      data: { partnerId, version: 0, partnerConfirmed: true },
+    })).ok()).toBeTruthy()
+    expect((await page.request.post(`/api/rides/${pastId}/hand-off`, { data: { partnerId, version: 0 } })).ok()).toBeTruthy()
+
+    await page.goto(`/transfers?day=${operationalDay(page)}&filter=awaitingPartner`)
+    await hydrated(page)
+    await expect(page).toHaveURL(/filter=awaitingPartner/)
+    await expect(rideRow(page, 'Ana Još Čeka')).toBeVisible()
+    await expect(page.getByText('Mia Već Potvrda')).toHaveCount(0)
+    await expect(page.getByText('Luka Već Prošao')).toHaveCount(0)
+    const filters = page.getByRole('group', { name: 'Filtri dana' })
+    for (const chip of ['Sve', 'Hitno', 'Upozorenja', 'Nedodijeljeno', 'Čeka prihvat', 'U tijeku', 'Zatvoreno'])
+      await expect(filters.getByRole('button', { name: new RegExp(`^${chip} \\(\\d+\\)$`) })).toBeVisible()
+    await expect(filters.getByRole('button', { name: 'Čeka potvrdu podizvođača', exact: true })).toHaveCount(0)
+    await expect(filters.getByRole('button', { name: /^Čeka prihvat \(\d+\)$/ })).toHaveAttribute('aria-pressed', 'false')
+    await expectNoAxeViolations(page)
+
+    await switchLocale(page, 'en')
+    await expect(page).toHaveURL(/filter=awaitingPartner/)
+    const english = page.getByRole('group', { name: 'Day filters' })
+    for (const chip of ['All', 'Urgent', 'Warnings', 'Unassigned', 'Waiting on acceptance', 'In progress', 'Closed'])
+      await expect(english.getByRole('button', { name: new RegExp(`^${chip} \\(\\d+\\)$`) })).toBeVisible()
+    await expect(english.getByRole('button', { name: 'Awaiting subcontractor', exact: true })).toHaveCount(0)
+    await expect(rideRow(page, 'Ana Još Čeka')).toBeVisible()
+    await expectNoAxeViolations(page)
+
+    await switchTheme(page, 'dark')
+    await expect(rideRow(page, 'Ana Još Čeka')).toBeVisible()
+    await expectNoAxeViolations(page)
+  })
+})
+
+async function recordAt(page: Page, guest: string, pickup: Date, spot: {
+  clientId: string
+  startLocationId: string
+  endLocationId: string
+}): Promise<string> {
+  const recorded = await recordTransfer(page.request, {
+    data: {
+      clientId: spot.clientId,
+      pickupAt: pickup.toISOString(),
+      startLocationId: spot.startLocationId,
+      endLocationId: spot.endLocationId,
+      passengerCount: 1,
+      guestName: guest,
+      price: 10,
+      payment: 'cash',
+      airportMark: false,
+      luggageCount: 0,
+      childSeatCount: 0,
+    },
+  })
+  expect(recorded.ok()).toBeTruthy()
+  const body = await recorded.json() as { ride: { id: string } }
+  return body.ride.id
+}

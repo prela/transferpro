@@ -46,6 +46,15 @@ export interface OfficeHomeRide {
   readonly tabla: string
   readonly mustAccept: boolean | null
   readonly declineAlerts?: readonly OfficeHomeDecline[]
+  /**
+   * False until the office records that the Partner agreed. True only
+   * while the Ride is handed off (ADR-0062).
+   */
+  readonly partnerConfirmed: boolean
+  /** The Transfer version the confirmation dialog posts. */
+  readonly version: number
+  readonly changedAt: string | null
+  readonly changedByName: string | null
 }
 
 const officeHomeRowSchema = z.strictObject({
@@ -87,6 +96,17 @@ const officeHomeHandedOffSchema = officeHomeRowSchema.extend({
   unclosedMark: z.boolean(),
 }).strict()
 
+/**
+ * A handoff waiting on Partner confirmation. No mark and no tier: the
+ * list is a display, not an alarm (ADR-0062). The version is what the
+ * confirmation dialog posts.
+ */
+const officeHomeAwaitingPartnerSchema = officeHomeRowSchema.extend({
+  version: z.number().int().nonnegative(),
+  changedAt: z.iso.datetime().nullable(),
+  changedByName: z.string().trim().min(1).nullable(),
+}).strict()
+
 const officeHomeCountsSchema = z.strictObject({
   rides: z.number().int().nonnegative(),
   unassigned: z.number().int().nonnegative(),
@@ -102,10 +122,12 @@ const officeHomeCountsSchema = z.strictObject({
 })
 
 /**
- * The three lists and the nine counts from one moment (ADR-0024, ADR-0039).
- * The eight parts add up to `rides`. Handed off is one of those parts and
- * is not a fourth list: a row appears only in Pozornost, once the unclosed
- * mark is on (ADR-0048). An unassigned row also carries decline
+ * The lists and the nine counts from one moment (ADR-0024, ADR-0039, ADR-0062).
+ * The eight parts add up to `rides`. Handed off is one of those parts,
+ * confirmed or not. A handed-off row appears in Pozornost only once the
+ * unclosed mark is on (ADR-0048). `awaitingPartnerConfirmation` is the
+ * display of handoffs still waiting whose pickup is not past, of any day.
+ * It is not a count and not an alarm. An unassigned row also carries decline
  * alerts for any pickup day and the past-pickup flag. Waiting has no mark.
  * In progress carries the unclosed mark. It is on 60 minutes after the
  * occupied end (ADR-0055). The lists still include a Ride that Home
@@ -160,6 +182,7 @@ export const officeHomeSchema = z.strictObject({
   waitingOnAcceptance: z.array(officeHomeRowSchema),
   inProgress: z.array(officeHomeInProgressSchema),
   handedOff: z.array(officeHomeHandedOffSchema),
+  awaitingPartnerConfirmation: z.array(officeHomeAwaitingPartnerSchema),
   counts: officeHomeCountsSchema,
   failedMails: z.array(officeHomeFailedMailSchema),
   /** One row per Ride. A Ride already in Pozornost as urgent is not repeated. */
@@ -246,7 +269,10 @@ function byPickup(a: { pickupAt: string, rideId: string }, b: { pickupAt: string
  * Lists are every match, soonest pickup first. Counts are the operational
  * day that contains `now`, so a list can be longer than its count.
  * Assigned and not started is counted and is on no list. Handed off is
- * counted the same way, so the eight parts add up to the total (ADR-0039, ADR-0048).
+ * counted the same way, confirmed or not, so the eight parts add up to
+ * the total (ADR-0039, ADR-0048). Handoffs waiting on Partner confirmation
+ * whose pickup is not past are also listed, of any day (ADR-0062). The
+ * pickup instant itself is still waiting, as on the Ride detail.
  */
 export function buildOfficeHome(
   rides: readonly OfficeHomeRide[],
@@ -268,6 +294,7 @@ export function buildOfficeHome(
   const waitingOnAcceptance: z.infer<typeof officeHomeRowSchema>[] = []
   const inProgress: z.infer<typeof officeHomeInProgressSchema>[] = []
   const handedOff: z.infer<typeof officeHomeHandedOffSchema>[] = []
+  const awaitingPartnerConfirmation: z.infer<typeof officeHomeAwaitingPartnerSchema>[] = []
   const counts = {
     rides: 0,
     unassigned: 0,
@@ -357,12 +384,23 @@ export function buildOfficeHome(
         unclosedMark: unclosedMark(ride),
       })
     }
+
+    // Not past includes this instant. A confirmed handoff and a past pickup stay off.
+    if (ride.state === 'handed_off' && ride.partnerConfirmed !== true && pickup >= nowMs) {
+      awaitingPartnerConfirmation.push({
+        ...shown,
+        version: ride.version,
+        changedAt: ride.changedAt,
+        changedByName: ride.changedByName,
+      })
+    }
   }
 
   unassigned.sort(byPickup)
   waitingOnAcceptance.sort(byPickup)
   inProgress.sort(byPickup)
   handedOff.sort(byPickup)
+  awaitingPartnerConfirmation.sort(byPickup)
 
   return officeHomeSchema.parse({
     operationalDate,
@@ -371,6 +409,7 @@ export function buildOfficeHome(
     waitingOnAcceptance,
     inProgress,
     handedOff,
+    awaitingPartnerConfirmation,
     counts,
     // The Ride snapshot does not know about mail or invoices. The Home read fills these afterwards.
     failedMails: [],
@@ -422,7 +461,11 @@ export interface OfficeHomeBlockRide {
   readonly driverName: string | null
   readonly vehiclePlate: string | null
   readonly marks: readonly OfficeHomeMark[]
-  readonly action: 'assign' | 'accept' | 'done'
+  readonly action: 'assign' | 'accept' | 'done' | 'recordPartnerConfirmation'
+  /** Set on a handoff waiting on Partner confirmation. The dialog posts this version. */
+  readonly version?: number
+  readonly changedAt?: string | null
+  readonly changedByName?: string | null
 }
 
 export interface OfficeHomeAttentionGroup {
@@ -435,6 +478,7 @@ export interface OfficeHomeBlocks {
   readonly unassigned: readonly OfficeHomeBlockRide[]
   readonly waitingOnAcceptance: readonly OfficeHomeBlockRide[]
   readonly inProgress: readonly OfficeHomeBlockRide[]
+  readonly awaitingPartnerConfirmation: readonly OfficeHomeBlockRide[]
 }
 
 export const OFFICE_HOME_COUNT_KEYS = [
@@ -473,6 +517,15 @@ export function officeHomeCountPath(date: string, key: OfficeHomeCountKey): stri
 }
 
 /**
+ * Transfers filtered to the handoffs waiting on Partner confirmation.
+ * The day is the operational day Home is showing. The filter is any day.
+ */
+export function officeHomeAwaitingPartnerPath(date: string): string {
+  const query = new URLSearchParams({ day: date, filter: 'awaitingPartner' })
+  return `/transfers?${query.toString()}`
+}
+
+/**
  * Where Home shows each Ride from the three lists. Urgent wins, so a Ride
  * is in Pozornost or on its list, never both. Finished Rides and assigned
  * Rides that have not started are counts only.
@@ -484,6 +537,7 @@ export function officeHomeBlocks(home: OfficeHome): OfficeHomeBlocks {
   const unassigned: OfficeHomeBlockRide[] = []
   const waitingOnAcceptance: OfficeHomeBlockRide[] = []
   const inProgress: OfficeHomeBlockRide[] = []
+  const awaitingPartnerConfirmation: OfficeHomeBlockRide[] = []
 
   for (const row of home.unassigned)
     place(row, unassignedMarks(row), 'assign', unassigned, grouped)
@@ -491,6 +545,26 @@ export function officeHomeBlocks(home: OfficeHome): OfficeHomeBlocks {
     place(row, [], 'accept', waitingOnAcceptance, grouped)
   for (const row of home.inProgress)
     place(row, progressMarks(row), 'done', inProgress, grouped)
+  // No mark, so the row stays on this list and out of Pozornost (ADR-0062).
+  for (const row of home.awaitingPartnerConfirmation) {
+    awaitingPartnerConfirmation.push({
+      rideId: row.rideId,
+      pickupAt: row.pickupAt,
+      guestName: row.guestName,
+      passengerCount: row.passengerCount,
+      clientName: row.clientName,
+      start: row.start,
+      end: row.end,
+      state: row.state,
+      driverName: row.driverName,
+      vehiclePlate: row.vehiclePlate,
+      marks: [],
+      action: 'recordPartnerConfirmation',
+      version: row.version,
+      changedAt: row.changedAt,
+      changedByName: row.changedByName,
+    })
+  }
   // Only the unclosed mark is shown. A handed-off Ride before that instant is a count, not a row.
   // The mark is urgent, so place() keeps the row out of the unused list.
   const handedOffParked: OfficeHomeBlockRide[] = []
@@ -507,6 +581,7 @@ export function officeHomeBlocks(home: OfficeHome): OfficeHomeBlocks {
     unassigned,
     waitingOnAcceptance,
     inProgress,
+    awaitingPartnerConfirmation,
   }
 }
 

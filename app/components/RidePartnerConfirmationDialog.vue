@@ -1,16 +1,31 @@
 <script setup lang="ts">
-import type { DisplayLocale, LiveRefreshOutcome, TransferDayRide } from '../../shared'
+import type { DisplayLocale, LiveRefreshOutcome, RideState } from '../../shared'
 import { z } from 'zod'
 import { handedOffDetailPrimary } from '../../shared'
 import { errorCode, httpStatus } from '../transfer-day-http'
 
+/**
+ * What the dialog reads. A day row has more fields; Home's list has these.
+ * The version is the one the form was opened with (ADR-0062).
+ */
+interface ConfirmationRide {
+  rideId: string
+  guestName: string
+  version: number
+  state: RideState
+  partnerConfirmed: boolean
+  pickupAt: string
+  changedByName: string | null
+  changedAt: string | null
+}
+
 const props = defineProps<{
-  rides: TransferDayRide[]
+  rides: ConfirmationRide[]
   timeZone: string
   locale: DisplayLocale
   /** Closes the detail after a confirmation that saved. */
   loadDay: () => Promise<void>
-  /** Reloads the day and leaves the dialog open. */
+  /** Reloads the list and leaves the dialog open. */
   reloadDay: () => Promise<LiveRefreshOutcome | void>
 }>()
 
@@ -38,11 +53,11 @@ const staleRide = computed(() => {
   return props.rides.find(ride => ride.rideId === id) ?? null
 })
 
-function canRecord(ride: TransferDayRide): boolean {
+function canRecord(ride: ConfirmationRide): boolean {
   return ride.state === 'handed_off' && ride.partnerConfirmed === false
 }
 
-function open(ride: TransferDayRide) {
+function open(ride: ConfirmationRide) {
   if (!canRecord(ride) || pending.value)
     return
   errorKey.value = null

@@ -1,7 +1,7 @@
 import type { OfficeHomeRide } from './office-home'
 import { expect, it } from 'vitest'
 import { instantFromWallClock } from './date'
-import { buildOfficeHome, officeHomeBlocks, officeHomeCountPath, officeHomeSchema, officeHomeUrgentKeys, officeHomeUrgentRideCount } from './office-home'
+import { buildOfficeHome, officeHomeAwaitingPartnerPath, officeHomeBlocks, officeHomeCountPath, officeHomeSchema, officeHomeUrgentKeys, officeHomeUrgentRideCount } from './office-home'
 
 /**
  * The office home snapshot. Lists keep every matching Ride. Counts keep
@@ -27,6 +27,10 @@ function ride(overrides: Partial<OfficeHomeRide> & Pick<OfficeHomeRide, 'rideId'
     expectedArrival: null,
     tabla: '',
     mustAccept: null,
+    partnerConfirmed: false,
+    version: 0,
+    changedAt: null,
+    changedByName: null,
     ...overrides,
   }
 }
@@ -863,6 +867,124 @@ it('counts a handed-off Ride on the day and shows it only once the unclosed mark
     + snapshot.counts.noShow
     + snapshot.counts.cancelled,
   ).toBe(snapshot.counts.rides)
+  // Past pickups are not waiting. The unclosed mark stays the only row.
+  expect(snapshot.awaitingPartnerConfirmation).toEqual([])
+  expect(blocks.awaitingPartnerConfirmation).toEqual([])
+})
+
+it('lists handoffs waiting on Partner confirmation of any day, soonest first, without a mark or a count', () => {
+  const now = new Date('2026-06-15T10:00:00.000Z')
+  const snapshot = buildOfficeHome([
+    ride({
+      rideId: '00000000-0000-4000-8000-0000000000c2',
+      guestName: 'Later today',
+      pickupAt: '2026-06-15T14:00:00.000Z',
+      state: 'handed_off',
+      partnerConfirmed: false,
+      version: 3,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-0000000000c4',
+      guestName: 'Tomorrow',
+      pickupAt: '2026-06-16T08:00:00.000Z',
+      state: 'handed_off',
+      partnerConfirmed: false,
+      version: 1,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-0000000000c1',
+      guestName: 'At this instant',
+      pickupAt: '2026-06-15T10:00:00.000Z',
+      state: 'handed_off',
+      partnerConfirmed: false,
+      version: 2,
+      changedAt: '2026-06-15T09:00:00.000Z',
+      changedByName: 'Dino Dispečer',
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-0000000000c3',
+      guestName: 'Same instant later id',
+      pickupAt: '2026-06-15T10:00:00.000Z',
+      state: 'handed_off',
+      partnerConfirmed: false,
+      version: 4,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-0000000000c5',
+      guestName: 'Confirmed',
+      pickupAt: '2026-06-15T11:00:00.000Z',
+      state: 'handed_off',
+      partnerConfirmed: true,
+      version: 5,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-0000000000c6',
+      guestName: 'Already past',
+      pickupAt: '2026-06-15T09:59:59.999Z',
+      state: 'handed_off',
+      partnerConfirmed: false,
+      version: 6,
+    }),
+    ride({
+      rideId: '00000000-0000-4000-8000-0000000000c7',
+      guestName: 'Waiting driver',
+      pickupAt: '2026-06-15T15:00:00.000Z',
+      state: 'assigned',
+      mustAccept: true,
+      driverId: '00000000-0000-4000-8000-000000000099',
+      driverName: 'Ana Vozač',
+      version: 0,
+    }),
+  ], now, zone)
+
+  expect(guests(snapshot.awaitingPartnerConfirmation)).toEqual([
+    'At this instant',
+    'Same instant later id',
+    'Later today',
+    'Tomorrow',
+  ])
+  expect(snapshot.awaitingPartnerConfirmation[0]).toMatchObject({
+    version: 2,
+    changedAt: '2026-06-15T09:00:00.000Z',
+    changedByName: 'Dino Dispečer',
+    state: 'handed_off',
+  })
+  expect(snapshot.awaitingPartnerConfirmation.every(row => !('unclosedMark' in row) && !('unassignedAlarm' in row))).toBe(true)
+  expect(snapshot.counts).toMatchObject({
+    rides: 6,
+    waitingOnAcceptance: 1,
+    handedOff: 5,
+    unassigned: 0,
+    inProgress: 0,
+  })
+  expect(
+    snapshot.counts.unassigned
+    + snapshot.counts.waitingOnAcceptance
+    + snapshot.counts.assignedNotStarted
+    + snapshot.counts.inProgress
+    + snapshot.counts.handedOff
+    + snapshot.counts.done
+    + snapshot.counts.noShow
+    + snapshot.counts.cancelled,
+  ).toBe(snapshot.counts.rides)
+
+  const blocks = officeHomeBlocks(snapshot)
+  expect(guests(blocks.awaitingPartnerConfirmation)).toEqual([
+    'At this instant',
+    'Same instant later id',
+    'Later today',
+    'Tomorrow',
+  ])
+  expect(blocks.awaitingPartnerConfirmation.every(row =>
+    row.marks.length === 0 && row.action === 'recordPartnerConfirmation' && row.version === snapshot.awaitingPartnerConfirmation.find(item => item.rideId === row.rideId)?.version,
+  )).toBe(true)
+  const attention = blocks.attention.flatMap(group => group.rides.map(row => row.guestName))
+  expect(attention).not.toContain('Tomorrow')
+  expect(attention).not.toContain('Later today')
+  expect(attention).not.toContain('At this instant')
+  expect(officeHomeUrgentKeys(snapshot)).toEqual([])
+  expect(officeHomeUrgentRideCount(snapshot)).toBe(0)
+  expect(officeHomeAwaitingPartnerPath(snapshot.operationalDate)).toBe('/transfers?day=2026-06-15&filter=awaitingPartner')
 })
 
 it('keeps an unsent invoice and the payment reminder out of the urgent count', () => {
