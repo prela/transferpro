@@ -224,7 +224,10 @@ export type CancelledRideResult = z.infer<typeof cancelledRideResultSchema>
  * unfinished extra vehicles a route change of the main Transfer left
  * untouched. It is zero when the change is not a route change, the Transfer
  * is an extra vehicle, the group has none left, or the same fields were
- * applied to those extra vehicles. The address is not on this object.
+ * applied to those extra vehicles. `partnerConfirmationsCleared` is how
+ * many handed-off Rides lost a Partner confirmation that was set. It is
+ * zero when none was set, or the change was not one the Partner agreed
+ * to (ADR-0062). The address is not on this object.
  */
 export const correctedTransferResultSchema = z.object({
   transfer: transferSchema,
@@ -235,6 +238,7 @@ export const correctedTransferResultSchema = z.object({
   // no free Partner. The correction still stands (ADR-0034).
   fullyBooked: z.boolean(),
   unfinishedExtraVehicleCount: z.number().int().nonnegative(),
+  partnerConfirmationsCleared: z.number().int().nonnegative(),
 })
 
 export type CorrectedTransferResult = z.infer<typeof correctedTransferResultSchema>

@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { QueryParamError } from './query'
-import { canAddExtraVehicle, canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, childSeatCountError, CLIENT_REFERENCE_MAX_LENGTH, correctionChangesRoute, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, luggageCountError, NOTE_MAX_LENGTH, officeGroupPassengerCount, optionalCountFromInput, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, passengerCountError, pickupAtError, priceError, ROUTE_TRANSFER_FIELDS, sameLocationError, transferGroupMemberSchema, transferGroupRole, transferGroupSchema, TransferInputError } from './transfer'
+import { canAddExtraVehicle, canCancelRide, canCorrectTransfer, canDeclineRide, canMarkRideDone, canRecordLandingTime, changedTransferFields, CHILD_SEAT_COUNT_MAX, childSeatCountError, CLIENT_REFERENCE_MAX_LENGTH, correctionChangesRoute, correctionClearsPartnerConfirmation, correctionReturnsAcceptedRide, FLIGHT_NUMBER_MAX_LENGTH, GROUP_PASSENGER_COUNT_MAX, GUEST_NAME_MAX_LENGTH, LUGGAGE_COUNT_MAX, luggageCountError, NOTE_MAX_LENGTH, officeGroupPassengerCount, optionalCountFromInput, parseCorrectTransfer, parseCreateTransfer, parseRecordTransfer, parseTransferDay, PASSENGER_COUNT_MAX, passengerCountError, pickupAtError, priceError, ROUTE_TRANSFER_FIELDS, sameLocationError, transferGroupMemberSchema, transferGroupRole, transferGroupSchema, TransferInputError } from './transfer'
 
 const clientId = '9e4b3f6d-5555-4555-8555-555555555555'
 const startLocationId = 'a1b2c3d4-5555-4555-8555-555555555555'
@@ -437,4 +437,53 @@ it('returns an accepted Ride only when the pickup, a place, or the flight number
     airportMark: true,
     price: '10.00',
   }), sameFlight)).toBe(false)
+})
+
+const otherClient = 'e5e5e5e5-5555-4555-8555-555555555555'
+const otherStart = 'f6f6f6f6-6666-4666-8666-666666666666'
+
+it('clears a Partner confirmation only when the agreed time, place, flight, or a count changes', () => {
+  const stored = parseCreateTransfer(withEntryKey({ ...body, flightNumber: flight, note }), now)
+  const sameFlight = { before: flight, after: flight }
+  const changed = (patch: Partial<typeof stored>) => changedTransferFields(stored, { ...stored, ...patch })
+  const clears = (
+    fields: ReturnType<typeof changedTransferFields>,
+    flightChange: { before: string | null, after: string | null } = sameFlight,
+  ) => correctionClearsPartnerConfirmation('handed_off', true, fields, flightChange)
+
+  expect(clears(changed({ pickupAt: '2026-10-06T23:00:00.000Z' }))).toBe(true)
+  expect(clears(changed({ startLocationId: otherStart }))).toBe(true)
+  expect(clears(changed({ endLocationId: otherEnd }))).toBe(true)
+  expect(clears(changed({ flightNumber: 'OU 392' }), { before: flight, after: 'OU 392' })).toBe(true)
+  expect(clears(changed({ passengerCount: 3 }))).toBe(true)
+  expect(clears(changed({ luggageCount: 4 }))).toBe(true)
+  expect(clears(changed({ childSeatCount: 1 }))).toBe(true)
+  // A note that is not the same designator is a flight-number change (ADR-0010).
+  const vip = { ...stored, flightNumber: 'VIP' }
+  expect(clears(
+    changedTransferFields(vip, { ...vip, flightNumber: 'meet at desk' }),
+    { before: 'VIP', after: 'meet at desk' },
+  )).toBe(true)
+
+  // Spacing or case of the same designator is stored, and the agreement stands.
+  const spaced = changed({ flightNumber: 'ou384' })
+  expect(spaced).toEqual(['flightNumber'])
+  expect(clears(spaced, { before: flight, after: 'ou384' })).toBe(false)
+  expect(clears(changed({ guestName: 'Iva Ivić' }))).toBe(false)
+  expect(clears(changed({ note: 'Drugi terminal' }))).toBe(false)
+  expect(clears(changed({ tabla: 'IVA' }))).toBe(false)
+  expect(clears(changed({ clientId: otherClient }))).toBe(false)
+  expect(clears(changed({ clientReference: 'V-19' }))).toBe(false)
+  expect(clears(changed({ price: '10.00' }))).toBe(false)
+  expect(clears(changed({ payment: 'card' }))).toBe(false)
+  expect(clears(changed({ airportMark: true }))).toBe(false)
+  // The group's ordered count is not a count the Partner sends a vehicle for.
+  expect(clears(['groupPassengerCount'])).toBe(false)
+
+  const pickup = changed({ pickupAt: '2026-10-06T23:00:00.000Z' })
+  expect(correctionClearsPartnerConfirmation('handed_off', false, pickup, sameFlight)).toBe(false)
+  expect(correctionClearsPartnerConfirmation('accepted', true, pickup, sameFlight)).toBe(false)
+  expect(correctionClearsPartnerConfirmation('assigned', true, changed({ passengerCount: 4 }), sameFlight)).toBe(false)
+  expect(correctionClearsPartnerConfirmation('unassigned', true, changed({ flightNumber: 'OU 392' }), { before: flight, after: 'OU 392' })).toBe(false)
+  expect(correctionClearsPartnerConfirmation('done', true, pickup, sameFlight)).toBe(false)
 })

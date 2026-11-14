@@ -4,7 +4,7 @@ import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
 import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, parseTransferDayRideState, recallTransferDraft, recordedSeatCount, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferAwaitingInvoice, transferDayAttributeMatches, transferDayFilterCounts, transferDayFilterMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
-import { groupRouteLeftKey } from '../composables/transfer-form'
+import { groupRouteLeftKey, partnerConfirmationClearedKey } from '../composables/transfer-form'
 import { rideDetailLayout } from '../ride-detail'
 import { assignButtonId } from '../transfer-ride-buttons'
 import { workOrderNotice } from '../work-order-notice'
@@ -25,6 +25,8 @@ const router = useRouter()
 
 const saved = ref(false)
 const corrected = ref(false)
+// Beside the correction result, when a Partner confirmation was cleared.
+const partnerConfirmationCleared = ref<{ count: number, group: boolean } | null>(null)
 const openRideId = ref<string | null>(queryText(route.query.ride) || null)
 // The save notice asks the open detail to scroll to the group list.
 const revealGroup = ref(false)
@@ -622,7 +624,21 @@ function noteGroupRouteLeft(count: number, rideId: string) {
   groupRouteLeft.value = { count, rideId }
 }
 
+function notePartnerConfirmationCleared(notice: { count: number, group: boolean } | null) {
+  partnerConfirmationCleared.value = notice
+}
+
+const partnerConfirmationNotice = computed(() => {
+  const notice = partnerConfirmationCleared.value
+  if (notice === null)
+    return ''
+  if (notice.group)
+    return t('transfers.partnerConfirmationClearedGroup', { n: notice.count }, notice.count)
+  return t('transfers.partnerConfirmationCleared')
+})
+
 provide(groupRouteLeftKey, noteGroupRouteLeft)
+provide(partnerConfirmationClearedKey, notePartnerConfirmationCleared)
 
 function groupListHref(rideId: string): string {
   const params = new URLSearchParams({
@@ -734,8 +750,10 @@ async function onCommandSaved() {
 }
 
 watch(corrected, (value) => {
-  if (!value)
+  if (!value) {
+    partnerConfirmationCleared.value = null
     return
+  }
   command.value = null
   if (takeHold()) {
     focusDetail()
@@ -889,6 +907,15 @@ onUnmounted(() => {
       role="status"
       class="mb-4"
       :description="t('transfers.corrected')"
+      :ui="{ description: '!text-default !opacity-100' }"
+    />
+    <UAlert
+      v-if="partnerConfirmationCleared"
+      color="warning"
+      variant="subtle"
+      role="status"
+      class="mb-4"
+      :description="partnerConfirmationNotice"
       :ui="{ description: '!text-default !opacity-100' }"
     />
     <!-- A toast would dismiss the link. The office has to open the group. -->

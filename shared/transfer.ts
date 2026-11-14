@@ -245,6 +245,36 @@ function sameDesignatorSpelling(before: string | null, after: string | null): bo
   return before !== null && after !== null && sameFlightDesignator(before, after)
 }
 
+/**
+ * Counts the Partner sends a vehicle and its equipment for. A change of
+ * one of these clears a confirmation the pickup and the places would
+ * (ADR-0062). The group's ordered count is not one of them.
+ */
+const PARTNER_CONFIRMATION_COUNT_FIELDS = ['passengerCount', 'luggageCount', 'childSeatCount'] as const
+
+/**
+ * A handed-off Ride the Partner already confirmed loses that record when
+ * the correction changes what was agreed (ADR-0062). The pickup, the
+ * places, and the flight follow the same rule as returning an accepted
+ * Ride (ADR-0010): spacing or case of the same designator does not, and
+ * a note that is not that designator does. A waiting handoff has nothing
+ * to clear. Any other state, the guest, the tabla, the note, the Client,
+ * the price, the payment, the airport mark, and the group's ordered count
+ * leave the flag set. An unavailability window is not a correction field.
+ */
+export function correctionClearsPartnerConfirmation(
+  state: RideState,
+  partnerConfirmed: boolean,
+  changed: readonly TransferCorrectionField[],
+  flight: { readonly before: string | null, readonly after: string | null },
+): boolean {
+  if (state !== 'handed_off' || !partnerConfirmed)
+    return false
+  if (changed.some(field => (PARTNER_CONFIRMATION_COUNT_FIELDS as readonly string[]).includes(field)))
+    return true
+  return correctionReturnsAcceptedRide('accepted', changed, flight)
+}
+
 function sameTransferField(field: TransferCorrectionField, before: CreateTransfer, after: CreateTransfer): boolean {
   if (field === 'pickupAt')
     return new Date(before.pickupAt).getTime() === new Date(after.pickupAt).getTime()

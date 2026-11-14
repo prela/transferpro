@@ -755,6 +755,8 @@
     "saveCorrection": "Spremi ispravak",
     "savingCorrection": "Spremanje",
     "corrected": "Ispravljeno.",
+    "partnerConfirmationCleared": "Potvrda podizvođača je poništena jer su se promijenili vrijeme, mjesto, let ili broj putnika, prtljage ili sjedalica. Javite promjenu podizvođaču i ponovno zabilježite potvrdu.",
+    "partnerConfirmationClearedGroup": "Potvrda podizvođača je poništena na {n} vožnji jer su se promijenili vrijeme, mjesto, let ili broj putnika, prtljage ili sjedalica. Javite promjenu podizvođaču i ponovno zabilježite potvrdu. | Potvrda podizvođača je poništena na {n} vožnje jer su se promijenili vrijeme, mjesto, let ili broj putnika, prtljage ili sjedalica. Javite promjenu podizvođaču i ponovno zabilježite potvrdu. | Potvrda podizvođača je poništena na {n} vožnji jer su se promijenili vrijeme, mjesto, let ili broj putnika, prtljage ili sjedalica. Javite promjenu podizvođaču i ponovno zabilježite potvrdu.",
     "cancelCorrect": "Odustani",
     "closed": "Ta vožnja je završena. Transfer nije promijenjen.",
     "signedOut": "Odjavljeni ste. Prijavite se i pokušajte ponovno.",

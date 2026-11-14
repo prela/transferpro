@@ -12,11 +12,13 @@ import { transferHttpError } from '../transfers/http'
  * unless the body says `confirm: true`. The audit entry does not contain
  * the guest name, the flight, the note, the tabla, or the price.
  * The current Driver is mailed changed after the booking is saved, when a
- * mailed fact changed. The body is `{ transfer, ride, workOrders, relocationWarnings, fullyBooked, unfinishedExtraVehicleCount }`.
+ * mailed fact changed. The body is `{ transfer, ride, workOrders, relocationWarnings, fullyBooked, unfinishedExtraVehicleCount, partnerConfirmationsCleared }`.
  * `unfinishedExtraVehicleCount` is how many unfinished extra vehicles a route
  * change of the main Transfer left untouched. It is zero when the body sets
  * `applyToExtraVehicles`, which copies the changed pickup, start and end Locations, and flight
  * onto those extra vehicles in the same save. It is zero otherwise.
+ * `partnerConfirmationsCleared` is how many Rides lost a Partner confirmation
+ * that was set. A waiting handoff and a refused correction add nothing.
  * `workOrders` has one notice per Driver this save mailed. The address is not
  * on it. A rejected send leaves the correction.
  */

@@ -4,7 +4,7 @@ import type { Logger, TenantTransaction } from '../../../core/index'
 import type { Mailer } from '../../tenancy'
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { changedTransferFields, correctionChangesRoute, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, officeCanCorrectTransfer, officeGroupPassengerCount, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, ROUTE_TRANSFER_FIELDS, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
+import { changedTransferFields, correctionChangesRoute, correctionClearsPartnerConfirmation, correctionReturnsAcceptedRide, flightNumberChangeClearsLanding, officeCanCorrectTransfer, officeGroupPassengerCount, parseCorrectTransfer, paymentMethodSchema, RIDE_ACCEPTED_FIELDS, rideStateSchema, ROUTE_TRANSFER_FIELDS, TRANSFER_CORRECTION_FIELDS, TransferInputError } from '../../../../shared'
 import { hideDatabaseError, loadAppEnv } from '../../../core/index'
 import { appendAuditEntry } from '../../audit'
 import { correctionMovesWindow, lockTenantCapacity, tenantCapacityMinutes } from '../../capacity'
@@ -16,6 +16,7 @@ import { correctionBlockedByInvoice } from '../application/issue-invoice'
 import { cancellableRideStatesSql } from './cancellable-ride-states'
 import { checkRideCapacity, transferFullyBooked } from './capacity-check'
 import { mailOutboxQueue } from './mail-outbox-worker'
+import { appendPartnerConfirmationCleared } from './partner-confirmation'
 import { ExtraVehicleCountError, ExtraVehiclePriceError, TransferInvoicedError, TransferNotCorrectableError, TransferNotFoundError } from './transfer-errors'
 import { refuseStaleVersion, StaleSaveError } from './transfer-version'
 import { toInstant, toPrice } from './transfers'
@@ -50,6 +51,8 @@ const lockedRows = z.object({
     mustAccept: z.boolean().nullable(),
     landingAt: z.unknown().nullable(),
     version: z.number().int(),
+    partnerId: z.uuid().nullable(),
+    partnerConfirmed: z.boolean(),
   })),
 })
 
@@ -154,13 +157,27 @@ export async function correctTransfer(
       const order = await readAssignedWorkOrder(transaction, ride.rideId)
       staged.push(await stageWorkOrder(transaction, order, 'changed', { queue, context }))
     }
-    return { recorded: corrected.recorded, staged, relocationWarnings: corrected.relocationWarnings, fullyBooked: corrected.fullyBooked, unfinishedExtraVehicleCount: corrected.unfinishedExtraVehicleCount }
+    return {
+      recorded: corrected.recorded,
+      staged,
+      relocationWarnings: corrected.relocationWarnings,
+      fullyBooked: corrected.fullyBooked,
+      unfinishedExtraVehicleCount: corrected.unfinishedExtraVehicleCount,
+      partnerConfirmationsCleared: corrected.partnerConfirmationsCleared,
+    }
   })
   const mailer = delivery?.mailer ?? mailerForApp(loadAppEnv())
   const workOrders = []
   for (const staged of saved.staged)
     workOrders.push(await deliverStagedWorkOrder(headers, staged, mailer, delivery?.logger))
-  return { ...saved.recorded, workOrders, relocationWarnings: saved.relocationWarnings, fullyBooked: saved.fullyBooked, unfinishedExtraVehicleCount: saved.unfinishedExtraVehicleCount }
+  return {
+    ...saved.recorded,
+    workOrders,
+    relocationWarnings: saved.relocationWarnings,
+    fullyBooked: saved.fullyBooked,
+    unfinishedExtraVehicleCount: saved.unfinishedExtraVehicleCount,
+    partnerConfirmationsCleared: saved.partnerConfirmationsCleared,
+  }
 }
 
 /**
@@ -172,6 +189,8 @@ export async function correctTransfer(
  * Transfer that was not copied onto its extra vehicles. It is zero when
  * the office applied that change, and zero otherwise.
  * `extraNotices` are the unfinished extra vehicles this save changed.
+ * `partnerConfirmationsCleared` counts handed-off Rides whose confirmation
+ * was set and this save cleared. A waiting handoff adds nothing.
  */
 export async function correctTransferForOffice(
   transaction: TenantTransaction,
@@ -182,7 +201,7 @@ export async function correctTransferForOffice(
   version: number,
   groupPassengerCount: number | null,
   applyToExtraVehicles: boolean,
-): Promise<{ recorded: RecordedTransfer, notify: boolean, relocationWarnings: ScheduleClash[], fullyBooked: boolean, unfinishedExtraVehicleCount: number, extraNotices: ExtraVehicleNotice[] }> {
+): Promise<{ recorded: RecordedTransfer, notify: boolean, relocationWarnings: ScheduleClash[], fullyBooked: boolean, unfinishedExtraVehicleCount: number, extraNotices: ExtraVehicleNotice[], partnerConfirmationsCleared: number }> {
   const current = await lockTransfer(transaction, transferId)
   if (!current)
     throw new TransferNotFoundError()
@@ -212,7 +231,7 @@ export async function correctTransferForOffice(
   const fields = TRANSFER_CORRECTION_FIELDS.filter(field => changed.includes(field) || (groupChanged && field === 'groupPassengerCount'))
   const nextGroup = groupPassengerCount ?? current.groupPassengerCount
   if (fields.length === 0)
-    return { recorded: toRecorded(current, stored), notify: false, relocationWarnings: [], fullyBooked: false, unfinishedExtraVehicleCount: 0, extraNotices: [] }
+    return { recorded: toRecorded(current, stored), notify: false, relocationWarnings: [], fullyBooked: false, unfinishedExtraVehicleCount: 0, extraNotices: [], partnerConfirmationsCleared: 0 }
   // Client, price, and payment stay while the invoice locks them. The
   // throw is before any write, so the version and the audit stay put.
   if (correctionBlockedByInvoice(openInvoice, fields))
@@ -297,6 +316,12 @@ export async function correctTransferForOffice(
   if (returned && ride.driverId)
     await appendReturned(transaction, actorUserId, ride.id, ride.driverId)
 
+  // The correction entry above is unchanged. This one is written only when
+  // a confirmation that was set is cleared, on this same transaction.
+  let partnerConfirmationsCleared = 0
+  if (await clearPartnerConfirmationIfAgreed(transaction, actorUserId, current, changed, stored.flightNumber, input.flightNumber))
+    partnerConfirmationsCleared += 1
+
   const extraNotices: ExtraVehicleNotice[] = []
   for (const extra of planned) {
     // The extra vehicle's opened version is not compared. The row lock is
@@ -346,6 +371,9 @@ export async function correctTransferForOffice(
     })
     if (extraReturned && extraRide.driverId)
       await appendReturned(transaction, actorUserId, extraRide.id, extraRide.driverId)
+    // Each extra vehicle is judged on the fields this copy actually changed.
+    if (await clearPartnerConfirmationIfAgreed(transaction, actorUserId, extra.row, extra.fields, extra.row.flightNumber, extra.input.flightNumber))
+      partnerConfirmationsCleared += 1
     extraNotices.push({
       rideId: extraRide.id,
       driverId: extraRide.driverId,
@@ -373,6 +401,7 @@ export async function correctTransferForOffice(
     fullyBooked,
     unfinishedExtraVehicleCount,
     extraNotices,
+    partnerConfirmationsCleared,
   }
 }
 
@@ -462,7 +491,9 @@ const lockedTransferColumns = sql`
   r.vehicle_id as "vehicleId",
   r.must_accept as "mustAccept",
   t.landing_at as "landingAt",
-  t.version
+  t.version,
+  r.partner_id as "partnerId",
+  r.partner_confirmed as "partnerConfirmed"
 `
 
 async function lockTransfer(transaction: TenantTransaction, transferId: string): Promise<LockedTransfer | undefined> {
@@ -629,6 +660,46 @@ async function returnAcceptedRide(transaction: TenantTransaction, rideId: string
   if (!updated)
     throw new TransferNotCorrectableError()
   return updated
+}
+
+/**
+ * Clears `partner_confirmed` only when this Ride is a confirmed handoff
+ * and the change is one the Partner agreed to. The update is the proof
+ * the flag was set: a waiting handoff matches no row and appends nothing.
+ * A refused correction never reaches this, so it clears nothing.
+ */
+async function clearPartnerConfirmationIfAgreed(
+  transaction: TenantTransaction,
+  actorUserId: string,
+  row: LockedTransfer,
+  changed: readonly TransferCorrectionField[],
+  flightBefore: string | null,
+  flightAfter: string | null,
+): Promise<boolean> {
+  if (!correctionClearsPartnerConfirmation(row.state, row.partnerConfirmed, changed, {
+    before: flightBefore,
+    after: flightAfter,
+  })) {
+    return false
+  }
+  const cleared = z.object({
+    rows: z.array(z.object({
+      id: z.uuid(),
+      partnerId: z.uuid(),
+    })),
+  }).parse(await runStep(transaction, sql`
+    update app.rides
+    set partner_confirmed = false
+    where id = ${row.rideId}
+      and state = 'handed_off'
+      and partner_confirmed = true
+      and partner_id is not null
+    returning id, partner_id as "partnerId"
+  `)).rows[0]
+  if (!cleared)
+    return false
+  await appendPartnerConfirmationCleared(transaction, actorUserId, cleared.id, cleared.partnerId, 'Transfer correct failed')
+  return true
 }
 
 async function appendCorrected(
