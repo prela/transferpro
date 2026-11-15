@@ -3,7 +3,7 @@ import { expectNoAxeViolations } from './fixtures/axe'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, hydrated, openListbox, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
+import { chooseOption, hydrated, openListbox, openNewTransfer, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 test.beforeEach(async ({ page }) => {
   // One instant for the seed and the board, including across 05:00.
@@ -28,10 +28,26 @@ async function chooseMenu(page: Page, dialog: Locator, field: string, option: st
 async function openForm(page: Page): Promise<Locator> {
   await page.goto('/transfers')
   await hydrated(page)
-  await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await openNewTransfer(page)
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible()
   return dialog
+}
+
+/**
+ * A return to the day opens a saved draft over the New transfer button, and
+ * the click then waits out the test. Discard that draft so the next open is
+ * a blank form.
+ */
+async function discardRestoredDraft(page: Page) {
+  const form = page.getByRole('dialog', { name: /^(Zabilježi transfer|Record a transfer)$/ })
+  if (!(await form.isVisible()))
+    return
+  const discard = form.getByRole('button', { name: /^(Odbaci|Discard)$/, exact: true })
+  if (await discard.isVisible()) {
+    await discard.click()
+    await expect(form).toBeHidden()
+  }
 }
 
 async function createFromSelect(page: Page, dialog: Locator, field: string, name: string, addLabel = `+ Dodaj ‘${name}’`) {
@@ -209,7 +225,8 @@ test('quick add picks a place from the name or the address', async ({ page }) =>
     await switchLocale(page, 'en')
     await page.goto('/transfers')
     await hydrated(page)
-    await page.getByRole('button', { name: 'Record a transfer', exact: true }).click()
+    await discardRestoredDraft(page)
+    await openNewTransfer(page)
     const english = page.getByRole('dialog')
     await createFromSelect(page, english, 'Where it starts', 'Hotel English', '+ Add ‘Hotel English’')
     await chooseOption(page, english.getByRole('combobox', { name: 'Kind' }), 'Hotel')
@@ -229,7 +246,8 @@ test('quick add picks a place from the name or the address', async ({ page }) =>
     await page.goto('/transfers')
     await hydrated(page)
     await expect(page.locator('html')).toHaveClass(/dark/)
-    await page.getByRole('button', { name: 'Record a transfer', exact: true }).click()
+    await discardRestoredDraft(page)
+    await openNewTransfer(page)
     const dark = page.getByRole('dialog')
     await createFromSelect(page, dark, 'Where it starts', 'Hotel Dark', '+ Add ‘Hotel Dark’')
     await chooseOption(page, dark.getByRole('combobox', { name: 'Kind' }), 'Hotel')
@@ -384,7 +402,7 @@ test.describe('an already saved entry', () => {
     await createdId(page, '/api/locations', { name: 'End Key', kind: 'hotel' })
     await page.goto('/transfers')
     await hydrated(page)
-    await page.getByRole('button', { name: 'Record a transfer', exact: true }).click()
+    await openNewTransfer(page)
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
     await chooseMenu(page, dialog, 'Client', 'Agency Key')
@@ -419,7 +437,7 @@ test.describe('@phone', () => {
     await useTheme(page, 'dark')
     await page.goto('/transfers')
     await hydrated(page)
-    await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+    await openNewTransfer(page)
     const dialog = page.getByRole('dialog').or(page.getByRole('region', { name: 'Zabilježi transfer' }))
     await createFromSelect(page, dialog, 'Polazište', 'Hotel Telefon')
     await chooseOption(page, dialog.getByRole('combobox', { name: 'Vrsta' }), 'Hotel')
@@ -447,7 +465,7 @@ test.describe('@phone', () => {
       await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
       await page.goto('/transfers')
       await hydrated(page)
-      await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+      await openNewTransfer(page)
       const panel = phone
         ? page.getByRole('dialog')
         : page.getByRole('region', { name: 'Zabilježi transfer' })
@@ -464,7 +482,7 @@ test.describe('@phone', () => {
       await expectNoAxeViolations(page)
       if (theme === 'light') {
         await switchLocale(page, 'en')
-        await page.getByRole('button', { name: 'Record a transfer', exact: true }).click()
+        await openNewTransfer(page)
         const english = page.getByRole('region', { name: 'Record a transfer' }).or(page.getByRole('dialog'))
         await expect(english.getByLabel('Guest name')).toBeVisible()
         await expect(english.getByLabel('Client reference')).toBeVisible()

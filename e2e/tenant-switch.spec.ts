@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { expect, test } from './fixtures/playwright'
 import { seedMembership, seedTenant } from './fixtures/seed'
-import { hydrated, openUserMenu, signOut, switchTheme, useTheme } from './fixtures/ui'
+import { hydrated, openNewTransfer, openUserMenu, signOut, switchTheme, useTheme } from './fixtures/ui'
 
 /**
  * The profile menu switches company without signing out (ADR-0056).
@@ -46,11 +46,7 @@ async function openTransfer(page: Page) {
   const dialog = page.getByRole('dialog')
   if (await dialog.isVisible())
     return dialog
-  const record = page.getByRole('button', { name: 'Zabilježi transfer', exact: true })
-  if (await record.isVisible())
-    await record.click()
-  else
-    await page.getByRole('button', { name: 'Novi transfer', exact: true }).click()
+  await openNewTransfer(page)
   await expect(dialog).toBeVisible()
   return dialog
 }

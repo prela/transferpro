@@ -2,7 +2,7 @@ import { calendarDateInTimeZone, operationalDateInTimeZone } from '../shared/dat
 import { operationalNow, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { signIn } from './fixtures/ui'
+import { openNewTransfer, signIn } from './fixtures/ui'
 
 test.beforeEach(async ({ page }) => {
   // The board and this assertion share one instant, including at 04:55,
@@ -27,6 +27,6 @@ test('the board opens on the operational day and the pickup form stays on the ca
   await expect(day).toHaveValue(operational)
   // The pickup field lives in the record slideover. The board day stays the
   // operational day; the form still defaults to noon on the calendar date.
-  await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await openNewTransfer(page)
   await expect(page.getByRole('dialog').getByLabel('Vrijeme preuzimanja')).toHaveValue(`${calendar}T12:00`)
 })

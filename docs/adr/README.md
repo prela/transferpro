@@ -53,7 +53,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0035 | Idempotent manual entry, and reactions to a change without an event log | accepted |
 | ADR-0036 | The Transfer is the order, and who owns the v1 modules | accepted; partially superseded by ADR-0051 |
 | ADR-0037 | Console mailer on preview | accepted; partially superseded by ADR-0042 |
-| ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted; partially superseded by ADR-0041, ADR-0042, ADR-0055, ADR-0056, ADR-0058, and ADR-0064 |
+| ADR-0038 | Office and driver UI: layouts, navigation, and density | accepted; partially superseded by ADR-0041, ADR-0042, ADR-0055, ADR-0056, ADR-0058, ADR-0060, and ADR-0064 |
 | ADR-0039 | Urgent and warning tiers, and live refresh | accepted; partially superseded by ADR-0045, ADR-0046, ADR-0051, ADR-0055, and ADR-0062 |
 | ADR-0040 | Theme tokens and contrast rules | accepted |
 | ADR-0041 | Revoke a pending invitation | accepted |
@@ -75,6 +75,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0057 | Office and driver session lengths | accepted |
 | ADR-0058 | Stops and an escort on one Transfer | accepted |
 | ADR-0059 | A Vehicle seat count and a passenger warning | accepted |
+| ADR-0060 | Transfer day header: view, filters, and tools | accepted |
 | ADR-0061 | Pick a place by its name or its address | accepted |
 | ADR-0062 | Partner confirmation of a handed-off Ride | accepted; partially superseded by ADR-0065 |
 | ADR-0063 | Operating area bias for place suggestions | accepted |

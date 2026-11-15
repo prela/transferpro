@@ -4,7 +4,7 @@ import { operationalDateInTimeZone } from '../shared/date'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { expect, test } from './fixtures/playwright'
 import { seedMembership, seedTenant } from './fixtures/seed'
-import { chooseOption, hydrated, openListbox, openUserMenu, useTheme } from './fixtures/ui'
+import { chooseOption, hydrated, openListbox, openNewTransfer, openUserMenu, useTheme } from './fixtures/ui'
 
 /**
  * A frozen tab keeps the company it was opened for. A save after another
@@ -71,7 +71,7 @@ async function chooseMenu(page: Page, dialog: Locator, field: string, option: st
 async function openTransfer(page: Page) {
   await page.goto('/transfers')
   await hydrated(page)
-  await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await openNewTransfer(page)
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible()
   return dialog

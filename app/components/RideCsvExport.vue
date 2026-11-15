@@ -3,6 +3,12 @@ import { addCalendarDays, calendarDateInTimeZone } from '../../shared'
 
 const props = defineProps<{
   timeZone: string
+  /** Desktop shows the button. The phone menu calls openExport and hides it. */
+  buttonClass?: string
+}>()
+
+const emit = defineEmits<{
+  closed: []
 }>()
 
 const { t } = useI18n()
@@ -42,6 +48,17 @@ function openExport() {
   errorKey.value = null
   open.value = true
 }
+
+/**
+ * The phone tools menu is not the element that opened the dialog, so the
+ * dialog's own focus return would land on a menu item that has already closed.
+ */
+watch(open, (value, previous) => {
+  if (previous === true && value === false)
+    emit('closed')
+})
+
+defineExpose({ openExport })
 
 function filenameFrom(header: string | null): string {
   const match = /^attachment; filename="(rides-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.csv)"$/.exec(header ?? '')
@@ -85,7 +102,7 @@ async function download() {
     variant="outline"
     size="sm"
     icon="i-lucide-download"
-    class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
+    :class="buttonClass ?? 'h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base'"
     @click="openExport"
   >
     {{ t('transfers.exportCsv') }}

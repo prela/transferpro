@@ -5,7 +5,7 @@ import { operationalDay, pinOperationalClock } from './fixtures/operational-cloc
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
-import { chooseOption, hydrated, openListbox, signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
+import { chooseOption, hydrated, openListbox, openNewTransfer, signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 /**
  * Popunjeno on the Transfer slideover, the board warning, and the refusal
@@ -108,7 +108,7 @@ test('the slideover warns Popunjeno and still saves, the board shows it, and the
 
   await page.goto('/transfers')
   await hydrated(page)
-  await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await openNewTransfer(page)
   const slideover = page.getByRole('dialog')
   await expect(slideover).toBeVisible()
   await chooseMenu(page, slideover, 'Naručitelj', 'Agencija Zora')
