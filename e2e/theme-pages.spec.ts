@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test'
 import { expectNoAxeViolations } from './fixtures/axe'
 import { expect, test } from './fixtures/playwright'
 import { seedTenant } from './fixtures/seed'
-import { signIn, switchLocale, useTheme } from './fixtures/ui'
+import { openNewTransfer, signIn, switchLocale, useTheme } from './fixtures/ui'
 
 /**
  * Desktop shows the sidebar. The phone project keeps catalogs behind Više.
@@ -79,14 +79,14 @@ test.describe('@phone', () => {
       await openOfficeLink(page, 'Transferi')
       await expect(page.getByRole('heading', { level: 1, name: 'Transferi' })).toBeVisible()
       await expect(page.getByRole('textbox', { name: 'Dan', exact: true })).toBeVisible()
-      await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+      await openNewTransfer(page)
       await expect(page.getByRole('dialog').getByLabel('Ime gosta')).toBeVisible()
       // A blank form is not a draft. The pointer also stays on the primary
       // button, whose hovered fill is below 4.5:1.
       await page.mouse.move(0, 0)
       await expectNoAxeViolations(page)
       await switchLocale(page, 'en')
-      await page.getByRole('button', { name: 'Record a transfer', exact: true }).click()
+      await openNewTransfer(page)
       const dialog = page.getByRole('dialog', { name: 'Record a transfer' })
       await expect(dialog.getByLabel('Guest name')).toBeVisible()
       await expect(dialog.getByRole('button', { name: 'Record transfer', exact: true })).toBeVisible()

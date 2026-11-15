@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DisplayLocale, LiveRefreshOutcome, TransferBoardFilter, TransferDayRide, TransferPrefill } from '../../shared'
 import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
-import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, groupRouteLeftNotice, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, parseTransferDayRideState, recallTransferDraft, recordedSeatCount, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferAwaitingInvoice, transferDayAttributeMatches, transferDayFilterCounts, transferDayFilterMatches, transferDaySearchMatches } from '../../shared'
+import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, groupRouteLeftNotice, hiddenUrgentCount, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, parseTransferDayRideState, recallTransferDraft, recordedSeatCount, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferAwaitingInvoice, transferDayAttributeMatches, transferDayFilterCounts, transferDayFilterMatches, transferDaySearchMatches } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
 import { groupRouteLeftKey, partnerConfirmationClearedKey } from '../composables/transfer-form'
@@ -74,6 +74,23 @@ const {
   () => filter.value === 'awaitingPartner',
 )
 
+/**
+ * Counts stay blank until this day's first successful read, including after
+ * a day change. A later refresh keeps them. `dayBusy` is the list's aria-busy
+ * for that same first read, not for every refresh.
+ */
+const countsReady = ref(false)
+const dayBusy = ref(true)
+let dayTicket = 0
+
+watch(loading, (value) => {
+  if (value || dayTicket !== 0)
+    return
+  dayBusy.value = false
+  if (!loadError.value)
+    countsReady.value = true
+})
+
 const queryDay = queryText(route.query.day)
 if (isCalendarDate(queryDay))
   day.value = queryDay
@@ -110,7 +127,12 @@ const form = ref<{
 let catalogsReady = false
 
 function focusList() {
-  table.value?.focusList()
+  const region = listPane.value?.querySelector('[role="region"]')
+  if (region instanceof HTMLElement) {
+    region.focus()
+    return
+  }
+  listPane.value?.focus()
 }
 
 function declinesFor(rideId: string): { driverName: string }[] {
@@ -194,6 +216,39 @@ const counts = computed(() => {
 
 const toInvoiceCount = computed(() => narrowedRides.value.filter(ride => transferAwaitingInvoice(ride)).length)
 
+function urgentIn(rows: TransferDayRide[]): number {
+  return transferDayFilterCounts(
+    rows.map(ride => ({
+      rideId: ride.rideId,
+      ride: withSeatCount(ride),
+      declines: declinesFor(ride.rideId),
+    })),
+    nowMs.value,
+  ).urgent
+}
+
+const headerFilters = computed(() => ({
+  search: search.value,
+  clientId: clientId.value,
+  driverId: driverId.value,
+  vehicleId: vehicleId.value,
+  partnerId: partnerId.value,
+  rideState: rideState.value,
+  needsAttention: needsAttention.value,
+  view: filter.value,
+}))
+
+/** Filters only. The view is on the state so the helper can ignore it. */
+const hiddenUrgent = computed(() => {
+  if (!countsReady.value)
+    return 0
+  return hiddenUrgentCount(urgentIn(rides.value), urgentIn(narrowedRides.value), headerFilters.value)
+})
+
+const listTotal = computed(() =>
+  filter.value === 'awaitingPartner' ? awaitingPartnerRides.value.length : rides.value.length,
+)
+
 const visibleRides = computed(() => {
   // The server already cut this list at one instant. A second cutoff on the
   // browser clock would drop a Ride Home still shows (ADR-0062).
@@ -210,6 +265,15 @@ const visibleRides = computed(() => {
 const filteredEmpty = computed(() =>
   !loading.value && !loadError.value && rides.value.length > 0 && visibleRides.value.length === 0,
 )
+
+const shownText = computed(() => {
+  if (!countsReady.value || visibleRides.value.length === listTotal.value)
+    return ''
+  return t('transfers.shownOf', { shown: visibleRides.value.length, total: listTotal.value })
+})
+
+/** Spoken after the office changes a view or a filter. A refresh does not write it. */
+const resultAnnouncement = ref('')
 
 const announcement = computed(() =>
   announcedCount.value > 0 ? t('liveRefresh.newUrgent') : '',
@@ -252,6 +316,14 @@ const { automatic, refreshing, updatedAt, failed, refresh } = useLiveRefresh({
 const shownTime = computed(() =>
   updatedAt.value === null ? '' : clockLabel(updatedAt.value, props.timeZone, props.locale),
 )
+
+const updatedLabel = computed(() => {
+  if (updatedAt.value === null)
+    return ''
+  return failed.value
+    ? t('liveRefresh.failed', { time: shownTime.value })
+    : t('liveRefresh.updatedAt', { time: shownTime.value })
+})
 
 const ownedQuery = ['day', 'filter', 'search', 'client', 'driver', 'vehicle', 'partner', 'rideState', 'attention', 'ride']
 
@@ -384,12 +456,31 @@ function applyRouteQuery() {
 
 watch(day, () => {
   command.value = null
+  const ticket = ++dayTicket
+  countsReady.value = false
+  dayBusy.value = true
   void syncQuery()
-  void loadDay()
+  void loadDay().then((outcome) => {
+    if (ticket !== dayTicket)
+      return
+    dayBusy.value = false
+    if (outcome === 'ok')
+      countsReady.value = true
+  })
 })
 
 watch([filter, search, clientId, driverId, vehicleId, partnerId, rideState, needsAttention, openRideId], () => {
   void syncQuery()
+})
+
+watch([filter, search, clientId, driverId, vehicleId, partnerId, rideState, needsAttention], () => {
+  if (!countsReady.value)
+    return
+  const text = shownText.value
+  resultAnnouncement.value = ''
+  void nextTick(() => {
+    resultAnnouncement.value = text
+  })
 })
 
 watch(filter, (next, previous) => {
@@ -456,8 +547,7 @@ function goToday() {
   day.value = operationalDateInTimeZone(props.timeZone, new Date(), props.operationalDayStartHour)
 }
 
-function clearFilters() {
-  filter.value = 'all'
+function clearAttributeFilters() {
   search.value = ''
   clientId.value = null
   driverId.value = null
@@ -465,6 +555,11 @@ function clearFilters() {
   partnerId.value = null
   rideState.value = ''
   needsAttention.value = false
+}
+
+function clearFilters() {
+  filter.value = 'all'
+  clearAttributeFilters()
 }
 
 const openRide = computed(() => {
@@ -867,62 +962,28 @@ onUnmounted(() => {
       v-model:partner-id="partnerId"
       v-model:ride-state="rideState"
       v-model:needs-attention="needsAttention"
+      v-model:automatic="automatic"
       :counts="counts"
       :to-invoice-count="toInvoiceCount"
+      :counts-ready="countsReady"
+      :hidden-urgent="hiddenUrgent"
+      :shown-count="visibleRides.length"
       :clients="clients"
       :drivers="drivers"
       :vehicles="vehicles.map(vehicle => ({ id: vehicle.id, name: vehicle.registrationPlate }))"
       :partners="partners.map(partner => ({ id: partner.id, name: partner.name }))"
       :note="unassignedNote"
+      :tenant-id="tenantId"
+      :user-id="userId"
+      :time-zone="timeZone"
+      :refreshing="refreshing"
+      :updated-label="updatedLabel"
       @today="goToday"
-      @add="startAdd()"
+      @focus-list="focusList"
+      @refresh="refresh"
+      @print="printDay"
+      @clear-attributes="clearAttributeFilters"
     />
-    <div
-      class="mb-3 flex flex-wrap items-center gap-3"
-      :aria-busy="refreshing"
-    >
-      <UButton
-        type="button"
-        color="neutral"
-        variant="outline"
-        size="sm"
-        class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
-        @click="refresh"
-      >
-        {{ t('liveRefresh.refresh') }}
-      </UButton>
-      <UButton
-        type="button"
-        color="neutral"
-        variant="outline"
-        size="sm"
-        icon="i-lucide-printer"
-        class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
-        @click="printDay"
-      >
-        {{ t('transfers.printDay') }}
-      </UButton>
-      <RideCsvExport :time-zone="timeZone" />
-      <p
-        v-if="updatedAt"
-        class="text-sm text-muted"
-      >
-        {{ failed ? t('liveRefresh.failed', { time: shownTime }) : t('liveRefresh.updatedAt', { time: shownTime }) }}
-      </p>
-      <UIcon
-        v-if="refreshing"
-        name="i-lucide-loader-circle"
-        class="size-5 animate-spin text-muted motion-reduce:animate-none"
-        aria-hidden="true"
-      />
-      <USwitch
-        v-model="automatic"
-        size="sm"
-        class="max-lg:min-h-11"
-        :label="t('liveRefresh.automatic')"
-        :ui="{ label: 'max-lg:text-base' }"
-      />
-    </div>
     <p
       class="sr-only"
       aria-live="polite"
@@ -1012,7 +1073,9 @@ onUnmounted(() => {
       <div
         id="transfer-day-list"
         ref="listPane"
-        class="min-w-0 flex-1"
+        tabindex="-1"
+        class="min-w-0 flex-1 scroll-mt-11 outline-none lg:scroll-mt-0"
+        :aria-busy="dayBusy"
       >
         <OccupationStrip
           :day="day"
@@ -1044,6 +1107,8 @@ onUnmounted(() => {
           :day="day"
           :now-ms="nowMs"
           :filtered-empty="filteredEmpty"
+          :shown-text="shownText"
+          :result-announcement="resultAnnouncement"
           @clear-filters="clearFilters"
           @open="showRide($event, null)"
           @assign="showRide($event, 'assign')"

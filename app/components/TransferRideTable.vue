@@ -16,6 +16,10 @@ const props = defineProps<{
   day: string
   nowMs: number
   filteredEmpty: boolean
+  /** "Prikazano: n od n" while a view or a filter narrows the list. Empty hides it. */
+  shownText?: string
+  /** Spoken only after the office changes a view or a filter, never after a refresh. */
+  resultAnnouncement?: string
 }>()
 
 const emit = defineEmits<{
@@ -120,6 +124,37 @@ const shared = computed(() => ({
 </script>
 
 <template>
+  <!--
+    Separate from the visible count. A refresh rewrites the visible line and
+    must not speak again; this node changes only when the parent says so.
+  -->
+  <p
+    class="sr-only"
+    aria-live="polite"
+    aria-atomic="true"
+  >
+    {{ resultAnnouncement }}
+  </p>
+  <div
+    v-if="!showSkeleton && !showEmptyDay && !loadError"
+    class="mb-2 flex flex-wrap items-center justify-between gap-2"
+  >
+    <p v-if="shownText">
+      {{ shownText }}
+    </p>
+    <UButton
+      v-if="!filteredEmpty"
+      type="button"
+      color="neutral"
+      variant="outline"
+      size="sm"
+      class="ms-auto h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
+      :aria-expanded="allExpanded"
+      @click="toggleAll"
+    >
+      {{ allExpanded ? t('transfers.collapseAll') : t('transfers.expandAll') }}
+    </UButton>
+  </div>
   <div
     v-if="showSkeleton"
     class="flex flex-col gap-2"
@@ -163,24 +198,11 @@ const shared = computed(() => ({
   <div
     v-else-if="!loadError"
     ref="dayListRegion"
-    class="focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    class="scroll-mt-11 focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary lg:scroll-mt-0"
     role="region"
     :aria-label="t('transfers.title')"
     tabindex="0"
   >
-    <div class="mb-2 flex justify-end">
-      <UButton
-        type="button"
-        color="neutral"
-        variant="outline"
-        size="sm"
-        class="h-7 min-h-7 max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
-        :aria-expanded="allExpanded"
-        @click="toggleAll"
-      >
-        {{ allExpanded ? t('transfers.collapseAll') : t('transfers.expandAll') }}
-      </UButton>
-    </div>
     <UTable
       v-if="!phoneLayout"
       v-model:expanded="expanded"

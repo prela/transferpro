@@ -3,7 +3,7 @@ import { addCalendarDays } from '../shared/date'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
 import { seedMember, seedTenant } from './fixtures/seed'
-import { chooseOption, openListbox, signIn, switchLocale, switchTheme } from './fixtures/ui'
+import { chooseOption, openListbox, openNewTransfer, signIn, switchLocale, switchTheme } from './fixtures/ui'
 
 test.beforeEach(async ({ page }) => {
   // One instant for the seed and the board, including across 05:00.
@@ -51,19 +51,19 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
   await expect(page.getByRole('button', { name: tenant.name, exact: true })).toBeVisible()
   await expect(page.getByText('Nema vožnji ovaj dan.')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await openNewTransfer(page)
   let dialog = page.getByRole('dialog')
   await dialog.getByLabel('Ime gosta').fill('Privremeno')
   await dialog.getByRole('button', { name: 'Odustani', exact: true }).click()
   await expect(dialog).toBeHidden()
   await expect(page.getByText('Nema vožnji ovaj dan.')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await openNewTransfer(page)
   dialog = page.getByRole('dialog')
   await dialog.getByRole('button', { name: 'Zatvori', exact: true }).click()
   await expect(dialog).toBeHidden()
 
-  await page.getByRole('button', { name: 'Zabilježi transfer', exact: true }).click()
+  await openNewTransfer(page)
   dialog = page.getByRole('dialog')
   await addPlace(page, dialog, 'Polazište', startPlace, 'Aerodrom')
   await addPlace(page, dialog, 'Odredište', endPlace, 'Hotel')
@@ -119,7 +119,7 @@ test('dispatcher records a transfer and sees the ride on today\'s list', async (
 
   await switchLocale(page, 'en')
   await expect(page.getByRole('heading', { level: 1, name: 'Transfers' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Record a transfer', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'New transfer', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Assign', exact: true })).toBeVisible()
   await expect(page.getByRole('columnheader', { name: 'Meet sign' })).toHaveCount(0)
   await expect(page.getByRole('cell', { name: new RegExp(`^${guest}`) })).toBeVisible()

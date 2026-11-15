@@ -189,7 +189,7 @@ test('state, vehicle, partner, and needs attention combine, stay in the URL, and
   await page.reload()
   await expect(page).toHaveURL(/rideState=unassigned/)
   await expect(page).toHaveURL(/search=predani/)
-  await page.getByRole('button', { name: 'Očisti filtre', exact: true }).click()
+  await page.getByRole('paragraph').filter({ hasText: 'Nema vožnji za ovaj filtar.' }).getByRole('button', { name: 'Očisti filtre', exact: true }).click()
   await expect(page).not.toHaveURL(/rideState=/)
   await expect(page.getByRole('row', { name: 'Predani Gost' })).toBeVisible()
 
@@ -215,7 +215,7 @@ test('state, vehicle, partner, and needs attention combine, stay in the URL, and
 
   await chooseOption(page, page.getByRole('button', { name: 'Podizvođač', exact: true }), 'Prijevoz Suženo')
   await expect(page.getByText('Nema vožnji za ovaj filtar.')).toBeVisible()
-  await page.getByRole('button', { name: 'Očisti filtre', exact: true }).click()
+  await page.getByRole('paragraph').filter({ hasText: 'Nema vožnji za ovaj filtar.' }).getByRole('button', { name: 'Očisti filtre', exact: true }).click()
 
   await chooseOption(page, page.getByRole('button', { name: 'Podizvođač', exact: true }), 'Prijevoz Suženo')
   await expect(page).toHaveURL(new RegExp(`partner=${partnerId}`))
@@ -280,8 +280,14 @@ test.describe('@phone', () => {
       await page.goto('/transfers')
       await hydrated(page)
       await expect(page.getByRole('searchbox', { name: 'Traži u danu' })).toBeVisible()
+      if (isPhone(page)) {
+        await page.getByRole('button', { name: 'Filtri', exact: true }).click()
+        await expect(page.getByRole('dialog', { name: 'Filtri' })).toBeVisible()
+      }
       await expect(page.getByRole('checkbox', { name: 'Treba pažnju' })).toBeVisible()
       await expect(page.getByRole('button', { name: 'Stanje vožnje', exact: true })).toBeVisible()
+      if (isPhone(page))
+        await page.getByRole('button', { name: /^Prikaži vožnje/ }).click()
       await expect(page.getByRole('button', { name: 'sutra 1', exact: true })).toBeVisible()
       await page.getByRole('button', { name: 'sutra 1', exact: true }).click()
       const card = rideRow(page, 'Sutra Telefon')
@@ -292,11 +298,15 @@ test.describe('@phone', () => {
       if (theme === 'light') {
         await switchLocale(page, 'en')
         await expect(page.getByRole('searchbox', { name: 'Search this day' })).toBeVisible()
+        if (isPhone(page))
+          await page.getByRole('button', { name: 'Filters', exact: true }).click()
         await expect(page.getByRole('checkbox', { name: 'Needs attention' })).toBeVisible()
         await expect(page.getByRole('button', { name: 'Ride state', exact: true })).toBeVisible()
-        await expect(card.getByRole('button', { name: /details: Sutra Telefon/ })).toBeVisible()
         await expect(page.getByRole('button', { name: 'Client', exact: true })).toBeVisible()
         await expectNoAxeViolations(page)
+        if (isPhone(page))
+          await page.getByRole('button', { name: /^Show rides/ }).click()
+        await expect(card.getByRole('button', { name: /details: Sutra Telefon/ })).toBeVisible()
       }
     })
   }
@@ -353,7 +363,11 @@ test.describe('@phone', () => {
     await hydrated(page)
     await expectChips(['Sve (4)', 'Hitno (4)', 'Upozorenja (2)', 'Nedodijeljeno (1)'])
 
+    if (isPhone(page))
+      await page.getByRole('button', { name: 'Filtri', exact: true }).click()
     await chooseOption(page, page.getByRole('button', { name: 'Vozač', exact: true }), 'Vozač Jedan')
+    if (isPhone(page))
+      await page.getByRole('button', { name: /^Prikaži vožnje/ }).click()
     await expect(page).toHaveURL(new RegExp(`driver=${crewOne.driverId}`))
     await expect(rideRow(page, 'Gost Jedan Puni')).toBeVisible()
     await expect(rideRow(page, 'Gost Jedan Mirni')).toBeVisible()
@@ -417,7 +431,7 @@ test.describe('@phone', () => {
     await expect(rideRow(page, 'Ana Još Čeka')).toBeVisible()
     await expect(page.getByText('Mia Već Potvrda')).toHaveCount(0)
     await expect(page.getByText('Luka Već Prošao')).toHaveCount(0)
-    const filters = page.getByRole('group', { name: 'Filtri dana' })
+    const filters = page.getByRole('group', { name: 'Pogled' })
     for (const chip of ['Sve', 'Hitno', 'Upozorenja', 'Nedodijeljeno', 'Čeka prihvat', 'U tijeku', 'Zatvoreno'])
       await expect(filters.getByRole('button', { name: new RegExp(`^${chip} \\(\\d+\\)$`) })).toBeVisible()
     await expect(filters.getByRole('button', { name: 'Čeka potvrdu podizvođača', exact: true })).toHaveCount(0)
@@ -426,7 +440,7 @@ test.describe('@phone', () => {
 
     await switchLocale(page, 'en')
     await expect(page).toHaveURL(/filter=awaitingPartner/)
-    const english = page.getByRole('group', { name: 'Day filters' })
+    const english = page.getByRole('group', { name: 'View' })
     for (const chip of ['All', 'Urgent', 'Warnings', 'Unassigned', 'Waiting on acceptance', 'In progress', 'Closed'])
       await expect(english.getByRole('button', { name: new RegExp(`^${chip} \\(\\d+\\)$`) })).toBeVisible()
     await expect(english.getByRole('button', { name: 'Awaiting subcontractor', exact: true })).toHaveCount(0)

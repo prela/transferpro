@@ -4,7 +4,7 @@ import { expectNoAxeViolations } from './fixtures/axe'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { seedTenant } from './fixtures/seed'
-import { chooseOption, hydrated, signIn, switchLocale, useTheme } from './fixtures/ui'
+import { chooseOption, hydrated, openNewTransfer, signIn, switchLocale, useTheme } from './fixtures/ui'
 
 /**
  * The Client's contact persons and note on the Ride detail and the Transfer
@@ -112,8 +112,7 @@ test.describe('@phone', () => {
       // Phone back follows history and can leave Transfers. Open the day list.
       await page.goto(`/transfers?day=${day}`)
       await hydrated(page)
-      const addName = phone ? 'Novi transfer' : 'Zabilježi transfer'
-      await page.getByRole('button', { name: addName, exact: true }).click()
+      await openNewTransfer(page)
       const record = page.getByRole('region', { name: 'Zabilježi transfer' })
       await expect(record).toBeVisible()
       await expect(record.locator('#transfer-client-note')).toHaveCount(0)
@@ -192,8 +191,7 @@ test.describe('@phone', () => {
 
     await page.goto(`/transfers?day=${day}`)
     await hydrated(page)
-    const addName = phone ? 'New transfer' : 'Record a transfer'
-    await page.getByRole('button', { name: addName, exact: true }).click()
+    await openNewTransfer(page)
     const record = page.getByRole('region', { name: 'Record a transfer' })
     await chooseOption(page, record.locator('#transfer-client'), 'Agencija Jadran')
     await expect(record.locator('#transfer-client-note')).toContainText('Client note')

@@ -29,6 +29,21 @@ const themeButton = {
 } as const
 
 /**
+ * The day band no longer has its own record button. The top bar opens the
+ * form on the desktop, and the floating button does on the phone. An empty
+ * day also offers "Novi transfer" in the list, so the header wins when it
+ * is on screen.
+ */
+export async function openNewTransfer(page: Page) {
+  const name = /^(Novi transfer|New transfer)$/
+  const header = page.getByRole('banner').getByRole('button', { name })
+  if (await header.isVisible())
+    await header.click()
+  else
+    await page.getByRole('button', { name }).last().click()
+}
+
+/**
  * The document is interactive. A click before this misses the Vue handler.
  * The theme class is set before Vue hydrates, and the same gap drops a locale click.
  */
@@ -130,8 +145,11 @@ export async function signOut(page: Page) {
   await dismissInviteDialog(page)
   const onPage = page.getByRole('button', { name: 'Odjava', exact: true })
   const inMenu = page.getByRole('menuitem', { name: 'Odjava', exact: true })
-  if (!(await onPage.isVisible()) && !(await inMenu.isVisible()))
-    await page.locator('button[aria-haspopup="menu"]').click()
+  if (!(await onPage.isVisible()) && !(await inMenu.isVisible())) {
+    // Transfers adds an Alati menu after the profile trigger. The profile
+    // menu is the first one, and it is the one that holds Odjava.
+    await page.locator('button[aria-haspopup="menu"]').first().click()
+  }
   await onPage.or(inMenu).click()
   await expect(page.getByRole('heading', { level: 1, name: 'Transferpro' })).toBeVisible()
 }

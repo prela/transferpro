@@ -6,7 +6,7 @@ import { expectNoAxeViolations } from './fixtures/axe'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
 import { memberPassword, seedMember, seedTenant } from './fixtures/seed'
-import { hydrated, signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
+import { hydrated, openNewTransfer, signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 /**
  * Office warning, driver banners, idle sign-out, and a revoked session
@@ -61,11 +61,7 @@ async function openTransfer(page: Page) {
   const dialog = page.getByRole('dialog')
   if (await dialog.isVisible())
     return dialog
-  const record = page.getByRole('button', { name: 'Zabilježi transfer', exact: true })
-  if (await record.isVisible())
-    await record.click()
-  else
-    await page.getByRole('button', { name: 'Novi transfer', exact: true }).click()
+  await openNewTransfer(page)
   await expect(dialog).toBeVisible()
   return dialog
 }
