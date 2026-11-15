@@ -52,7 +52,7 @@ const filtersButtonId = 'transfer-day-filters-button'
 const toolsButtonId = 'transfer-day-tools'
 const hiddenUrgentId = 'transfer-day-hidden-urgent'
 
-const controlClass = 'h-7 min-h-7 px-2 text-sm max-lg:h-11 max-lg:min-h-11 max-lg:text-base'
+const controlClass = 'h-7 min-h-7 px-2 text-sm tabular-nums max-lg:h-11 max-lg:min-h-11 max-lg:text-base'
 
 /**
  * False until mount, so the server document and the first client render match.
@@ -295,7 +295,13 @@ watch(filter, () => {
 </script>
 
 <template>
-  <header class="mb-3 border-b border-default pb-3 print:hidden">
+  <!--
+    On the phone the header and the filter band generate no box, so the
+    search row can stick for the whole section, list included. A box that
+    ended at the tools would scroll the row away with the header. Print
+    still drops the app around the print sheet. Desktop keeps the band.
+  -->
+  <header class="mb-3 border-b border-default pb-3 print:hidden max-lg:contents">
     <a
       href="#transfer-day-list"
       class="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-50 focus:bg-default focus:px-3 focus:py-2 focus:text-default"
@@ -345,7 +351,9 @@ watch(filter, () => {
           v-model="day"
           name="day"
           type="date"
+          size="sm"
           class="w-full text-base"
+          :ui="{ base: 'max-lg:h-11' }"
         />
       </div>
       <div
@@ -368,7 +376,7 @@ watch(filter, () => {
             color="neutral"
             variant="link"
             size="sm"
-            class="h-7 min-h-7 px-1 text-sm max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
+            class="h-7 min-h-7 px-1 text-sm tabular-nums max-lg:h-11 max-lg:min-h-11 max-lg:text-base"
             @click="day = part.date"
           >
             {{ part.name }} {{ part.count }}
@@ -434,7 +442,7 @@ watch(filter, () => {
       <p
         v-if="showHiddenUrgent"
         :id="hiddenUrgentId"
-        class="mt-1 flex flex-wrap items-center gap-2 text-sm text-default"
+        class="mt-1 flex flex-wrap items-center gap-2 text-sm text-default tabular-nums"
       >
         <UIcon
           name="i-lucide-info"
@@ -455,7 +463,7 @@ watch(filter, () => {
       </p>
     </div>
 
-    <div class="mb-3">
+    <div class="mb-3 max-lg:contents">
       <label
         class="mb-1 block text-sm"
         :for="searchFieldId"
@@ -473,7 +481,9 @@ watch(filter, () => {
           type="search"
           icon="i-lucide-search"
           :placeholder="t('transfers.daySearchPlaceholder')"
-          class="min-w-0 flex-1 text-base max-lg:h-11"
+          size="sm"
+          class="min-w-0 flex-1 text-base"
+          :ui="{ base: 'max-lg:h-11' }"
         />
         <UButton
           :id="filtersButtonId"
@@ -617,11 +627,11 @@ watch(filter, () => {
     </div>
 
     <!--
-      Last band. Refresh, the time, and the switch stay one unit (ADR-0039).
-      On the phone the refresh row is full width, so the switch and Alati
-      wrap onto the next line without a second copy of the switch.
+      Last band. Osvježi, the time, and the switch stay one unit (ADR-0039),
+      including on the phone, where that unit takes the row and Alati wraps
+      under it. One switch, not a second copy beside the menu.
     -->
-    <div class="flex flex-wrap items-center gap-3">
+    <div class="flex flex-wrap items-center gap-3 max-lg:mb-3">
       <div class="flex flex-wrap items-center gap-3 max-lg:w-full">
         <UButton
           type="button"
@@ -635,7 +645,7 @@ watch(filter, () => {
         </UButton>
         <p
           v-if="updatedLabel"
-          class="text-sm text-muted"
+          class="text-sm text-muted tabular-nums"
         >
           {{ updatedLabel }}
         </p>
@@ -645,14 +655,14 @@ watch(filter, () => {
           class="size-5 animate-spin text-muted motion-reduce:animate-none"
           aria-hidden="true"
         />
+        <USwitch
+          v-model="automatic"
+          size="sm"
+          class="max-lg:min-h-11"
+          :label="t('liveRefresh.automatic')"
+          :ui="{ label: 'max-lg:text-base' }"
+        />
       </div>
-      <USwitch
-        v-model="automatic"
-        size="sm"
-        class="max-lg:min-h-11"
-        :label="t('liveRefresh.automatic')"
-        :ui="{ label: 'max-lg:text-base' }"
-      />
       <div class="flex items-center gap-2 lg:ms-auto">
         <UButton
           type="button"
@@ -671,21 +681,20 @@ watch(filter, () => {
           button-class="hidden h-7 min-h-7 lg:inline-flex"
           @closed="onExportClosed"
         />
-        <UDropdownMenu
-          v-if="phone"
-          :items="toolItems"
-        >
-          <UButton
-            :id="toolsButtonId"
-            type="button"
-            color="neutral"
-            variant="outline"
-            size="sm"
-            icon="i-lucide-wrench"
-            class="min-h-11"
-            :label="t('transfers.tools')"
-          />
-        </UDropdownMenu>
+        <div class="lg:hidden">
+          <UDropdownMenu :items="toolItems">
+            <UButton
+              :id="toolsButtonId"
+              type="button"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              icon="i-lucide-wrench"
+              class="min-h-11"
+              :label="t('transfers.tools')"
+            />
+          </UDropdownMenu>
+        </div>
       </div>
     </div>
   </header>

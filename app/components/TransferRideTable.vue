@@ -139,7 +139,10 @@ const shared = computed(() => ({
     v-if="!showSkeleton && !showEmptyDay && !loadError"
     class="mb-2 flex flex-wrap items-center justify-between gap-2"
   >
-    <p v-if="shownText">
+    <p
+      v-if="shownText"
+      class="tabular-nums"
+    >
       {{ shownText }}
     </p>
     <UButton
@@ -347,6 +350,7 @@ const shared = computed(() => ({
       <li
         v-for="ride in rides"
         :key="ride.rideId"
+        class="scroll-mt-11"
       >
         <TransferRideRow
           cell="phone"

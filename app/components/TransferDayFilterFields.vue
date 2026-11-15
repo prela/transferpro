@@ -68,7 +68,9 @@ const rideStateChoice = computed({
         :placeholder="t('transfers.allClients')"
         :search-input="partySearch"
         clear
+        size="sm"
         class="w-full text-base"
+        :ui="{ base: 'max-lg:h-11' }"
       />
     </div>
     <div class="min-w-40 flex-1">
@@ -85,7 +87,9 @@ const rideStateChoice = computed({
         :placeholder="t('transfers.allDrivers')"
         :search-input="partySearch"
         clear
+        size="sm"
         class="w-full text-base"
+        :ui="{ base: 'max-lg:h-11' }"
       />
     </div>
     <div class="min-w-40 flex-1">
@@ -102,7 +106,9 @@ const rideStateChoice = computed({
         :placeholder="t('transfers.allVehicles')"
         :search-input="partySearch"
         clear
+        size="sm"
         class="w-full text-base"
+        :ui="{ base: 'max-lg:h-11' }"
       />
     </div>
     <div class="min-w-40 flex-1">
@@ -119,7 +125,9 @@ const rideStateChoice = computed({
         :placeholder="t('transfers.allPartners')"
         :search-input="partySearch"
         clear
+        size="sm"
         class="w-full text-base"
+        :ui="{ base: 'max-lg:h-11' }"
       />
     </div>
     <div class="min-w-40 flex-1">
@@ -136,7 +144,9 @@ const rideStateChoice = computed({
         :placeholder="t('transfers.allRideStates')"
         :search-input="false"
         clear
+        size="sm"
         class="w-full text-base"
+        :ui="{ base: 'max-lg:h-11' }"
       />
     </div>
     <UCheckbox

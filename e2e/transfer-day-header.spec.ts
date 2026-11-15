@@ -52,6 +52,38 @@ async function record(page: Page, guest: string, day: string, wall: string, spot
   return body.ride.id
 }
 
+/** Names of the header controls in tab order, stopping at the first focus outside it. */
+async function tabThroughHeader(page: Page): Promise<string[]> {
+  const names: string[] = []
+  for (let step = 0; step < 30; step += 1) {
+    await page.keyboard.press('Tab')
+    const name = await page.evaluate(() => {
+      const node = document.activeElement
+      if (!(node instanceof HTMLElement) || !node.closest('header'))
+        return ''
+      const explicit = node.getAttribute('aria-label')
+      if (explicit)
+        return explicit
+      const fromLabel = 'labels' in node && node.labels instanceof NodeList
+        ? node.labels[0]?.textContent
+        : ''
+      if (fromLabel)
+        return fromLabel.trim()
+      const labelledBy = node.getAttribute('aria-labelledby')
+      if (labelledBy) {
+        const text = labelledBy.split(/\s+/).map(id => document.getElementById(id)?.textContent ?? '').join(' ')
+        if (text.trim() !== '')
+          return text.trim()
+      }
+      return (node.textContent || '').replace(/\s+/g, ' ').trim()
+    })
+    if (name === '')
+      break
+    names.push(name)
+  }
+  return names
+}
+
 async function noPageScroll(page: Page) {
   const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)
   expect(fits).toBe(true)
@@ -117,8 +149,39 @@ test('desktop header groups the day, the view, the filters, and the tools', asyn
   const skip = page.getByRole('link', { name: 'Preskoči na vožnje' })
   await skip.focus()
   await expect(skip).toBeFocused()
-  await page.keyboard.press('Tab')
-  await expect(page.getByRole('button', { name: 'Prethodni dan' })).toBeFocused()
+  const walked = await tabThroughHeader(page)
+  // A date input is one control. Chromium tabs its day, month, and year parts.
+  const order = walked.filter((name, index) => name !== 'Dan' || walked[index - 1] !== 'Dan')
+  const expected = [
+    'Prethodni dan',
+    'Danas',
+    'Sljedeći dan',
+    'Dan',
+    /^Sve /,
+    /^Hitno /,
+    /^Upozorenja /,
+    /^Nedodijeljeno /,
+    /^Čeka prihvat /,
+    /^U tijeku /,
+    /^Zatvoreno /,
+    /^Za fakturiranje /,
+    'Traži u danu',
+    'Filtri',
+    'Naručitelj',
+    'Vozač',
+    'Vozilo',
+    'Podizvođač',
+    'Stanje vožnje',
+    'Treba pažnju',
+    'Osvježi',
+    'Automatsko osvježavanje',
+    'Ispiši dan',
+    'Izvoz CSV',
+  ]
+  expect(order.slice(0, expected.length).map((name, index) => {
+    const wanted = expected[index]!
+    return typeof wanted === 'string' ? name === wanted : wanted.test(name)
+  }), order.join(' | ')).toEqual(expected.map(() => true))
   await skip.focus()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('region', { name: 'Transferi' })).toBeFocused()
@@ -131,6 +194,10 @@ test('desktop header groups the day, the view, the filters, and the tools', asyn
   await expect(page.getByRole('button', { name: 'Alati', exact: true })).toHaveCount(0)
   await page.mouse.move(0, 0)
   await expectNoAxeViolations(page)
+  await switchTheme(page, 'dark')
+  await page.mouse.move(0, 0)
+  await expectNoAxeViolations(page)
+  await switchTheme(page, 'light')
 
   await filters.click()
   await expect(filters).toHaveAttribute('aria-expanded', 'false')
@@ -162,6 +229,12 @@ test('desktop header groups the day, the view, the filters, and the tools', asyn
   await page.mouse.move(0, 0)
   await expectNoAxeViolations(page)
   await expect(page.getByRole('button', { name: /^Hitno \(/ })).toHaveAttribute('aria-describedby', 'transfer-day-hidden-urgent')
+  await page.mouse.move(0, 0)
+  await expectNoAxeViolations(page)
+  await switchTheme(page, 'dark')
+  await page.mouse.move(0, 0)
+  await expectNoAxeViolations(page)
+  await switchTheme(page, 'light')
   const spoken = page.locator('[aria-live="polite"]').filter({ hasText: 'Prikazano' })
   await expect(spoken).toHaveCount(0)
   await page.getByRole('button', { name: 'Osvježi', exact: true }).click()
@@ -217,8 +290,11 @@ test('phone header keeps the list on screen and the fields in a sheet', async ({
   const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Telefon', kind: 'address' })
   const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Telefon', kind: 'hotel' })
   const day = addCalendarDays(operationalDay(page), -1)
-  await record(page, 'Hitni Telefon', day, '09:00', { clientId, startLocationId, endLocationId })
-  await record(page, 'Mirni Telefon', day, '16:00', { clientId, startLocationId, endLocationId })
+  const spot = { clientId, startLocationId, endLocationId }
+  await record(page, 'Hitni Telefon', day, '09:00', spot)
+  await record(page, 'Mirni Telefon', day, '16:00', spot)
+  for (let hour = 10; hour <= 20; hour += 1)
+    await record(page, `Gost ${hour}`, day, `${String(hour).padStart(2, '0')}:00`, spot)
 
   await page.goto(`/transfers?day=${day}`)
   await hydrated(page)
@@ -226,6 +302,10 @@ test('phone header keeps the list on screen and the fields in a sheet', async ({
   await expect(page.getByRole('group', { name: 'Pogled' })).toBeVisible()
   await page.mouse.move(0, 0)
   await expectNoAxeViolations(page)
+  await switchTheme(page, 'dark')
+  await page.mouse.move(0, 0)
+  await expectNoAxeViolations(page)
+  await switchTheme(page, 'light')
 
   const filters = page.getByRole('button', { name: 'Filtri', exact: true })
   await filters.click()
@@ -257,8 +337,22 @@ test('phone header keeps the list on screen and the fields in a sheet', async ({
   await expect(page).not.toHaveURL(/attention=/)
   await expect(page).toHaveURL(/search=gost/)
 
-  await page.locator('#transfer-day-list').scrollIntoViewIfNeeded()
+  const scrolled = await page.evaluate(() => {
+    const field = document.getElementById('transfer-day-search')
+    let node = field?.parentElement ?? null
+    while (node) {
+      const overflow = getComputedStyle(node).overflowY
+      if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight + 8) {
+        node.scrollTop = node.scrollHeight
+        return node.scrollTop
+      }
+      node = node.parentElement
+    }
+    return 0
+  })
+  expect(scrolled).toBeGreaterThan(0)
   await expect(search).toBeInViewport()
+  await expect(page.getByRole('button', { name: 'Prethodni dan' })).not.toBeInViewport()
   const closed = page.getByRole('button', { name: /^Zatvoreno \(/ })
   await closed.click()
   await expect(closed).toBeInViewport()
@@ -283,6 +377,11 @@ test('phone header keeps the list on screen and the fields in a sheet', async ({
   await switchTheme(page, 'dark')
   await page.mouse.move(0, 0)
   await expectNoAxeViolations(page)
+  await page.getByRole('button', { name: /^Filtri/ }).click()
+  await expect(sheet).toBeVisible()
+  await page.mouse.move(0, 0)
+  await expectNoAxeViolations(page)
+  await sheet.getByRole('button', { name: /^Prikaži vožnje/ }).click()
   await switchLocale(page, 'en')
   const waiting = page.getByRole('button', { name: /^Waiting on acceptance \(/ })
   await waiting.scrollIntoViewIfNeeded()
