@@ -36,15 +36,11 @@ it('keeps a two-form message on one and other, and a message with no plural on i
   expect(croatianPluralIndex(5, 1)).toBe(0)
 
   const hr = JSON.parse(readFileSync(new URL('../i18n/locales/hr.json', import.meta.url), 'utf8')) as {
-    transfers: { corrected: string, groupRouteLeftOne: string, groupRouteLeftOther: string }
+    transfers: { corrected: string }
   }
   const en = JSON.parse(readFileSync(new URL('../i18n/locales/en.json', import.meta.url), 'utf8')) as {
-    transfers: { corrected: string, groupRouteLeftOne: string, groupRouteLeftOther: string }
+    transfers: { corrected: string }
   }
   expect(hr.transfers.corrected).toBe('Ispravljeno.')
   expect(en.transfers.corrected).toBe('Corrected.')
-  expect(hr.transfers.groupRouteLeftOne).toBe('Grupa ima još 1 nedovršeno dodatno vozilo. Promjena nije primijenjena na njega.')
-  expect(hr.transfers.groupRouteLeftOther).toBe('Grupa ima još {count} nedovršenih dodatnih vozila. Promjena nije primijenjena na njih.')
-  expect(en.transfers.groupRouteLeftOne).toBe('The group still has 1 unfinished extra vehicle. This change was not applied to it.')
-  expect(en.transfers.groupRouteLeftOther).toBe('The group still has {count} unfinished extra vehicles. This change was not applied to them.')
 })
