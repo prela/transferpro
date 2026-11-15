@@ -73,7 +73,7 @@
  */
 export { FullyBookedError, RideOverlapError, RideUnavailableError, startUnavailabilityRetention, UnavailabilityArchivedError, UnavailabilityNotFoundError } from '../capacity'
 export { BillingDetailsMissingError, ClientNotInvoiceableError, InvoiceOfficeOnlyError, InvoicingNotReadyError, TransferNotInvoiceableError } from './application/issue-invoice'
-export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideNotAcceptableError } from './infrastructure/accept'
+export { acceptRide, acceptRideByPhone, AcceptRideInputError, RideDriverChangedError, RideNotAcceptableError } from './infrastructure/accept'
 export { RideDriverArchivedError, RideNotFoundError, RideNotUnassignedError, RideVehicleArchivedError } from './infrastructure/assign'
 export { assignRide, rosterVehicleForRide } from './infrastructure/assign-access'
 export { cancelRide, CancelRideInputError, RideNotCancellableError } from './infrastructure/cancel'

@@ -481,7 +481,7 @@ it('handoff from assigned and accepted clears the crew and mails no longer yours
     vehicleId: vehicle.id,
     version: (await versionOf(acceptedRide.ride.id)).version,
   })
-  await acceptRideByPhone(world.dispatcher, acceptedRide.ride.id, {})
+  await acceptRideByPhone(world.dispatcher, acceptedRide.ride.id, { driverId: driver.id })
   const acceptedVersion = await versionOf(acceptedRide.ride.id)
   const accepted = await call('POST', `/api/rides/${acceptedRide.ride.id}/hand-off`, world.dispatcher, {
     partnerId: partner.id,

@@ -1,6 +1,6 @@
 # Partner confirmation of a handed-off Ride
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0065
 
 The owner accepted this on 11 November 2026, in the grill of #548. It extends ADR-0048 and ADR-0046, and partially supersedes ADR-0024, ADR-0039, and ADR-0055; the sentences are named below. ADR-0005, ADR-0006, ADR-0008, ADR-0010, ADR-0023, ADR-0034, and ADR-0038 stand.
 

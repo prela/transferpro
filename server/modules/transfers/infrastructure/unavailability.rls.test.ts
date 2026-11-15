@@ -370,7 +370,7 @@ it('lists an accepted Ride the window covers, and leaves out an unassigned one',
   const accepted = await world.transfer(at('2026-11-14T10:00'))
   const unassigned = await world.transfer(at('2026-11-14T11:00'))
   expect((await assign(world.dispatcher, accepted.ride.id, driver.id, vehicle.id)).status).toBe(200)
-  expect((await call('POST', `/api/rides/${accepted.ride.id}/accept-by-phone`, world.dispatcher, {})).status).toBe(200)
+  expect((await call('POST', `/api/rides/${accepted.ride.id}/accept-by-phone`, world.dispatcher, { driverId: driver.id })).status).toBe(200)
   expect((await ownerPool.query('select state from app.rides where id = $1', [accepted.ride.id])).rows).toEqual([{ state: 'accepted' }])
 
   const saved = await json(await call('POST', '/api/unavailability', world.dispatcher, windowBody({ driverId: driver.id }, at('2026-11-14T00:00'), at('2026-11-15T00:00'))))

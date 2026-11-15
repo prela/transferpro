@@ -74,7 +74,7 @@ test('the office corrects a Transfer, and a flight change returns an accepted Ri
   expect(recorded.ok()).toBeTruthy()
   const rideId = (await recorded.json() as { ride: { id: string } }).ride.id
   expect((await page.request.post(`/api/rides/${rideId}/assign`, { data: { version: 0, driverId, vehicleId } })).ok()).toBeTruthy()
-  expect((await page.request.post(`/api/rides/${rideId}/accept-by-phone`, { data: {} })).ok()).toBeTruthy()
+  expect((await page.request.post(`/api/rides/${rideId}/accept-by-phone`, { data: { driverId } })).ok()).toBeTruthy()
 
   const finishedGuest = 'Leo Kraj'
   const finished = await recordTransfer(page.request, {

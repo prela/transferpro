@@ -1150,6 +1150,7 @@
     "acceptByPhoneConfirming": "Recording",
     "acceptByPhoneFailed": "The acceptance was not recorded. Try again.",
     "acceptByPhoneConflict": "This ride can no longer be accepted.",
+    "driverChanged": "The Driver of this ride has changed in the meantime.",
     "markDone": "Mark done",
     "markDoneFor": "Mark done: {guest}",
     "markDoneTitle": "Mark the ride done",

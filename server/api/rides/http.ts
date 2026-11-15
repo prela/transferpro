@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { AssignRideInputError, RideCommandInputError } from '../../../shared'
 import { TenantAccessError } from '../../modules/tenancy'
-import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, FullyBookedError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotAwaitingPartnerConfirmationError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotHandedOffError, RideNotHandoffableError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
+import { AcceptRideInputError, CancelRideInputError, DeclineRideInputError, FullyBookedError, MarkNoShowInputError, MarkRideDoneInputError, NoShowTooEarlyError, RecordLandingInputError, RideDriverArchivedError, RideDriverChangedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotAwaitingPartnerConfirmationError, RideNotCancellableError, RideNotDeclinableError, RideNotFinishableError, RideNotFoundError, RideNotHandedOffError, RideNotHandoffableError, RideNotNoShowError, RideNotOpenError, RideNotUnassignedError, RideOverlapError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
 import { rethrowTenantChanged } from '../tenant-changed'
 
 /**
@@ -9,8 +9,10 @@ import { rethrowTenantChanged } from '../tenant-changed'
  * a fixed phrase for the status. A plate or a phone is not copied from the
  * thrown error. `ride_driver_archived` is `ride.driverArchived`.
  * `ride_vehicle_archived` is `ride.vehicleArchived`.
- * `ride_not_unassigned` is `ride.notUnassigned`. `ride_not_acceptable` is the
- * accept conflict: the flag is off, or the Ride is not `assigned`.
+ * `ride_not_unassigned` is `ride.notUnassigned`. `ride_driver_changed` is
+ * an office acceptance whose Driver is no longer the one the dialog named.
+ * `ride_not_acceptable` is the accept conflict: the flag is off, the Ride
+ * is not `assigned`, or it has no Driver. The Driver check is named first.
  * `ride_not_open` is a vehicle change, a clear, or a reassignment on a Ride
  * that is not `assigned` or `accepted`. `ride_vehicle_unchanged` is the same
  * Vehicle. `ride_same_driver` is a reassignment to the Driver already on the Ride.
@@ -61,6 +63,7 @@ export function rideHttpError(error: unknown): never {
     error instanceof RideDriverArchivedError
     || error instanceof RideVehicleArchivedError
     || error instanceof RideNotUnassignedError
+    || error instanceof RideDriverChangedError
     || error instanceof RideNotAcceptableError
     || error instanceof RideNotFinishableError
     || error instanceof RideNotNoShowError

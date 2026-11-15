@@ -535,7 +535,7 @@ it('the check rejects the flag on every state except a handoff, including leavin
       version: await versionOf(recorded.ride.id),
     })
     if (state === 'accepted')
-      await acceptRideByPhone(world.dispatcher, recorded.ride.id, {})
+      await acceptRideByPhone(world.dispatcher, recorded.ride.id, { driverId: driver.id })
     if (state === 'done')
       expect((await call('POST', `/api/rides/${recorded.ride.id}/done`, world.dispatcher, {})).status).toBe(200)
     if (state === 'no-show')

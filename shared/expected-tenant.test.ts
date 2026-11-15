@@ -37,14 +37,15 @@ it('adds the screen Tenant to an office write, and leaves a session command alon
   expect(saved.headers.get('x-expected-tenant-id')).toBe(id)
   expect(saved.body).toEqual({ name: 'Agencija', kind: 'agency', expectedTenantId: id })
 
-  // The dialog posts an empty object. The only JSON key is the screen Tenant.
+  // The dialog posts the Driver it showed. The screen Tenant is added beside it.
+  const driverId = '00000000-0000-4000-8000-000000000002'
   const accepted = applyOfficeClaim({
     method: 'post',
     url: `/api/rides/${id}/accept-by-phone`,
     headers: new Headers(),
-    body: {},
+    body: { driverId },
   }, id)
-  expect(accepted.body).toEqual({ expectedTenantId: id })
+  expect(accepted.body).toEqual({ driverId, expectedTenantId: id })
 
   const noted = applyOfficeClaim({
     method: 'PUT',

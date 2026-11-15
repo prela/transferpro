@@ -23,7 +23,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0005 | Ride states | accepted; partially superseded by ADR-0008 and ADR-0048 |
 | ADR-0006 | Driver acceptance | accepted; partially superseded by ADR-0008 |
 | ADR-0007 | No-show | accepted; partially superseded by ADR-0058 |
-| ADR-0008 | Office acceptance, confirmed by phone | accepted |
+| ADR-0008 | Office acceptance, confirmed by phone | accepted; partially superseded by ADR-0065 |
 | ADR-0009 | Driver sees the price when payment is cash | accepted; partially superseded by ADR-0054 |
 | ADR-0010 | Re-acceptance after the pickup, the places, or the flight change | accepted; partially superseded by ADR-0058 |
 | ADR-0011 | Tenant session, grant-walled roles, and the member read | accepted; partially superseded by ADR-0014 |
@@ -76,6 +76,7 @@ Status: `proposed` → `accepted` (or `rejected`); later `deprecated` or `supers
 | ADR-0058 | Stops and an escort on one Transfer | accepted |
 | ADR-0059 | A Vehicle seat count and a passenger warning | accepted |
 | ADR-0061 | Pick a place by its name or its address | accepted |
-| ADR-0062 | Partner confirmation of a handed-off Ride | accepted |
+| ADR-0062 | Partner confirmation of a handed-off Ride | accepted; partially superseded by ADR-0065 |
 | ADR-0063 | Operating area bias for place suggestions | accepted |
 | ADR-0064 | Transfer list: remembered filters and what the counts follow | accepted |
+| ADR-0065 | Accept by phone names the Driver the office called | accepted |

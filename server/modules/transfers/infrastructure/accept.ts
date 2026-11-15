@@ -10,7 +10,10 @@ import { loadDriverLinkedToMember } from '../../drivers'
 import { TenantAccessError, withOfficeWrite } from '../../tenancy'
 import { RideNotFoundError } from './assign'
 
-/** The body was not an empty object, or the path was not a Ride id. Nothing is written. */
+/**
+ * The Driver's accept body was not empty, the office body did not name a
+ * Driver, or the path was not a Ride id. Nothing is written.
+ */
 export class AcceptRideInputError extends Error {
   readonly statusCode = 400
 
@@ -34,7 +37,27 @@ export class RideNotAcceptableError extends Error {
   }
 }
 
+/**
+ * The Ride has a Driver, and it is not the Driver the office named.
+ * Nothing was written. A Ride with no Driver is `ride_not_acceptable`,
+ * checked after this one (ADR-0065).
+ */
+export class RideDriverChangedError extends Error {
+  readonly statusCode = 409
+  readonly code = 'ride_driver_changed'
+
+  constructor() {
+    super('Conflict')
+    this.name = 'RideDriverChangedError'
+  }
+}
+
 const emptyBody = z.strictObject({})
+
+/** The Driver the dialog showed. Any other key is refused. */
+const phoneBody = z.strictObject({
+  driverId: z.uuid(),
+})
 
 const lockedRows = z.object({
   rows: z.array(z.object({
@@ -61,9 +84,10 @@ const acceptedRows = z.object({
 type AcceptedRide = z.infer<typeof acceptedRows>['rows'][number]
 
 /**
- * Accepts an empty body and a Ride id. Any key, or a path that is not an id,
- * throws first, so the caller does not open a session. The Driver id is not
- * a field: it comes from the session later.
+ * The Driver's own accept. An empty body and a Ride id. Any key, or a path
+ * that is not an id, throws first, so the caller does not open a session.
+ * The Driver id is not a field: it comes from the session later. The office
+ * route is `parseAcceptRideByPhone`.
  */
 function parseAcceptRide(rideId: unknown, body: unknown): string {
   const id = z.uuid().safeParse(rideId)
@@ -72,6 +96,20 @@ function parseAcceptRide(rideId: unknown, body: unknown): string {
   if (!id.success || !payload.success)
     throw new AcceptRideInputError()
   return id.data
+}
+
+/**
+ * The office names the Driver the dialog showed. A missing or malformed id,
+ * any other key, or a path that is not a Ride id throws first, so the caller
+ * does not open a session. No body is not an empty acceptance: the field is
+ * required (ADR-0065). The version is not a field (ADR-0046).
+ */
+function parseAcceptRideByPhone(rideId: unknown, body: unknown): { rideId: string, driverId: string } {
+  const id = z.uuid().safeParse(rideId)
+  const payload = phoneBody.safeParse(body)
+  if (!id.success || !payload.success)
+    throw new AcceptRideInputError()
+  return { rideId: id.data, driverId: payload.data.driverId }
 }
 
 /**
@@ -120,21 +158,28 @@ export async function acceptAssignedRide(
  * by phone. The Ride must be `assigned` with the copied flag on. The Driver,
  * the Vehicle, and the flag stay, including when the Driver has no account:
  * the Driver id is the Ride's, not a member link. `ride.accepted_by_phone`
- * names the office member. The caller has already required that role.
+ * names the office member. The named Driver must still be the one on the
+ * Ride. A different Driver writes nothing. The caller has already required that role.
  */
 export async function recordAcceptanceByPhone(
   transaction: TenantTransaction,
   actorUserId: string,
   rideId: string,
+  driverId: string,
 ): Promise<Ride> {
   const current = await lockRideForAccept(transaction, rideId)
   if (!current)
     throw new RideNotFoundError()
+  // A different Driver is named before the state check, so a reassignment
+  // is not reported as a Ride that cannot be accepted. No Driver is the
+  // state refusal: the office did not call a replacement that is not there.
+  if (current.driverId !== null && current.driverId !== driverId)
+    throw new RideDriverChangedError()
   // The flag off, any other state, or a Ride with no Driver cannot become accepted.
   if (current.state !== 'assigned' || current.mustAccept !== true || current.driverId === null)
     throw new RideNotAcceptableError()
 
-  const updated = await writeAcceptedRide(transaction, rideId, current.driverId)
+  const updated = await writeAcceptedRide(transaction, rideId, driverId)
   // The locked row was acceptable. Zero rows means a concurrent accept committed first.
   if (!updated)
     throw new RideNotAcceptableError()
@@ -159,14 +204,15 @@ export async function acceptRide(headers: Headers, rawRideId: unknown, rawBody: 
 
 /**
  * The office records acceptance after confirming with the Driver by phone.
- * The body is parsed first, so a key never opens a session. Only a dispatcher
- * or an admin may call this. The Driver route is unchanged. No mail is sent.
+ * The body is parsed first, so a bad Driver id never opens a session. Only a
+ * dispatcher or an admin may call this. The Driver route is unchanged. The
+ * version is not read and not written (ADR-0046). No mail is sent.
  */
 export async function acceptRideByPhone(headers: Headers, rawRideId: unknown, rawBody: unknown): Promise<Ride> {
-  return withOfficeWrite(headers, rawBody, body => parseAcceptRide(rawRideId, body), async ({ actor, transaction }, rideId) => {
+  return withOfficeWrite(headers, rawBody, body => parseAcceptRideByPhone(rawRideId, body), async ({ actor, transaction }, input) => {
     if (actor.role !== 'admin' && actor.role !== 'dispatcher')
       throw new TenantAccessError(403)
-    return recordAcceptanceByPhone(transaction, actor.userId, rideId)
+    return recordAcceptanceByPhone(transaction, actor.userId, input.rideId, input.driverId)
   })
 }
 
