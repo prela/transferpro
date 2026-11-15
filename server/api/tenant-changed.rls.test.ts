@@ -200,7 +200,7 @@ it('refuses a stale screen after the session moves, and every office write does 
     () => takeBackRide(stale, id, {}),
     () => cancelRide(stale, id, {}),
     () => acceptRide(stale, id, {}),
-    () => acceptRideByPhone(stale, id, {}),
+    () => acceptRideByPhone(stale, id, { driverId: id }),
     () => markRideDone(stale, id, {}),
     () => markNoShow(stale, id, {}),
     () => declineRide(stale, id, {}),

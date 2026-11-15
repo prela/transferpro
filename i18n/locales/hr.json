@@ -1150,6 +1150,7 @@
     "acceptByPhoneConfirming": "Bilježenje",
     "acceptByPhoneFailed": "Prihvaćanje nije zabilježeno. Pokušajte ponovno.",
     "acceptByPhoneConflict": "Ovu vožnju više nije moguće prihvatiti.",
+    "driverChanged": "Vozač ove vožnje je u međuvremenu promijenjen.",
     "markDone": "Označi obavljenom",
     "markDoneFor": "Označi obavljenom: {guest}",
     "markDoneTitle": "Označi vožnju obavljenom",

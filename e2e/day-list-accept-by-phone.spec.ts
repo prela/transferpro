@@ -1,5 +1,6 @@
 import type { APIResponse, Page } from '@playwright/test'
 import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock } from '../shared/date'
+import { expectNoAxeViolations } from './fixtures/axe'
 import { operationalDay, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
@@ -205,9 +206,10 @@ test('the day list records acceptance confirmed by phone, and cancel writes noth
   await dialog.getByRole('button', { name: 'Record acceptance', exact: true }).click()
   const response = await acceptedResponse
   expect(response.status()).toBe(200)
-  // The dialog has no fields. The only JSON key is the company the screen was opened for.
-  const acceptBody = response.request().postDataJSON() as { expectedTenantId?: string }
-  expect(Object.keys(acceptBody).sort()).toEqual(['expectedTenantId'])
+  // The dialog sends the Driver it showed. The other JSON key is the company the screen was opened for.
+  const acceptBody = response.request().postDataJSON() as { driverId?: string, expectedTenantId?: string }
+  expect(Object.keys(acceptBody).sort()).toEqual(['driverId', 'expectedTenantId'])
+  expect(acceptBody.driverId).toBe(mustDriverId)
   expect(acceptBody.expectedTenantId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   expect(acceptPosts).toBe(1)
   expect(mail).toEqual([])
@@ -466,4 +468,156 @@ test('the office marks a no-show before the wait, and the audit log names that p
   const earlyRow = page.getByRole('row', { name: 'No-show before the wait' })
   await expect(earlyRow).toContainText(tenant.adminName)
   await expect(earlyRow).toContainText('Ana Nedo')
+})
+
+function isPhone(page: Page): boolean {
+  return (page.viewportSize()?.width ?? 1280) < 1024
+}
+
+test.describe('@phone', () => {
+  test('a reassignment between opening and confirming is refused, and the ride stays assigned', async ({ page }) => {
+    test.setTimeout(180_000)
+    const tenant = await seedTenant('day-accept-changed')
+    const mail: string[] = []
+    page.on('request', (request) => {
+      if (request.url().includes('resend.com'))
+        mail.push(request.url())
+    })
+    const guest = 'Nika Zamjena'
+    const called = 'Marko Zvan'
+    const replacement = 'Ivo Novi'
+
+    await useTheme(page, 'light')
+    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+    const calledId = await addDriver(page, called, '+385911115750')
+    const replacementId = await addDriver(page, replacement, '+385911115751')
+    expect((await page.request.patch(`/api/drivers/${calledId}`, { data: { mustAccept: true } })).ok()).toBeTruthy()
+    expect((await page.request.patch(`/api/drivers/${replacementId}`, { data: { mustAccept: true } })).ok()).toBeTruthy()
+    const vehicleId = await addVehicle(page, 'DU574AA')
+    const clientId = await createdId(await page.request.post('/api/clients', {
+      data: { name: 'Klijent Zamjena', kind: 'agency' },
+    }))
+    const startLocationId = await createdId(await page.request.post('/api/locations', {
+      data: { name: 'Polazak Zamjena', kind: 'airport' },
+    }))
+    const endLocationId = await createdId(await page.request.post('/api/locations', {
+      data: { name: 'Dolazak Zamjena', kind: 'hotel' },
+    }))
+    const waiting = await recordTodayRide(page, guest, '15:00', { clientId, startLocationId, endLocationId })
+    await assignRide(page, waiting.rideId, calledId, vehicleId)
+    await page.getByRole('link', { name: 'Transferi', exact: true }).click()
+
+    const steps = [
+      {
+        theme: 'light' as const,
+        locale: 'hr' as const,
+        open: `Potvrdi telefonom: ${guest}`,
+        title: 'Zabilježi prihvaćanje telefonom',
+        confirm: 'Zabilježi prihvaćanje',
+        cancel: 'Odustani',
+        close: 'Zatvori',
+        message: 'Vozač ove vožnje je u međuvremenu promijenjen.',
+        axeBefore: true,
+        axeAfter: false,
+      },
+      {
+        theme: 'dark' as const,
+        locale: 'hr' as const,
+        open: `Potvrdi telefonom: ${guest}`,
+        title: 'Zabilježi prihvaćanje telefonom',
+        confirm: 'Zabilježi prihvaćanje',
+        cancel: 'Odustani',
+        close: 'Zatvori',
+        message: 'Vozač ove vožnje je u međuvremenu promijenjen.',
+        axeBefore: false,
+        axeAfter: false,
+      },
+      {
+        theme: 'light' as const,
+        locale: 'en' as const,
+        open: `Confirm by phone: ${guest}`,
+        title: 'Record acceptance by phone',
+        confirm: 'Record acceptance',
+        cancel: 'Cancel',
+        close: 'Close',
+        message: 'The Driver of this ride has changed in the meantime.',
+        axeBefore: false,
+        axeAfter: false,
+      },
+      {
+        theme: 'dark' as const,
+        locale: 'en' as const,
+        open: `Confirm by phone: ${guest}`,
+        title: 'Record acceptance by phone',
+        confirm: 'Record acceptance',
+        cancel: 'Cancel',
+        close: 'Close',
+        message: 'The Driver of this ride has changed in the meantime.',
+        axeBefore: false,
+        axeAfter: true,
+      },
+    ]
+
+    let theme: 'light' | 'dark' = 'light'
+    let locale: 'hr' | 'en' = 'hr'
+    for (const step of steps) {
+      if (step.theme !== theme) {
+        await switchTheme(page, step.theme)
+        theme = step.theme
+      }
+      if (step.locale !== locale) {
+        await switchLocale(page, step.locale)
+        locale = step.locale
+      }
+      if (step.theme === 'dark')
+        await expect(page.locator('html')).toHaveClass(/dark/)
+      else
+        await expect(page.locator('html')).not.toHaveClass(/dark/)
+      await page.getByRole('button', { name: step.open }).click()
+      const dialog = page.getByRole('dialog').filter({ hasText: step.title })
+      await expect(dialog).toContainText(step.title)
+      await expect(dialog).toContainText(guest)
+      if (step.axeBefore)
+        await expectNoAxeViolations(page)
+
+      const facts = await page.request.get('/api/transfers', { params: { date: waiting.day } })
+      expect(facts.ok()).toBeTruthy()
+      const body = await facts.json() as {
+        rides: { guestName: string, driverId: string | null, version: number }[]
+      }
+      const row = body.rides.find(ride => ride.guestName === guest)
+      if (!row?.driverId)
+        throw new Error('missing driver')
+      const nextDriver = row.driverId === calledId ? replacementId : calledId
+      const moved = await page.request.post(`/api/rides/${waiting.rideId}/reassign`, {
+        data: { version: row.version, driverId: nextDriver, vehicleId },
+      })
+      expect(moved.ok(), moved.ok() ? '' : await moved.text()).toBeTruthy()
+
+      const refused = page.waitForResponse(response =>
+        response.url().includes(`/api/rides/${waiting.rideId}/accept-by-phone`) && response.request().method() === 'POST',
+      )
+      await dialog.getByRole('button', { name: step.confirm, exact: true }).click()
+      const response = await refused
+      expect(response.status()).toBe(409)
+      const posted = response.request().postDataJSON() as { driverId?: string }
+      expect(posted.driverId).toBe(row.driverId)
+      await expect(dialog.getByText(step.message)).toBeVisible()
+      if (step.axeAfter)
+        await expectNoAxeViolations(page)
+      expect(await dayRide(page, waiting.day, guest)).toMatchObject({ state: 'assigned', mustAccept: true })
+      const after = await page.request.get('/api/transfers', { params: { date: waiting.day } })
+      const afterBody = await after.json() as { rides: { guestName: string, driverId: string | null, state: string }[] }
+      expect(afterBody.rides.find(ride => ride.guestName === guest)).toMatchObject({
+        state: 'assigned',
+        driverId: nextDriver,
+      })
+      expect(mail).toEqual([])
+
+      await dialog.getByRole('button', { name: step.cancel, exact: true }).click()
+      const closeName = isPhone(page) ? (step.locale === 'hr' ? 'Natrag' : 'Back') : step.close
+      await page.locator('#ride-detail header').getByRole('button', { name: closeName, exact: true }).click()
+      await expect(dialog).toBeHidden()
+    }
+  })
 })

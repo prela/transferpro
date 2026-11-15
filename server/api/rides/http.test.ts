@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FullyBookedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotHandedOffError, RideNotHandoffableError, RideNotOpenError, RideNotUnassignedError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
+import { FullyBookedError, RideDriverChangedError, RideLandingClosedError, RideLandingInFutureError, RideNotAcceptableError, RideNotCancellableError, RideNotHandedOffError, RideNotHandoffableError, RideNotOpenError, RideNotUnassignedError, RidePartnerArchivedError, RidePartnerUnchangedError, RideSameDriverError, RideUnavailableError, RideVehicleArchivedError, RideVehicleUnchangedError, StaleSaveError } from '../../modules/transfers'
 import { rideHttpError } from './http'
 
 function thrown(run: () => unknown): unknown {
@@ -34,6 +34,14 @@ describe('rideHttpError', () => {
     expect(error).toMatchObject({
       statusCode: 409,
       data: { code: 'ride_not_acceptable' },
+    })
+  })
+
+  it('returns a distinct code when the Driver the office named is no longer on the ride', () => {
+    const error = thrown(() => rideHttpError(new RideDriverChangedError()))
+    expect(error).toMatchObject({
+      statusCode: 409,
+      data: { code: 'ride_driver_changed' },
     })
   })
 

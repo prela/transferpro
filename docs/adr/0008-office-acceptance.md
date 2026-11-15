@@ -1,6 +1,6 @@
 # Office acceptance, confirmed by phone
 
-Status: accepted
+Status: accepted; partially superseded by ADR-0065
 
 Supersedes, in ADR-0005, the rule that only the Driver may set `accepted`. Supersedes, in ADR-0006, the reading that a phone confirmation is never recorded. ADR-0006 still stands where it says Transferpro places no phone call and has no acceptance deadline.
 

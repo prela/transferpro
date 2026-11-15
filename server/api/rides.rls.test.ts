@@ -1916,7 +1916,7 @@ async function acceptanceRaceAudits(tenantId: string) {
   return result.rows
 }
 
-it('refuses an accept-by-phone body that has a key before a session opens', async () => {
+it('refuses an accept-by-phone body that does not name a Driver before a session opens', async () => {
   const world = await office('hasg-ph-body')
   const driver = await createDriver(world.dispatcher, { ...driverBody, phone: '+385911110088' })
   await updateDriver(world.admin, driver.id, { mustAccept: true })
@@ -1929,16 +1929,22 @@ it('refuses an accept-by-phone body that has a key before a session opens', asyn
   const path = `/api/rides/${recorded.ride.id}/accept-by-phone`
   const before = await phoneAcceptanceAudits(world.tenantId)
 
-  const keyed = await call('POST', path, undefined, { note: phone })
+  // The field is required. An empty body, a bad id, and any other key are 400.
+  // These posts used to send an empty object. They now send the Driver id, except here.
+  const keyed = await call('POST', path, undefined, { driverId: driver.id, note: phone })
   expect(keyed.status).toBe(400)
   expect(await keyed.text()).not.toContain(phone)
 
-  const keyedSession = await call('POST', path, world.dispatcher, { driverId: driver.id })
-  expect(keyedSession.status).toBe(400)
-  expect(await keyedSession.text()).not.toContain(phone)
+  const missing = await call('POST', path, world.dispatcher, {})
+  expect(missing.status).toBe(400)
 
-  expect((await call('POST', '/api/rides/not-a-ride/accept-by-phone', world.dispatcher, {})).status).toBe(400)
-  expect((await call('POST', path, undefined, {})).status).toBe(401)
+  const malformed = await call('POST', path, world.dispatcher, { driverId: 'not-a-driver' })
+  expect(malformed.status).toBe(400)
+  expect(await malformed.text()).not.toContain(phone)
+
+  expect((await call('POST', '/api/rides/not-a-ride/accept-by-phone', world.dispatcher, { driverId: driver.id })).status).toBe(400)
+  // A valid body with no session is 401, so the field was accepted before the session opened.
+  expect((await call('POST', path, undefined, { driverId: driver.id })).status).toBe(401)
 
   expect(await rideRow(recorded.ride.id)).toMatchObject({
     state: 'assigned',
@@ -1947,6 +1953,165 @@ it('refuses an accept-by-phone body that has a key before a session opens', asyn
     must_accept: true,
   })
   expect(await phoneAcceptanceAudits(world.tenantId)).toEqual(before)
+})
+
+it('refuses phone acceptance in order and writes nothing on each refusal', async () => {
+  const world = await office('hasg-ph-order')
+  const otherFirm = await office('hasg-ph-order-b')
+  const called = await createDriver(world.dispatcher, { ...driverBody, name: 'Ana Zvana', phone: '+385911115741' })
+  const other = await createDriver(world.dispatcher, { ...driverBody, name: 'Ivo Drugi', phone: '+385911115742' })
+  const plain = await createDriver(world.dispatcher, { ...driverBody, name: 'Tea Slobodna', phone: '+385911115743' })
+  await updateDriver(world.admin, called.id, { mustAccept: true })
+  await updateDriver(world.admin, other.id, { mustAccept: true })
+  const driverMember = await addMember(world.tenantId, 'hasg-ph-order-driver@example.test', 'Drago Driver', 'driver')
+  const driverSession = await signIn('hasg-ph-order-driver@example.test')
+  expect(driverMember).toBeTruthy()
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG5741AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: called.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  const path = `/api/rides/${recorded.ride.id}/accept-by-phone`
+
+  async function unchangedRide(rideId: string, run: () => Promise<Response>): Promise<Response> {
+    const beforeRide = await rideRow(rideId)
+    const beforeVersion = await versionOf(rideId)
+    const beforeAudit = await phoneAcceptanceAudits(world.tenantId)
+    const beforeMail = await outboxRows(world.tenantId)
+    const response = await run()
+    expect(await rideRow(rideId)).toEqual(beforeRide)
+    expect(await versionOf(rideId)).toEqual(beforeVersion)
+    expect(await phoneAcceptanceAudits(world.tenantId)).toEqual(beforeAudit)
+    expect(await outboxRows(world.tenantId)).toEqual(beforeMail)
+    return response
+  }
+
+  async function unchanged(run: () => Promise<Response>): Promise<Response> {
+    const response = await unchangedRide(recorded.ride.id, run)
+    const text = await response.clone().text()
+    expect(text).not.toContain('+385911115741')
+    expect(text).not.toContain('Ana Zvana')
+    return response
+  }
+
+  const extra = await unchanged(() => call('POST', path, undefined, { driverId: called.id, note: phone }))
+  expect(extra.status).toBe(400)
+
+  const signedOut = await unchanged(() => call('POST', path, undefined, { driverId: called.id }))
+  expect(signedOut.status).toBe(401)
+
+  const driverRole = await unchanged(() => call('POST', path, driverSession, { driverId: called.id }))
+  expect(driverRole.status).toBe(403)
+
+  const foreign = await unchanged(() => call('POST', path, otherFirm.dispatcher, { driverId: called.id }))
+  expect(foreign.status).toBe(404)
+
+  const missing = await unchanged(() => call('POST', `/api/rides/${crypto.randomUUID()}/accept-by-phone`, world.dispatcher, { driverId: called.id }))
+  expect(missing.status).toBe(404)
+
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/reassign`, world.dispatcher, {
+    driverId: other.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  const changed = await unchanged(() => call('POST', path, world.dispatcher, { driverId: called.id }))
+  expect(changed.status).toBe(409)
+  expect(await changed.json()).toMatchObject({ data: { code: 'ride_driver_changed' } })
+  expect(await rideRow(recorded.ride.id)).toMatchObject({
+    state: 'assigned',
+    driver_id: other.id,
+    vehicle_id: vehicle.id,
+    must_accept: true,
+  })
+
+  const flaggedOff = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 42 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${flaggedOff.ride.id}/assign`, world.dispatcher, {
+    driverId: plain.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  const off = await unchangedRide(flaggedOff.ride.id, () => call('POST', `/api/rides/${flaggedOff.ride.id}/accept-by-phone`, world.dispatcher, { driverId: plain.id }))
+  expect(off.status).toBe(409)
+  const offBody = await off.json()
+  expect(offBody).toMatchObject({ data: { code: 'ride_not_acceptable' } })
+  expect(JSON.stringify(offBody)).not.toContain('ride_driver_changed')
+  expect(await rideRow(flaggedOff.ride.id)).toMatchObject({ state: 'assigned', driver_id: plain.id, must_accept: false })
+
+  const open = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()))
+  const unassigned = await unchangedRide(open.ride.id, () => call('POST', `/api/rides/${open.ride.id}/accept-by-phone`, world.admin, { driverId: called.id }))
+  expect(unassigned.status).toBe(409)
+  expect(await unassigned.json()).toMatchObject({ data: { code: 'ride_not_acceptable' } })
+  expect(await rideRow(open.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null })
+
+  const finished = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 54 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${finished.ride.id}/assign`, world.dispatcher, {
+    driverId: called.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  const moved = await withAppTenant(world.tenantId, client => client.query(
+    `update app.rides set state = 'done' where id = $1 and state = 'assigned'`,
+    [finished.ride.id],
+  ))
+  expect(moved.rowCount).toBe(1)
+  const notAssigned = await unchangedRide(finished.ride.id, () => call('POST', `/api/rides/${finished.ride.id}/accept-by-phone`, world.dispatcher, { driverId: called.id }))
+  expect(notAssigned.status).toBe(409)
+  expect(await notAssigned.json()).toMatchObject({ data: { code: 'ride_not_acceptable' } })
+  expect(await rideRow(finished.ride.id)).toMatchObject({ state: 'done', driver_id: called.id })
+  expect(await phoneAcceptanceAudits(world.tenantId)).toEqual([])
+})
+
+it('accepts by phone for Driver A when the Ride returns to A, and refuses the Driver it no longer has', async () => {
+  const world = await office('hasg-ph-return')
+  const called = await createDriver(world.dispatcher, { ...driverBody, name: 'Ana Zvana', phone: '+385911115744' })
+  const other = await createDriver(world.dispatcher, { ...driverBody, name: 'Ivo Drugi', phone: '+385911115745' })
+  await updateDriver(world.admin, called.id, { mustAccept: true })
+  await updateDriver(world.admin, other.id, { mustAccept: true })
+  const vehicle = await createVehicle(world.dispatcher, vehicleBody('ZG5742AA'))
+  const recorded = await createTransfer(world.dispatcher, transferBody(world, new Date(Date.now() + 40 * 60 * 60 * 1000).toISOString()))
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/assign`, world.dispatcher, {
+    driverId: called.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/reassign`, world.dispatcher, {
+    driverId: other.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  const away = await call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.dispatcher, { driverId: called.id })
+  expect(away.status).toBe(409)
+  expect(await away.json()).toMatchObject({ data: { code: 'ride_driver_changed' } })
+  expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'assigned', driver_id: other.id, must_accept: true })
+
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/reassign`, world.dispatcher, {
+    driverId: called.id,
+    vehicleId: vehicle.id,
+  })).status).toBe(200)
+  const version = await versionOf(recorded.ride.id)
+  const accepted = await call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.dispatcher, { driverId: called.id })
+  expect(accepted.status).toBe(200)
+  expect(await accepted.json()).toEqual({
+    id: recorded.ride.id,
+    transferId: recorded.transfer.id,
+    state: 'accepted',
+    driverId: called.id,
+    vehicleId: vehicle.id,
+    mustAccept: true,
+  })
+  expect(await rideRow(recorded.ride.id)).toEqual({
+    state: 'accepted',
+    driver_id: called.id,
+    vehicle_id: vehicle.id,
+    must_accept: true,
+  })
+  expect(await versionOf(recorded.ride.id)).toEqual(version)
+  expect(await phoneAcceptanceAudits(world.tenantId)).toEqual([{
+    actor_user_id: world.dispatcherId,
+    subject_user_id: null,
+    data: {
+      rideId: recorded.ride.id,
+      driverId: called.id,
+      fields: ['state'],
+    },
+  }])
+  expect(await outboxRows(world.tenantId)).toEqual([])
 })
 
 it('lets a dispatcher or an admin record acceptance by phone for a Driver with no account', async () => {
@@ -1963,12 +2128,12 @@ it('lets a dispatcher or an admin record acceptance by phone for a Driver with n
   })).status).toBe(200)
   const path = `/api/rides/${recorded.ride.id}/accept-by-phone`
 
-  const driverRole = await call('POST', path, linked.session, {})
+  const driverRole = await call('POST', path, linked.session, { driverId: driver.id })
   expect(driverRole.status).toBe(403)
   expect(await rideRow(recorded.ride.id)).toMatchObject({ state: 'assigned', must_accept: true })
   expect(await phoneAcceptanceAudits(world.tenantId)).toEqual([])
 
-  const accepted = await call('POST', path, world.dispatcher, {})
+  const accepted = await call('POST', path, world.dispatcher, { driverId: driver.id })
   expect(accepted.status).toBe(200)
   expect(await accepted.json()).toEqual({
     id: recorded.ride.id,
@@ -2001,7 +2166,7 @@ it('lets a dispatcher or an admin record acceptance by phone for a Driver with n
   expect(JSON.stringify(audits[0]?.data)).not.toContain('mustAccept')
   expect(JSON.stringify(audits[0]?.data)).not.toContain(driver.name)
 
-  const again = await call('POST', path, world.admin, {})
+  const again = await call('POST', path, world.admin, { driverId: driver.id })
   expect(again.status).toBe(409)
   expect(await again.text()).toContain('ride_not_acceptable')
   expect(await phoneAcceptanceAudits(world.tenantId)).toHaveLength(1)
@@ -2012,7 +2177,7 @@ it('lets a dispatcher or an admin record acceptance by phone for a Driver with n
     driverId: driver.id,
     vehicleId: adminVehicle.id,
   })).status).toBe(200)
-  const byAdmin = await call('POST', `/api/rides/${adminRide.ride.id}/accept-by-phone`, world.admin, {})
+  const byAdmin = await call('POST', `/api/rides/${adminRide.ride.id}/accept-by-phone`, world.admin, { driverId: driver.id })
   expect(byAdmin.status).toBe(200)
   expect(await rideRow(adminRide.ride.id)).toMatchObject({
     state: 'accepted',
@@ -2045,7 +2210,7 @@ it('refuses phone acceptance when the copied flag is off and from every state ot
     driverId: driver.id,
     vehicleId: vehicle.id,
   })).status).toBe(200)
-  const off = await call('POST', `/api/rides/${flaggedOff.ride.id}/accept-by-phone`, world.dispatcher, {})
+  const off = await call('POST', `/api/rides/${flaggedOff.ride.id}/accept-by-phone`, world.dispatcher, { driverId: driver.id })
   expect(off.status).toBe(409)
   expect(await off.text()).toContain('ride_not_acceptable')
   expect(await rideRow(flaggedOff.ride.id)).toMatchObject({
@@ -2056,12 +2221,12 @@ it('refuses phone acceptance when the copied flag is off and from every state ot
   })
 
   await updateDriver(world.admin, driver.id, { mustAccept: true })
-  const stillOff = await call('POST', `/api/rides/${flaggedOff.ride.id}/accept-by-phone`, world.dispatcher, {})
+  const stillOff = await call('POST', `/api/rides/${flaggedOff.ride.id}/accept-by-phone`, world.dispatcher, { driverId: driver.id })
   expect(stillOff.status).toBe(409)
   expect(await rideRow(flaggedOff.ride.id)).toMatchObject({ state: 'assigned', must_accept: false })
 
   const open = await createTransfer(world.dispatcher, transferBody(world, pickup(26)))
-  const unassigned = await call('POST', `/api/rides/${open.ride.id}/accept-by-phone`, world.admin, {})
+  const unassigned = await call('POST', `/api/rides/${open.ride.id}/accept-by-phone`, world.admin, { driverId: driver.id })
   expect(unassigned.status).toBe(409)
   expect(await unassigned.text()).toContain('ride_not_acceptable')
   expect(await rideRow(open.ride.id)).toMatchObject({ state: 'unassigned', driver_id: null, must_accept: null })
@@ -2077,7 +2242,7 @@ it('refuses phone acceptance when the copied flag is off and from every state ot
       [recorded.ride.id, state],
     ))
     expect(moved.rowCount).toBe(1)
-    const refused = await call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.dispatcher, {})
+    const refused = await call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.dispatcher, { driverId: driver.id })
     expect(refused.status).toBe(409)
     expect(await refused.text()).toContain('ride_not_acceptable')
     expect(await rideRow(recorded.ride.id)).toMatchObject({
@@ -2103,7 +2268,7 @@ it('hides another Tenant\'s Ride from phone acceptance and writes no audit row',
     vehicleId: vehicle.id,
   })).status).toBe(200)
 
-  const foreign = await call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, otherFirm.dispatcher, {})
+  const foreign = await call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, otherFirm.dispatcher, { driverId: driver.id })
   expect(foreign.status).toBe(404)
   expect(await foreign.text()).not.toContain(phone)
   expect(await rideRow(recorded.ride.id)).toMatchObject({
@@ -2128,7 +2293,7 @@ it('lets exactly one of an office accept and a Driver accept win', async () => {
   })).status).toBe(200)
 
   const [officeResult, driverResult] = await Promise.all([
-    call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.dispatcher, {}),
+    call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.dispatcher, { driverId: linked.driver.id }),
     call('POST', `/api/rides/${recorded.ride.id}/accept`, linked.session, {}),
   ])
   const statuses = [officeResult.status, driverResult.status].sort()
@@ -2178,8 +2343,8 @@ it('lets exactly one of two office accepts win', async () => {
   })).status).toBe(200)
 
   const [first, second] = await Promise.all([
-    call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.dispatcher, {}),
-    call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.admin, {}),
+    call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.dispatcher, { driverId: driver.id }),
+    call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.admin, { driverId: driver.id }),
   ])
   const statuses = [first.status, second.status].sort()
   expect(statuses).toEqual([200, 409])
@@ -2241,7 +2406,7 @@ it('changes the vehicle, reassigns, and clears, and a driver is refused with no 
     driverId: first.driver.id,
     vehicleId: kept.id,
   })).status).toBe(200)
-  expect((await call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.dispatcher, {})).status).toBe(200)
+  expect((await call('POST', `/api/rides/${recorded.ride.id}/accept-by-phone`, world.dispatcher, { driverId: first.driver.id })).status).toBe(200)
 
   const driverVehicle = await call('POST', `/api/rides/${recorded.ride.id}/vehicle`, first.session, { vehicleId: next.id })
   expect(driverVehicle.status).toBe(403)
@@ -2504,7 +2669,7 @@ it('refuses done from assigned when the flag is on, and allows it from accepted 
   expect(await doneAudits(world.tenantId)).toEqual([])
 
   expect((await call('POST', `/api/rides/${driverRide.ride.id}/accept`, linked.session, {})).status).toBe(200)
-  expect((await call('POST', `/api/rides/${officeRide.ride.id}/accept-by-phone`, world.dispatcher, {})).status).toBe(200)
+  expect((await call('POST', `/api/rides/${officeRide.ride.id}/accept-by-phone`, world.dispatcher, { driverId: linked.driver.id })).status).toBe(200)
 
   const driverDone = await call('POST', `/api/rides/${driverRide.ride.id}/done`, linked.session, {})
   expect(driverDone.status).toBe(200)
@@ -2716,7 +2881,7 @@ it('refuses a No-show from assigned when the flag is on, and allows it from acce
   expect(await noShowAudits(world.tenantId, 'ride.no_show')).toEqual([])
 
   expect((await call('POST', `/api/rides/${driverRide.ride.id}/accept`, linked.session, {})).status).toBe(200)
-  expect((await call('POST', `/api/rides/${officeRide.ride.id}/accept-by-phone`, world.dispatcher, {})).status).toBe(200)
+  expect((await call('POST', `/api/rides/${officeRide.ride.id}/accept-by-phone`, world.dispatcher, { driverId: linked.driver.id })).status).toBe(200)
 
   const driverMarked = await call('POST', `/api/rides/${driverRide.ride.id}/no-show`, linked.session, {})
   expect(driverMarked.status).toBe(200)
@@ -3047,7 +3212,7 @@ it('refuses a driver, a terminal Ride, and a further transition, and writes no c
     vehicleId: vehicle.id,
   })).status).toBe(409)
   expect((await call('POST', `/api/rides/${held.ride.id}/accept`, linked.session, {})).status).toBe(409)
-  expect((await call('POST', `/api/rides/${held.ride.id}/accept-by-phone`, world.dispatcher, {})).status).toBe(409)
+  expect((await call('POST', `/api/rides/${held.ride.id}/accept-by-phone`, world.dispatcher, { driverId: linked.driver.id })).status).toBe(409)
   expect((await call('POST', `/api/rides/${held.ride.id}/done`, world.dispatcher, {})).status).toBe(409)
   expect((await call('POST', `/api/rides/${held.ride.id}/clear`, world.dispatcher, {})).status).toBe(409)
   expect((await call('POST', `/api/rides/${held.ride.id}/vehicle`, world.dispatcher, { vehicleId: other.id })).status).toBe(409)
@@ -4281,7 +4446,7 @@ it('driver and office state actions leave the version, so the office save opened
   expect(noShowText).not.toContain('stale_save')
   expect((await versionOf(noShow.ride.id)).version).toBe(1)
 
-  expect((await call('POST', `/api/rides/${phoned.ride.id}/accept-by-phone`, world.dispatcher, {})).status).toBe(200)
+  expect((await call('POST', `/api/rides/${phoned.ride.id}/accept-by-phone`, world.dispatcher, { driverId: phoning.id })).status).toBe(200)
   expect((await versionOf(phoned.ride.id)).version).toBe(1)
   expect((await call('POST', `/api/rides/${phoned.ride.id}/vehicle`, world.dispatcher, {
     vehicleId: phoneNext.id,

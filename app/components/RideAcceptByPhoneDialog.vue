@@ -2,7 +2,7 @@
 import type { TransferDayRide } from '../../shared'
 import { rideSchema } from '../../shared'
 import { commandControlClass, commandControlSize } from '../ride-detail'
-import { httpStatus } from '../transfer-day-http'
+import { errorCode, httpStatus } from '../transfer-day-http'
 import { canRecordAcceptanceByPhone } from '../transfer-ride-guards'
 
 const props = defineProps<{
@@ -26,13 +26,20 @@ const titleId = useId()
 type AcceptByPhoneFailure
   = 'ride.acceptByPhoneFailed'
     | 'ride.acceptByPhoneConflict'
+    | 'ride.driverChanged'
     | 'ride.signedOut'
 
 const pending = ref(false)
 const errorKey = ref<AcceptByPhoneFailure | null>(null)
+// The Driver on screen when this dialog opened. A later refresh of the row
+// must not replace it, or confirming would accept a Driver nobody called.
+const shownDriverId = props.ride.driverId
 
 function failureKey(error: unknown): AcceptByPhoneFailure {
-  // 409 is ride_not_acceptable: the flag is off, or the Ride is no longer assigned.
+  // A reassignment is its own sentence, so the Dispatcher knows to call the new Driver.
+  if (errorCode(error) === 'ride_driver_changed')
+    return 'ride.driverChanged'
+  // 409 is ride_not_acceptable: the flag is off, there is no Driver, or the Ride is no longer assigned.
   if (httpStatus(error) === 409)
     return 'ride.acceptByPhoneConflict'
   if (httpStatus(error) === 401)
@@ -41,19 +48,20 @@ function failureKey(error: unknown): AcceptByPhoneFailure {
 }
 
 /**
- * POST /api/rides/:id/accept-by-phone with an empty body. There is no note.
- * Success reloads the day so the row shows Accepted. Cancel never calls this.
- * This action does not send mail. The confirmation lives in the Ride detail.
+ * POST /api/rides/:id/accept-by-phone with the Driver this dialog showed.
+ * There is no note and no version. Success reloads the day so the row shows
+ * Accepted. A refusal reloads too, and the dialog stays. Cancel never calls
+ * this. This action does not send mail. The confirmation lives in the Ride detail.
  */
 async function confirm() {
-  if (!canRecordAcceptanceByPhone(props.ride) || pending.value)
+  if (!canRecordAcceptanceByPhone(props.ride) || shownDriverId === null || pending.value)
     return
   pending.value = true
   errorKey.value = null
   try {
     rideSchema.parse(await $fetch(`/api/rides/${props.ride.rideId}/accept-by-phone`, {
       method: 'POST',
-      body: {},
+      body: { driverId: shownDriverId },
     }))
     notifyAuditChanged()
     await props.loadDay()
