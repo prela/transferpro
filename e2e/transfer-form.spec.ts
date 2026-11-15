@@ -34,6 +34,22 @@ async function openForm(page: Page): Promise<Locator> {
   return dialog
 }
 
+/**
+ * A return to the day opens a saved draft over the New transfer button, and
+ * the click then waits out the test. Discard that draft so the next open is
+ * a blank form.
+ */
+async function discardRestoredDraft(page: Page) {
+  const form = page.getByRole('dialog', { name: /^(Zabilježi transfer|Record a transfer)$/ })
+  if (!(await form.isVisible()))
+    return
+  const discard = form.getByRole('button', { name: /^(Odbaci|Discard)$/, exact: true })
+  if (await discard.isVisible()) {
+    await discard.click()
+    await expect(form).toBeHidden()
+  }
+}
+
 async function createFromSelect(page: Page, dialog: Locator, field: string, name: string, addLabel = `+ Dodaj ‘${name}’`) {
   const trigger = dialog.getByRole('button', { name: field, exact: true })
   const listbox = await openListbox(page, trigger)
@@ -209,6 +225,7 @@ test('quick add picks a place from the name or the address', async ({ page }) =>
     await switchLocale(page, 'en')
     await page.goto('/transfers')
     await hydrated(page)
+    await discardRestoredDraft(page)
     await openNewTransfer(page)
     const english = page.getByRole('dialog')
     await createFromSelect(page, english, 'Where it starts', 'Hotel English', '+ Add ‘Hotel English’')
@@ -229,6 +246,7 @@ test('quick add picks a place from the name or the address', async ({ page }) =>
     await page.goto('/transfers')
     await hydrated(page)
     await expect(page.locator('html')).toHaveClass(/dark/)
+    await discardRestoredDraft(page)
     await openNewTransfer(page)
     const dark = page.getByRole('dialog')
     await createFromSelect(page, dark, 'Where it starts', 'Hotel Dark', '+ Add ‘Hotel Dark’')

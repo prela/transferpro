@@ -133,7 +133,11 @@ test.describe('@phone', () => {
         return await recorded.json() as { transfer: { id: string }, ride: { id: string } }
       }
 
-      const main = await record('Iva Detalj', '08:00')
+      // On the phone the header is short, so an 08:00 Ride is above the
+      // viewport once the list has scrolled. A click would scroll it back
+      // into view before the page could remember the position. A late Ride
+      // stays below the fold, so opening it keeps the scroll.
+      const main = await record('Iva Detalj', phone ? '18:00' : '08:00')
       const accept = await record('Iva Prihvat', '09:00')
       if (phone) {
         for (let index = 0; index < 12; index++)

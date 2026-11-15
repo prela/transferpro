@@ -718,7 +718,7 @@ function restorePhoneScroll() {
   if (layout.value !== 'phone')
     return
   const { element, top } = phoneListScroll
-  // The slideover locks scroll while it is open. Restore after it releases.
+  // The detail locks scroll while it is open. Restore after it releases.
   void nextTick(() => {
     requestAnimationFrame(() => {
       if (element)

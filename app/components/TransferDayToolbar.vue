@@ -67,6 +67,14 @@ const sheetOpen = ref(false)
 const sheetCloseFocus = ref<'filters' | 'list'>('filters')
 const viewRow = ref<HTMLElement | null>(null)
 const exportDialog = ref<{ openExport: () => void } | null>(null)
+/**
+ * Pinned only once the row has reached the top of the scrolling panel.
+ * A sticky row is trapped by the header, and a bar that is fixed from the
+ * start covers the day controls. The anchor keeps the gap while it is pinned.
+ */
+const stickyStyle = ref<Record<string, string>>({})
+const searchAnchor = ref<HTMLElement | null>(null)
+let scrollTarget: HTMLElement | null = null
 
 const chipViews = new Set<string>([...TRANSFER_DAY_FILTERS, 'toInvoice'])
 
@@ -268,15 +276,73 @@ function onHistory() {
   sheetOpen.value = false
 }
 
+function findScroller(): HTMLElement | null {
+  const start = document.getElementById('transfer-day-list')
+  let scroller = start?.parentElement ?? null
+  while (scroller) {
+    const overflow = getComputedStyle(scroller).overflowY
+    if (overflow === 'auto' || overflow === 'scroll')
+      return scroller
+    scroller = scroller.parentElement
+  }
+  return null
+}
+
+function unbindScroller() {
+  scrollTarget?.removeEventListener('scroll', placeStickySearch)
+  scrollTarget = null
+}
+
+function placeStickySearch() {
+  if (!window.matchMedia('(max-width: 1023px)').matches) {
+    stickyStyle.value = {}
+    unbindScroller()
+    return
+  }
+  const scroller = findScroller()
+  const anchor = searchAnchor.value
+  if (!scroller || !anchor) {
+    stickyStyle.value = {}
+    unbindScroller()
+    return
+  }
+  if (scrollTarget !== scroller) {
+    unbindScroller()
+    scroller.addEventListener('scroll', placeStickySearch, { passive: true })
+    scrollTarget = scroller
+  }
+  const scrollerBox = scroller.getBoundingClientRect()
+  const anchorBox = anchor.getBoundingClientRect()
+  // In flow until the row meets the panel. Pinning earlier covers the day.
+  if (anchorBox.top > scrollerBox.top + 1) {
+    if (stickyStyle.value.top)
+      stickyStyle.value = {}
+    return
+  }
+  const pad = getComputedStyle(scroller)
+  const next = {
+    top: `${scrollerBox.top}px`,
+    left: `${scrollerBox.left}px`,
+    width: `${scrollerBox.width}px`,
+    paddingLeft: pad.paddingLeft,
+    paddingRight: pad.paddingRight,
+  }
+  if (stickyStyle.value.top === next.top && stickyStyle.value.left === next.left && stickyStyle.value.width === next.width)
+    return
+  stickyStyle.value = next
+}
+
 onMounted(() => {
   const query = window.matchMedia('(max-width: 1023px)')
   const apply = () => {
     phone.value = query.matches
     if (!phone.value)
       sheetOpen.value = false
+    placeStickySearch()
     void nextTick(revealActiveChip)
   }
   apply()
+  window.addEventListener('resize', placeStickySearch)
   // Read after mount, like the occupation strip. A collapsed choice may
   // shift the desktop layout once. Filters in the address do not open it.
   if (readTransferDayFiltersCollapsed(localStorage, storageKey()))
@@ -285,7 +351,9 @@ onMounted(() => {
   window.addEventListener('popstate', onHistory)
   onScopeDispose(() => {
     query.removeEventListener('change', apply)
+    window.removeEventListener('resize', placeStickySearch)
     window.removeEventListener('popstate', onHistory)
+    unbindScroller()
   })
 })
 
@@ -295,13 +363,7 @@ watch(filter, () => {
 </script>
 
 <template>
-  <!--
-    On the phone the header and the filter band generate no box, so the
-    search row can stick for the whole section, list included. A box that
-    ended at the tools would scroll the row away with the header. Print
-    still drops the app around the print sheet. Desktop keeps the band.
-  -->
-  <header class="mb-3 border-b border-default pb-3 print:hidden max-lg:contents">
+  <header class="mb-3 border-b border-default pb-3 print:hidden">
     <a
       href="#transfer-day-list"
       class="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-50 focus:bg-default focus:px-3 focus:py-2 focus:text-default"
@@ -463,42 +525,53 @@ watch(filter, () => {
       </p>
     </div>
 
-    <div class="mb-3 max-lg:contents">
+    <div class="mb-3">
       <label
         class="mb-1 block text-sm"
         :for="searchFieldId"
       >{{ t('transfers.daySearch') }}</label>
       <!--
-        The same row sticks under the top bar on the phone. The label stays
-        in normal flow, above it. 44 px, an opaque surface, and a structural
-        border so a scrolled Ride does not show through (WCAG 2.4.11).
+        The anchor stays in flow. On the phone the row pins to the panel
+        only after that anchor reaches it, so the day controls stay
+        uncovered. The label stays above the anchor. 44 px, an opaque
+        surface, and a structural border so a scrolled Ride does not show
+        through (WCAG 2.4.11).
       -->
-      <div class="flex items-center gap-2 max-lg:sticky max-lg:top-0 max-lg:z-20 max-lg:h-11 max-lg:border-b max-lg:border-default max-lg:bg-default">
-        <UInput
-          :id="searchFieldId"
-          v-model="search"
-          name="search"
-          type="search"
-          icon="i-lucide-search"
-          :placeholder="t('transfers.daySearchPlaceholder')"
-          size="sm"
-          class="min-w-0 flex-1 text-base"
-          :ui="{ base: 'max-lg:h-11' }"
-        />
-        <UButton
-          :id="filtersButtonId"
-          type="button"
-          color="neutral"
-          variant="outline"
-          size="sm"
-          class="shrink-0"
-          :class="controlClass"
-          :aria-expanded="filtersExpanded"
-          :aria-controls="filtersControls"
-          @click="onFiltersClick"
+      <div
+        ref="searchAnchor"
+        class="max-lg:h-11"
+      >
+        <div
+          class="flex items-center gap-2 max-lg:z-30 max-lg:box-border max-lg:h-11 max-lg:border-b max-lg:border-default max-lg:bg-default"
+          :class="{ 'max-lg:fixed': stickyStyle.top }"
+          :style="stickyStyle"
         >
-          {{ filtersButtonLabel }}
-        </UButton>
+          <UInput
+            :id="searchFieldId"
+            v-model="search"
+            name="search"
+            type="search"
+            icon="i-lucide-search"
+            :placeholder="t('transfers.daySearchPlaceholder')"
+            size="sm"
+            class="min-w-0 flex-1 text-base"
+            :ui="{ base: 'max-lg:h-11' }"
+          />
+          <UButton
+            :id="filtersButtonId"
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            class="shrink-0"
+            :class="controlClass"
+            :aria-expanded="filtersExpanded"
+            :aria-controls="filtersControls"
+            @click="onFiltersClick"
+          >
+            {{ filtersButtonLabel }}
+          </UButton>
+        </div>
       </div>
 
       <div
