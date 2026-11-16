@@ -168,8 +168,11 @@ async function replaceApp(client: PoolClient, picture: DemoPicture): Promise<voi
   await client.query('delete from app.rides where tenant_id = $1', [tenantId])
   await client.query('delete from app.transfers where tenant_id = $1', [tenantId])
   await client.query('delete from app.roster where tenant_id = $1', [tenantId])
+  // A window names a Driver, a Vehicle, or a Partner. Clear it before those rows.
+  await client.query('delete from app.unavailability_windows where tenant_id = $1', [tenantId])
   await client.query('delete from app.drivers where tenant_id = $1', [tenantId])
   await client.query('delete from app.vehicles where tenant_id = $1', [tenantId])
+  await client.query('delete from app.partners where tenant_id = $1', [tenantId])
   await client.query('delete from app.locations where tenant_id = $1', [tenantId])
   await client.query('delete from app.client_billing_details where tenant_id = $1', [tenantId])
   await client.query('delete from app.clients where tenant_id = $1', [tenantId])
@@ -233,15 +236,16 @@ async function replaceApp(client: PoolClient, picture: DemoPicture): Promise<voi
     await client.query(
       `insert into app.vehicles (
          tenant_id, id, registration_plate, kind, registration_expires_on,
-         technical_inspection_expires_on, insurance_expires_on, archived_at
+         technical_inspection_expires_on, insurance_expires_on, seat_count, archived_at
        )
-       values ($1, $2, $3, 'fixed', $4, $5, $5, $6)`,
+       values ($1, $2, $3, 'fixed', $4, $5, $5, $6, $7)`,
       [
         tenantId,
         vehicle.id,
         vehicle.plate,
         registration,
         picture.documentsValidOn,
+        vehicle.seatCount,
         vehicle.archived ? picture.archivedAt : null,
       ],
     )
@@ -271,7 +275,20 @@ async function replaceApp(client: PoolClient, picture: DemoPicture): Promise<voi
     )
   }
 
-  for (const row of picture.rides)
+  for (const partner of picture.partners) {
+    await client.query(
+      `insert into app.partners (tenant_id, id, name, phone, email)
+       values ($1, $2, $3, $4, $5)`,
+      [tenantId, partner.id, partner.name, partner.phone, partner.email],
+    )
+  }
+
+  // An extra vehicle names its main Transfer, so the main row is inserted first.
+  const rides = [
+    ...picture.rides.filter(row => row.linkTransferId === null),
+    ...picture.rides.filter(row => row.linkTransferId !== null),
+  ]
+  for (const row of rides)
     await insertRide(client, picture, row)
 
   for (const row of picture.roster) {
@@ -295,9 +312,10 @@ async function insertRide(client: PoolClient, picture: DemoPicture, row: DemoRid
     `insert into app.transfers (
        tenant_id, id, client_id, pickup_at, start_location_id, end_location_id,
        passenger_count, guest_name, flight_number, landing_at, price, payment,
-       airport_mark, luggage_count, child_seat_count, note, tabla, external_id
+       airport_mark, luggage_count, child_seat_count, note, tabla, external_id,
+       link, group_passenger_count
      )
-     values ($1, $2, $3, $4, $5, $6, 2, $7, $8, $9, $10, $11, $12, 1, 0, $13, $14, $15)`,
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 1, 0, $14, $15, $16, $17, $18)`,
     [
       picture.tenantId,
       row.transferId,
@@ -305,6 +323,7 @@ async function insertRide(client: PoolClient, picture: DemoPicture, row: DemoRid
       row.pickupAt,
       startId,
       endId,
+      row.passengerCount,
       row.guestName,
       row.flightNumber,
       row.landingAt,
@@ -315,11 +334,16 @@ async function insertRide(client: PoolClient, picture: DemoPicture, row: DemoRid
       row.tabla,
       // external_id is text. The id column is uuid. One parameter cannot be both.
       row.transferId,
+      row.linkTransferId,
+      row.groupPassengerCount,
     ],
   )
   await client.query(
-    `insert into app.rides (tenant_id, id, transfer_id, state, driver_id, vehicle_id, must_accept)
-     values ($1, $2, $3, $4, $5, $6, $7)`,
+    `insert into app.rides (
+       tenant_id, id, transfer_id, state, driver_id, vehicle_id, must_accept,
+       partner_id, partner_confirmed
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       picture.tenantId,
       row.rideId,
@@ -328,6 +352,8 @@ async function insertRide(client: PoolClient, picture: DemoPicture, row: DemoRid
       row.driver === null ? null : picture.driverIds[row.driver],
       row.vehicle === null ? null : vehicleId(picture, row.vehicle),
       row.mustAccept,
+      partnerId(picture, row.partner),
+      row.partnerConfirmed,
     ],
   )
   if (row.declinedBy !== null && row.alertId !== null) {
@@ -337,6 +363,15 @@ async function insertRide(client: PoolClient, picture: DemoPicture, row: DemoRid
       [picture.tenantId, row.alertId, row.rideId, picture.driverIds[row.declinedBy]],
     )
   }
+}
+
+function partnerId(picture: DemoPicture, key: DemoRide['partner']): string | null {
+  if (key === null)
+    return null
+  const partner = picture.partners.find(item => item.key === key)
+  if (partner === undefined)
+    throw new DemoSeedError('Could not seed the demo tenant.')
+  return partner.id
 }
 
 function vehicleId(picture: DemoPicture, key: DemoVehicleKey): string {

@@ -6,8 +6,9 @@ import { addCalendarDays, calendarDateInTimeZone, instantFromWallClock, localDay
  * Instants are derived in Europe/Zagreb. No calendar date is written
  * as a literal. Ids stay the same across runs so a bookmark still resolves.
  * Names, plates, and addresses are obviously fictional. The airport code
- * ZZZ is not a scheduled airport, and flight text is not a designator,
- * so a later status ask has nothing to call.
+ * ZZZ is not a scheduled airport. ZZ 1101 and ZZ 1202 are fictional
+ * designators, not a scheduled airline. Older flight texts stay notes,
+ * so they are not designators. A status ask still has no real arrival.
  * The airport and the hotel store public Google place ids so a preview
  * map resolves. Those ids are not the fictional address text. Every
  * address-kind Location has none (ADR-0052), including the long name
@@ -24,6 +25,7 @@ const DOCUMENT_VALID_DAYS = 400
 export type DemoMemberKey = 'admin' | 'dispatcher' | 'driver-a' | 'driver-b' | 'driver-c'
 export type DemoDriverKey = 'a' | 'b' | 'c'
 export type DemoVehicleKey = 'valid' | 'expired' | 'archived' | 'gap'
+export type DemoPartnerKey = 'carrier'
 export type DemoClientKey = 'agency' | 'hotel' | 'individual' | 'long'
 export type DemoLocationKey = 'airport' | 'hotel' | 'address' | 'long'
 
@@ -65,6 +67,16 @@ export interface DemoVehicle {
   readonly id: string
   readonly plate: string
   readonly archived: boolean
+  /** Passenger seats, not counting the Driver. Every demo Vehicle has one. */
+  readonly seatCount: number
+}
+
+export interface DemoPartner {
+  readonly key: DemoPartnerKey
+  readonly id: string
+  readonly name: string
+  readonly phone: string
+  readonly email: string
 }
 
 export interface DemoRide {
@@ -89,6 +101,14 @@ export interface DemoRide {
   readonly mustAccept: boolean | null
   /** The driver named on a decline alert. The Ride itself stays unassigned. */
   readonly declinedBy: DemoDriverKey | null
+  readonly passengerCount: number
+  /** Set only while `handed_off`. */
+  readonly partner: DemoPartnerKey | null
+  readonly partnerConfirmed: boolean
+  /** The main Transfer, when this row is an extra vehicle. */
+  readonly linkTransferId: string | null
+  /** The group's ordered count. Empty on an extra vehicle and on a Transfer that is not a group. */
+  readonly groupPassengerCount: number | null
 }
 
 export interface DemoRosterRow {
@@ -104,6 +124,7 @@ export interface DemoPicture {
   readonly clients: readonly DemoClient[]
   readonly locations: readonly DemoLocation[]
   readonly vehicles: readonly DemoVehicle[]
+  readonly partners: readonly DemoPartner[]
   readonly rides: readonly DemoRide[]
   readonly roster: readonly DemoRosterRow[]
   readonly driverIds: Readonly<Record<DemoDriverKey, string>>
@@ -213,10 +234,20 @@ const locations: readonly DemoLocation[] = [
 ]
 
 const vehicles: readonly DemoVehicle[] = [
-  { key: 'valid', id: demoId(301), plate: 'IZM001', archived: false },
-  { key: 'expired', id: demoId(302), plate: 'IZM002', archived: false },
-  { key: 'archived', id: demoId(303), plate: 'IZM003', archived: true },
-  { key: 'gap', id: demoId(304), plate: 'IZM004', archived: false },
+  { key: 'valid', id: demoId(301), plate: 'IZM001', archived: false, seatCount: 4 },
+  { key: 'expired', id: demoId(302), plate: 'IZM002', archived: false, seatCount: 4 },
+  { key: 'archived', id: demoId(303), plate: 'IZM003', archived: true, seatCount: 4 },
+  { key: 'gap', id: demoId(304), plate: 'IZM004', archived: false, seatCount: 4 },
+]
+
+const partners: readonly DemoPartner[] = [
+  {
+    key: 'carrier',
+    id: demoId(801),
+    name: 'Prijevoznik Izmišljeni',
+    phone: '555-0199',
+    email: 'demo-partner@example.com',
+  },
 ]
 
 export function buildDemoPicture(now: Date): DemoPicture {
@@ -225,6 +256,7 @@ export function buildDemoPicture(now: Date): DemoPicture {
 
   const zone = DEMO_TIME_ZONE
   const opDay = operationalDateInTimeZone(zone, now, OPERATIONAL_DAY_START_DEFAULT)
+  const tomorrowDay = addCalendarDays(opDay, 1)
   const bounds = localDayBounds(opDay, zone, OPERATIONAL_DAY_START_DEFAULT)
   const previous = localDayBounds(addCalendarDays(opDay, -1), zone, OPERATIONAL_DAY_START_DEFAULT)
   const twoDaysAgo = localDayBounds(addCalendarDays(opDay, -2), zone, OPERATIONAL_DAY_START_DEFAULT)
@@ -574,6 +606,176 @@ export function buildDemoPicture(now: Date): DemoPicture {
       vehicle: 'valid',
       mustAccept: false,
     }),
+    // Still this operational day. Three hours ahead when that instant fits,
+    // otherwise 11:00, which is after the spring-forward gap.
+    ride(20, {
+      client: 'agency',
+      pickupAt: todayFlightPickup(now, bounds.end, opDay),
+      start: 'airport',
+      end: 'hotel',
+      guestName: 'Gost Let Danas',
+      flightNumber: 'ZZ 1101',
+      landingAt: null,
+      price: '32.00',
+      payment: 'cash',
+      note: null,
+      tabla: 'GOST',
+      state: 'assigned',
+      driver: 'b',
+      vehicle: 'valid',
+      mustAccept: false,
+    }),
+    // 10:00 on the next operational day. Clear of an 08:00 cluster, and
+    // the hour exists on a spring-forward morning.
+    ride(21, {
+      client: 'hotel',
+      pickupAt: wallOn(tomorrowDay, '10:00'),
+      start: 'airport',
+      end: 'address',
+      guestName: 'Gost Let Sutra',
+      flightNumber: 'ZZ 1202',
+      landingAt: null,
+      price: '33.00',
+      payment: 'card',
+      note: null,
+      tabla: 'GOST',
+      state: 'assigned',
+      driver: 'b',
+      vehicle: 'valid',
+      mustAccept: false,
+    }),
+    // Six passengers in a four-seat Vehicle. The only seat warning.
+    ride(22, {
+      client: 'agency',
+      pickupAt: wallOn(tomorrowDay, '16:30'),
+      start: 'hotel',
+      end: 'address',
+      guestName: 'Gost Previše',
+      flightNumber: null,
+      landingAt: null,
+      price: '36.00',
+      payment: 'cash',
+      note: null,
+      tabla: '',
+      state: 'assigned',
+      driver: 'c',
+      vehicle: 'valid',
+      mustAccept: false,
+      passengerCount: 6,
+    }),
+    // Driver A still has to accept. The phone lists it with the other upcoming Rides.
+    ride(23, {
+      client: 'individual',
+      pickupAt: wallOn(tomorrowDay, '18:00'),
+      start: 'address',
+      end: 'hotel',
+      guestName: 'Gost Prihvat Sutra',
+      flightNumber: null,
+      landingAt: null,
+      price: '27.00',
+      payment: 'invoice_to_agency',
+      note: null,
+      tabla: '',
+      state: 'assigned',
+      driver: 'a',
+      vehicle: 'gap',
+      mustAccept: true,
+    }),
+    ride(24, {
+      client: 'hotel',
+      pickupAt: wallOn(tomorrowDay, '19:30'),
+      start: 'hotel',
+      end: 'airport',
+      guestName: 'Gost Slobodno',
+      flightNumber: null,
+      landingAt: null,
+      price: '18.00',
+      payment: 'card',
+      note: null,
+      tabla: '',
+      state: 'unassigned',
+      driver: null,
+      vehicle: null,
+      mustAccept: null,
+    }),
+    // The ordered count stays 6. This Vehicle carries 4; the extra carries 2.
+    ride(25, {
+      client: 'agency',
+      pickupAt: wallOn(tomorrowDay, '20:15'),
+      start: 'address',
+      end: 'hotel',
+      guestName: 'Gost Skupina',
+      flightNumber: null,
+      landingAt: null,
+      price: '40.00',
+      payment: 'invoice_to_agency',
+      note: null,
+      tabla: '',
+      state: 'assigned',
+      driver: 'a',
+      vehicle: 'valid',
+      mustAccept: false,
+      passengerCount: 4,
+      groupPassengerCount: 6,
+    }),
+    ride(26, {
+      client: 'agency',
+      pickupAt: wallOn(tomorrowDay, '20:15'),
+      start: 'address',
+      end: 'hotel',
+      guestName: 'Gost Skupina Extra',
+      flightNumber: null,
+      landingAt: null,
+      price: '0.00',
+      payment: 'invoice_to_agency',
+      note: null,
+      tabla: '',
+      state: 'assigned',
+      driver: 'b',
+      vehicle: 'gap',
+      mustAccept: false,
+      passengerCount: 2,
+      linkTo: 25,
+    }),
+    // Home lists this one: handed off, not confirmed, pickup still ahead.
+    ride(27, {
+      client: 'hotel',
+      pickupAt: wallOn(tomorrowDay, '21:00'),
+      start: 'hotel',
+      end: 'address',
+      guestName: 'Gost Čeka Podizvođača',
+      flightNumber: null,
+      landingAt: null,
+      price: '24.00',
+      payment: 'card',
+      note: null,
+      tabla: '',
+      state: 'handed_off',
+      driver: null,
+      vehicle: null,
+      mustAccept: null,
+      partner: 'carrier',
+      partnerConfirmed: false,
+    }),
+    ride(28, {
+      client: 'agency',
+      pickupAt: wallOn(tomorrowDay, '22:00'),
+      start: 'address',
+      end: 'hotel',
+      guestName: 'Gost Podizvođač Potvrdio',
+      flightNumber: null,
+      landingAt: null,
+      price: '24.00',
+      payment: 'cash',
+      note: null,
+      tabla: '',
+      state: 'handed_off',
+      driver: null,
+      vehicle: null,
+      mustAccept: null,
+      partner: 'carrier',
+      partnerConfirmed: true,
+    }),
   ]
 
   return {
@@ -582,6 +784,7 @@ export function buildDemoPicture(now: Date): DemoPicture {
     clients,
     locations,
     vehicles,
+    partners,
     rides,
     roster: [
       {
@@ -623,11 +826,34 @@ function clusterStart(now: Date, opDay: string, opEnd: Date): Date {
   return instantFromWallClock(`${addCalendarDays(opDay, 1)}T08:00`, DEMO_TIME_ZONE)
 }
 
+function wallOn(day: string, time: string): Date {
+  return instantFromWallClock(`${day}T${time}`, DEMO_TIME_ZONE)
+}
+
+/**
+ * Prefer a pickup still on this operational day and still ahead of the clock.
+ * The last hours of the day have no room for three hours ahead, so the
+ * arrival stays at 11:00. That hour exists on a spring-forward morning.
+ */
+function todayFlightPickup(now: Date, opEnd: Date, opDay: string): Date {
+  const ahead = now.getTime() + 3 * 60 * MINUTE
+  if (ahead < opEnd.getTime() - MINUTE)
+    return new Date(ahead)
+  return wallOn(opDay, '11:00')
+}
+
 function ride(
   n: number,
-  row: Omit<DemoRide, 'transferId' | 'rideId' | 'alertId' | 'airportMark' | 'declinedBy'> & { declinedBy?: DemoDriverKey },
+  row: Omit<DemoRide, 'transferId' | 'rideId' | 'alertId' | 'airportMark' | 'declinedBy' | 'passengerCount' | 'partner' | 'partnerConfirmed' | 'linkTransferId' | 'groupPassengerCount'> & {
+    declinedBy?: DemoDriverKey
+    passengerCount?: number
+    partner?: DemoPartnerKey
+    partnerConfirmed?: boolean
+    linkTo?: number
+    groupPassengerCount?: number
+  },
 ): DemoRide {
-  const { declinedBy, ...rest } = row
+  const { declinedBy, passengerCount, partner, partnerConfirmed, linkTo, groupPassengerCount, ...rest } = row
   return {
     ...rest,
     transferId: demoId(400 + n),
@@ -635,5 +861,10 @@ function ride(
     alertId: declinedBy === undefined ? null : demoId(600 + n),
     airportMark: rest.start === 'airport',
     declinedBy: declinedBy ?? null,
+    passengerCount: passengerCount ?? 2,
+    partner: partner ?? null,
+    partnerConfirmed: partnerConfirmed ?? false,
+    linkTransferId: linkTo === undefined ? null : demoId(400 + linkTo),
+    groupPassengerCount: groupPassengerCount ?? null,
   }
 }

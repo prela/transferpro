@@ -114,6 +114,72 @@ it('sets one active area, keeps it across a reseed, and refuses before a write',
   expect(cleared.rows[0]?.active).toBe(0)
 }, 120_000)
 
+/**
+ * The picture test guards the cases. This one guards the insert: a column
+ * the seed stops writing would leave Home, the day list, or the phone empty.
+ */
+it('stores the handoff, the seats, the crowded ride, the flights, and tomorrow', async () => {
+  await seed({})
+  const tenant = await ownerPool.query<{ id: string }>(
+    `select id::text as id from auth.organization where slug = 'demo'`,
+  )
+  const tenantId = tenant.rows[0]?.id
+  if (tenantId === undefined)
+    throw new Error('The demo tenant is missing.')
+
+  const seats = await ownerPool.query<{ seat_count: number | null }>(
+    `select seat_count from app.vehicles where tenant_id::text = $1 order by registration_plate`,
+    [tenantId],
+  )
+  expect(seats.rows.map(row => row.seat_count)).toEqual([4, 4, 4, 4])
+
+  const partner = await ownerPool.query(
+    `select name, phone, email from app.partners where tenant_id::text = $1`,
+    [tenantId],
+  )
+  expect(partner.rows).toEqual([{
+    name: 'Prijevoznik Izmišljeni',
+    phone: '555-0199',
+    email: 'demo-partner@example.com',
+  }])
+
+  const rides = await ownerPool.query<{
+    transfer_id: string
+    guest_name: string
+    state: string
+    partner_confirmed: boolean
+    passenger_count: number
+    flight_number: string | null
+    group_passenger_count: number | null
+    price: string
+    link: string | null
+    seat_count: number | null
+    must_accept: boolean | null
+  }>(
+    `select t.id::text as transfer_id, t.guest_name, r.state, r.partner_confirmed,
+            t.passenger_count, t.flight_number, t.group_passenger_count,
+            t.price::text as price, t.link::text as link, v.seat_count, r.must_accept
+     from app.rides as r
+     join app.transfers as t on t.id = r.transfer_id and t.tenant_id = r.tenant_id
+     left join app.vehicles as v on v.id = r.vehicle_id and v.tenant_id = r.tenant_id
+     where r.tenant_id::text = $1`,
+    [tenantId],
+  )
+  const byName = new Map(rides.rows.map(row => [row.guest_name, row]))
+  expect(byName.get('Gost Čeka Podizvođača')).toMatchObject({ state: 'handed_off', partner_confirmed: false })
+  expect(byName.get('Gost Podizvođač Potvrdio')).toMatchObject({ state: 'handed_off', partner_confirmed: true })
+  expect(byName.get('Gost Previše')).toMatchObject({ passenger_count: 6, seat_count: 4, state: 'assigned' })
+  expect(byName.get('Gost Let Danas')?.flight_number).toBe('ZZ 1101')
+  expect(byName.get('Gost Let Sutra')?.flight_number).toBe('ZZ 1202')
+  expect(byName.get('Gost Prihvat Sutra')).toMatchObject({ state: 'assigned', must_accept: true })
+  expect(byName.get('Gost Slobodno')).toMatchObject({ state: 'unassigned', must_accept: null })
+  const main = byName.get('Gost Skupina')
+  const extra = byName.get('Gost Skupina Extra')
+  expect(main).toMatchObject({ group_passenger_count: 6, link: null, passenger_count: 4 })
+  expect(extra).toMatchObject({ group_passenger_count: null, price: '0.00', passenger_count: 2 })
+  expect(extra?.link).toBe(main?.transfer_id)
+}, 120_000)
+
 async function countAudits(tenantId: string, action: string): Promise<number> {
   const selected = await ownerPool.query<{ n: number }>(
     `select count(*)::int as n from app.audit_entry
