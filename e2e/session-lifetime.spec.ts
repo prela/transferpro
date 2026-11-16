@@ -219,9 +219,13 @@ test.describe('@phone', () => {
     await expect(dialog.getByLabel('Ime gosta')).toHaveValue('Ana Sesija')
     await expect(page.getByLabel('E-pošta')).toHaveCount(0)
 
+    await page.evaluate(() => {
+      sessionStorage.setItem('transferpro-transfer-filters:00000000-0000-4000-8000-0000000000aa:person', '{"search":"Ana Sesija"}')
+    })
     await page.clock.fastForward(25 * 60 * 1000)
     await expect(page.getByLabel('E-pošta')).toBeVisible()
     await expect.poll(() => storedDrafts(page)).toContain('Ana Sesija')
+    await expect.poll(() => page.evaluate(() => Object.keys(sessionStorage).some(key => key.startsWith('transferpro-transfer-filters:')))).toBe(false)
   })
 
   test('an action in one tab keeps the other tab signed in', async ({ browser }) => {

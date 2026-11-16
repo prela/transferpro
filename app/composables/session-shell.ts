@@ -1,5 +1,6 @@
 import type { SessionShell, TenantChoice } from '../../shared'
 import { applyTransferDraftEvent, platformShellSchema, sessionShellSchema, tenantChoiceListSchema } from '../../shared'
+import { clearBrowserTransferFilterMemory, forgetBrowserTransferFilterMemory } from './transfer-filter-memory'
 
 /**
  * Payload key for the signed-in Tenant shell.
@@ -219,6 +220,9 @@ export function isOwnTenantSwitch(data: unknown): boolean {
  */
 export async function postSignOut(): Promise<void> {
   await $fetch('/api/auth/sign-out', { method: 'POST', body: {} })
+  // The remembered Transfer filters are this tab's working session (ADR-0064).
+  // The draft is not cleared here: only the sign-out button removes that.
+  clearBrowserTransferFilterMemory()
 }
 
 /**
@@ -259,6 +263,10 @@ export function useShellSignOut() {
         await postSignOut().catch(() => undefined)
       else
         await postSignOut()
+      // Idle and the twelve-hour end call this path. A failed idle POST is
+      // swallowed above, so the filters are cleared here too. The draft stays.
+      if (choice === 'keep-draft')
+        clearBrowserTransferFilterMemory()
       if (choice === 'delete-draft') {
         const current = session.value
         if (import.meta.client && current)
@@ -333,6 +341,9 @@ export function useTenantSwitch() {
         await navigateTo('/')
       await $fetch('/api/tenant-switch', { method: 'POST', body: { tenantId } })
       if (import.meta.client) {
+        const left = session.value
+        if (left)
+          forgetBrowserTransferFilterMemory(left.tenantId, left.userId)
         localStorage.setItem(TENANT_SWITCH_STORAGE_KEY, crypto.randomUUID())
         postTenantSwitch('done')
         window.location.assign('/')

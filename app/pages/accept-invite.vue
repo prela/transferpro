@@ -2,6 +2,7 @@
 import type { PasswordLengthLimits } from '../../shared'
 import { acceptErrorKey, invitationPreviewSchema, passwordLengthRule, signInErrorKey } from '../../shared'
 import { postSignOut } from '../composables/session-shell'
+import { clearBrowserTransferFilterMemory } from '../composables/transfer-filter-memory'
 
 const { t, setLocale } = useI18n()
 
@@ -108,6 +109,7 @@ async function signInAndAccept() {
       method: 'POST',
       body: { email: email.value, password: password.value },
     })
+    clearBrowserTransferFilterMemory()
   }
   catch (error) {
     formError.value = signInErrorKey(httpStatus(error) ?? 0)

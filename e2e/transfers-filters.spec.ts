@@ -4,8 +4,8 @@ import { expectNoAxeViolations } from './fixtures/axe'
 import { operationalDay, operationalNow, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
 import { recordTransfer } from './fixtures/record-transfer'
-import { seedTenant } from './fixtures/seed'
-import { chooseOption, hydrated, signIn, switchLocale, switchTheme, useTheme } from './fixtures/ui'
+import { seedMembership, seedTenant } from './fixtures/seed'
+import { chooseOption, hydrated, openNewTransfer, openUserMenu, signIn, signOut, switchLocale, switchTheme, useTheme } from './fixtures/ui'
 
 test.beforeEach(async ({ page }) => {
   // One instant for the seed and the board, including across 05:00.
@@ -452,6 +452,285 @@ test.describe('@phone', () => {
     await expectNoAxeViolations(page)
   })
 })
+
+/**
+ * Remembered view and filters for one tab (issue #588, ADR-0064).
+ * A bare menu restores them on the current operational day. A link replaces them.
+ */
+const MISSING_PARTY = '00000000-0000-4000-8000-000000000099'
+
+test('the menu keeps the view and the filters, and a link replaces them', async ({ page }) => {
+  test.setTimeout(300_000)
+  const tenant = await seedTenant('filters-memory')
+  await useTheme(page, 'light')
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Pamti', kind: 'address' })
+  const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Pamti', kind: 'hotel' })
+  const clientId = await createdId(page, '/api/clients', { name: 'Agencija Pamti', kind: 'agency' })
+  const today = operationalDay(page)
+  const tomorrow = addCalendarDays(today, 1)
+  await record(page, 'Gost Pamti', tomorrow, '12:00', { clientId, startLocationId, endLocationId })
+
+  await page.goto('/transfers')
+  await hydrated(page)
+  await openNewTransfer(page)
+  const opened = page.getByRole('dialog')
+  const suggestedPickup = await opened.locator('#transfer-pickup').inputValue()
+  await opened.getByRole('button', { name: 'Odustani', exact: true }).click()
+  await expect(opened).toHaveCount(0)
+
+  await rememberOfficeFilters(page, 'Agencija Pamti')
+  await page.locator('#transfer-day').fill(tomorrow)
+  await expect(page).toHaveURL(new RegExp(`day=${tomorrow}`))
+  // The list is already open. Transferi must still restore the operational day.
+  await clickVisibleLink(page, 'Transferi')
+  await expectRemembered(page, today, clientId)
+  await goHome(page)
+  await goTransfers(page)
+  await expectRemembered(page, today, clientId)
+
+  await page.mouse.move(0, 0)
+  await expectNoAxeViolations(page)
+  await switchTheme(page, 'dark')
+  await expectRemembered(page, today, clientId)
+  await page.mouse.move(0, 0)
+  await expectNoAxeViolations(page)
+  await switchTheme(page, 'light')
+  await switchLocale(page, 'en')
+  await expect(page.getByText('Client: Agencija Pamti')).toBeVisible()
+  await expect(page.getByRole('searchbox', { name: 'Search this day' })).toBeVisible()
+  await page.mouse.move(0, 0)
+  await expectNoAxeViolations(page)
+  await switchLocale(page, 'hr')
+  await expectRemembered(page, today, clientId)
+
+  await goHome(page)
+  await page.getByRole('region', { name: 'Brojevi za operativni dan' }).getByRole('link', { name: /^Nedodijeljeno \d+$/ }).click()
+  await hydrated(page)
+  await expect(page).toHaveURL(/filter=unassigned/)
+  await expect(page).toHaveURL(new RegExp(`day=${today}`))
+  await expect(page).not.toHaveURL(/client=/)
+  await expect(page).not.toHaveURL(/search=/)
+  await goHome(page)
+  await goTransfers(page)
+  await expect(page).toHaveURL(/filter=unassigned/)
+  await expect(page).not.toHaveURL(/client=/)
+  await expect(page.locator('#transfer-day')).toHaveValue(today)
+
+  await rememberOfficeFilters(page, 'Agencija Pamti')
+  await goHome(page)
+  await page.getByRole('region', { name: 'Nedodijeljeno' }).getByRole('button', { name: /Gost Pamti/ }).click()
+  await expect(page).toHaveURL(/ride=/)
+  await expect(page).not.toHaveURL(/client=/)
+  await expect(page).not.toHaveURL(/search=/)
+  await expect(page.locator('#ride-detail')).toBeVisible()
+  await page.locator('#ride-detail').getByRole('button', { name: 'Zatvori', exact: true }).click()
+
+  await rememberOfficeFilters(page, 'Agencija Pamti')
+  await page.keyboard.press('Control+K')
+  const palette = page.getByRole('dialog', { name: 'Traži' })
+  await expect(palette).toBeVisible()
+  await palette.getByRole('textbox', { name: 'Zaslon, naredba ili transfer' }).fill('3.11.2026')
+  await page.getByRole('option', { name: 'Idi na dan 03. 11. 2026.', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Traži' })).toHaveCount(0)
+  await expect(page).toHaveURL(/day=2026-11-03/)
+  await expect(page).not.toHaveURL(/client=/)
+  await expect(page).not.toHaveURL(/filter=/)
+  await goHome(page)
+  await goTransfers(page)
+  await expect(page.locator('#transfer-day')).toHaveValue(today)
+  await expect(page).not.toHaveURL(/client=/)
+  await expect(page).not.toHaveURL(/filter=/)
+
+  await rememberOfficeFilters(page, 'Agencija Pamti')
+  await page.getByRole('group', { name: 'Aktivni filtri' }).getByRole('button', { name: 'Očisti filtre', exact: true }).click()
+  await expect(page).not.toHaveURL(/client=/)
+  await expect(page).not.toHaveURL(/search=/)
+  await expect(page).toHaveURL(/filter=toInvoice/)
+  await goHome(page)
+  await goTransfers(page)
+  await expect(page).toHaveURL(/filter=toInvoice/)
+  await expect(page).not.toHaveURL(/client=/)
+  await expect(page.locator('#transfer-day')).toHaveValue(today)
+
+  await page.goto(`/transfers?client=${MISSING_PARTY}`)
+  await hydrated(page)
+  const unknown = page.getByRole('button', { name: 'Ukloni filtar: Naručitelj: Nepoznat naručitelj', exact: true })
+  await expect(unknown).toBeVisible()
+  await goHome(page)
+  await goTransfers(page)
+  await expect(unknown).toBeVisible()
+  await unknown.click()
+  await expect(page).not.toHaveURL(/client=/)
+  await goHome(page)
+  await goTransfers(page)
+  await expect(page.getByRole('button', { name: /Nepoznat naručitelj/ })).toHaveCount(0)
+  await expect(page.locator('#transfer-day')).toHaveValue(today)
+
+  await rememberOfficeFilters(page, 'Agencija Pamti')
+  const fresh = await page.context().newPage()
+  await pinOperationalClock(fresh)
+  await fresh.goto('/transfers')
+  await hydrated(fresh)
+  await expect(fresh.getByRole('searchbox', { name: 'Traži u danu' })).toBeVisible()
+  await expect.poll(() => fresh.evaluate(() => Object.keys(sessionStorage).filter(key => key.startsWith('transferpro-transfer-filters:')))).toEqual([])
+  await expect(fresh.getByRole('button', { name: /^Sve \(/ })).toHaveAttribute('aria-pressed', 'true')
+  await fresh.close()
+
+  await goHome(page)
+  await openNewTransfer(page)
+  const again = page.getByRole('dialog')
+  await expect(again.locator('#transfer-pickup')).toHaveValue(suggestedPickup)
+  await expect(page).toHaveURL(new RegExp(`day=${today}`))
+  await expect(page).toHaveURL(new RegExp(`client=${clientId}`))
+  await again.getByRole('button', { name: 'Odustani', exact: true }).click()
+
+  await signOut(page)
+  await expect.poll(() => filterMemoryKeys(page)).toEqual([])
+  await page.evaluate(() => {
+    sessionStorage.setItem('transferpro-transfer-filters:00000000-0000-4000-8000-0000000000aa:person', '{"filter":"urgent"}')
+  })
+  await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  await expect.poll(() => filterMemoryKeys(page)).toEqual([])
+  await page.goto('/transfers')
+  await hydrated(page)
+  await expect(page.getByRole('button', { name: /^Sve \(/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page).not.toHaveURL(/client=/)
+})
+
+test('a Tenant switch forgets the filters of the company that was left', async ({ page }) => {
+  test.setTimeout(120_000)
+  const office = await seedTenant('filters-switch-office')
+  const other = await seedTenant('filters-switch-other')
+  await seedMembership(other.tenantId, office.adminEmail, 'dispatcher')
+  await page.goto('/')
+  await page.getByLabel('E-pošta').fill(office.adminEmail)
+  await page.getByLabel('Lozinka').fill(office.password)
+  await page.getByRole('button', { name: 'Prijavi se', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Odaberite tvrtku' })).toBeVisible()
+  await page.getByRole('button', { name: `${office.name}, Administrator`, exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Početna', exact: true })).toBeVisible()
+
+  await page.goto(`/transfers?client=${MISSING_PARTY}`)
+  await hydrated(page)
+  await expect(page.getByRole('button', { name: 'Ukloni filtar: Naručitelj: Nepoznat naručitelj', exact: true })).toBeVisible()
+  await expect.poll(async () => (await filterMemoryKeys(page)).some(key => key.includes(office.tenantId))).toBe(true)
+
+  await hydrated(page)
+  const menu = await openUserMenu(page, office.name)
+  await menu.getByRole('menuitem', { name: `${other.name}, Dispečer`, exact: true }).click()
+  await expect(page.getByRole('button', { name: other.name, exact: true })).toBeVisible()
+  await hydrated(page)
+  await expect.poll(async () => (await filterMemoryKeys(page)).some(key => key.includes(office.tenantId))).toBe(false)
+
+  await clickVisibleLink(page, 'Transferi')
+  await hydrated(page)
+  await expect(page).not.toHaveURL(/client=/)
+  await expect(page.getByRole('button', { name: /Nepoznat naručitelj/ })).toHaveCount(0)
+})
+
+test.describe('@phone', () => {
+  test('a phone keeps the view and the filters for the tab @phone', async ({ page }) => {
+    test.setTimeout(240_000)
+    test.skip((page.viewportSize()?.width ?? 1280) >= 1024, 'The phone project runs this layout.')
+    const tenant = await seedTenant('filters-memory-phone')
+    await useTheme(page, 'light')
+    await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+    const startLocationId = await createdId(page, '/api/locations', { name: 'Polazak Telefon', kind: 'address' })
+    const endLocationId = await createdId(page, '/api/locations', { name: 'Dolazak Telefon', kind: 'hotel' })
+    const clientId = await createdId(page, '/api/clients', { name: 'Agencija Telefon', kind: 'agency' })
+    const today = operationalDay(page)
+    await record(page, 'Gost Telefon', addCalendarDays(today, 1), '12:00', { clientId, startLocationId, endLocationId })
+
+    await page.goto('/transfers')
+    await hydrated(page)
+    await rememberOfficeFilters(page, 'Agencija Telefon')
+    await clickVisibleLink(page, 'Transferi')
+    await expectRemembered(page, today, clientId)
+    await goHome(page)
+    await goTransfers(page)
+    await expectRemembered(page, today, clientId)
+    await page.mouse.move(0, 0)
+    await expectNoAxeViolations(page)
+    await switchTheme(page, 'dark')
+    await page.mouse.move(0, 0)
+    await expectNoAxeViolations(page)
+    await switchTheme(page, 'light')
+    await switchLocale(page, 'en')
+    await expect(page.getByText('Client: Agencija Telefon')).toBeVisible()
+    await page.mouse.move(0, 0)
+    await expectNoAxeViolations(page)
+    await switchLocale(page, 'hr')
+
+    await page.getByRole('group', { name: 'Aktivni filtri' }).getByRole('button', { name: 'Očisti filtre', exact: true }).click()
+    await expect(page).not.toHaveURL(/client=/)
+    await expect(page).toHaveURL(/filter=toInvoice/)
+    await goHome(page)
+    await goTransfers(page)
+    await expect(page).toHaveURL(/filter=toInvoice/)
+    await expect(page).not.toHaveURL(/client=/)
+    await expect(page.locator('#transfer-day')).toHaveValue(today)
+
+    await signOut(page)
+    await expect.poll(() => filterMemoryKeys(page)).toEqual([])
+  })
+})
+
+async function rememberOfficeFilters(page: Page, clientName: string) {
+  await page.getByRole('button', { name: /^Za fakturiranje \(/ }).click()
+  await page.getByRole('searchbox', { name: 'Traži u danu' }).fill('Pamti')
+  const client = page.getByRole('button', { name: 'Naručitelj', exact: true })
+  if ((page.viewportSize()?.width ?? 1280) < 1024) {
+    await page.getByRole('button', { name: 'Filtri', exact: true }).click()
+    await chooseOption(page, client, clientName)
+    await page.getByRole('button', { name: /^Prikaži vožnje/ }).click()
+    await expect(page.getByRole('dialog', { name: 'Filtri' })).toHaveCount(0)
+  }
+  else {
+    await chooseOption(page, client, clientName)
+  }
+  await expect(page).toHaveURL(/filter=toInvoice/)
+  await expect(page).toHaveURL(/search=Pamti/)
+  await expect(page).toHaveURL(/client=/)
+}
+
+async function expectRemembered(page: Page, today: string, clientId: string) {
+  await expect(page.locator('#transfer-day')).toHaveValue(today)
+  await expect(page).toHaveURL(new RegExp(`day=${today}`))
+  await expect(page).toHaveURL(/filter=toInvoice/)
+  await expect(page).toHaveURL(/search=Pamti/)
+  await expect(page).toHaveURL(new RegExp(`client=${clientId}`))
+  await expect(page).not.toHaveURL(/ride=/)
+  await expect(page.getByRole('button', { name: /^Za fakturiranje \(/ })).toHaveAttribute('aria-pressed', 'true')
+}
+
+async function goHome(page: Page) {
+  await clickVisibleLink(page, /^Početna/)
+  await expect(page.getByRole('heading', { level: 1, name: 'Početna', exact: true })).toBeVisible()
+  await hydrated(page)
+}
+
+async function goTransfers(page: Page) {
+  await clickVisibleLink(page, 'Transferi')
+  await hydrated(page)
+  await expect(page.getByRole('searchbox', { name: 'Traži u danu' })).toBeVisible()
+}
+
+async function clickVisibleLink(page: Page, name: string | RegExp) {
+  // The phone bar and the desktop sidebar share the name. A closing sheet or
+  // palette still owns the page for a moment, so the click waits for a link
+  // that is actually on screen.
+  await page
+    .getByRole('navigation', { name: 'Odjeljci' })
+    .getByRole('link', { name, exact: typeof name === 'string' })
+    .filter({ visible: true })
+    .first()
+    .click()
+}
+
+async function filterMemoryKeys(page: Page): Promise<string[]> {
+  return page.evaluate(() => Object.keys(sessionStorage).filter(key => key.startsWith('transferpro-transfer-filters:')))
+}
 
 async function recordAt(page: Page, guest: string, pickup: Date, spot: {
   clientId: string

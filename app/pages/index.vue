@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { calendarDateInTimeZone, formatCalendarDate, signInErrorKey } from '../../shared'
+import { clearBrowserTransferFilterMemory } from '../composables/transfer-filter-memory'
 
 // Layout only. A Driver stays on the phone layout. Office staff get the
 // dashboard layout. Sign-in, the Tenant gate, no-access, and the firm list
@@ -101,6 +102,8 @@ async function signIn() {
       method: 'POST',
       body: { email: email.value, password: password.value },
     })
+    // A previous twelve-hour end leaves the tab open. Sign-in drops what it kept.
+    clearBrowserTransferFilterMemory()
     password.value = ''
     await refresh()
     if (platformRedirect.value || tenantChoices.value)
