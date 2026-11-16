@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { addCalendarDays, instantFromWallClock, localDayBounds, mondayOfWeek, operationalDateInTimeZone, wallClockInTimeZone, weekDates } from './date'
+import { addCalendarDays, instantFromWallClock, localDayBounds, mondayOfWeek, operationalDateInTimeZone, suggestedPickupWall, wallClockInTimeZone, weekDates } from './date'
 
 it('writes a Zagreb wall clock from a stored instant, in winter time', () => {
   // 15 January 2026, 09:30Z is 10:30 in Zagreb.
@@ -171,4 +171,72 @@ it('refuses a clock reading that is not a real minute', () => {
   expect(() => instantFromWallClock('2026-02-31T12:00', 'Europe/Zagreb')).toThrow(RangeError)
   expect(() => instantFromWallClock('2026-10-06T24:00', 'Europe/Zagreb')).toThrow(RangeError)
   expect(() => instantFromWallClock('2026-10-06 12:00', 'Europe/Zagreb')).toThrow(RangeError)
+})
+
+const zagreb = 'Europe/Zagreb'
+
+it('suggests the shown day at noon during the operational day, before and after noon', () => {
+  // 12 November 2026 is CET. 08:00 and 15:40 are both after the 05:00 start.
+  const morning = instantFromWallClock('2026-11-12T08:00', zagreb)
+  const afternoon = instantFromWallClock('2026-11-12T15:40', zagreb)
+  expect(suggestedPickupWall('2026-11-12', morning, zagreb, 5)).toBe('2026-11-12T12:00')
+  expect(suggestedPickupWall('2026-11-12', afternoon, zagreb, 5)).toBe('2026-11-12T12:00')
+  // Another shown day keeps noon on that day. 12:00 may already have passed.
+  expect(suggestedPickupWall('2026-11-14', afternoon, zagreb, 5)).toBe('2026-11-14T12:00')
+})
+
+it('suggests the next full hour on the next calendar date during the night window', () => {
+  // Start hour 05:00. At 02:20 on 12 November the board shows 11 November.
+  const now = instantFromWallClock('2026-11-12T02:20', zagreb)
+  expect(operationalDateInTimeZone(zagreb, now, 5)).toBe('2026-11-11')
+  expect(suggestedPickupWall('2026-11-11', now, zagreb, 5)).toBe('2026-11-12T03:00')
+})
+
+it('suggests the hour after an exact hour, never the hour that just started', () => {
+  const now = instantFromWallClock('2026-11-12T02:00', zagreb)
+  expect(suggestedPickupWall('2026-11-11', now, zagreb, 5)).toBe('2026-11-12T03:00')
+})
+
+it('suggests the start hour when that is the next full hour, on the next operational day', () => {
+  // 04:20 → 05:00. 05:00 is the first moment of 12 November, and it is not in the past.
+  const now = instantFromWallClock('2026-11-12T04:20', zagreb)
+  expect(operationalDateInTimeZone(zagreb, now, 5)).toBe('2026-11-11')
+  expect(suggestedPickupWall('2026-11-11', now, zagreb, 5)).toBe('2026-11-12T05:00')
+})
+
+it('suggests noon on another shown day during the night window, past or future', () => {
+  const now = instantFromWallClock('2026-11-12T02:20', zagreb)
+  expect(suggestedPickupWall('2026-11-10', now, zagreb, 5)).toBe('2026-11-10T12:00')
+  expect(suggestedPickupWall('2026-11-20', now, zagreb, 5)).toBe('2026-11-20T12:00')
+})
+
+it('suggests noon on the shown day when the operational day starts at midnight', () => {
+  // Hour 0 has no night window. 02:20 is already inside 12 November.
+  const now = instantFromWallClock('2026-11-12T02:20', zagreb)
+  expect(operationalDateInTimeZone(zagreb, now, 0)).toBe('2026-11-12')
+  expect(suggestedPickupWall('2026-11-12', now, zagreb, 0)).toBe('2026-11-12T12:00')
+  expect(suggestedPickupWall('2026-11-01', now, zagreb, 0)).toBe('2026-11-01T12:00')
+})
+
+it('suggests 03:00 on the spring-forward night, because 02:00 does not exist', () => {
+  // 29 March 2026, 01:30 CET. Clocks jump from 02:00 to 03:00. The board shows 28 March.
+  const now = instantFromWallClock('2026-03-29T01:30', zagreb)
+  expect(operationalDateInTimeZone(zagreb, now, 5)).toBe('2026-03-28')
+  expect(suggestedPickupWall('2026-03-28', now, zagreb, 5)).toBe('2026-03-29T03:00')
+})
+
+it('suggests a fall-back wall time the form will save after now', () => {
+  // 25 October 2026. 02:30 happens twice. The first is 00:30 UTC, still on 24 October's operational day.
+  const firstRepeat = new Date('2026-10-25T00:30:00.000Z')
+  expect(operationalDateInTimeZone(zagreb, firstRepeat, 5)).toBe('2026-10-24')
+  const duringRepeat = suggestedPickupWall('2026-10-24', firstRepeat, zagreb, 5)
+  expect(duringRepeat).toBe('2026-10-25T03:00')
+  expect(instantFromWallClock(duringRepeat, zagreb).getTime()).toBeGreaterThan(firstRepeat.getTime())
+
+  // 01:30 CEST is 23:30 UTC on 24 October. The next wall hour is 02:00, and the form stores the later one.
+  const beforeFold = new Date('2026-10-24T23:30:00.000Z')
+  expect(wallClockInTimeZone(zagreb, beforeFold)).toBe('2026-10-25T01:30')
+  const ambiguous = suggestedPickupWall('2026-10-24', beforeFold, zagreb, 5)
+  expect(ambiguous).toBe('2026-10-25T02:00')
+  expect(instantFromWallClock(ambiguous, zagreb).getTime()).toBeGreaterThan(beforeFold.getTime())
 })

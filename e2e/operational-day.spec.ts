@@ -1,4 +1,4 @@
-import { calendarDateInTimeZone, operationalDateInTimeZone } from '../shared/date'
+import { operationalDateInTimeZone, suggestedPickupWall } from '../shared/date'
 import { operationalNow, pinOperationalClock } from './fixtures/operational-clock'
 import { expect, test } from './fixtures/playwright'
 import { seedMember, seedTenant } from './fixtures/seed'
@@ -10,12 +10,11 @@ test.beforeEach(async ({ page }) => {
   await pinOperationalClock(page)
 })
 
-test('the board opens on the operational day and the pickup form stays on the calendar date', async ({ page }) => {
+test('the board opens on the operational day and a new Transfer suggests that day', async ({ page }) => {
   const tenant = await seedTenant('opday')
   const dispatcher = await seedMember(tenant.tenantId, 'dispatcher', 'Dispečer')
   const now = operationalNow(page)
   const operational = operationalDateInTimeZone('Europe/Zagreb', now)
-  const calendar = calendarDateInTimeZone('Europe/Zagreb', now)
 
   await signIn(page, dispatcher.email, dispatcher.password, tenant.name)
   await page.getByRole('link', { name: 'Transferi' }).click()
@@ -25,8 +24,12 @@ test('the board opens on the operational day and the pickup form stays on the ca
   // instead of waiting for the board. The day control is the textbox.
   const day = page.getByRole('textbox', { name: 'Dan', exact: true })
   await expect(day).toHaveValue(operational)
-  // The pickup field lives in the record slideover. The board day stays the
-  // operational day; the form still defaults to noon on the calendar date.
+  // The pickup field lives in the record slideover. This expectation calls
+  // the same function as the form, so a wrong rule would still pass here.
+  // The literals are in shared/date.test.ts and e2e/pickup-suggestion.spec.ts.
+  // This spec only checks that the live clock, including the 05:00 split, is wired.
   await openNewTransfer(page)
-  await expect(page.getByRole('dialog').getByLabel('Vrijeme preuzimanja')).toHaveValue(`${calendar}T12:00`)
+  await expect(page.getByRole('dialog').getByLabel('Vrijeme preuzimanja')).toHaveValue(
+    suggestedPickupWall(operational, now, 'Europe/Zagreb'),
+  )
 })
