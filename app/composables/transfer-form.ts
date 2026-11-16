@@ -2,7 +2,7 @@ import type { InjectionKey } from 'vue'
 import type { Client, ClientKind, DisplayLocale, Driver, LocationKind, LocationPlace, OfficeLocation, PaymentMethod, RecordedCreate, TransferDayRide, TransferDraftFields, TransferPrefill } from '../../shared'
 import { inject } from 'vue'
 import { z } from 'zod'
-import { applyTransferDraftEvent, calendarDateInTimeZone, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, groupPassengerCountError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, luggageCountError, noteError, officeLocationSchema, operationalDateInTimeZone, optionalCountFromInput, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
+import { applyTransferDraftEvent, childSeatCountError, clientKindError, clientNameError, clientReferenceError, clientSchema, correctedTransferResultSchema, flightNumberError, groupPassengerCountError, guestNameError, instantFromWallClock, locationKindError, locationLabel, locationNameError, luggageCountError, noteError, officeLocationSchema, operationalDateInTimeZone, optionalCountFromInput, passengerCountError, pickupAtError, priceError, priceFromInput, recallTransferDraft, recordedCreateSchema, rememberTransferDraft, sameLocationError, suggestedPickupWall, tablaError, transferEntryKey, wallClockInTimeZone } from '../../shared'
 import { useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { errorCode, httpStatus } from '../transfer-day-http'
 import { driverDisplayName } from '../transfer-day-labels'
@@ -89,11 +89,26 @@ export function useTransferForm(options: {
   const { present } = useWorkOrderPresenter()
   const { notifyAuditChanged } = useAuditRefresh()
 
-  // A pickup form still defaults to noon on the calendar date: recording a pickup did not move.
-  const pickupDay = calendarDateInTimeZone(options.timeZone(), new Date())
+  /**
+   * A blank new Transfer suggests the shown operational day (issue #565).
+   * Noon during the day, and the next full hour when the board is on the
+   * current operational day and now is still before the start hour.
+   * `openedPickup` is that suggestion. A draft counts as unfinished only
+   * when its pickup differs from it, so the night hour is not stored as a draft.
+   */
+  function blankPickup(): string {
+    return suggestedPickupWall(
+      options.day.value,
+      new Date(),
+      options.timeZone(),
+      options.operationalDayStartHour(),
+    )
+  }
+
+  let openedPickup = blankPickup()
 
   const clientId = ref<string | undefined>()
-  const pickupWall = ref(`${pickupDay}T12:00`)
+  const pickupWall = ref(openedPickup)
   const startLocationId = ref<string | undefined>()
   const endLocationId = ref<string | undefined>()
   const passengers = ref('1')
@@ -600,6 +615,7 @@ export function useTransferForm(options: {
       const draft = recallTransferDraft(localStorage, options.userId(), options.tenantId(), new Date())
       if (draft) {
         ignoreDraft = true
+        openedPickup = blankPickup()
         applyDraft(draft)
         if (!entryKey.value)
           entryKey.value = transferEntryKey('blank')
@@ -613,7 +629,8 @@ export function useTransferForm(options: {
     editingTransferId.value = null
     editingVersion.value = null
     clientId.value = undefined
-    pickupWall.value = `${pickupDay}T12:00`
+    openedPickup = blankPickup()
+    pickupWall.value = openedPickup
     startLocationId.value = undefined
     endLocationId.value = undefined
     passengers.value = '1'
@@ -705,7 +722,7 @@ export function useTransferForm(options: {
         options.tenantId(),
         currentDraft(),
         new Date(),
-        `${pickupDay}T12:00`,
+        openedPickup,
       )
     }
   }
@@ -966,7 +983,7 @@ export function useTransferForm(options: {
     (draft) => {
       if (!import.meta.client || ignoreDraft || !options.persistDraft || draft === null)
         return
-      rememberTransferDraft(localStorage, options.userId(), options.tenantId(), draft, new Date(), `${pickupDay}T12:00`)
+      rememberTransferDraft(localStorage, options.userId(), options.tenantId(), draft, new Date(), openedPickup)
     },
   )
 

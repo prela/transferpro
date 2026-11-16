@@ -200,6 +200,71 @@ export function operationalDateInTimeZone(
 }
 
 /**
+ * The next `HH:00` strictly after this wall clock. 02:00 and 02:20 both
+ * move to 03:00. Midnight rolls onto the next calendar date.
+ */
+function hourAfter(wall: string): string {
+  const match = wallClock.exec(wall)
+  if (!match || match[1] === undefined || match[2] === undefined || match[3] === undefined || match[4] === undefined)
+    throw new RangeError('Wall time is not YYYY-MM-DDTHH:mm.')
+  const date = `${match[1]}-${match[2]}-${match[3]}`
+  const hour = Number(match[4]) + 1
+  if (hour === 24)
+    return `${addCalendarDays(date, 1)}T00:00`
+  return `${date}T${String(hour).padStart(2, '0')}:00`
+}
+
+/**
+ * The next full hour after `now`, as the form will show and save it.
+ * A skipped spring hour is read one hour later, so 01:30 becomes 03:00.
+ * A repeated autumn hour is saved at the standard-time offset, and that
+ * instant is still after `now`. A few steps cover a fold that lands on
+ * the same clock reading.
+ */
+function nextFullHourWall(now: Date, timeZone: string): string {
+  let candidate = hourAfter(wallClockInTimeZone(timeZone, now))
+  for (let step = 0; step < 3; step += 1) {
+    const saved = instantFromWallClock(candidate, timeZone)
+    if (saved.getTime() > now.getTime())
+      return wallClockInTimeZone(timeZone, saved)
+    candidate = hourAfter(wallClockInTimeZone(timeZone, saved))
+  }
+  throw new RangeError('No later hour follows this instant.')
+}
+
+/**
+ * Pickup wall (`YYYY-MM-DDTHH:mm`) for a new Transfer (issue #565).
+ * `shownDay` is the operational day on the Transfers board.
+ *
+ * During the operational day, and for any other shown day, the suggestion
+ * is that day at 12:00, including after 12:00 has passed. Between local
+ * midnight and the start hour, and only when the board shows the current
+ * operational day, the suggestion is the next full hour strictly after
+ * now in the Tenant zone. That hour can fall on the next calendar date,
+ * and it can be the start hour itself. Start hour 0 has no night window.
+ * The dispatcher can change the result. A restored draft is not this value.
+ */
+export function suggestedPickupWall(
+  shownDay: string,
+  now: Date,
+  timeZone: string,
+  startHour = OPERATIONAL_DAY_START_DEFAULT,
+): string {
+  if (!isCalendarDate(shownDay))
+    throw new RangeError('Shown day is not a calendar date.')
+  if (Number.isNaN(now.getTime()))
+    throw new RangeError('Instant is not a valid time.')
+
+  const calendar = calendarDateInTimeZone(timeZone, now)
+  // Hour 0 starts at midnight, so now is never before the start.
+  const inNightWindow = now.getTime() < localDayBounds(calendar, timeZone, startHour).start.getTime()
+  const current = operationalDateInTimeZone(timeZone, now, startHour)
+  if (!inNightWindow || shownDay !== current)
+    return `${shownDay}T12:00`
+  return nextFullHourWall(now, timeZone)
+}
+
+/**
  * Milliseconds to add to this UTC instant to reach the same clock reading
  * in the zone. `hourCycle: 'h23'` can report midnight as 24, which is the
  * next calendar day.
