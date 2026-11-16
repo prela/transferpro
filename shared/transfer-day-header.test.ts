@@ -111,6 +111,7 @@ it('names an id that matches no record and ignores a blank search', () => {
 
 it('counts urgent Rides a filter hides, and ignores the view', () => {
   expect(hiddenUrgentCount(3, 1, state({ search: 'predani', view: 'all' }))).toBe(2)
+  expect(hiddenUrgentCount(3, 1, state({ driverId: DRIVER, view: 'all' }))).toBe(2)
   expect(hiddenUrgentCount(3, 3, state({ clientId: CLIENT, view: 'urgent' }))).toBe(0)
   expect(hiddenUrgentCount(3, 0, state({ view: 'urgent' }))).toBe(0)
   expect(hiddenUrgentCount(1, 4, state({ needsAttention: true }))).toBe(0)

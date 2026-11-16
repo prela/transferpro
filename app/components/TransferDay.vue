@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { DisplayLocale, LiveRefreshOutcome, TransferBoardFilter, TransferDayRide, TransferPrefill } from '../../shared'
 import type { RideDetailCommand, RideDetailLayout } from '../ride-detail'
-import { classifyRideAttention, clockLabel, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, groupRouteLeftNotice, hiddenUrgentCount, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, parseTransferDayRideState, recallTransferDraft, recordedSeatCount, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, transferAwaitingInvoice, transferDayAttributeMatches, transferDayFilterCounts, transferDayFilterMatches, transferDaySearchMatches } from '../../shared'
+import { classifyRideAttention, clockLabel, decideTransferFilterMemory, duplicateTransferPrefill, extraVehicleGroupPassengers, extraVehiclePrefill, groupRouteLeftNotice, hiddenUrgentCount, isCalendarDate, operationalDateInTimeZone, parseTransferDayFilter, parseTransferDayRideState, recallTransferDraft, recordedSeatCount, rememberTransferFilterMemory, returnTransferPrefill, rideUrgentKeys, sevenDayUnassignedNote, TRANSFER_FILTER_ADDRESS_KEYS, transferAwaitingInvoice, transferDayAttributeMatches, transferDayFilterCounts, transferDayFilterMatches, transferDaySearchMatches, transferFilterMemoryKey, transferFilterMemoryQuery } from '../../shared'
 import { useKeptWorkOrders, useWorkOrderPresenter } from '../composables/kept-work-orders'
 import { useRideDetailChrome } from '../composables/ride-detail-chrome'
+import { browserTransferFilterMemory } from '../composables/transfer-filter-memory'
 import { groupRouteLeftKey, partnerConfirmationClearedKey } from '../composables/transfer-form'
 import { rideDetailLayout } from '../ride-detail'
 import { assignButtonId } from '../transfer-ride-buttons'
@@ -325,7 +326,7 @@ const updatedLabel = computed(() => {
     : t('liveRefresh.updatedAt', { time: shownTime.value })
 })
 
-const ownedQuery = ['day', 'filter', 'search', 'client', 'driver', 'vehicle', 'partner', 'rideState', 'attention', 'ride']
+const ownedQuery: readonly string[] = TRANSFER_FILTER_ADDRESS_KEYS
 
 function buildQuery(): Record<string, string | string[]> {
   const query: Record<string, string | string[]> = {}
@@ -473,6 +474,15 @@ watch([filter, search, clientId, driverId, vehicleId, partnerId, rideState, need
   void syncQuery()
 })
 
+// The open Ride is not part of the memory. A panel must not come back on its own.
+let memoryReady = false
+
+watch([filter, search, clientId, driverId, vehicleId, partnerId, rideState, needsAttention], () => {
+  if (!memoryReady)
+    return
+  rememberCurrentFilters()
+})
+
 watch([filter, search, clientId, driverId, vehicleId, partnerId, rideState, needsAttention], () => {
   if (!countsReady.value)
     return
@@ -525,12 +535,20 @@ onBeforeRouteUpdate((to) => {
   const nextRide = queryText(to.query.ride) || null
   // The middleware awaits GET /api/session before a push writes the address.
   // Close has to drop that push, or it puts `?ride=` back and a reload opens
-  // the panel over the row actions (issue #348).
-  if (rideOwnedLocally && nextRide !== openRideId.value)
+  // the panel over the row actions (issue #348). A bare menu address is not
+  // that push: the list is already open, and the menu has to get through.
+  if (rideOwnedLocally && nextRide !== openRideId.value && queryCarriesAddress(to.query))
     return false
 })
 
 watch(() => route.query, () => {
+  // Transferi in the menu is bare `/transfers`. The page does not remount,
+  // so the empty address would clear the filters and leave the shown day.
+  // Put the memory back on the operational day instead.
+  if (memoryReady && !queryCarriesAddress(route.query)) {
+    restoreBareArrival()
+    return
+  }
   // A push we just sent is not Back. Applying it would put a stale search
   // back into the field while the next filter change is still queued.
   if (syncing)
@@ -684,11 +702,124 @@ watch(newTransferNonce, (value) => {
 }, { immediate: true })
 
 onMounted(() => {
+  // After mount, so a reload and Back still follow the address already painted.
+  // Replace, so Back returns to the screen the office came from, not a bare list.
+  recallRememberedFilters()
   if (adding.value)
     return
   if (recallTransferDraft(localStorage, props.userId, props.tenantId, new Date()))
     adding.value = true
 })
+
+/**
+ * A bare `/transfers` (the menu, or Novi transfer from another screen) puts
+ * the stored view and filters back on the current operational day, with no
+ * panel. A link that already carries a day, a view, a filter, or a Ride
+ * replaces that memory. An unreadable value is dropped.
+ */
+function queryCarriesAddress(query: object): boolean {
+  const record = query as Record<string, unknown>
+  return TRANSFER_FILTER_ADDRESS_KEYS.some((key) => {
+    const value = record[key]
+    return value !== undefined && value !== null
+  })
+}
+
+/**
+ * The menu (and Novi transfer) opened this list again without remounting it.
+ * Replace onto the operational day and the stored view, and let that address
+ * through the ride guard that would otherwise keep the open panel.
+ */
+function restoreBareArrival() {
+  rideOwnedLocally = false
+  const today = operationalDay.value
+  const store = browserTransferFilterMemory()
+  if (!store) {
+    void router.replace({ query: { day: today } })
+    return
+  }
+  try {
+    const key = transferFilterMemoryKey(props.tenantId, props.userId)
+    const decision = decideTransferFilterMemory({}, store.getItem(key))
+    if (decision.action !== 'restore') {
+      if (decision.action === 'ignore' && decision.dropStored)
+        store.removeItem(key)
+      void router.replace({ query: { day: today } })
+      return
+    }
+    void router.replace({
+      query: {
+        day: today,
+        ...transferFilterMemoryQuery(decision.memory),
+      },
+    })
+  }
+  catch {
+    void router.replace({ query: { day: today } })
+  }
+}
+
+function recallRememberedFilters() {
+  const store = browserTransferFilterMemory()
+  if (!store) {
+    memoryReady = true
+    return
+  }
+  try {
+    const key = transferFilterMemoryKey(props.tenantId, props.userId)
+    const decision = decideTransferFilterMemory(route.query, store.getItem(key))
+    if (decision.action === 'ignore') {
+      if (decision.dropStored)
+        store.removeItem(key)
+      memoryReady = true
+      return
+    }
+    if (decision.action === 'replace') {
+      rememberTransferFilterMemory(store, props.tenantId, props.userId, decision.memory)
+      memoryReady = true
+      return
+    }
+    const query = {
+      day: day.value,
+      ...transferFilterMemoryQuery(decision.memory),
+    }
+    // The mount navigation is still finishing. Replace on the next turn.
+    void nextTick(() => {
+      try {
+        void router.replace({ query }).finally(() => {
+          memoryReady = true
+        })
+      }
+      catch {
+        memoryReady = true
+      }
+    })
+  }
+  catch {
+    memoryReady = true
+  }
+}
+
+function rememberCurrentFilters() {
+  const store = browserTransferFilterMemory()
+  if (!store)
+    return
+  try {
+    rememberTransferFilterMemory(store, props.tenantId, props.userId, {
+      filter: filter.value,
+      search: search.value,
+      clientId: clientId.value,
+      driverId: driverId.value,
+      vehicleId: vehicleId.value,
+      partnerId: partnerId.value,
+      rideState: rideState.value,
+      needsAttention: needsAttention.value,
+    })
+  }
+  catch {
+    // A full or blocked sessionStorage must not stop the list.
+  }
+}
 
 /** Where the phone list was scrolled before the full-screen detail covered it. */
 let phoneListScroll: { element: HTMLElement | null, top: number } = { element: null, top: 0 }
