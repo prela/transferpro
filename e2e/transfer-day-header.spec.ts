@@ -92,11 +92,22 @@ async function noPageScroll(page: Page) {
 test('chips stay blank and the list is busy until the day loads', async ({ page }) => {
   const tenant = await seedTenant('header-busy')
   await signIn(page, tenant.adminEmail, tenant.password, tenant.name)
+  // The production worker performs same-origin GET. The document that
+  // registered it is not controlled until the next load, and page.route
+  // never sees the worker's fetch. The context route does, so the chips
+  // stay blank and the list stays busy until this gate opens (ADR-0060).
+  await page.waitForFunction(async () => {
+    await navigator.serviceWorker.ready
+    return true
+  })
+  if (await page.evaluate(() => navigator.serviceWorker.controller) === null)
+    await page.reload()
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null)
   let release: () => void = () => {}
   const gate = new Promise<void>((resolve) => {
     release = resolve
   })
-  await page.route('**/api/transfers?*', async (route) => {
+  await page.context().route('**/api/transfers?*', async (route) => {
     await gate
     await route.continue()
   })
