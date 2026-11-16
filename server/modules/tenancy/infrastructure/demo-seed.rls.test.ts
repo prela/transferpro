@@ -166,8 +166,8 @@ it('stores the handoff, the seats, the crowded ride, the flights, and tomorrow',
     [tenantId],
   )
   const byName = new Map(rides.rows.map(row => [row.guest_name, row]))
-  expect(byName.get('Gost Partner Čeka')).toMatchObject({ state: 'handed_off', partner_confirmed: false })
-  expect(byName.get('Gost Partner Potvrda')).toMatchObject({ state: 'handed_off', partner_confirmed: true })
+  expect(byName.get('Gost Čeka Podizvođača')).toMatchObject({ state: 'handed_off', partner_confirmed: false })
+  expect(byName.get('Gost Podizvođač Potvrdio')).toMatchObject({ state: 'handed_off', partner_confirmed: true })
   expect(byName.get('Gost Previše')).toMatchObject({ passenger_count: 6, seat_count: 4, state: 'assigned' })
   expect(byName.get('Gost Let Danas')?.flight_number).toBe('ZZ 1101')
   expect(byName.get('Gost Let Sutra')?.flight_number).toBe('ZZ 1202')

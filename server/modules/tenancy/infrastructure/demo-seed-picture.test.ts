@@ -126,14 +126,14 @@ it.each(DEMO_CLOCKS)('seeds a handoff, seats, an over-capacity ride, flights, an
   expect(waiting).toHaveLength(1)
   expect(confirmed).toHaveLength(1)
   expect(waiting[0]).toMatchObject({
-    guestName: 'Gost Partner Čeka',
+    guestName: 'Gost Čeka Podizvođača',
     partner: 'carrier',
     driver: null,
     vehicle: null,
     mustAccept: null,
   })
   expect(confirmed[0]).toMatchObject({
-    guestName: 'Gost Partner Potvrda',
+    guestName: 'Gost Podizvođač Potvrdio',
     partner: 'carrier',
     driver: null,
     vehicle: null,
