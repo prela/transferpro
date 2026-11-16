@@ -50,11 +50,14 @@ test('collapse is stored under transferpro-dashboard and the rail stays keyboard
   const nav = page.getByRole('navigation', { name: 'Odjeljci' })
   const home = nav.getByRole('link', { name: /^Početna, \d+$/ })
   // Sign-in can leave focus on the page. Blur, then Tab from the top once the rail is up.
+  // The shell skip link is that first stop; the rail follows it.
   await expect(home).toBeVisible()
   await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement)
       document.activeElement.blur()
   })
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('link', { name: 'Preskoči na sadržaj', exact: true })).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(home).toBeFocused()
   await page.keyboard.press('Tab')
@@ -299,8 +302,8 @@ test('the user menu is reachable and operable from the keyboard', async ({ page 
     if (document.activeElement instanceof HTMLElement)
       document.activeElement.blur()
   })
-  // One tab per sidebar item, then the top bar, through the Tenant menu. Podizvođači is one of those stops.
-  for (let step = 0; step < 13 && !(await trigger.evaluate(el => el === document.activeElement)); step++)
+  // The skip link, one tab per sidebar item, then the top bar, through the Tenant menu.
+  for (let step = 0; step < 14 && !(await trigger.evaluate(el => el === document.activeElement)); step++)
     await page.keyboard.press('Tab')
   await expect(trigger).toBeFocused()
   await page.keyboard.press('Enter')

@@ -72,7 +72,7 @@ function httpStatus(error: unknown): number | undefined {
 </script>
 
 <template>
-  <main class="box-border w-full p-4">
+  <PageMain class="box-border w-full p-4">
     <section v-if="loadError">
       <UAlert
         color="error"
@@ -166,5 +166,5 @@ function httpStatus(error: unknown): number | undefined {
         :description="t(shellError)"
       />
     </section>
-  </main>
+  </PageMain>
 </template>

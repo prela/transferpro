@@ -45,17 +45,41 @@ useHead({
 bindScreenTitle(() => t('shell.profile'))
 
 const member = computed(() => session.value)
+
+/**
+ * Office Profile fills the panel. A Driver shares one narrow column with
+ * the heading, which sits outside the main so the skip link can pass it.
+ */
+const mainColumnClass = computed(() => {
+  if (office.value)
+    return 'p-4'
+  if (member.value?.role === 'driver')
+    return 'mx-auto max-w-md px-4 pb-4'
+  return 'mx-auto max-w-md p-4'
+})
 </script>
 
 <template>
   <!--
     Office staff fill the dashboard panel. A Driver stays at most 28rem,
     the same phone column as Driver Home (ADR-0016). The office title is the
-    navbar. A Driver has no frame, so the heading and the menu live here.
+    navbar. A Driver has no frame, so the heading and the menu live here,
+    outside the main, and the skip link is the first stop.
   -->
-  <main
-    class="box-border w-full p-4"
-    :class="office ? undefined : 'mx-auto max-w-md'"
+  <template v-if="member && member.role === 'driver'">
+    <ShellSkipLink />
+    <header
+      class="mx-auto mb-4 box-border flex w-full max-w-md items-start justify-between gap-3 px-4 pt-4"
+    >
+      <h1 class="text-2xl font-semibold">
+        {{ t('shell.profile') }}
+      </h1>
+      <OfficeUserMenu />
+    </header>
+  </template>
+  <PageMain
+    class="box-border w-full"
+    :class="mainColumnClass"
   >
     <section v-if="loadError">
       <UAlert
@@ -76,15 +100,6 @@ const member = computed(() => session.value)
     </section>
 
     <section v-else-if="member">
-      <div
-        v-if="member.role === 'driver'"
-        class="mb-4 flex items-start justify-between gap-3"
-      >
-        <h1 class="text-2xl font-semibold">
-          {{ t('shell.profile') }}
-        </h1>
-        <OfficeUserMenu />
-      </div>
       <UAlert
         v-if="shellError"
         color="error"
@@ -128,5 +143,5 @@ const member = computed(() => session.value)
         />
       </div>
     </section>
-  </main>
+  </PageMain>
 </template>

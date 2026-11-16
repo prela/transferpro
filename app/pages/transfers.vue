@@ -28,7 +28,7 @@ const office = computed(() => isOfficeMember(session.value?.role))
 </script>
 
 <template>
-  <main class="box-border w-full p-4">
+  <PageMain class="box-border w-full p-4">
     <section v-if="loadError">
       <UAlert
         color="error"
@@ -66,5 +66,5 @@ const office = computed(() => isOfficeMember(session.value?.role))
         :description="t(shellError)"
       />
     </section>
-  </main>
+  </PageMain>
 </template>

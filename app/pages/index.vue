@@ -43,6 +43,19 @@ watch(session, (next) => {
 // alone is not one, so the class reads this computed.
 const office = computed(() => isOfficeMember(session.value?.role))
 
+/**
+ * Office Home fills the panel. A Driver shares one narrow column with
+ * the header, which sits outside the main so the skip link can pass it.
+ * A signed-out failure keeps the same narrow column as before.
+ */
+const mainColumnClass = computed(() => {
+  if (office.value)
+    return 'p-4'
+  if (session.value?.role === 'driver')
+    return 'mx-auto max-w-md px-4 pb-4'
+  return 'mx-auto max-w-md p-4'
+})
+
 const documents = ref<{ reload: () => Promise<void> } | null>(null)
 
 function refreshDocuments() {
@@ -245,38 +258,20 @@ function httpStatus(error: unknown): number | undefined {
       :ui="{ description: 'text-sm text-default opacity-100' }"
     />
   </AuthFrame>
-  <main
-    v-else
-    class="box-border w-full p-4"
-    :class="office ? undefined : 'mx-auto max-w-md'"
-  >
-    <section v-if="loadError">
-      <UAlert
-        color="error"
-        variant="subtle"
-        role="alert"
-        class="mb-4"
-        :description="t(loadMessage)"
-      />
-      <UButton
-        type="button"
-        size="xl"
-        :disabled="pending"
-        @click="signOut"
+  <template v-else>
+    <!--
+      The Driver has no office frame. This link is the first stop on that
+      phone, and the header stays outside the main so activation skips it.
+    -->
+    <template v-if="session && session.role === 'driver'">
+      <ShellSkipLink />
+      <header
+        class="mx-auto mb-4 box-border flex w-full max-w-md items-start justify-between gap-3 px-4 pt-4"
       >
-        {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
-      </UButton>
-    </section>
-
-    <section v-else-if="session">
-      <!--
-        The Driver header is the Tenant name, today's date, and the profile
-        menu. The large Profile and sign-out buttons left this list.
-      -->
-      <div
-        v-if="session.role === 'driver'"
-        class="mb-4 flex items-start justify-between gap-3"
-      >
+        <!--
+          The Driver header is the Tenant name, today's date, and the profile
+          menu. The large Profile and sign-out buttons left this list.
+        -->
         <div>
           <p class="text-sm text-muted">
             {{ t('shell.tenant') }}
@@ -293,52 +288,77 @@ function httpStatus(error: unknown): number | undefined {
           </time>
         </div>
         <OfficeUserMenu :show-tenant-on-trigger="false" />
-      </div>
-      <!--
+      </header>
+    </template>
+    <PageMain
+      class="box-border w-full"
+      :class="mainColumnClass"
+    >
+      <section v-if="loadError">
+        <UAlert
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mb-4"
+          :description="t(loadMessage)"
+        />
+        <UButton
+          type="button"
+          size="xl"
+          :disabled="pending"
+          @click="signOut"
+        >
+          {{ pending ? t('shell.signingOut') : t('shell.signOut') }}
+        </UButton>
+      </section>
+
+      <section v-else-if="session">
+        <!--
         One notice row, and only when a document expires. It sits above the
         next Ride (ADR-0038). The list refresh reloads it.
       -->
-      <ExpiringDocuments
-        v-if="session.role === 'driver'"
-        ref="documents"
-        variant="notice"
-      />
-      <DriverRides
-        v-if="session.role === 'driver'"
-        :time-zone="session.timeZone"
-        :locale="session.locale"
-        :refresh-documents="refreshDocuments"
-      />
-      <!--
+        <ExpiringDocuments
+          v-if="session.role === 'driver'"
+          ref="documents"
+          variant="notice"
+        />
+        <DriverRides
+          v-if="session.role === 'driver'"
+          :time-zone="session.timeZone"
+          :locale="session.locale"
+          :refresh-documents="refreshDocuments"
+        />
+        <!--
         Office Home is the balance, Pozornost, and the three lists. The
         frame owns the office-home read. Documents sit in the right column.
         Locale and theme stay on Profile.
       -->
-      <OfficeHome
-        v-else
-        :time-zone="session.timeZone"
-        :locale="session.locale"
-        :refresh-documents="refreshDocuments"
-      >
-        <template #documents>
-          <ExpiringDocuments
-            ref="documents"
-            :show-refresh="false"
-          />
-        </template>
-      </OfficeHome>
-      <!--
+        <OfficeHome
+          v-else
+          :time-zone="session.timeZone"
+          :locale="session.locale"
+          :refresh-documents="refreshDocuments"
+        >
+          <template #documents>
+            <ExpiringDocuments
+              ref="documents"
+              :show-refresh="false"
+            />
+          </template>
+        </OfficeHome>
+        <!--
         Tenant settings, Members, invitations, and the audit log live on
         their own screens.
       -->
-      <UAlert
-        v-if="shellError"
-        color="error"
-        variant="subtle"
-        role="alert"
-        class="mt-4"
-        :description="t(shellError)"
-      />
-    </section>
-  </main>
+        <UAlert
+          v-if="shellError"
+          color="error"
+          variant="subtle"
+          role="alert"
+          class="mt-4"
+          :description="t(shellError)"
+        />
+      </section>
+    </PageMain>
+  </template>
 </template>

@@ -34,7 +34,8 @@
     "groupCatalogs": "Katalozi",
     "groupManagement": "Uprava",
     "more": "Više",
-    "newTransfer": "Novi transfer"
+    "newTransfer": "Novi transfer",
+    "skipToContent": "Preskoči na sadržaj"
   },
   "tenantGate": {
     "title": "Odaberite tvrtku",

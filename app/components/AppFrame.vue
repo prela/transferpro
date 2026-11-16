@@ -77,9 +77,11 @@ function onPhoneNavigate() {
 <template>
   <!--
     Office and the platform share this frame (ADR-0038).
+    The skip link is the first stop, ahead of the sidebar and the top bar.
     Collapse stays in localStorage under the group's storage-key.
     xl is only the phone bar, the Više control, and the floating button.
   -->
+  <ShellSkipLink />
   <UDashboardGroup
     storage="local"
     storage-key="transferpro-dashboard"
