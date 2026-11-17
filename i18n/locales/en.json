@@ -34,7 +34,8 @@
     "groupCatalogs": "Catalogs",
     "groupManagement": "Management",
     "more": "More",
-    "newTransfer": "New transfer"
+    "newTransfer": "New transfer",
+    "skipToContent": "Skip to content"
   },
   "tenantGate": {
     "title": "Choose a company",

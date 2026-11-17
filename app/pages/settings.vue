@@ -91,7 +91,7 @@ bindScreenTitle(() => onSettings.value ? t('shell.companySettings') : '')
 </script>
 
 <template>
-  <main class="box-border w-full p-4">
+  <PageMain class="box-border w-full p-4">
     <section v-if="loadError">
       <UAlert
         color="error"
@@ -148,5 +148,5 @@ bindScreenTitle(() => onSettings.value ? t('shell.companySettings') : '')
     </template>
     <!-- Old addresses redirect from their own pages. This keeps that setup running. -->
     <NuxtPage />
-  </main>
+  </PageMain>
 </template>
