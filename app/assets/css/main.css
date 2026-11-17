@@ -90,6 +90,95 @@ html {
 }
 
 /*
+ * Safe areas (issue #567). viewport-fit=cover makes the layout viewport
+ * the whole screen, including the notch and the home indicator. These
+ * insets are 0 when the device has none, so desktop and Android keep
+ * today's spacing. Padding sits around a control. It is not part of the
+ * 44 px phone target (ADR-0038). The values are physical: a notch is a
+ * side of the device, not of the writing direction.
+ */
+
+/* Office frame. The box itself moves in, so the top bar clears the notch. */
+.tp-shell {
+  top: env(safe-area-inset-top);
+  right: env(safe-area-inset-right);
+  bottom: env(safe-area-inset-bottom);
+  left: env(safe-area-inset-left);
+}
+
+/*
+ * Phone bottom bar and bottom sheets. The fill runs under the home
+ * indicator. The buttons stay above it. A sheet's own footer may add
+ * the bottom inset again; these two do not.
+ */
+.tp-safe-bar,
+.tp-safe-sheet {
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+/* Floating new transfer. 5rem is the bar clearance; 1rem is the old end-4. */
+.tp-safe-fab {
+  right: calc(1rem + env(safe-area-inset-right));
+  bottom: calc(5rem + env(safe-area-inset-bottom));
+}
+
+/*
+ * Full-screen phone panel, and the in-flow pages (sign-in, Driver).
+ * The surface stays edge to edge. In-flow controls move in with the padding.
+ */
+.tp-safe-edges,
+.tp-safe-page {
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+/* Sign-in and the Driver phone share this. A zero inset does not add height. */
+.tp-safe-page {
+  box-sizing: border-box;
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+}
+
+/* Bottom sheet sides. The footer of the filter sheet owns the bottom inset. */
+.tp-safe-x {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/*
+ * Slideover close is absolute, so the panel padding does not move it.
+ * 1rem is today's top-4 and end-4. The inset is added outside that.
+ */
+.tp-safe-close {
+  top: calc(1rem + env(safe-area-inset-top));
+  inset-inline-end: calc(1rem + env(safe-area-inset-right));
+}
+
+/* A bottom sheet's top is not the screen top. Only the end edge can meet the notch. */
+.tp-safe-close-end {
+  inset-inline-end: calc(1rem + env(safe-area-inset-right));
+}
+
+/* Tenant-changed notice. 1rem is today's p-4, outside the frame's own inset. */
+.tp-safe-notice {
+  padding-top: calc(1rem + env(safe-area-inset-top));
+  padding-right: calc(1rem + env(safe-area-inset-right));
+  padding-bottom: 1rem;
+  padding-left: calc(1rem + env(safe-area-inset-left));
+}
+
+/* Skip link, once focused. 1rem is today's top-4 and start-4. */
+.tp-safe-skip:focus {
+  top: calc(1rem + env(safe-area-inset-top));
+  inset-inline-start: calc(1rem + env(safe-area-inset-left));
+}
+
+/*
  * "Ispiši dan" (ADR-0038). The sheet is a direct child of body, and only
  * on Transfers, so :has keeps this from blanking a print of any other page.
  * Colours are written out: theme tokens flip with the dark class. On screen

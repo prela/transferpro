@@ -1,10 +1,13 @@
 <template>
   <!--
-    Phone layout. The page owns its width: Home, sign-in, and Driver Home
-    stay in the narrow column. This layout does not add a shell.
-    The Driver banners use that same column. With nothing to say, the
-    component renders no element, so sign-in keeps its own frame.
+    Phone layout. Home, sign-in, and Driver Home stay in the narrow column.
+    This layout does not add an office shell. The safe-area padding is on
+    this wrapper, once, so a session banner and the Driver header do not
+    each add the top inset (issue #567). With nothing to say, the session
+    banner renders no element, so sign-in keeps its own frame.
   -->
-  <SessionLifetime phone />
-  <slot />
+  <div class="tp-safe-page">
+    <SessionLifetime phone />
+    <slot />
+  </div>
 </template>
