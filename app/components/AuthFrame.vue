@@ -13,7 +13,7 @@ const { t } = useI18n()
     only h1, so a later logo can replace that element and the form stays put.
     Language and theme stay small and in the top-right, before any session.
   -->
-  <div class="flex min-h-dvh flex-col items-center bg-[var(--tp-frame)]">
+  <div class="flex w-full flex-1 flex-col items-center bg-[var(--tp-frame)]">
     <div class="flex w-full flex-wrap justify-end gap-2 p-4">
       <LocaleThemeActions
         size="sm"

@@ -1002,6 +1002,10 @@ const primaryLabel = computed(() => {
       :on-stale="noteStale"
     />
 
+    <!--
+      On the phone this bar sits in the full-screen slideover. That panel's
+      tp-safe-edges padding keeps these targets above the home indicator.
+    -->
     <div
       v-if="!command"
       class="flex flex-wrap items-center gap-2 bg-default"

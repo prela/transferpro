@@ -12,7 +12,7 @@ const visible = useState(tenantChangedKey, () => false)
 <template>
   <div
     v-if="visible"
-    class="fixed inset-x-0 top-0 z-[80] p-4"
+    class="tp-safe-notice fixed inset-x-0 top-0 z-[80]"
   >
     <div
       role="alert"

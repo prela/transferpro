@@ -111,7 +111,7 @@ function onResize() {
       :title="t('transfers.tabla')"
       :description="t('driverRides.tablaDescription')"
       :close="false"
-      :ui="{ content: 'bg-default text-highlighted' }"
+      :ui="{ content: 'tp-safe-edges bg-default text-highlighted' }"
       @after:enter="fitSign"
       @after:leave="restoreScroll"
     >

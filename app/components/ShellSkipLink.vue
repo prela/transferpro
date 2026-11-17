@@ -23,7 +23,7 @@ function focusMain(event: MouseEvent) {
   -->
   <a
     href="#main-content"
-    class="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-default focus:px-3 focus:py-2 focus:text-default focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary print:hidden"
+    class="tp-safe-skip sr-only focus:not-sr-only focus:fixed focus:z-50 focus:rounded-md focus:bg-default focus:px-3 focus:py-2 focus:text-default focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-primary print:hidden"
     @click="focusMain"
   >
     {{ t('shell.skipToContent') }}

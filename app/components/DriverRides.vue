@@ -679,6 +679,7 @@ async function confirmDecline() {
       :description="t('ride.recordLandingPickup', { time: formatInstant(new Date(recordingLanding.pickupAt), timeZone, locale) })"
       :dismissible="!landingForm?.pending"
       :handle="false"
+      :ui="{ content: 'tp-safe-sheet' }"
       @update:open="onLandingOpen"
       @animation-end="onLandingAnimation"
     >

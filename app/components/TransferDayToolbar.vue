@@ -366,7 +366,7 @@ watch(filter, () => {
   <header class="mb-3 border-b border-default pb-3 print:hidden">
     <a
       href="#transfer-day-list"
-      class="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-50 focus:bg-default focus:px-3 focus:py-2 focus:text-default"
+      class="tp-safe-skip sr-only focus:not-sr-only focus:fixed focus:z-50 focus:bg-default focus:px-3 focus:py-2 focus:text-default"
       @click.prevent="emit('focusList')"
     >
       {{ t('transfers.skipToRides') }}
@@ -606,7 +606,7 @@ watch(filter, () => {
           onCloseAutoFocus: onSheetCloseAutoFocus,
         }"
         :ui="{
-          content: 'max-h-[90vh]',
+          content: 'max-h-[90vh] tp-safe-x',
           footer: 'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
         }"
         @update:open="onSheetOpen"

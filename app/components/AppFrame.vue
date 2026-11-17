@@ -82,7 +82,12 @@ function onPhoneNavigate() {
     xl is only the phone bar, the Više control, and the floating button.
   -->
   <ShellSkipLink />
+  <!--
+    The frame stops at the safe area (issue #567). min-h-svh is the whole
+    screen, so it would spill out of that shorter box and get clipped.
+  -->
   <UDashboardGroup
+    class="tp-shell"
     storage="local"
     storage-key="transferpro-dashboard"
   >
@@ -90,7 +95,7 @@ function onPhoneNavigate() {
       id="shell"
       collapsible
       :toggle="false"
-      :ui="{ root: 'bg-[var(--tp-frame)]' }"
+      :ui="{ root: 'min-h-0 bg-[var(--tp-frame)]' }"
     >
       <template #default="{ collapsed }">
         <UNavigationMenu
@@ -103,7 +108,7 @@ function onPhoneNavigate() {
       </template>
     </UDashboardSidebar>
 
-    <UDashboardPanel :ui="{ body: panelBodyClass }">
+    <UDashboardPanel :ui="{ root: 'min-h-0', body: panelBodyClass }">
       <template #header>
         <UDashboardNavbar
           :toggle="false"
@@ -143,7 +148,7 @@ function onPhoneNavigate() {
   -->
   <nav
     v-if="!phoneDetailOpen"
-    class="fixed inset-x-0 bottom-0 z-30 flex border-t border-default bg-[var(--tp-frame)] lg:hidden"
+    class="tp-safe-bar fixed inset-x-0 bottom-0 z-30 flex border-t border-default bg-[var(--tp-frame)] lg:hidden"
     :aria-label="t('shell.nav')"
   >
     <UButton
@@ -181,6 +186,7 @@ function onPhoneNavigate() {
     v-model:open="moreOpen"
     :title="t('shell.more')"
     side="bottom"
+    :ui="{ content: 'tp-safe-sheet', close: 'tp-safe-close-end' }"
   >
     <template #body>
       <UNavigationMenu
@@ -199,7 +205,7 @@ function onPhoneNavigate() {
     type="button"
     size="xl"
     icon="i-lucide-plus"
-    class="fixed end-4 bottom-20 z-40 min-h-12 min-w-12 lg:hidden"
+    class="tp-safe-fab fixed z-40 min-h-12 min-w-12 lg:hidden"
     :aria-label="t('shell.newTransfer')"
     @click="requestNewTransfer()"
   />

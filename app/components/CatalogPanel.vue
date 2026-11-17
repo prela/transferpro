@@ -101,7 +101,7 @@ onMounted(() => {
       :overlay="false"
       :modal="layout === 'phone'"
       :ui="layout === 'phone'
-        ? { content: 'pointer-events-auto z-[60] w-screen max-w-none', body: 'flex flex-col', footer: 'flex-col gap-2 p-3' }
+        ? { content: 'tp-safe-edges pointer-events-auto z-[60] w-screen max-w-none', body: 'flex flex-col', footer: 'flex-col gap-2 p-3', close: 'tp-safe-close' }
         : { content: 'pointer-events-auto z-[60] w-[420px] max-w-[420px]', footer: 'flex-col gap-2 sm:flex-row sm:justify-end' }"
       @update:open="(value: boolean) => { if (!value) close() }"
     >
